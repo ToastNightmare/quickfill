@@ -5,6 +5,7 @@ import { ChevronLeft, ChevronRight, Sparkles, X, RotateCcw, Minus, Plus } from "
 import { UploadZone } from "@/components/UploadZone";
 import { Toolbar } from "@/components/Toolbar";
 import { PdfViewer } from "@/components/PdfViewer";
+import type { PdfViewerHandle } from "@/components/PdfViewer";
 import { useHistory } from "@/lib/use-history";
 import { detectAcroFormFields, fillPdf } from "@/lib/pdf-utils";
 import {
@@ -37,8 +38,12 @@ export default function EditorPage() {
   const [showRestoredBanner, setShowRestoredBanner] = useState(false);
   const [zoom, setZoom] = useState(100);
   const [pageScales] = useState(() => new Map<number, number>());
+  const [isDetecting, setIsDetecting] = useState(false);
+  const [toast, setToast] = useState<string | null>(null);
+  const [highlightFieldIds, setHighlightFieldIds] = useState<Set<string>>(new Set());
   const { fields, set: setFields, undo, redo, reset, canUndo, canRedo } = useHistory();
   const restoredRef = useRef(false);
+  const pdfViewerRef = useRef<PdfViewerHandle>(null);
 
   // Restore session on mount
   useEffect(() => {
@@ -300,6 +305,92 @@ export default function EditorPage() {
     [pageScales]
   );
 
+  const showToast = useCallback((msg: string, duration = 3000) => {
+    setToast(msg);
+    setTimeout(() => setToast(null), duration);
+  }, []);
+
+  const handleDetectFields = useCallback(async () => {
+    if (!pdfViewerRef.current) return;
+
+    setIsDetecting(true);
+    try {
+      const imageBase64 = pdfViewerRef.current.getCanvasDataURL();
+      const dims = pdfViewerRef.current.getCanvasDimensions();
+
+      if (!imageBase64) {
+        showToast("AI detection unavailable — place fields manually");
+        return;
+      }
+
+      const res = await fetch("/api/detect-fields", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          imageBase64,
+          pageWidth: dims.width,
+          pageHeight: dims.height,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (data.error) {
+        showToast("AI detection unavailable — place fields manually");
+        return;
+      }
+
+      if (!data.fields || data.fields.length === 0) {
+        showToast("No fields detected — try placing fields manually");
+        return;
+      }
+
+      const zoomFactor = zoom / 100;
+      const newIds = new Set<string>();
+      const newFields: import("@/lib/types").EditorField[] = data.fields.map(
+        (f: { label?: string; type?: string; x: number; y: number; width: number; height: number }, i: number) => {
+          const id = `ai-${Date.now()}-${i}`;
+          newIds.add(id);
+          const fieldType = (f.type === "checkbox" || f.type === "signature" || f.type === "date") ? f.type : "text";
+
+          if (fieldType === "checkbox") {
+            return {
+              id,
+              type: "checkbox" as const,
+              x: f.x / zoomFactor,
+              y: f.y / zoomFactor,
+              width: f.width / zoomFactor,
+              height: f.height / zoomFactor,
+              page: currentPage,
+              checked: false,
+            };
+          }
+          return {
+            id,
+            type: fieldType as "text" | "signature" | "date",
+            x: f.x / zoomFactor,
+            y: f.y / zoomFactor,
+            width: f.width / zoomFactor,
+            height: f.height / zoomFactor,
+            page: currentPage,
+            value: fieldType === "date" ? new Date().toLocaleDateString("en-US") : "",
+            fontSize: fieldType === "signature" ? 16 : 14,
+          };
+        }
+      );
+
+      setFields((prev) => [...prev, ...newFields]);
+      setHighlightFieldIds(newIds);
+      setTimeout(() => setHighlightFieldIds(new Set()), 2000);
+      showToast(`Detected ${newFields.length} fields — review and fill`);
+    } catch (err) {
+      console.error("AI detection failed:", err);
+      showToast("AI detection unavailable — place fields manually");
+    } finally {
+      setIsDetecting(false);
+    }
+  }, [currentPage, zoom, setFields, showToast]);
+
   if (!pdfBytes) {
     return <UploadZone onFileLoad={handleFileLoad} />;
   }
@@ -310,6 +401,13 @@ export default function EditorPage() {
       {showRestoredBanner && (
         <div className="fixed left-1/2 top-16 z-50 -translate-x-1/2 rounded-lg bg-accent/90 px-4 py-2 text-sm font-medium text-white shadow-lg animate-fade-in">
           Session restored
+        </div>
+      )}
+
+      {/* Toast notification */}
+      {toast && (
+        <div className="fixed left-1/2 top-16 z-50 -translate-x-1/2 rounded-lg bg-gray-900/90 px-4 py-2 text-sm font-medium text-white shadow-lg animate-fade-in">
+          {toast}
         </div>
       )}
 
@@ -325,6 +423,8 @@ export default function EditorPage() {
         isDownloading={isDownloading}
         selectedField={selectedField}
         onFontSizeChange={handleFontSizeChange}
+        onDetectFields={handleDetectFields}
+        isDetecting={isDetecting}
       />
 
       <div className="flex flex-1 flex-col overflow-hidden">
@@ -417,6 +517,7 @@ export default function EditorPage() {
         </div>
 
         <PdfViewer
+          ref={pdfViewerRef}
           pdfBytes={pdfBytes}
           currentPage={currentPage}
           fields={fields}
@@ -430,6 +531,7 @@ export default function EditorPage() {
           totalPages={totalPages}
           onTotalPagesChange={setTotalPages}
           zoom={zoom}
+          highlightFieldIds={highlightFieldIds}
         />
       </div>
 

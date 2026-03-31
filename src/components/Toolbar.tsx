@@ -11,6 +11,7 @@ import {
   Trash2,
   Download,
   HelpCircle,
+  Sparkles,
 } from "lucide-react";
 import type { ToolType, EditorField } from "@/lib/types";
 
@@ -28,6 +29,8 @@ interface ToolbarProps {
   isDownloading: boolean;
   selectedField: EditorField | null;
   onFontSizeChange: (size: number) => void;
+  onDetectFields: () => void;
+  isDetecting: boolean;
 }
 
 const tools: { type: ToolType; icon: typeof Type; label: string; shortcut: string }[] = [
@@ -49,6 +52,8 @@ export function Toolbar({
   isDownloading,
   selectedField,
   onFontSizeChange,
+  onDetectFields,
+  isDetecting,
 }: ToolbarProps) {
   const [showShortcuts, setShowShortcuts] = useState(false);
 
@@ -84,6 +89,23 @@ export function Toolbar({
           </kbd>
         </button>
       ))}
+
+      {/* AI Auto-detect button */}
+      <button
+        onClick={onDetectFields}
+        disabled={isDetecting}
+        title="Auto-detect form fields with AI"
+        className="flex h-11 items-center gap-2 rounded-lg px-2 text-sm font-medium text-text-muted hover:bg-purple-50 hover:text-purple-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+      >
+        {isDetecting ? (
+          <div className="h-5 w-5 shrink-0 animate-spin rounded-full border-2 border-purple-400 border-t-transparent" />
+        ) : (
+          <Sparkles className="h-5 w-5 shrink-0" />
+        )}
+        <span className="hidden sm:inline">
+          {isDetecting ? "Detecting..." : "Auto-detect"}
+        </span>
+      </button>
 
       {/* Font Size selector */}
       {showFontSize && (

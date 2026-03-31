@@ -1,9 +1,15 @@
 "use client";
 
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useRef, useState, useCallback, useImperativeHandle, forwardRef } from "react";
 import { Stage, Layer, Rect, Text, Group, Transformer, Circle } from "react-konva";
 import type Konva from "konva";
 import type { EditorField, ToolType } from "@/lib/types";
+import { detectSnapBox } from "@/lib/snap-detect";
+
+export interface PdfViewerHandle {
+  getCanvasDataURL: () => string | null;
+  getCanvasDimensions: () => { width: number; height: number };
+}
 
 interface PdfViewerProps {
   pdfBytes: ArrayBuffer;
@@ -19,6 +25,7 @@ interface PdfViewerProps {
   totalPages: number;
   onTotalPagesChange: (total: number) => void;
   zoom: number;
+  highlightFieldIds?: Set<string>;
 }
 
 let nextFieldId = 1;
@@ -26,7 +33,7 @@ function genId() {
   return `field-${nextFieldId++}`;
 }
 
-export function PdfViewer({
+export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function PdfViewer({
   pdfBytes,
   currentPage,
   fields,
@@ -40,7 +47,8 @@ export function PdfViewer({
   totalPages: _totalPages,
   onTotalPagesChange,
   zoom,
-}: PdfViewerProps) {
+  highlightFieldIds,
+}, ref) {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [dimensions, setDimensions] = useState({ width: 800, height: 1100 });
@@ -48,8 +56,14 @@ export function PdfViewer({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [editingFieldId, setEditingFieldId] = useState<string | null>(null);
+  const [snappedFieldId, setSnappedFieldId] = useState<string | null>(null);
   const transformerRef = useRef<Konva.Transformer>(null);
   const selectedShapeRef = useRef<Konva.Node | null>(null);
+
+  useImperativeHandle(ref, () => ({
+    getCanvasDataURL: () => canvasRef.current?.toDataURL("image/png") ?? null,
+    getCanvasDimensions: () => dimensions,
+  }));
 
   const zoomFactor = zoom / 100;
 
@@ -176,58 +190,65 @@ export function PdfViewer({
       if (e.target === stage || e.target.getParent() === stage) {
         if (activeTool) {
           const id = genId();
-          const base = {
-            id,
-            x: pos.x / zoomFactor,
-            y: pos.y / zoomFactor,
-            page: currentPage,
+
+          // Try snap detection on the PDF canvas
+          let snapped = false;
+          let fieldX = pos.x / zoomFactor;
+          let fieldY = pos.y / zoomFactor;
+          let fieldW: number;
+          let fieldH: number;
+
+          // Default sizes per tool
+          const defaults = {
+            text: { w: 200, h: 28 },
+            checkbox: { w: 24, h: 24 },
+            signature: { w: 200, h: 40 },
+            date: { w: 160, h: 28 },
           };
+          fieldW = defaults[activeTool].w;
+          fieldH = defaults[activeTool].h;
+
+          if (canvasRef.current) {
+            try {
+              const snap = detectSnapBox(canvasRef.current, pos.x, pos.y);
+              if (snap) {
+                fieldX = snap.x / zoomFactor;
+                fieldY = snap.y / zoomFactor;
+                fieldW = snap.width / zoomFactor;
+                fieldH = snap.height / zoomFactor;
+                snapped = true;
+              }
+            } catch {
+              // Fall back to default placement
+            }
+          }
+
+          const base = { id, x: fieldX, y: fieldY, page: currentPage };
 
           let field: EditorField;
           switch (activeTool) {
             case "text":
-              field = {
-                ...base,
-                type: "text",
-                width: 200,
-                height: 28,
-                value: "",
-                fontSize: 14,
-              };
+              field = { ...base, type: "text", width: fieldW, height: fieldH, value: "", fontSize: 14 };
               break;
             case "checkbox":
-              field = {
-                ...base,
-                type: "checkbox",
-                width: 24,
-                height: 24,
-                checked: false,
-              };
+              field = { ...base, type: "checkbox", width: fieldW, height: fieldH, checked: false };
               break;
             case "signature":
-              field = {
-                ...base,
-                type: "signature",
-                width: 200,
-                height: 40,
-                value: "",
-                fontSize: 16,
-              };
+              field = { ...base, type: "signature", width: fieldW, height: fieldH, value: "", fontSize: 16 };
               break;
             case "date":
-              field = {
-                ...base,
-                type: "date",
-                width: 160,
-                height: 28,
-                value: new Date().toLocaleDateString("en-US"),
-                fontSize: 14,
-              };
+              field = { ...base, type: "date", width: fieldW, height: fieldH, value: new Date().toLocaleDateString("en-US"), fontSize: 14 };
               break;
           }
 
           onFieldAdd(field);
           onFieldSelect(id);
+
+          // Flash blue border on snap
+          if (snapped) {
+            setSnappedFieldId(id);
+            setTimeout(() => setSnappedFieldId(null), 500);
+          }
         } else {
           onFieldSelect(null);
           setEditingFieldId(null);
@@ -288,6 +309,7 @@ export function PdfViewer({
                 field={field}
                 isSelected={field.id === selectedFieldId}
                 isEditing={field.id === editingFieldId}
+                isHighlighted={field.id === snappedFieldId || (highlightFieldIds?.has(field.id) ?? false)}
                 onSelect={() => {
                   onFieldSelect(field.id);
                   selectedShapeRef.current = null;
@@ -381,13 +403,14 @@ export function PdfViewer({
       </div>
     </div>
   );
-}
+});
 
 // Individual field component
 function FieldShape({
   field,
   isSelected,
   isEditing,
+  isHighlighted,
   onSelect,
   onDragEnd,
   onTransformEnd,
@@ -399,6 +422,7 @@ function FieldShape({
   field: EditorField;
   isSelected: boolean;
   isEditing: boolean;
+  isHighlighted: boolean;
   onSelect: () => void;
   onDragEnd: (x: number, y: number) => void;
   onTransformEnd: (w: number, h: number, x: number, y: number) => void;
@@ -451,8 +475,8 @@ function FieldShape({
           width={field.width}
           height={field.height}
           fill="white"
-          stroke={isSelected ? "#4f8ef7" : "#d1d5db"}
-          strokeWidth={isSelected ? 2 : 1}
+          stroke={isHighlighted ? "#2563eb" : isSelected ? "#4f8ef7" : "#d1d5db"}
+          strokeWidth={isHighlighted ? 3 : isSelected ? 2 : 1}
           cornerRadius={3}
         />
         {field.checked && (
@@ -516,8 +540,8 @@ function FieldShape({
         width={field.width}
         height={field.height}
         fill="transparent"
-        stroke={isSelected ? "#4f8ef7" : "transparent"}
-        strokeWidth={isSelected ? 2 : 0}
+        stroke={isHighlighted ? "#2563eb" : isSelected ? "#4f8ef7" : "transparent"}
+        strokeWidth={isHighlighted ? 3 : isSelected ? 2 : 0}
         cornerRadius={3}
       />
       {!isEditing && (
