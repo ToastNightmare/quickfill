@@ -7,6 +7,7 @@ const PDF_KEY = "current_pdf";
 const FIELDS_KEY = "quickfill_fields";
 const PAGE_KEY = "quickfill_page";
 const FILENAME_KEY = "quickfill_filename";
+const ZOOM_KEY = "quickfill_zoom";
 
 function openDB(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
@@ -115,6 +116,23 @@ export function loadFileNameFromLocalStorage(): string {
     return localStorage.getItem(FILENAME_KEY) ?? "";
   } catch {
     return "";
+  }
+}
+
+export function saveZoomToLocalStorage(zoom: number): void {
+  try {
+    localStorage.setItem(ZOOM_KEY, String(zoom));
+  } catch {
+    // silent
+  }
+}
+
+export function loadZoomFromLocalStorage(): number {
+  try {
+    const raw = localStorage.getItem(ZOOM_KEY);
+    return raw ? parseInt(raw, 10) || 100 : 100;
+  } catch {
+    return 100;
   }
 }
 

@@ -18,6 +18,7 @@ interface PdfViewerProps {
   onPageScaleSet: (page: number, scale: number) => void;
   totalPages: number;
   onTotalPagesChange: (total: number) => void;
+  zoom: number;
 }
 
 let nextFieldId = 1;
@@ -38,16 +39,24 @@ export function PdfViewer({
   onPageScaleSet,
   totalPages: _totalPages,
   onTotalPagesChange,
+  zoom,
 }: PdfViewerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [dimensions, setDimensions] = useState({ width: 800, height: 1100 });
-  const [scale, setScale] = useState(1);
+  const [, setScale] = useState(1);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [editingFieldId, setEditingFieldId] = useState<string | null>(null);
   const transformerRef = useRef<Konva.Transformer>(null);
   const selectedShapeRef = useRef<Konva.Node | null>(null);
+
+  const zoomFactor = zoom / 100;
+
+  // Clear editing when field is deselected
+  useEffect(() => {
+    if (!selectedFieldId) setEditingFieldId(null);
+  }, [selectedFieldId]);
 
   // Render PDF page
   useEffect(() => {
@@ -71,11 +80,12 @@ export function PdfViewer({
 
         const containerWidth = containerRef.current?.clientWidth ?? 800;
         const viewport = page.getViewport({ scale: 1 });
-        const pageScale = Math.min((containerWidth - 32) / viewport.width, 1.5);
-        const scaledViewport = page.getViewport({ scale: pageScale });
+        const fitScale = Math.min((containerWidth - 32) / viewport.width, 1.5);
+        const effectiveScale = fitScale * zoomFactor;
+        const scaledViewport = page.getViewport({ scale: effectiveScale });
 
-        setScale(pageScale);
-        onPageScaleSet(currentPage, pageScale);
+        setScale(fitScale);
+        onPageScaleSet(currentPage, fitScale);
         setDimensions({
           width: Math.floor(scaledViewport.width),
           height: Math.floor(scaledViewport.height),
@@ -111,7 +121,7 @@ export function PdfViewer({
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pdfBytes, currentPage]);
+  }, [pdfBytes, currentPage, zoom]);
 
   // Resize observer
   useEffect(() => {
@@ -168,8 +178,8 @@ export function PdfViewer({
           const id = genId();
           const base = {
             id,
-            x: pos.x,
-            y: pos.y,
+            x: pos.x / zoomFactor,
+            y: pos.y / zoomFactor,
             page: currentPage,
           };
 
@@ -201,6 +211,7 @@ export function PdfViewer({
                 width: 200,
                 height: 40,
                 value: "",
+                fontSize: 16,
               };
               break;
             case "date":
@@ -223,7 +234,7 @@ export function PdfViewer({
         }
       }
     },
-    [activeTool, currentPage, onFieldAdd, onFieldSelect]
+    [activeTool, currentPage, onFieldAdd, onFieldSelect, zoomFactor]
   );
 
   const pageFields = fields.filter((f) => f.page === currentPage);
@@ -260,6 +271,8 @@ export function PdfViewer({
         <Stage
           width={dimensions.width}
           height={dimensions.height}
+          scaleX={zoomFactor}
+          scaleY={zoomFactor}
           onClick={handleStageClick}
           style={{
             position: "absolute",
@@ -303,7 +316,6 @@ export function PdfViewer({
                     }
                   }
                 }}
-                scale={scale}
               />
             ))}
             <Transformer
@@ -322,44 +334,50 @@ export function PdfViewer({
         </Stage>
 
         {/* HTML input overlay for text editing */}
-        {editingFieldId && (() => {
-          const editField = pageFields.find((f) => f.id === editingFieldId);
-          if (!editField || editField.type === "checkbox") return null;
+        {editingFieldId &&
+          (() => {
+            const editField = pageFields.find((f) => f.id === editingFieldId);
+            if (!editField || editField.type === "checkbox") return null;
 
-          return (
-            <input
-              autoFocus
-              type={editField.type === "date" ? "text" : "text"}
-              className="absolute z-20 border-2 border-accent bg-white/90 px-1 text-sm outline-none"
-              style={{
-                left: editField.x,
-                top: editField.y,
-                width: editField.width,
-                height: editField.height,
-                fontSize: editField.type === "signature" ? 16 : (editField as { fontSize?: number }).fontSize ?? 14,
-                fontFamily: editField.type === "signature" ? "cursive" : "inherit",
-              }}
-              value={editField.value}
-              placeholder={
-                editField.type === "signature"
-                  ? "Type your signature"
-                  : editField.type === "date"
-                  ? "MM/DD/YYYY"
-                  : "Type here..."
-              }
-              onChange={(e) =>
-                onFieldUpdate(editField.id, { value: e.target.value } as Partial<EditorField>)
-              }
-              onBlur={() => setEditingFieldId(null)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" || e.key === "Escape") {
-                  setEditingFieldId(null);
+            return (
+              <input
+                autoFocus
+                type="text"
+                className="absolute z-20 border-2 border-accent bg-white/90 px-1 outline-none"
+                style={{
+                  left: editField.x * zoomFactor,
+                  top: editField.y * zoomFactor,
+                  width: editField.width * zoomFactor,
+                  height: editField.height * zoomFactor,
+                  fontSize:
+                    ((editField as { fontSize?: number }).fontSize ?? 14) *
+                    zoomFactor,
+                  fontFamily:
+                    editField.type === "signature" ? "cursive" : "inherit",
+                }}
+                value={editField.value}
+                placeholder={
+                  editField.type === "signature"
+                    ? "Type your signature"
+                    : editField.type === "date"
+                    ? "MM/DD/YYYY"
+                    : "Type here..."
                 }
-                e.stopPropagation();
-              }}
-            />
-          );
-        })()}
+                onChange={(e) =>
+                  onFieldUpdate(editField.id, {
+                    value: e.target.value,
+                  } as Partial<EditorField>)
+                }
+                onBlur={() => setEditingFieldId(null)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === "Escape") {
+                    setEditingFieldId(null);
+                  }
+                  e.stopPropagation();
+                }}
+              />
+            );
+          })()}
       </div>
     </div>
   );
@@ -388,7 +406,6 @@ function FieldShape({
   onValueChange: (value: string | boolean) => void;
   setSelectedRef: (node: Konva.Node | null) => void;
   onDelete?: () => void;
-  scale: number;
 }) {
   const groupRef = useRef<Konva.Group>(null);
 
@@ -506,11 +523,7 @@ function FieldShape({
       {!isEditing && (
         <Text
           text={displayValue}
-          fontSize={
-            field.type === "signature"
-              ? 16
-              : (field as { fontSize?: number }).fontSize ?? 14
-          }
+          fontSize={(field as { fontSize?: number }).fontSize ?? 14}
           fill={isEmpty ? "#9ca3af" : "#1a1a2e"}
           fontFamily={field.type === "signature" ? "cursive" : "Arial"}
           fontStyle={field.type === "signature" ? "italic" : "normal"}
@@ -533,7 +546,7 @@ function FieldShape({
         >
           <Circle radius={10} fill="#ef4444" />
           <Text
-            text="×"
+            text="\u00d7"
             fontSize={14}
             fill="white"
             width={20}

@@ -24,6 +24,7 @@ export interface CheckboxField extends FieldBase {
 export interface SignatureField extends FieldBase {
   type: "signature";
   value: string;
+  fontSize: number;
 }
 
 export interface DateField extends FieldBase {

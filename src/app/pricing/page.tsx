@@ -20,7 +20,7 @@ const faqs = [
   },
   {
     q: "What happens when I hit my free limit?",
-    a: "You'll be prompted to upgrade to Pro. Your filled documents are never lost — upgrade any time to continue.",
+    a: "You'll be prompted to upgrade to Pro. Your filled documents are never lost \u2014 upgrade any time to continue.",
   },
   {
     q: "Can I cancel my Pro subscription?",
@@ -28,15 +28,21 @@ const faqs = [
   },
   {
     q: "What PDF forms does QuickFill support?",
-    a: "QuickFill works with any PDF — tax forms, government applications, contracts, and more. It automatically detects AcroForm fields and supports manual field placement for flat PDFs.",
+    a: "QuickFill works with any PDF \u2014 tax forms, government applications, contracts, and more. It automatically detects AcroForm fields and supports manual field placement for flat PDFs.",
   },
   {
     q: "Is my data secure?",
     a: "Your PDFs are processed entirely in your browser. We never upload or store your documents on our servers.",
   },
+  {
+    q: "Do you offer annual billing?",
+    a: "Yes! Save $45 per year with our annual plan at $99/year ($8.25/month). Switch to annual billing at any time.",
+  },
 ];
 
 export default function PricingPage() {
+  const [billing, setBilling] = useState<"monthly" | "annual">("monthly");
+
   const handleUpgrade = async () => {
     const res = await fetch("/api/stripe/checkout", { method: "POST" });
     const { url } = await res.json();
@@ -73,6 +79,32 @@ export default function PricingPage() {
             <p className="mx-auto mt-6 max-w-xl text-lg text-gray-300">
               Start free. Upgrade when you need more.
             </p>
+
+            {/* Monthly/Annual toggle */}
+            <div className="mt-8 flex justify-center">
+              <div className="inline-flex rounded-full bg-white/10 p-1">
+                <button
+                  onClick={() => setBilling("monthly")}
+                  className={`rounded-full px-5 py-2 text-sm font-medium transition-colors ${
+                    billing === "monthly"
+                      ? "bg-white text-navy shadow"
+                      : "text-gray-300 hover:text-white"
+                  }`}
+                >
+                  Monthly
+                </button>
+                <button
+                  onClick={() => setBilling("annual")}
+                  className={`rounded-full px-5 py-2 text-sm font-medium transition-colors ${
+                    billing === "annual"
+                      ? "bg-white text-navy shadow"
+                      : "text-gray-300 hover:text-white"
+                  }`}
+                >
+                  Annual
+                </button>
+              </div>
+            </div>
           </div>
         </section>
 
@@ -97,22 +129,54 @@ export default function PricingPage() {
 
             {/* Pro */}
             <div className="relative rounded-xl border-2 border-accent bg-surface p-8 shadow-lg shadow-accent/10">
-              <div className="absolute -top-3 left-6 rounded-full bg-accent px-3 py-0.5 text-xs font-semibold text-white">
-                Most Popular
-              </div>
+              {billing === "annual" ? (
+                <div className="absolute -top-3 left-6 rounded-full bg-green-500 px-3 py-0.5 text-xs font-semibold text-white">
+                  Best Value
+                </div>
+              ) : (
+                <div className="absolute -top-3 left-6 rounded-full bg-accent px-3 py-0.5 text-xs font-semibold text-white">
+                  Most Popular
+                </div>
+              )}
               <h2 className="text-lg font-semibold">Pro</h2>
-              <div className="mt-4 flex items-baseline gap-1">
-                <span className="text-4xl font-extrabold">$12</span>
-                <span className="text-text-muted">/month</span>
+              <div className="mt-4">
+                {billing === "monthly" ? (
+                  <div className="flex items-baseline gap-1">
+                    <span className="text-4xl font-extrabold">$12</span>
+                    <span className="text-text-muted">/month</span>
+                  </div>
+                ) : (
+                  <div>
+                    <div className="flex items-baseline gap-2">
+                      <span className="text-4xl font-extrabold">$99</span>
+                      <span className="text-text-muted">/year</span>
+                      <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs font-semibold text-green-700">
+                        Save $45
+                      </span>
+                    </div>
+                    <p className="mt-1 text-sm text-text-muted">
+                      $8.25/month, billed annually
+                    </p>
+                  </div>
+                )}
               </div>
               <p className="mt-4 text-sm text-text-muted">For professionals and teams.</p>
-              <button
-                onClick={handleUpgrade}
-                className="mt-8 flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-accent text-sm font-semibold text-white hover:bg-accent-hover transition-colors"
-              >
-                <Sparkles className="h-4 w-4" />
-                Upgrade to Pro
-              </button>
+              {billing === "monthly" ? (
+                <button
+                  onClick={handleUpgrade}
+                  className="mt-8 flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-accent text-sm font-semibold text-white hover:bg-accent-hover transition-colors"
+                >
+                  <Sparkles className="h-4 w-4" />
+                  Upgrade to Pro
+                </button>
+              ) : (
+                <button
+                  disabled
+                  className="mt-8 flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-accent/60 text-sm font-semibold text-white cursor-not-allowed"
+                >
+                  Coming Soon
+                </button>
+              )}
             </div>
           </div>
 
@@ -183,7 +247,7 @@ function FaqItem({ question, answer }: { question: string; answer: string }) {
         className="flex w-full items-center justify-between px-6 py-5 text-left"
       >
         <span className="font-semibold">{question}</span>
-        <span className="ml-4 shrink-0 text-text-muted">{open ? "−" : "+"}</span>
+        <span className="ml-4 shrink-0 text-text-muted">{open ? "\u2212" : "+"}</span>
       </button>
       {open && (
         <div className="border-t border-border px-6 py-4 text-sm leading-relaxed text-text-muted">

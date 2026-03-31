@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useCallback, useEffect, useRef } from "react";
-import { ChevronLeft, ChevronRight, Sparkles, X, RotateCcw } from "lucide-react";
+import { useState, useCallback, useEffect, useRef, useMemo } from "react";
+import { ChevronLeft, ChevronRight, Sparkles, X, RotateCcw, Minus, Plus } from "lucide-react";
 import { UploadZone } from "@/components/UploadZone";
 import { Toolbar } from "@/components/Toolbar";
 import { PdfViewer } from "@/components/PdfViewer";
@@ -17,8 +17,12 @@ import {
   saveFileNameToLocalStorage,
   loadFileNameFromLocalStorage,
   clearEditorState,
+  saveZoomToLocalStorage,
+  loadZoomFromLocalStorage,
 } from "@/lib/persistence";
 import type { EditorField, ToolType } from "@/lib/types";
+
+const ZOOM_LEVELS = [50, 75, 100, 125, 150, 175, 200];
 
 export default function EditorPage() {
   const [pdfBytes, setPdfBytes] = useState<ArrayBuffer | null>(null);
@@ -31,6 +35,7 @@ export default function EditorPage() {
   const [isDownloading, setIsDownloading] = useState(false);
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
   const [showRestoredBanner, setShowRestoredBanner] = useState(false);
+  const [zoom, setZoom] = useState(100);
   const [pageScales] = useState(() => new Map<number, number>());
   const { fields, set: setFields, undo, redo, reset, canUndo, canRedo } = useHistory();
   const restoredRef = useRef(false);
@@ -40,7 +45,10 @@ export default function EditorPage() {
     if (restoredRef.current) return;
     restoredRef.current = true;
 
-    loadPdfFromIndexedDB().then((savedPdf) => {
+    // Restore zoom
+    setZoom(loadZoomFromLocalStorage());
+
+    loadPdfFromIndexedDB().then(async (savedPdf) => {
       if (!savedPdf) return;
       const savedFields = loadFieldsFromLocalStorage();
       const savedPage = loadPageFromLocalStorage();
@@ -54,6 +62,14 @@ export default function EditorPage() {
       }
       setShowRestoredBanner(true);
       setTimeout(() => setShowRestoredBanner(false), 3000);
+
+      // Detect AcroForm for progress tracking
+      try {
+        const acroFields = await detectAcroFormFields(savedPdf);
+        if (acroFields.length > 0) setHasAcroForm(true);
+      } catch {
+        // silent
+      }
     });
   }, [reset]);
 
@@ -70,6 +86,67 @@ export default function EditorPage() {
       savePageToLocalStorage(currentPage);
     }
   }, [currentPage, pdfBytes]);
+
+  // Persist zoom on change
+  useEffect(() => {
+    saveZoomToLocalStorage(zoom);
+  }, [zoom]);
+
+  // Keyboard shortcuts for tools
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      const target = e.target as HTMLElement;
+      if (
+        target.tagName === "INPUT" ||
+        target.tagName === "TEXTAREA" ||
+        target.tagName === "SELECT" ||
+        target.isContentEditable
+      )
+        return;
+
+      switch (e.key.toLowerCase()) {
+        case "t":
+          setActiveTool((prev) => (prev === "text" ? null : "text"));
+          break;
+        case "c":
+          setActiveTool((prev) => (prev === "checkbox" ? null : "checkbox"));
+          break;
+        case "s":
+          setActiveTool((prev) => (prev === "signature" ? null : "signature"));
+          break;
+        case "d":
+          setActiveTool((prev) => (prev === "date" ? null : "date"));
+          break;
+        case "escape":
+          setActiveTool(null);
+          setSelectedFieldId(null);
+          break;
+      }
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
+
+  const selectedField = useMemo(() => {
+    if (!selectedFieldId) return null;
+    return fields.find((f) => f.id === selectedFieldId) ?? null;
+  }, [fields, selectedFieldId]);
+
+  const filledCount = useMemo(() => {
+    return fields.filter((f) => {
+      if (f.type === "checkbox") return f.checked;
+      if ("value" in f) return (f as { value: string }).value !== "";
+      return false;
+    }).length;
+  }, [fields]);
+
+  const handleZoomIn = useCallback(() => {
+    setZoom((prev) => ZOOM_LEVELS.find((z) => z > prev) ?? prev);
+  }, []);
+
+  const handleZoomOut = useCallback(() => {
+    setZoom((prev) => [...ZOOM_LEVELS].reverse().find((z) => z < prev) ?? prev);
+  }, []);
 
   const handleFileLoad = useCallback(
     async (file: File, bytes: ArrayBuffer) => {
@@ -155,6 +232,15 @@ export default function EditorPage() {
     setSelectedFieldId(null);
   }, [setFields]);
 
+  const handleFontSizeChange = useCallback(
+    (size: number) => {
+      if (selectedFieldId) {
+        handleFieldUpdate(selectedFieldId, { fontSize: size } as Partial<EditorField>);
+      }
+    },
+    [selectedFieldId, handleFieldUpdate]
+  );
+
   const handleStartOver = useCallback(() => {
     clearEditorState();
     setPdfBytes(null);
@@ -237,11 +323,14 @@ export default function EditorPage() {
         canUndo={canUndo}
         canRedo={canRedo}
         isDownloading={isDownloading}
+        selectedField={selectedField}
+        onFontSizeChange={handleFontSizeChange}
       />
 
       <div className="flex flex-1 flex-col overflow-hidden">
-        {/* Top bar with file name and page nav */}
-        <div className="flex items-center justify-between border-b border-border bg-surface px-4 py-2">
+        {/* Top bar with file name, zoom, progress, and page nav */}
+        <div className="flex items-center justify-between gap-2 border-b border-border bg-surface px-4 py-2">
+          {/* Left: filename + start over */}
           <div className="flex items-center gap-2 min-w-0">
             <p className="truncate text-sm font-medium text-text-muted">{fileName}</p>
             <button
@@ -253,32 +342,78 @@ export default function EditorPage() {
               <span className="hidden sm:inline">Start Over</span>
             </button>
           </div>
-          {totalPages > 1 && (
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => setCurrentPage((p) => Math.max(0, p - 1))}
-                disabled={currentPage === 0}
-                className="flex h-8 w-8 items-center justify-center rounded-md hover:bg-surface-alt transition-colors disabled:opacity-30"
-              >
-                <ChevronLeft className="h-4 w-4" />
-              </button>
-              <span className="text-sm tabular-nums text-text-muted">
-                Page {currentPage + 1} of {totalPages}
-              </span>
-              <button
-                onClick={() => setCurrentPage((p) => Math.min(totalPages - 1, p + 1))}
-                disabled={currentPage === totalPages - 1}
-                className="flex h-8 w-8 items-center justify-center rounded-md hover:bg-surface-alt transition-colors disabled:opacity-30"
-              >
-                <ChevronRight className="h-4 w-4" />
-              </button>
-            </div>
-          )}
-          {hasAcroForm && (
-            <span className="rounded-md bg-accent/10 px-2 py-1 text-xs font-medium text-accent">
-              AcroForm detected
+
+          {/* Center: zoom controls */}
+          <div className="flex items-center gap-1">
+            <button
+              onClick={handleZoomOut}
+              disabled={zoom <= ZOOM_LEVELS[0]}
+              title="Zoom Out"
+              className="flex h-7 w-7 items-center justify-center rounded-md text-text-muted hover:bg-surface-alt transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+            >
+              <Minus className="h-3.5 w-3.5" />
+            </button>
+            <span className="min-w-[3rem] text-center text-xs tabular-nums text-text-muted select-none">
+              {zoom}%
             </span>
-          )}
+            <button
+              onClick={handleZoomIn}
+              disabled={zoom >= ZOOM_LEVELS[ZOOM_LEVELS.length - 1]}
+              title="Zoom In"
+              className="flex h-7 w-7 items-center justify-center rounded-md text-text-muted hover:bg-surface-alt transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+            >
+              <Plus className="h-3.5 w-3.5" />
+            </button>
+            <button
+              onClick={() => setZoom(100)}
+              title="Fit to Page"
+              className="ml-1 rounded-md px-2 py-1 text-xs font-medium text-text-muted hover:bg-surface-alt hover:text-text transition-colors"
+            >
+              Fit
+            </button>
+          </div>
+
+          {/* Right: progress + page nav */}
+          <div className="flex items-center gap-4">
+            {/* AcroForm progress indicator */}
+            {hasAcroForm && fields.length > 0 && (
+              <div className="hidden items-center gap-2 sm:flex">
+                <div className="h-1.5 w-16 overflow-hidden rounded-full bg-surface-alt">
+                  <div
+                    className="h-full rounded-full bg-accent transition-all duration-300"
+                    style={{
+                      width: `${Math.round((filledCount / fields.length) * 100)}%`,
+                    }}
+                  />
+                </div>
+                <span className="text-xs tabular-nums text-text-muted whitespace-nowrap">
+                  {filledCount} of {fields.length} filled
+                </span>
+              </div>
+            )}
+
+            {totalPages > 1 && (
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setCurrentPage((p) => Math.max(0, p - 1))}
+                  disabled={currentPage === 0}
+                  className="flex h-8 w-8 items-center justify-center rounded-md hover:bg-surface-alt transition-colors disabled:opacity-30"
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </button>
+                <span className="text-sm tabular-nums text-text-muted">
+                  Page {currentPage + 1} of {totalPages}
+                </span>
+                <button
+                  onClick={() => setCurrentPage((p) => Math.min(totalPages - 1, p + 1))}
+                  disabled={currentPage === totalPages - 1}
+                  className="flex h-8 w-8 items-center justify-center rounded-md hover:bg-surface-alt transition-colors disabled:opacity-30"
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </button>
+              </div>
+            )}
+          </div>
         </div>
 
         <PdfViewer
@@ -294,6 +429,7 @@ export default function EditorPage() {
           onPageScaleSet={handlePageScaleSet}
           totalPages={totalPages}
           onTotalPagesChange={setTotalPages}
+          zoom={zoom}
         />
       </div>
 

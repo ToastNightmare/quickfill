@@ -1,3 +1,6 @@
+"use client";
+
+import { useState } from "react";
 import Link from "next/link";
 import {
   Upload,
@@ -13,7 +16,7 @@ const features = [
     icon: Upload,
     title: "Upload Any PDF",
     description:
-      "Drag and drop any PDF form — tax documents, applications, contracts. We handle them all.",
+      "Drag and drop any PDF form \u2014 tax documents, applications, contracts. We handle them all.",
   },
   {
     icon: ScanSearch,
@@ -25,17 +28,19 @@ const features = [
     icon: Download,
     title: "Download Instantly",
     description:
-      "Get your filled PDF in seconds. Fields are embedded directly into the document — no watermarks.",
+      "Get your filled PDF in seconds. Fields are embedded directly into the document \u2014 no watermarks.",
   },
 ];
 
 const steps = [
   { number: "1", title: "Upload", description: "Drop your PDF into the editor" },
-  { number: "2", title: "Fill", description: "Type, check, sign — right on the form" },
+  { number: "2", title: "Fill", description: "Type, check, sign \u2014 right on the form" },
   { number: "3", title: "Download", description: "Get your completed PDF instantly" },
 ];
 
 export default function Home() {
+  const [billing, setBilling] = useState<"monthly" | "annual">("monthly");
+
   return (
     <div className="flex flex-col">
       {/* Hero */}
@@ -48,7 +53,7 @@ export default function Home() {
           </h1>
           <p className="mx-auto mt-6 max-w-2xl text-lg text-gray-300 sm:text-xl">
             The fastest way to fill out PDF forms online. Smart field detection,
-            drag-and-drop placement, and instant downloads — no software to
+            drag-and-drop placement, and instant downloads &mdash; no software to
             install.
           </p>
           <div className="mt-10 flex flex-col items-center gap-4 sm:flex-row sm:justify-center">
@@ -56,7 +61,7 @@ export default function Home() {
               href="/editor"
               className="flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-accent px-6 text-base font-semibold text-white shadow-lg shadow-accent/25 hover:bg-accent-hover transition-colors sm:w-auto"
             >
-              Try Free — No Sign Up
+              Try Free &mdash; No Sign Up
               <ArrowRight className="h-4 w-4" />
             </Link>
             <a
@@ -133,6 +138,33 @@ export default function Home() {
           <p className="mx-auto mt-4 max-w-xl text-center text-text-muted">
             Start free. Upgrade when you need more.
           </p>
+
+          {/* Monthly/Annual toggle */}
+          <div className="mt-8 flex justify-center">
+            <div className="inline-flex rounded-full bg-surface-alt p-1">
+              <button
+                onClick={() => setBilling("monthly")}
+                className={`rounded-full px-5 py-2 text-sm font-medium transition-colors ${
+                  billing === "monthly"
+                    ? "bg-surface shadow text-text"
+                    : "text-text-muted hover:text-text"
+                }`}
+              >
+                Monthly
+              </button>
+              <button
+                onClick={() => setBilling("annual")}
+                className={`rounded-full px-5 py-2 text-sm font-medium transition-colors ${
+                  billing === "annual"
+                    ? "bg-surface shadow text-text"
+                    : "text-text-muted hover:text-text"
+                }`}
+              >
+                Annual
+              </button>
+            </div>
+          </div>
+
           <div className="mt-12 grid gap-8 sm:grid-cols-2">
             {/* Free tier */}
             <div className="rounded-xl border border-border bg-surface p-8">
@@ -167,13 +199,36 @@ export default function Home() {
 
             {/* Pro tier */}
             <div className="relative rounded-xl border-2 border-accent bg-surface p-8 shadow-lg shadow-accent/10">
-              <div className="absolute -top-3 left-6 rounded-full bg-accent px-3 py-0.5 text-xs font-semibold text-white">
-                Most Popular
-              </div>
+              {billing === "annual" ? (
+                <div className="absolute -top-3 left-6 rounded-full bg-green-500 px-3 py-0.5 text-xs font-semibold text-white">
+                  Best Value
+                </div>
+              ) : (
+                <div className="absolute -top-3 left-6 rounded-full bg-accent px-3 py-0.5 text-xs font-semibold text-white">
+                  Most Popular
+                </div>
+              )}
               <h3 className="text-lg font-semibold">Pro</h3>
-              <div className="mt-4 flex items-baseline gap-1">
-                <span className="text-4xl font-extrabold">$12</span>
-                <span className="text-text-muted">/month</span>
+              <div className="mt-4">
+                {billing === "monthly" ? (
+                  <div className="flex items-baseline gap-1">
+                    <span className="text-4xl font-extrabold">$12</span>
+                    <span className="text-text-muted">/month</span>
+                  </div>
+                ) : (
+                  <div>
+                    <div className="flex items-baseline gap-2">
+                      <span className="text-4xl font-extrabold">$99</span>
+                      <span className="text-text-muted">/year</span>
+                      <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs font-semibold text-green-700">
+                        Save $45
+                      </span>
+                    </div>
+                    <p className="mt-1 text-sm text-text-muted">
+                      $8.25/month, billed annually
+                    </p>
+                  </div>
+                )}
               </div>
               <p className="mt-4 text-sm text-text-muted">
                 For professionals and teams.
@@ -193,12 +248,21 @@ export default function Home() {
                   </li>
                 ))}
               </ul>
-              <Link
-                href="/editor"
-                className="mt-8 flex h-11 items-center justify-center rounded-lg bg-accent text-sm font-semibold text-white hover:bg-accent-hover transition-colors"
-              >
-                Start Pro Trial
-              </Link>
+              {billing === "monthly" ? (
+                <Link
+                  href="/editor"
+                  className="mt-8 flex h-11 items-center justify-center rounded-lg bg-accent text-sm font-semibold text-white hover:bg-accent-hover transition-colors"
+                >
+                  Start Pro Trial
+                </Link>
+              ) : (
+                <button
+                  disabled
+                  className="mt-8 flex h-11 w-full items-center justify-center rounded-lg bg-accent/60 text-sm font-semibold text-white cursor-not-allowed"
+                >
+                  Coming Soon
+                </button>
+              )}
             </div>
           </div>
         </div>
