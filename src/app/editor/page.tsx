@@ -1,12 +1,23 @@
 "use client";
 
-import { useState, useCallback } from "react";
-import { ChevronLeft, ChevronRight, Sparkles, X } from "lucide-react";
+import { useState, useCallback, useEffect, useRef } from "react";
+import { ChevronLeft, ChevronRight, Sparkles, X, RotateCcw } from "lucide-react";
 import { UploadZone } from "@/components/UploadZone";
 import { Toolbar } from "@/components/Toolbar";
 import { PdfViewer } from "@/components/PdfViewer";
 import { useHistory } from "@/lib/use-history";
 import { detectAcroFormFields, fillPdf } from "@/lib/pdf-utils";
+import {
+  savePdfToIndexedDB,
+  loadPdfFromIndexedDB,
+  saveFieldsToLocalStorage,
+  loadFieldsFromLocalStorage,
+  savePageToLocalStorage,
+  loadPageFromLocalStorage,
+  saveFileNameToLocalStorage,
+  loadFileNameFromLocalStorage,
+  clearEditorState,
+} from "@/lib/persistence";
 import type { EditorField, ToolType } from "@/lib/types";
 
 export default function EditorPage() {
@@ -19,8 +30,46 @@ export default function EditorPage() {
   const [hasAcroForm, setHasAcroForm] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
+  const [showRestoredBanner, setShowRestoredBanner] = useState(false);
   const [pageScales] = useState(() => new Map<number, number>());
   const { fields, set: setFields, undo, redo, reset, canUndo, canRedo } = useHistory();
+  const restoredRef = useRef(false);
+
+  // Restore session on mount
+  useEffect(() => {
+    if (restoredRef.current) return;
+    restoredRef.current = true;
+
+    loadPdfFromIndexedDB().then((savedPdf) => {
+      if (!savedPdf) return;
+      const savedFields = loadFieldsFromLocalStorage();
+      const savedPage = loadPageFromLocalStorage();
+      const savedName = loadFileNameFromLocalStorage();
+
+      setPdfBytes(savedPdf);
+      setFileName(savedName);
+      setCurrentPage(savedPage);
+      if (savedFields.length > 0) {
+        reset(savedFields);
+      }
+      setShowRestoredBanner(true);
+      setTimeout(() => setShowRestoredBanner(false), 3000);
+    });
+  }, [reset]);
+
+  // Persist fields on change
+  useEffect(() => {
+    if (pdfBytes) {
+      saveFieldsToLocalStorage(fields);
+    }
+  }, [fields, pdfBytes]);
+
+  // Persist page on change
+  useEffect(() => {
+    if (pdfBytes) {
+      savePageToLocalStorage(currentPage);
+    }
+  }, [currentPage, pdfBytes]);
 
   const handleFileLoad = useCallback(
     async (file: File, bytes: ArrayBuffer) => {
@@ -29,6 +78,10 @@ export default function EditorPage() {
       setCurrentPage(0);
       setSelectedFieldId(null);
       setActiveTool(null);
+
+      // Persist PDF and filename
+      savePdfToIndexedDB(bytes);
+      saveFileNameToLocalStorage(file.name);
 
       // Detect AcroForm fields
       try {
@@ -102,6 +155,18 @@ export default function EditorPage() {
     setSelectedFieldId(null);
   }, [setFields]);
 
+  const handleStartOver = useCallback(() => {
+    clearEditorState();
+    setPdfBytes(null);
+    setFileName("");
+    setCurrentPage(0);
+    setTotalPages(0);
+    setHasAcroForm(false);
+    setSelectedFieldId(null);
+    setActiveTool(null);
+    reset([]);
+  }, [reset]);
+
   const handleUpgrade = async () => {
     const res = await fetch("/api/stripe/checkout", { method: "POST" });
     const data = await res.json();
@@ -155,6 +220,13 @@ export default function EditorPage() {
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden sm:flex-row">
+      {/* Session restored banner */}
+      {showRestoredBanner && (
+        <div className="fixed left-1/2 top-16 z-50 -translate-x-1/2 rounded-lg bg-accent/90 px-4 py-2 text-sm font-medium text-white shadow-lg animate-fade-in">
+          Session restored
+        </div>
+      )}
+
       <Toolbar
         activeTool={activeTool}
         onToolSelect={setActiveTool}
@@ -170,7 +242,17 @@ export default function EditorPage() {
       <div className="flex flex-1 flex-col overflow-hidden">
         {/* Top bar with file name and page nav */}
         <div className="flex items-center justify-between border-b border-border bg-surface px-4 py-2">
-          <p className="truncate text-sm font-medium text-text-muted">{fileName}</p>
+          <div className="flex items-center gap-2 min-w-0">
+            <p className="truncate text-sm font-medium text-text-muted">{fileName}</p>
+            <button
+              onClick={handleStartOver}
+              className="flex shrink-0 items-center gap-1 rounded-md px-2 py-1 text-xs text-text-muted hover:bg-surface-alt hover:text-text transition-colors"
+              title="Clear & Start Over"
+            >
+              <RotateCcw className="h-3 w-3" />
+              <span className="hidden sm:inline">Start Over</span>
+            </button>
+          </div>
           {totalPages > 1 && (
             <div className="flex items-center gap-2">
               <button
