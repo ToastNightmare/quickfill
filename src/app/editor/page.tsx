@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useCallback } from "react";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronLeft, ChevronRight, Sparkles, X } from "lucide-react";
 import { UploadZone } from "@/components/UploadZone";
 import { Toolbar } from "@/components/Toolbar";
 import { PdfViewer } from "@/components/PdfViewer";
@@ -18,6 +18,7 @@ export default function EditorPage() {
   const [totalPages, setTotalPages] = useState(0);
   const [hasAcroForm, setHasAcroForm] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
+  const [showUpgradeModal, setShowUpgradeModal] = useState(false);
   const [pageScales] = useState(() => new Map<number, number>());
   const { fields, set: setFields, undo, redo, reset, canUndo, canRedo } = useHistory();
 
@@ -101,10 +102,27 @@ export default function EditorPage() {
     setSelectedFieldId(null);
   }, [setFields]);
 
+  const handleUpgrade = async () => {
+    const res = await fetch("/api/stripe/checkout", { method: "POST" });
+    const data = await res.json();
+    if (data.url) window.location.href = data.url;
+  };
+
   const handleDownload = useCallback(async () => {
     if (!pdfBytes) return;
     setIsDownloading(true);
     try {
+      // Check usage before downloading
+      const usageRes = await fetch("/api/usage");
+      if (usageRes.ok) {
+        const usage = await usageRes.json();
+        if (!usage.isPro && usage.used >= usage.limit) {
+          setShowUpgradeModal(true);
+          setIsDownloading(false);
+          return;
+        }
+      }
+
       const result = await fillPdf(pdfBytes, fields, pageScales, hasAcroForm);
       const blob = new Blob([result.buffer as ArrayBuffer], { type: "application/pdf" });
       const url = URL.createObjectURL(blob);
@@ -113,6 +131,9 @@ export default function EditorPage() {
       a.download = fileName.replace(/\.pdf$/i, "") + "-filled.pdf";
       a.click();
       URL.revokeObjectURL(url);
+
+      // Increment usage after successful download
+      await fetch("/api/usage", { method: "POST" });
     } catch (err) {
       console.error("Download failed:", err);
       alert("Failed to generate PDF. Please try again.");
@@ -193,6 +214,45 @@ export default function EditorPage() {
           onTotalPagesChange={setTotalPages}
         />
       </div>
+
+      {/* Upgrade modal */}
+      {showUpgradeModal && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 px-4">
+          <div className="relative w-full max-w-md rounded-xl bg-surface p-8 shadow-2xl">
+            <button
+              onClick={() => setShowUpgradeModal(false)}
+              className="absolute right-4 top-4 flex h-8 w-8 items-center justify-center rounded-lg hover:bg-surface-alt transition-colors"
+              aria-label="Close"
+            >
+              <X className="h-4 w-4" />
+            </button>
+
+            <div className="flex flex-col items-center text-center">
+              <div className="flex h-14 w-14 items-center justify-center rounded-full bg-accent/10">
+                <Sparkles className="h-7 w-7 text-accent" />
+              </div>
+              <h2 className="mt-4 text-xl font-bold">Free limit reached</h2>
+              <p className="mt-2 text-sm text-text-muted">
+                You&apos;ve used your 3 free fills this month. Upgrade to Pro for
+                unlimited fills.
+              </p>
+              <button
+                onClick={handleUpgrade}
+                className="mt-6 flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-accent text-sm font-semibold text-white hover:bg-accent-hover transition-colors"
+              >
+                <Sparkles className="h-4 w-4" />
+                Upgrade to Pro — $12/mo
+              </button>
+              <button
+                onClick={() => setShowUpgradeModal(false)}
+                className="mt-3 text-sm text-text-muted hover:text-text transition-colors"
+              >
+                Maybe later
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

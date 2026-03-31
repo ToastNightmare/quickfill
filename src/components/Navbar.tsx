@@ -3,9 +3,11 @@
 import Link from "next/link";
 import { useState } from "react";
 import { Menu, X, FileText } from "lucide-react";
+import { useAuth, UserButton } from "@clerk/nextjs";
 
 export function Navbar() {
   const [menuOpen, setMenuOpen] = useState(false);
+  const { isSignedIn } = useAuth();
 
   return (
     <nav className="sticky top-0 z-50 border-b border-border bg-surface/95 backdrop-blur supports-[backdrop-filter]:bg-surface/80">
@@ -24,17 +26,50 @@ export function Navbar() {
             Editor
           </Link>
           <Link
-            href="/#pricing"
+            href="/pricing"
             className="text-sm font-medium text-text-muted hover:text-text transition-colors"
           >
             Pricing
           </Link>
           <Link
-            href="/editor"
-            className="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-white hover:bg-accent-hover transition-colors"
+            href="/how-it-works"
+            className="text-sm font-medium text-text-muted hover:text-text transition-colors"
           >
-            Get Started
+            How It Works
           </Link>
+
+          {!isSignedIn ? (
+            <>
+              <Link
+                href="/sign-in"
+                className="text-sm font-medium text-text-muted hover:text-text transition-colors"
+              >
+                Sign In
+              </Link>
+              <Link
+                href="/sign-up"
+                className="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-white hover:bg-accent-hover transition-colors"
+              >
+                Get Started
+              </Link>
+            </>
+          ) : (
+            <>
+              <Link
+                href="/dashboard"
+                className="text-sm font-medium text-text-muted hover:text-text transition-colors"
+              >
+                Dashboard
+              </Link>
+              <UserButton
+                appearance={{
+                  elements: {
+                    avatarBox: "h-9 w-9",
+                  },
+                }}
+              />
+            </>
+          )}
         </div>
 
         {/* Mobile hamburger */}
@@ -59,19 +94,46 @@ export function Navbar() {
               Editor
             </Link>
             <Link
-              href="/#pricing"
+              href="/pricing"
               onClick={() => setMenuOpen(false)}
               className="rounded-lg px-3 py-3 text-sm font-medium hover:bg-surface-alt transition-colors"
             >
               Pricing
             </Link>
             <Link
-              href="/editor"
+              href="/how-it-works"
               onClick={() => setMenuOpen(false)}
-              className="mt-1 rounded-lg bg-accent px-3 py-3 text-center text-sm font-semibold text-white hover:bg-accent-hover transition-colors"
+              className="rounded-lg px-3 py-3 text-sm font-medium hover:bg-surface-alt transition-colors"
             >
-              Get Started
+              How It Works
             </Link>
+
+            {!isSignedIn ? (
+              <>
+                <Link
+                  href="/sign-in"
+                  onClick={() => setMenuOpen(false)}
+                  className="rounded-lg px-3 py-3 text-sm font-medium hover:bg-surface-alt transition-colors"
+                >
+                  Sign In
+                </Link>
+                <Link
+                  href="/sign-up"
+                  onClick={() => setMenuOpen(false)}
+                  className="mt-1 rounded-lg bg-accent px-3 py-3 text-center text-sm font-semibold text-white hover:bg-accent-hover transition-colors"
+                >
+                  Get Started
+                </Link>
+              </>
+            ) : (
+              <Link
+                href="/dashboard"
+                onClick={() => setMenuOpen(false)}
+                className="rounded-lg px-3 py-3 text-sm font-medium hover:bg-surface-alt transition-colors"
+              >
+                Dashboard
+              </Link>
+            )}
           </div>
         </div>
       )}

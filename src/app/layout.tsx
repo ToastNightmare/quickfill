@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
+import { ClerkProvider } from "@clerk/nextjs";
 import "./globals.css";
 import { Navbar } from "@/components/Navbar";
 
@@ -9,9 +10,20 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "QuickFill — Upload any form. Fill it in seconds.",
+  title: "QuickFill — Fill PDF Forms Online Free",
   description:
-    "QuickFill is a web-based PDF form filler. Upload any PDF, fill it out with smart tools, and download the completed copy.",
+    "Upload any PDF form and fill it online in seconds. Smart field detection, drag-and-drop fields, instant download. Free to try — no software required.",
+  keywords:
+    "fill PDF online, PDF form filler, fill PDF free, online PDF editor, ATO form filler, fill form online Australia",
+  openGraph: {
+    title: "QuickFill — Fill PDF Forms Online Free",
+    description:
+      "Upload any PDF form and fill it online in seconds. Smart field detection, drag-and-drop fields, instant download.",
+    url: "https://quickfill.app",
+    siteName: "QuickFill",
+    type: "website",
+    locale: "en_AU",
+  },
 };
 
 export default function RootLayout({
@@ -20,11 +32,13 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className={`${inter.className} h-full antialiased`}>
-      <body className="min-h-full flex flex-col bg-surface text-text">
-        <Navbar />
-        <main className="flex-1">{children}</main>
-      </body>
-    </html>
+    <ClerkProvider>
+      <html lang="en" className={`${inter.className} h-full antialiased`}>
+        <body className="min-h-full flex flex-col bg-surface text-text">
+          <Navbar />
+          <main className="flex-1">{children}</main>
+        </body>
+      </html>
+    </ClerkProvider>
   );
 }
