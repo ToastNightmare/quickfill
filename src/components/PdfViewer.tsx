@@ -493,11 +493,11 @@ function FieldShape({
       <Rect
         width={field.width}
         height={field.height}
-        fill={isEditing ? "transparent" : "rgba(255,255,255,0.85)"}
-        stroke={isSelected ? "#4f8ef7" : "#d1d5db"}
+        fill="transparent"
+        stroke={isSelected ? "#4f8ef7" : "rgba(79,142,247,0.5)"}
         strokeWidth={isSelected ? 2 : 1}
         cornerRadius={3}
-        dash={field.type === "signature" ? [4, 2] : undefined}
+        dash={[4, 2]}
       />
       {!isEditing && (
         <Text
