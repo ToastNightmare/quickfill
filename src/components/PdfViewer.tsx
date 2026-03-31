@@ -316,7 +316,9 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
                   // Single click starts editing immediately
                   setEditingFieldId(field.id);
                 }}
+                onDragStart={() => setEditingFieldId(null)}
                 onDragEnd={(x, y) => onFieldUpdate(field.id, { x, y })}
+                onTransformStart={() => setEditingFieldId(null)}
                 onTransformEnd={(width, height, x, y) =>
                   onFieldUpdate(field.id, { width, height, x, y })
                 }
@@ -412,7 +414,9 @@ function FieldShape({
   isEditing,
   isHighlighted,
   onSelect,
+  onDragStart,
   onDragEnd,
+  onTransformStart,
   onTransformEnd,
   onDoubleClick,
   onValueChange,
@@ -424,7 +428,9 @@ function FieldShape({
   isEditing: boolean;
   isHighlighted: boolean;
   onSelect: () => void;
+  onDragStart?: () => void;
   onDragEnd: (x: number, y: number) => void;
+  onTransformStart?: () => void;
   onTransformEnd: (w: number, h: number, x: number, y: number) => void;
   onDoubleClick: () => void;
   onValueChange: (value: string | boolean) => void;
@@ -521,7 +527,9 @@ function FieldShape({
         e.cancelBubble = true;
         onDoubleClick();
       }}
+      onDragStart={() => onDragStart?.()}
       onDragEnd={(e) => onDragEnd(e.target.x(), e.target.y())}
+      onTransformStart={() => onTransformStart?.()}
       onTransformEnd={(e) => {
         const node = e.target;
         const scaleX = node.scaleX();
@@ -540,8 +548,8 @@ function FieldShape({
         width={field.width}
         height={field.height}
         fill="transparent"
-        stroke={isHighlighted ? "#2563eb" : isSelected ? "#4f8ef7" : "transparent"}
-        strokeWidth={isHighlighted ? 3 : isSelected ? 2 : 0}
+        stroke={isHighlighted ? "#2563eb" : isSelected || isEditing ? "#4f8ef7" : "transparent"}
+        strokeWidth={isHighlighted ? 3 : isSelected || isEditing ? 2 : 0}
         cornerRadius={3}
       />
       {!isEditing && (
@@ -561,22 +569,22 @@ function FieldShape({
       )}
       {isSelected && onDelete && (
         <Group
-          x={field.width - 10}
-          y={-10}
+          x={field.width - 14}
+          y={-14}
           onClick={(e) => {
             e.cancelBubble = true;
             onDelete();
           }}
         >
-          <Circle radius={10} fill="#ef4444" />
+          <Circle radius={14} fill="#dc2626" stroke="white" strokeWidth={2} />
           <Text
-            text="\u00d7"
-            fontSize={14}
+            text="×"
+            fontSize={18}
             fill="white"
-            width={20}
-            height={20}
-            x={-10}
-            y={-10}
+            width={28}
+            height={28}
+            x={-14}
+            y={-14}
             align="center"
             verticalAlign="middle"
             fontStyle="bold"
