@@ -21,6 +21,7 @@ interface PdfViewerProps {
   onFieldUpdate: (id: string, updates: Partial<EditorField>) => void;
   onFieldSelect: (id: string | null) => void;
   onFieldDelete: (id: string) => void;
+  onFieldDuplicate?: (id: string) => void;
   onPageScaleSet: (page: number, scale: number) => void;
   totalPages: number;
   onTotalPagesChange: (total: number) => void;
@@ -33,6 +34,13 @@ function genId() {
   return `field-${nextFieldId++}`;
 }
 
+interface SnapPreview {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
 export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function PdfViewer({
   pdfBytes,
   currentPage,
@@ -43,6 +51,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
   onFieldUpdate,
   onFieldSelect,
   onFieldDelete,
+  onFieldDuplicate,
   onPageScaleSet,
   totalPages: _totalPages,
   onTotalPagesChange,
@@ -57,8 +66,13 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
   const [error, setError] = useState<string | null>(null);
   const [editingFieldId, setEditingFieldId] = useState<string | null>(null);
   const [snappedFieldId, setSnappedFieldId] = useState<string | null>(null);
+  const [hoveredFieldId, setHoveredFieldId] = useState<string | null>(null);
+  const [snapPreview, setSnapPreview] = useState<SnapPreview | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const [cursorStyle, setCursorStyle] = useState("default");
   const transformerRef = useRef<Konva.Transformer>(null);
   const selectedShapeRef = useRef<Konva.Node | null>(null);
+  const dragStartedRef = useRef(false);
 
   useImperativeHandle(ref, () => ({
     getCanvasDataURL: () => canvasRef.current?.toDataURL("image/png") ?? null,
@@ -178,6 +192,78 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [selectedFieldId, editingFieldId, onFieldDelete]);
 
+  // Update cursor based on context
+  const updateCursor = useCallback((stage: Konva.Stage, pos: { x: number; y: number }) => {
+    if (isDragging) {
+      setCursorStyle("grabbing");
+      return;
+    }
+    if (activeTool) {
+      // Check if we have a snap preview — show pointer to indicate snappable target
+      if (snapPreview) {
+        setCursorStyle("pointer");
+      } else {
+        setCursorStyle("crosshair");
+      }
+      return;
+    }
+
+    // Check if hovering over a field
+    const shape = stage.getIntersection(pos);
+    if (shape) {
+      const parent = shape.getParent();
+      // Check if it's an action button (delete/duplicate)
+      if (parent && (parent.name() === "action-btn")) {
+        setCursorStyle("pointer");
+        return;
+      }
+      setCursorStyle("grab");
+      return;
+    }
+
+    setCursorStyle("default");
+  }, [activeTool, isDragging, snapPreview]);
+
+  // Hover snap preview on mouse move
+  const handleStageMouseMove = useCallback(
+    (e: Konva.KonvaEventObject<MouseEvent>) => {
+      const stage = e.target.getStage();
+      if (!stage) return;
+      const pos = stage.getPointerPosition();
+      if (!pos) return;
+
+      updateCursor(stage, pos);
+
+      if (!activeTool || !canvasRef.current) {
+        setSnapPreview(null);
+        return;
+      }
+
+      // Throttle snap detection
+      try {
+        const snap = detectSnapBox(canvasRef.current, pos.x, pos.y);
+        if (snap) {
+          setSnapPreview({
+            x: snap.x / zoomFactor,
+            y: snap.y / zoomFactor,
+            width: snap.width / zoomFactor,
+            height: snap.height / zoomFactor,
+          });
+        } else {
+          setSnapPreview(null);
+        }
+      } catch {
+        setSnapPreview(null);
+      }
+    },
+    [activeTool, zoomFactor, updateCursor]
+  );
+
+  const handleStageMouseLeave = useCallback(() => {
+    setSnapPreview(null);
+    setCursorStyle(activeTool ? "crosshair" : "default");
+  }, [activeTool]);
+
   const handleStageClick = useCallback(
     (e: Konva.KonvaEventObject<MouseEvent>) => {
       const stage = e.target.getStage();
@@ -191,12 +277,11 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
         if (activeTool) {
           const id = genId();
 
-          // Try snap detection on the PDF canvas
-          let snapped = false;
           let fieldX = pos.x / zoomFactor;
           let fieldY = pos.y / zoomFactor;
           let fieldW: number;
           let fieldH: number;
+          let snapped = false;
 
           // Default sizes per tool
           const defaults = {
@@ -208,7 +293,14 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
           fieldW = defaults[activeTool].w;
           fieldH = defaults[activeTool].h;
 
-          if (canvasRef.current) {
+          // Use snap preview if available, otherwise try detection
+          if (snapPreview) {
+            fieldX = snapPreview.x;
+            fieldY = snapPreview.y;
+            fieldW = snapPreview.width;
+            fieldH = snapPreview.height;
+            snapped = true;
+          } else if (canvasRef.current) {
             try {
               const snap = detectSnapBox(canvasRef.current, pos.x, pos.y);
               if (snap) {
@@ -244,6 +336,11 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
           onFieldAdd(field);
           onFieldSelect(id);
 
+          // Immediately enter edit mode for text-like fields
+          if (activeTool !== "checkbox") {
+            setEditingFieldId(id);
+          }
+
           // Flash blue border on snap
           if (snapped) {
             setSnappedFieldId(id);
@@ -255,7 +352,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
         }
       }
     },
-    [activeTool, currentPage, onFieldAdd, onFieldSelect, zoomFactor]
+    [activeTool, currentPage, onFieldAdd, onFieldSelect, zoomFactor, snapPreview]
   );
 
   const pageFields = fields.filter((f) => f.page === currentPage);
@@ -295,14 +392,32 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
           scaleX={zoomFactor}
           scaleY={zoomFactor}
           onClick={handleStageClick}
+          onMouseMove={handleStageMouseMove}
+          onMouseLeave={handleStageMouseLeave}
           style={{
             position: "absolute",
             top: 0,
             left: 0,
-            cursor: activeTool ? "crosshair" : "default",
+            cursor: editingFieldId ? "text" : cursorStyle,
           }}
         >
           <Layer>
+            {/* Snap preview rectangle */}
+            {activeTool && snapPreview && (
+              <Rect
+                x={snapPreview.x}
+                y={snapPreview.y}
+                width={snapPreview.width}
+                height={snapPreview.height}
+                fill="rgba(79, 142, 247, 0.08)"
+                stroke="#4f8ef7"
+                strokeWidth={1.5}
+                dash={[4, 3]}
+                cornerRadius={2}
+                listening={false}
+              />
+            )}
+
             {pageFields.map((field) => (
               <FieldShape
                 key={field.id}
@@ -310,20 +425,49 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
                 isSelected={field.id === selectedFieldId}
                 isEditing={field.id === editingFieldId}
                 isHighlighted={field.id === snappedFieldId || (highlightFieldIds?.has(field.id) ?? false)}
+                isHovered={field.id === hoveredFieldId}
                 onSelect={() => {
                   onFieldSelect(field.id);
                   selectedShapeRef.current = null;
-                  // Single click starts editing immediately
-                  setEditingFieldId(field.id);
+                  // Single click starts editing immediately for text fields
+                  if (!dragStartedRef.current) {
+                    setEditingFieldId(field.id);
+                  }
                 }}
-                onDragStart={() => setEditingFieldId(null)}
-                onDragEnd={(x, y) => onFieldUpdate(field.id, { x, y })}
-                onTransformStart={() => setEditingFieldId(null)}
+                onMouseEnter={() => {
+                  setHoveredFieldId(field.id);
+                  if (!activeTool) {
+                    setCursorStyle("grab");
+                  }
+                }}
+                onMouseLeave={() => {
+                  setHoveredFieldId(null);
+                  if (!activeTool && !isDragging) {
+                    setCursorStyle("default");
+                  }
+                }}
+                onDragStart={() => {
+                  dragStartedRef.current = true;
+                  setIsDragging(true);
+                  setEditingFieldId(null);
+                  setCursorStyle("grabbing");
+                }}
+                onDragEnd={(x, y) => {
+                  setIsDragging(false);
+                  setCursorStyle("grab");
+                  onFieldUpdate(field.id, { x, y });
+                  // Reset drag flag after a tick so onClick doesn't trigger edit
+                  setTimeout(() => { dragStartedRef.current = false; }, 50);
+                }}
+                onTransformStart={() => {
+                  setEditingFieldId(null);
+                }}
                 onTransformEnd={(width, height, x, y) =>
                   onFieldUpdate(field.id, { width, height, x, y })
                 }
                 onDoubleClick={() => setEditingFieldId(field.id)}
                 onDelete={() => onFieldDelete(field.id)}
+                onDuplicate={onFieldDuplicate ? () => onFieldDuplicate(field.id) : undefined}
                 onValueChange={(value) => {
                   if (field.type === "checkbox") {
                     onFieldUpdate(field.id, { checked: value } as Partial<EditorField>);
@@ -378,6 +522,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
                     zoomFactor,
                   fontFamily:
                     editField.type === "signature" ? "cursive" : "inherit",
+                  cursor: "text",
                 }}
                 value={editField.value}
                 placeholder={
@@ -413,7 +558,10 @@ function FieldShape({
   isSelected,
   isEditing,
   isHighlighted,
+  isHovered,
   onSelect,
+  onMouseEnter,
+  onMouseLeave,
   onDragStart,
   onDragEnd,
   onTransformStart,
@@ -422,12 +570,16 @@ function FieldShape({
   onValueChange,
   setSelectedRef,
   onDelete,
+  onDuplicate,
 }: {
   field: EditorField;
   isSelected: boolean;
   isEditing: boolean;
   isHighlighted: boolean;
+  isHovered: boolean;
   onSelect: () => void;
+  onMouseEnter?: () => void;
+  onMouseLeave?: () => void;
   onDragStart?: () => void;
   onDragEnd: (x: number, y: number) => void;
   onTransformStart?: () => void;
@@ -436,6 +588,7 @@ function FieldShape({
   onValueChange: (value: string | boolean) => void;
   setSelectedRef: (node: Konva.Node | null) => void;
   onDelete?: () => void;
+  onDuplicate?: () => void;
 }) {
   const groupRef = useRef<Konva.Group>(null);
 
@@ -444,6 +597,11 @@ function FieldShape({
       setSelectedRef(groupRef.current);
     }
   }, [isSelected, setSelectedRef]);
+
+  // Compute border state
+  const showBorder = isHighlighted || isSelected || isEditing || isHovered;
+  const borderColor = isHighlighted ? "#2563eb" : (isSelected || isEditing) ? "#4f8ef7" : isHovered ? "#93b8fa" : "transparent";
+  const borderWidth = isHighlighted ? 3 : (isSelected || isEditing) ? 2 : isHovered ? 1.5 : 0;
 
   if (field.type === "checkbox") {
     return (
@@ -454,6 +612,8 @@ function FieldShape({
         width={field.width}
         height={field.height}
         draggable
+        onMouseEnter={() => onMouseEnter?.()}
+        onMouseLeave={() => onMouseLeave?.()}
         onClick={(e) => {
           e.cancelBubble = true;
           if (isSelected) {
@@ -462,6 +622,7 @@ function FieldShape({
             onSelect();
           }
         }}
+        onDragStart={() => onDragStart?.()}
         onDragEnd={(e) => onDragEnd(e.target.x(), e.target.y())}
         onTransformEnd={(e) => {
           const node = e.target;
@@ -481,8 +642,8 @@ function FieldShape({
           width={field.width}
           height={field.height}
           fill="white"
-          stroke={isHighlighted ? "#2563eb" : isSelected ? "#4f8ef7" : "#d1d5db"}
-          strokeWidth={isHighlighted ? 3 : isSelected ? 2 : 1}
+          stroke={isHighlighted ? "#2563eb" : isSelected ? "#4f8ef7" : isHovered ? "#93b8fa" : "#d1d5db"}
+          strokeWidth={isHighlighted ? 3 : isSelected ? 2 : isHovered ? 1.5 : 1}
           cornerRadius={3}
         />
         {field.checked && (
@@ -495,6 +656,14 @@ function FieldShape({
             align="center"
             verticalAlign="middle"
             fontStyle="bold"
+          />
+        )}
+        {/* Action chip for checkbox */}
+        {isSelected && (
+          <ActionChip
+            fieldWidth={field.width}
+            onDelete={onDelete}
+            onDuplicate={onDuplicate}
           />
         )}
       </Group>
@@ -519,6 +688,8 @@ function FieldShape({
       width={field.width}
       height={field.height}
       draggable
+      onMouseEnter={() => onMouseEnter?.()}
+      onMouseLeave={() => onMouseLeave?.()}
       onClick={(e) => {
         e.cancelBubble = true;
         onSelect();
@@ -547,9 +718,9 @@ function FieldShape({
       <Rect
         width={field.width}
         height={field.height}
-        fill="transparent"
-        stroke={isHighlighted ? "#2563eb" : isSelected || isEditing ? "#4f8ef7" : "transparent"}
-        strokeWidth={isHighlighted ? 3 : isSelected || isEditing ? 2 : 0}
+        fill={isHovered && !isSelected && !isEditing ? "rgba(79, 142, 247, 0.04)" : "transparent"}
+        stroke={showBorder ? borderColor : "transparent"}
+        strokeWidth={showBorder ? borderWidth : 0}
         cornerRadius={3}
       />
       {!isEditing && (
@@ -567,24 +738,86 @@ function FieldShape({
           wrap="none"
         />
       )}
-      {isSelected && onDelete && (
+      {/* Action chip: duplicate + delete */}
+      {isSelected && (
+        <ActionChip
+          fieldWidth={field.width}
+          onDelete={onDelete}
+          onDuplicate={onDuplicate}
+        />
+      )}
+    </Group>
+  );
+}
+
+/** Floating action chip above the selected field with duplicate + delete buttons */
+function ActionChip({
+  fieldWidth,
+  onDelete,
+  onDuplicate,
+}: {
+  fieldWidth: number;
+  onDelete?: () => void;
+  onDuplicate?: () => void;
+}) {
+  const chipWidth = onDuplicate ? 56 : 28;
+  const chipX = fieldWidth / 2 - chipWidth / 2;
+
+  return (
+    <Group x={chipX} y={-32} name="action-btn">
+      {/* Background pill */}
+      <Rect
+        width={chipWidth}
+        height={24}
+        fill="#1f2937"
+        cornerRadius={12}
+        shadowColor="rgba(0,0,0,0.15)"
+        shadowBlur={6}
+        shadowOffsetY={2}
+      />
+
+      {/* Duplicate button */}
+      {onDuplicate && (
         <Group
-          x={field.width - 14}
-          y={-14}
+          x={4}
+          y={0}
+          name="action-btn"
+          onClick={(e) => {
+            e.cancelBubble = true;
+            onDuplicate();
+          }}
+        >
+          <Rect width={24} height={24} fill="transparent" cornerRadius={12} />
+          <Text
+            text="⧉"
+            fontSize={14}
+            fill="#d1d5db"
+            width={24}
+            height={24}
+            align="center"
+            verticalAlign="middle"
+          />
+        </Group>
+      )}
+
+      {/* Delete button */}
+      {onDelete && (
+        <Group
+          x={onDuplicate ? 28 : 0}
+          y={0}
+          name="action-btn"
           onClick={(e) => {
             e.cancelBubble = true;
             onDelete();
           }}
         >
-          <Circle radius={14} fill="#dc2626" stroke="white" strokeWidth={2} />
+          <Rect width={28} height={24} fill="transparent" cornerRadius={12} />
           <Text
             text="×"
-            fontSize={18}
-            fill="white"
+            fontSize={16}
+            fill="#f87171"
             width={28}
-            height={28}
-            x={-14}
-            y={-14}
+            height={24}
             align="center"
             verticalAlign="middle"
             fontStyle="bold"

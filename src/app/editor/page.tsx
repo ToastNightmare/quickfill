@@ -97,40 +97,59 @@ export default function EditorPage() {
     saveZoomToLocalStorage(zoom);
   }, [zoom]);
 
-  // Keyboard shortcuts for tools
+  // Keyboard shortcuts: Escape, arrow nudge, Ctrl+D duplicate
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
       const target = e.target as HTMLElement;
-      if (
+      const isInput =
         target.tagName === "INPUT" ||
         target.tagName === "TEXTAREA" ||
         target.tagName === "SELECT" ||
-        target.isContentEditable
-      )
-        return;
+        target.isContentEditable;
 
-      switch (e.key.toLowerCase()) {
-        case "t":
-          setActiveTool((prev) => (prev === "text" ? null : "text"));
-          break;
-        case "c":
-          setActiveTool((prev) => (prev === "checkbox" ? null : "checkbox"));
-          break;
-        case "s":
-          setActiveTool((prev) => (prev === "signature" ? null : "signature"));
-          break;
-        case "d":
-          setActiveTool((prev) => (prev === "date" ? null : "date"));
-          break;
-        case "escape":
-          setActiveTool(null);
-          setSelectedFieldId(null);
-          break;
+      // Escape always works
+      if (e.key === "Escape") {
+        setActiveTool(null);
+        setSelectedFieldId(null);
+        return;
+      }
+
+      // Everything below requires no active input
+      if (isInput) return;
+
+      // Arrow key nudging
+      if (selectedFieldId && ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.key)) {
+        e.preventDefault();
+        const step = e.shiftKey ? 10 : 1;
+        const field = fields.find((f) => f.id === selectedFieldId);
+        if (!field) return;
+
+        let dx = 0, dy = 0;
+        if (e.key === "ArrowLeft") dx = -step;
+        if (e.key === "ArrowRight") dx = step;
+        if (e.key === "ArrowUp") dy = -step;
+        if (e.key === "ArrowDown") dy = step;
+
+        setFields((prev) =>
+          prev.map((f) =>
+            f.id === selectedFieldId
+              ? ({ ...f, x: f.x + dx, y: f.y + dy } as EditorField)
+              : f
+          )
+        );
+        return;
+      }
+
+      // Ctrl/Cmd+D: duplicate selected field
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "d" && selectedFieldId) {
+        e.preventDefault();
+        handleFieldDuplicate(selectedFieldId);
+        return;
       }
     }
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, []);
+  }, [selectedFieldId, fields, setFields]);
 
   const selectedField = useMemo(() => {
     if (!selectedFieldId) return null;
@@ -230,6 +249,18 @@ export default function EditorPage() {
       if (selectedFieldId === id) setSelectedFieldId(null);
     },
     [setFields, selectedFieldId]
+  );
+
+  const handleFieldDuplicate = useCallback(
+    (id: string) => {
+      const source = fields.find((f) => f.id === id);
+      if (!source) return;
+      const newId = `dup-${Date.now()}`;
+      const dup = { ...source, id: newId, x: source.x + 12, y: source.y + 12 } as EditorField;
+      setFields((prev) => [...prev, dup]);
+      setSelectedFieldId(newId);
+    },
+    [fields, setFields]
   );
 
   const handleClear = useCallback(() => {
@@ -527,6 +558,7 @@ export default function EditorPage() {
           onFieldUpdate={handleFieldUpdate}
           onFieldSelect={setSelectedFieldId}
           onFieldDelete={handleFieldDelete}
+          onFieldDuplicate={handleFieldDuplicate}
           onPageScaleSet={handlePageScaleSet}
           totalPages={totalPages}
           onTotalPagesChange={setTotalPages}

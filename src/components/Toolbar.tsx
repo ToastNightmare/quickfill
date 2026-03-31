@@ -33,11 +33,11 @@ interface ToolbarProps {
   isDetecting: boolean;
 }
 
-const tools: { type: ToolType; icon: typeof Type; label: string; shortcut: string }[] = [
-  { type: "text", icon: Type, label: "Text Field", shortcut: "T" },
-  { type: "checkbox", icon: CheckSquare, label: "Checkbox", shortcut: "C" },
-  { type: "signature", icon: PenTool, label: "Signature", shortcut: "S" },
-  { type: "date", icon: Calendar, label: "Date", shortcut: "D" },
+const tools: { type: ToolType; icon: typeof Type; label: string }[] = [
+  { type: "text", icon: Type, label: "Text Field" },
+  { type: "checkbox", icon: CheckSquare, label: "Checkbox" },
+  { type: "signature", icon: PenTool, label: "Signature" },
+  { type: "date", icon: Calendar, label: "Date" },
 ];
 
 export function Toolbar({
@@ -63,30 +63,23 @@ export function Toolbar({
     : null;
 
   return (
-    <div className="flex shrink-0 flex-col gap-1 border-r border-border bg-surface p-2 w-14 sm:w-48">
-      <p className="hidden px-2 pb-1 pt-2 text-xs font-semibold uppercase tracking-wider text-text-muted sm:block">
-        Tools
+    <div className="sticky top-0 flex shrink-0 flex-col gap-1 border-r border-border bg-surface p-2 w-14 sm:w-48 h-full max-h-screen overflow-y-auto">
+      <p className="hidden px-2 pb-1 pt-2 text-[10px] font-semibold uppercase tracking-widest text-text-muted sm:block">
+        Place Fields
       </p>
-      {tools.map(({ type, icon: Icon, label, shortcut }) => (
+      {tools.map(({ type, icon: Icon, label }) => (
         <button
           key={type}
           onClick={() => onToolSelect(activeTool === type ? null : type)}
-          title={`${label} (${shortcut})`}
-          className={`flex h-11 items-center gap-2 rounded-lg px-2 text-sm font-medium transition-colors ${
+          title={label}
+          className={`flex h-10 items-center gap-2 rounded-lg px-2 text-sm font-medium transition-colors ${
             activeTool === type
-              ? "bg-accent text-white"
+              ? "bg-accent text-white shadow-sm"
               : "text-text-muted hover:bg-surface-alt hover:text-text"
           }`}
         >
-          <Icon className="h-5 w-5 shrink-0" />
+          <Icon className="h-4.5 w-4.5 shrink-0" />
           <span className="hidden flex-1 sm:inline">{label}</span>
-          <kbd
-            className={`hidden rounded px-1.5 py-0.5 text-[10px] font-mono sm:inline ${
-              activeTool === type ? "bg-white/20" : "bg-surface-alt"
-            }`}
-          >
-            {shortcut}
-          </kbd>
         </button>
       ))}
 
@@ -95,12 +88,12 @@ export function Toolbar({
         onClick={onDetectFields}
         disabled={isDetecting}
         title="Auto-detect form fields with AI"
-        className="flex h-11 items-center gap-2 rounded-lg px-2 text-sm font-medium text-text-muted hover:bg-purple-50 hover:text-purple-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+        className="flex h-10 items-center gap-2 rounded-lg px-2 text-sm font-medium text-text-muted hover:bg-purple-50 hover:text-purple-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
       >
         {isDetecting ? (
-          <div className="h-5 w-5 shrink-0 animate-spin rounded-full border-2 border-purple-400 border-t-transparent" />
+          <div className="h-4.5 w-4.5 shrink-0 animate-spin rounded-full border-2 border-purple-400 border-t-transparent" />
         ) : (
-          <Sparkles className="h-5 w-5 shrink-0" />
+          <Sparkles className="h-4.5 w-4.5 shrink-0" />
         )}
         <span className="hidden sm:inline">
           {isDetecting ? "Detecting..." : "Auto-detect"}
@@ -110,8 +103,8 @@ export function Toolbar({
       {/* Font Size selector */}
       {showFontSize && (
         <>
-          <div className="my-2 h-px bg-border" />
-          <p className="hidden px-2 pb-1 text-xs font-semibold uppercase tracking-wider text-text-muted sm:block">
+          <div className="my-1.5 h-px bg-border" />
+          <p className="hidden px-2 pb-1 text-[10px] font-semibold uppercase tracking-widest text-text-muted sm:block">
             Font Size
           </p>
           <select
@@ -129,35 +122,37 @@ export function Toolbar({
         </>
       )}
 
-      <div className="my-2 h-px bg-border" />
+      <div className="my-1.5 h-px bg-border" />
 
-      <p className="hidden px-2 pb-1 text-xs font-semibold uppercase tracking-wider text-text-muted sm:block">
+      <p className="hidden px-2 pb-1 text-[10px] font-semibold uppercase tracking-widest text-text-muted sm:block">
         Actions
       </p>
-      <button
-        onClick={onUndo}
-        disabled={!canUndo}
-        title="Undo"
-        className="flex h-11 items-center gap-2 rounded-lg px-2 text-sm font-medium text-text-muted hover:bg-surface-alt hover:text-text transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
-      >
-        <Undo2 className="h-5 w-5 shrink-0" />
-        <span className="hidden sm:inline">Undo</span>
-      </button>
-      <button
-        onClick={onRedo}
-        disabled={!canRedo}
-        title="Redo"
-        className="flex h-11 items-center gap-2 rounded-lg px-2 text-sm font-medium text-text-muted hover:bg-surface-alt hover:text-text transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
-      >
-        <Redo2 className="h-5 w-5 shrink-0" />
-        <span className="hidden sm:inline">Redo</span>
-      </button>
+      <div className="flex gap-1 sm:flex-col">
+        <button
+          onClick={onUndo}
+          disabled={!canUndo}
+          title="Undo (Ctrl+Z)"
+          className="flex h-9 flex-1 items-center gap-2 rounded-lg px-2 text-sm font-medium text-text-muted hover:bg-surface-alt hover:text-text transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+        >
+          <Undo2 className="h-4 w-4 shrink-0" />
+          <span className="hidden sm:inline">Undo</span>
+        </button>
+        <button
+          onClick={onRedo}
+          disabled={!canRedo}
+          title="Redo (Ctrl+Shift+Z)"
+          className="flex h-9 flex-1 items-center gap-2 rounded-lg px-2 text-sm font-medium text-text-muted hover:bg-surface-alt hover:text-text transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+        >
+          <Redo2 className="h-4 w-4 shrink-0" />
+          <span className="hidden sm:inline">Redo</span>
+        </button>
+      </div>
       <button
         onClick={onClear}
         title="Clear All"
-        className="flex h-11 items-center gap-2 rounded-lg px-2 text-sm font-medium text-text-muted hover:bg-red-50 hover:text-red-600 transition-colors"
+        className="flex h-9 items-center gap-2 rounded-lg px-2 text-sm font-medium text-text-muted hover:bg-red-50 hover:text-red-600 transition-colors"
       >
-        <Trash2 className="h-5 w-5 shrink-0" />
+        <Trash2 className="h-4 w-4 shrink-0" />
         <span className="hidden sm:inline">Clear All</span>
       </button>
 
@@ -167,28 +162,27 @@ export function Toolbar({
           <button
             onClick={() => setShowShortcuts(!showShortcuts)}
             title="Keyboard Shortcuts"
-            className="flex h-9 w-full items-center gap-2 rounded-lg px-2 text-sm font-medium text-text-muted hover:bg-surface-alt hover:text-text transition-colors"
+            className="flex h-8 w-full items-center gap-2 rounded-lg px-2 text-xs font-medium text-text-muted hover:bg-surface-alt hover:text-text transition-colors"
           >
-            <HelpCircle className="h-4 w-4 shrink-0" />
+            <HelpCircle className="h-3.5 w-3.5 shrink-0" />
             <span className="hidden sm:inline">Shortcuts</span>
           </button>
           {showShortcuts && (
             <div className="absolute bottom-full left-0 z-50 mb-2 w-56 rounded-xl border border-border bg-surface p-4 shadow-xl">
-              <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-text-muted">
+              <p className="mb-3 text-[10px] font-semibold uppercase tracking-widest text-text-muted">
                 Keyboard Shortcuts
               </p>
-              <div className="space-y-2 text-sm">
+              <div className="space-y-1.5 text-xs">
                 {[
-                  ["T", "Text field"],
-                  ["C", "Checkbox"],
-                  ["S", "Signature"],
-                  ["D", "Date"],
                   ["Del / \u232b", "Remove selected"],
-                  ["Esc", "Deselect"],
+                  ["Esc", "Deselect / cancel"],
+                  ["\u2190\u2191\u2192\u2193", "Nudge 1px"],
+                  ["Shift+\u2190\u2191\u2192\u2193", "Nudge 10px"],
+                  ["\u2318/Ctrl+D", "Duplicate field"],
                 ].map(([key, desc]) => (
-                  <div key={key} className="flex items-center justify-between">
+                  <div key={key} className="flex items-center justify-between gap-2">
                     <span className="text-text-muted">{desc}</span>
-                    <kbd className="rounded bg-surface-alt px-1.5 py-0.5 text-xs font-mono">
+                    <kbd className="shrink-0 rounded bg-surface-alt px-1.5 py-0.5 text-[10px] font-mono">
                       {key}
                     </kbd>
                   </div>
