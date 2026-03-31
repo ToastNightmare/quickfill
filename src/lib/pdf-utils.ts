@@ -1,0 +1,153 @@
+import { PDFDocument, rgb, StandardFonts } from "pdf-lib";
+import type { EditorField } from "./types";
+
+/**
+ * Load a PDF and detect AcroForm fields with their positions.
+ */
+export async function detectAcroFormFields(pdfBytes: ArrayBuffer) {
+  const pdfDoc = await PDFDocument.load(pdfBytes, { ignoreEncryption: true });
+  const form = pdfDoc.getForm();
+  const fields = form.getFields();
+  const result: {
+    name: string;
+    type: "text" | "checkbox";
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    page: number;
+    value: string;
+  }[] = [];
+
+  for (const field of fields) {
+    const widgets = field.acroField.getWidgets();
+    for (const widget of widgets) {
+      const rect = widget.getRectangle();
+      const pageRef = widget.P();
+      let pageIndex = 0;
+
+      if (pageRef) {
+        const pages = pdfDoc.getPages();
+        for (let i = 0; i < pages.length; i++) {
+          if (pages[i].ref === pageRef) {
+            pageIndex = i;
+            break;
+          }
+        }
+      }
+
+      const page = pdfDoc.getPages()[pageIndex];
+      const pageHeight = page.getHeight();
+
+      const fieldType = field.constructor.name;
+      let type: "text" | "checkbox" = "text";
+      let value = "";
+
+      if (fieldType === "PDFCheckBox") {
+        type = "checkbox";
+      } else if (fieldType === "PDFTextField") {
+        type = "text";
+        try {
+          const tf = form.getTextField(field.getName());
+          value = tf.getText() ?? "";
+        } catch {
+          /* empty */
+        }
+      }
+
+      result.push({
+        name: field.getName(),
+        type,
+        x: rect.x,
+        y: pageHeight - rect.y - rect.height,
+        width: rect.width,
+        height: rect.height,
+        page: pageIndex,
+        value,
+      });
+    }
+  }
+
+  return result;
+}
+
+/**
+ * Fill a PDF with user-placed fields and return the modified PDF bytes.
+ */
+export async function fillPdf(
+  originalPdfBytes: ArrayBuffer,
+  editorFields: EditorField[],
+  pageScales: Map<number, number>,
+  hasAcroForm: boolean
+): Promise<Uint8Array> {
+  const pdfDoc = await PDFDocument.load(originalPdfBytes, {
+    ignoreEncryption: true,
+  });
+  const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+
+  if (hasAcroForm) {
+    const form = pdfDoc.getForm();
+    for (const field of editorFields) {
+      try {
+        if (field.type === "text" || field.type === "date" || field.type === "signature") {
+          const tf = form.getTextField(field.id);
+          tf.setText(field.value);
+        } else if (field.type === "checkbox") {
+          const cb = form.getCheckBox(field.id);
+          if (field.checked) cb.check();
+          else cb.uncheck();
+        }
+      } catch {
+        // Field doesn't exist in AcroForm — draw it directly
+        drawFieldOnPage(pdfDoc, field, pageScales, font);
+      }
+    }
+    try {
+      form.flatten();
+    } catch {
+      /* some forms can't be flattened */
+    }
+  } else {
+    for (const field of editorFields) {
+      drawFieldOnPage(pdfDoc, field, pageScales, font);
+    }
+  }
+
+  return pdfDoc.save();
+}
+
+function drawFieldOnPage(
+  pdfDoc: PDFDocument,
+  field: EditorField,
+  pageScales: Map<number, number>,
+  font: Awaited<ReturnType<PDFDocument["embedFont"]>>
+) {
+  const page = pdfDoc.getPages()[field.page];
+  if (!page) return;
+
+  const scale = pageScales.get(field.page) ?? 1;
+  const pdfX = field.x / scale;
+  const pdfY = page.getHeight() - field.y / scale - field.height / scale;
+
+  if (field.type === "text" || field.type === "date" || field.type === "signature") {
+    if (field.value) {
+      const fontSize = (field.type === "signature" ? 16 : field.fontSize ?? 14) / scale;
+      page.drawText(field.value, {
+        x: pdfX + 2,
+        y: pdfY + 4,
+        size: fontSize,
+        font,
+        color: rgb(0, 0, 0),
+      });
+    }
+  } else if (field.type === "checkbox" && field.checked) {
+    const size = Math.min(field.width, field.height) / scale;
+    page.drawText("\u2713", {
+      x: pdfX + 2,
+      y: pdfY + 2,
+      size: size * 0.8,
+      font,
+      color: rgb(0, 0, 0),
+    });
+  }
+}

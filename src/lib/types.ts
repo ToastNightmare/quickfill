@@ -1,0 +1,46 @@
+export type ToolType = "text" | "checkbox" | "signature" | "date";
+
+export interface FieldBase {
+  id: string;
+  type: ToolType;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  page: number;
+}
+
+export interface TextField extends FieldBase {
+  type: "text";
+  value: string;
+  fontSize: number;
+}
+
+export interface CheckboxField extends FieldBase {
+  type: "checkbox";
+  checked: boolean;
+}
+
+export interface SignatureField extends FieldBase {
+  type: "signature";
+  value: string;
+}
+
+export interface DateField extends FieldBase {
+  type: "date";
+  value: string;
+  fontSize: number;
+}
+
+export type EditorField = TextField | CheckboxField | SignatureField | DateField;
+
+export interface AcroFormField {
+  name: string;
+  type: "text" | "checkbox";
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  page: number;
+  value: string;
+}
