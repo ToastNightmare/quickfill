@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, useCallback } from "react";
-import { Stage, Layer, Rect, Text, Group, Transformer } from "react-konva";
+import { Stage, Layer, Rect, Text, Group, Transformer, Circle } from "react-konva";
 import type Konva from "konva";
 import type { EditorField, ToolType } from "@/lib/types";
 
@@ -278,12 +278,15 @@ export function PdfViewer({
                 onSelect={() => {
                   onFieldSelect(field.id);
                   selectedShapeRef.current = null;
+                  // Single click starts editing immediately
+                  setEditingFieldId(field.id);
                 }}
                 onDragEnd={(x, y) => onFieldUpdate(field.id, { x, y })}
                 onTransformEnd={(width, height, x, y) =>
                   onFieldUpdate(field.id, { width, height, x, y })
                 }
                 onDoubleClick={() => setEditingFieldId(field.id)}
+                onDelete={() => onFieldDelete(field.id)}
                 onValueChange={(value) => {
                   if (field.type === "checkbox") {
                     onFieldUpdate(field.id, { checked: value } as Partial<EditorField>);
@@ -373,6 +376,7 @@ function FieldShape({
   onDoubleClick,
   onValueChange,
   setSelectedRef,
+  onDelete,
 }: {
   field: EditorField;
   isSelected: boolean;
@@ -383,6 +387,7 @@ function FieldShape({
   onDoubleClick: () => void;
   onValueChange: (value: string | boolean) => void;
   setSelectedRef: (node: Konva.Node | null) => void;
+  onDelete?: () => void;
   scale: number;
 }) {
   const groupRef = useRef<Konva.Group>(null);
@@ -494,10 +499,9 @@ function FieldShape({
         width={field.width}
         height={field.height}
         fill="transparent"
-        stroke={isSelected ? "#4f8ef7" : "rgba(79,142,247,0.5)"}
-        strokeWidth={isSelected ? 2 : 1}
+        stroke={isSelected ? "#4f8ef7" : "transparent"}
+        strokeWidth={isSelected ? 2 : 0}
         cornerRadius={3}
-        dash={[4, 2]}
       />
       {!isEditing && (
         <Text
@@ -517,6 +521,30 @@ function FieldShape({
           ellipsis
           wrap="none"
         />
+      )}
+      {isSelected && onDelete && (
+        <Group
+          x={field.width - 10}
+          y={-10}
+          onClick={(e) => {
+            e.cancelBubble = true;
+            onDelete();
+          }}
+        >
+          <Circle radius={10} fill="#ef4444" />
+          <Text
+            text="×"
+            fontSize={14}
+            fill="white"
+            width={20}
+            height={20}
+            x={-10}
+            y={-10}
+            align="center"
+            verticalAlign="middle"
+            fontStyle="bold"
+          />
+        </Group>
       )}
     </Group>
   );
