@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { stripe } from "@/lib/stripe";
-import { redis } from "@/lib/redis";
+import { getStripe } from "@/lib/stripe";
+import { getRedis } from "@/lib/redis";
 import type Stripe from "stripe";
 
 const TTL_SECONDS = 35 * 24 * 60 * 60; // 35 days
@@ -15,7 +15,7 @@ export async function POST(req: NextRequest) {
 
   let event: Stripe.Event;
   try {
-    event = stripe.webhooks.constructEvent(
+    event = getStripe().webhooks.constructEvent(
       body,
       sig,
       process.env.STRIPE_WEBHOOK_SECRET!
@@ -28,7 +28,7 @@ export async function POST(req: NextRequest) {
     const session = event.data.object as Stripe.Checkout.Session;
     const userId = session.metadata?.userId;
     if (userId) {
-      await redis.set(`sub:${userId}`, "pro", { ex: TTL_SECONDS });
+      await getRedis().set(`sub:${userId}`, "pro", { ex: TTL_SECONDS });
     }
   }
 
@@ -36,7 +36,7 @@ export async function POST(req: NextRequest) {
     const subscription = event.data.object as Stripe.Subscription;
     const userId = subscription.metadata?.userId;
     if (userId) {
-      await redis.del(`sub:${userId}`);
+      await getRedis().del(`sub:${userId}`);
     }
   }
 

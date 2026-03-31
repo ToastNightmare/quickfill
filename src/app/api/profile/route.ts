@@ -1,6 +1,6 @@
 import { auth } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
-import { redis } from "@/lib/redis";
+import { getRedis } from "@/lib/redis";
 
 export interface UserProfile {
   fullName: string;
@@ -20,7 +20,7 @@ export async function GET() {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const profile = await redis.get<UserProfile>(`profile:${userId}`);
+  const profile = await getRedis().get<UserProfile>(`profile:${userId}`);
   return NextResponse.json(profile ?? {});
 }
 
@@ -31,7 +31,7 @@ export async function POST(req: Request) {
   }
 
   const body = (await req.json()) as UserProfile;
-  await redis.set(`profile:${userId}`, body);
+  await getRedis().set(`profile:${userId}`, body);
 
   return NextResponse.json({ ok: true });
 }

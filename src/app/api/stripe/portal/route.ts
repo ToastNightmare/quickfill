@@ -1,6 +1,6 @@
 import { auth } from "@clerk/nextjs/server";
 import { NextRequest, NextResponse } from "next/server";
-import { stripe } from "@/lib/stripe";
+import { getStripe } from "@/lib/stripe";
 
 export async function POST(req: NextRequest) {
   const { userId } = await auth();
@@ -11,7 +11,7 @@ export async function POST(req: NextRequest) {
   const origin = req.headers.get("origin") ?? "http://localhost:3000";
 
   // Find the customer by metadata
-  const customers = await stripe.customers.list({
+  const customers = await getStripe().customers.list({
     limit: 1,
     expand: ["data.subscriptions"],
   });
@@ -24,7 +24,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "No subscription found" }, { status: 404 });
   }
 
-  const session = await stripe.billingPortal.sessions.create({
+  const session = await getStripe().billingPortal.sessions.create({
     customer: customer.id,
     return_url: `${origin}/dashboard`,
   });

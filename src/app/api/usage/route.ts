@@ -1,6 +1,6 @@
 import { auth } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
-import { redis } from "@/lib/redis";
+import { getRedis } from "@/lib/redis";
 
 const FREE_LIMIT = 3;
 const TTL_SECONDS = 35 * 24 * 60 * 60; // 35 days
@@ -18,8 +18,8 @@ export async function GET() {
   }
 
   const [used, sub] = await Promise.all([
-    redis.get<number>(usageKey(userId)),
-    redis.get<string>(`sub:${userId}`),
+    getRedis().get<number>(usageKey(userId)),
+    getRedis().get<string>(`sub:${userId}`),
   ]);
 
   const isPro = sub === "pro";
@@ -38,11 +38,11 @@ export async function POST() {
   }
 
   const key = usageKey(userId);
-  const newCount = await redis.incr(key);
+  const newCount = await getRedis().incr(key);
 
   // Set TTL on first increment
   if (newCount === 1) {
-    await redis.expire(key, TTL_SECONDS);
+    await getRedis().expire(key, TTL_SECONDS);
   }
 
   return NextResponse.json({ used: newCount });
