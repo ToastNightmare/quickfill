@@ -481,78 +481,133 @@ export default function EditorPage() {
     if (!pdfViewerRef.current) return;
 
     setIsDetecting(true);
+    const zoomFactor = zoom / 100;
+
     try {
-      const imageBase64 = pdfViewerRef.current.getCanvasDataURL();
-      const dims = pdfViewerRef.current.getCanvasDimensions();
-
-      if (!imageBase64) {
-        showToast("AI detection unavailable  -  place fields manually");
-        return;
-      }
-
-      const res = await fetch("/api/detect-fields", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          imageBase64,
-          pageWidth: dims.width,
-          pageHeight: dims.height,
-        }),
-      });
-
-      const data = await res.json();
-
-      if (data.error) {
-        showToast("AI detection unavailable  -  place fields manually");
-        return;
-      }
-
-      if (!data.fields || data.fields.length === 0) {
-        showToast("No fields detected  -  try placing fields manually");
-        return;
-      }
-
-      const zoomFactor = zoom / 100;
-      const newIds = new Set<string>();
-      const newFields: import("@/lib/types").EditorField[] = data.fields.map(
-        (f: { label?: string; type?: string; x: number; y: number; width: number; height: number }, i: number) => {
-          const id = `ai-${Date.now()}-${i}`;
-          newIds.add(id);
-          const fieldType = (f.type === "checkbox" || f.type === "signature" || f.type === "date") ? f.type : "text";
-
-          if (fieldType === "checkbox") {
-            return {
-              id,
-              type: "checkbox" as const,
-              x: f.x / zoomFactor,
-              y: f.y / zoomFactor,
-              width: f.width / zoomFactor,
-              height: f.height / zoomFactor,
-              page: currentPage,
-              checked: false,
-            };
+      // --- Layer 1: Visual batch detection (always available, no API needed) ---
+      let visualFields: EditorField[] = [];
+      try {
+        const { detectAllBoxes } = await import("@/lib/snap-detect");
+        // Get canvas data URL and render onto temp canvas for scanning
+        const dataUrl = pdfViewerRef.current.getCanvasDataURL();
+        const dims = pdfViewerRef.current.getCanvasDimensions();
+        if (dataUrl && dims.width > 0 && dims.height > 0) {
+          const tmpCanvas = document.createElement("canvas");
+          tmpCanvas.width = dims.width;
+          tmpCanvas.height = dims.height;
+          const tmpCtx = tmpCanvas.getContext("2d");
+          if (tmpCtx) {
+            const img = new Image();
+            await new Promise<void>((resolve) => {
+              img.onload = () => { tmpCtx.drawImage(img, 0, 0); resolve(); };
+              img.onerror = () => resolve();
+              img.src = dataUrl;
+            });
+            const boxes = detectAllBoxes(tmpCanvas);
+            if (boxes.length > 0) {
+              visualFields = boxes.map((box, i) => {
+                const id = `vis-${Date.now()}-${i}`;
+                const fieldH = box.height / zoomFactor;
+                const inferredFontSize = Math.max(8, Math.min(36, Math.round(fieldH * 0.65)));
+                return {
+                  id,
+                  type: "text" as const,
+                  x: box.x / zoomFactor,
+                  y: box.y / zoomFactor,
+                  width: box.width / zoomFactor,
+                  height: fieldH,
+                  page: currentPage,
+                  value: "",
+                  fontSize: inferredFontSize,
+                  snapped: true,
+                  snapBounds: {
+                    x: box.x / zoomFactor,
+                    y: box.y / zoomFactor,
+                    width: box.width / zoomFactor,
+                    height: fieldH,
+                  },
+                } satisfies EditorField;
+              });
+            }
           }
-          return {
-            id,
-            type: fieldType as "text" | "signature" | "date",
-            x: f.x / zoomFactor,
-            y: f.y / zoomFactor,
-            width: f.width / zoomFactor,
-            height: f.height / zoomFactor,
-            page: currentPage,
-            value: fieldType === "date" ? new Date().toLocaleDateString("en-US") : "",
-            fontSize: fieldType === "signature" ? 16 : 14,
-          };
         }
-      );
+      } catch {
+        // Visual detection failed silently
+      }
 
-      setFields((prev) => [...prev, ...newFields]);
+      // --- Layer 2: AI detection (if configured, enhances visual results) ---
+      let aiFields: EditorField[] = [];
+      try {
+        const imageBase64 = pdfViewerRef.current.getCanvasDataURL();
+        const dims = pdfViewerRef.current.getCanvasDimensions();
+        if (imageBase64) {
+          const res = await fetch("/api/detect-fields", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              imageBase64,
+              pageWidth: dims.width,
+              pageHeight: dims.height,
+            }),
+          });
+          const data = await res.json();
+          if (!data.error && data.fields && data.fields.length > 0) {
+            aiFields = data.fields.map(
+              (f: { label?: string; type?: string; x: number; y: number; width: number; height: number }, i: number) => {
+                const id = `ai-${Date.now()}-${i}`;
+                const fieldType = (f.type === "checkbox" || f.type === "signature" || f.type === "date") ? f.type : "text";
+                if (fieldType === "checkbox") {
+                  return {
+                    id, type: "checkbox" as const,
+                    x: f.x / zoomFactor, y: f.y / zoomFactor,
+                    width: f.width / zoomFactor, height: f.height / zoomFactor,
+                    page: currentPage, checked: false,
+                  };
+                }
+                return {
+                  id, type: fieldType as "text" | "signature" | "date",
+                  x: f.x / zoomFactor, y: f.y / zoomFactor,
+                  width: f.width / zoomFactor, height: f.height / zoomFactor,
+                  page: currentPage,
+                  value: fieldType === "date" ? new Date().toLocaleDateString("en-US") : "",
+                  fontSize: fieldType === "signature" ? 16 : 14,
+                };
+              }
+            );
+          }
+        }
+      } catch {
+        // AI detection unavailable, continue with visual results
+      }
+
+      // --- Merge: visual first, AI fields that don't overlap ---
+      const allDetected = [...visualFields];
+      for (const aiField of aiFields) {
+        const overlaps = allDetected.some((vf) => {
+          const overlapX = Math.max(0, Math.min(aiField.x + aiField.width, vf.x + vf.width) - Math.max(aiField.x, vf.x));
+          const overlapY = Math.max(0, Math.min(aiField.y + aiField.height, vf.y + vf.height) - Math.max(aiField.y, vf.y));
+          const aiArea = aiField.width * aiField.height;
+          return aiArea > 0 && (overlapX * overlapY) / aiArea > 0.4;
+        });
+        if (!overlaps) allDetected.push(aiField);
+      }
+
+      if (allDetected.length === 0) {
+        showToast("No fields detected - click boxes to snap, or place fields manually");
+        return;
+      }
+
+      const newIds = new Set(allDetected.map((f) => f.id));
+      setFields((prev) => [...prev, ...allDetected]);
       setHighlightFieldIds(newIds);
       setTimeout(() => setHighlightFieldIds(new Set()), 2000);
-      showToast(`Detected ${newFields.length} fields  -  review and fill`);
+
+      const sourceLabel = aiFields.length > 0 && visualFields.length > 0
+        ? "visual + AI" : aiFields.length > 0 ? "AI" : "visual";
+      showToast(`Detected ${allDetected.length} fields (${sourceLabel}) - review and fill`);
     } catch (err) {
-      console.error("AI detection failed:", err);
-      showToast("AI detection unavailable  -  place fields manually");
+      console.error("Field detection failed:", err);
+      showToast("Detection failed - click boxes to snap, or place fields manually");
     } finally {
       setIsDetecting(false);
     }

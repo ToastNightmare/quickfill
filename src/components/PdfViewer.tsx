@@ -389,18 +389,44 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
         fieldW = snapPreview.width;
         fieldH = snapPreview.height;
         snapped = true;
-      } else if (canvasRef.current) {
-        try {
-          const snap = detectSnapBox(canvasRef.current, posX, posY);
-          if (snap) {
-            fieldX = snap.x / zoomFactor;
-            fieldY = snap.y / zoomFactor;
-            fieldW = snap.width / zoomFactor;
-            fieldH = snap.height / zoomFactor;
-            snapped = true;
+      } else {
+        // Try pre-computed boxes first (fast lookup)
+        const preBoxes = precomputedBoxesRef.current;
+        let foundSnap: SnapResult | null = null;
+
+        if (preBoxes.length > 0) {
+          let bestArea = Infinity;
+          for (const box of preBoxes) {
+            if (
+              posX >= box.x - 5 &&
+              posX <= box.x + box.width + 5 &&
+              posY >= box.y - 5 &&
+              posY <= box.y + box.height + 5
+            ) {
+              const area = box.width * box.height;
+              if (area < bestArea) {
+                bestArea = area;
+                foundSnap = box;
+              }
+            }
           }
-        } catch {
-          // Fall back to default placement
+        }
+
+        // Fall back to per-click pixel scan
+        if (!foundSnap && canvasRef.current) {
+          try {
+            foundSnap = detectSnapBox(canvasRef.current, posX, posY);
+          } catch {
+            // Fall back to default placement
+          }
+        }
+
+        if (foundSnap) {
+          fieldX = foundSnap.x / zoomFactor;
+          fieldY = foundSnap.y / zoomFactor;
+          fieldW = foundSnap.width / zoomFactor;
+          fieldH = foundSnap.height / zoomFactor;
+          snapped = true;
         }
       }
 
@@ -514,8 +540,29 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
       // Bounds check
       if (touchX < 0 || touchY < 0 || touchX > rect.width || touchY > rect.height) return;
 
-      // Try snap detection at touch point
-      const snap = detectSnapBox(canvasEl, touchX, touchY);
+      // Try pre-computed boxes first, then per-click detection
+      let snap: SnapResult | null = null;
+      const preBoxes = precomputedBoxesRef.current;
+      if (preBoxes.length > 0) {
+        let bestArea = Infinity;
+        for (const box of preBoxes) {
+          if (
+            touchX >= box.x - 5 &&
+            touchX <= box.x + box.width + 5 &&
+            touchY >= box.y - 5 &&
+            touchY <= box.y + box.height + 5
+          ) {
+            const area = box.width * box.height;
+            if (area < bestArea) {
+              bestArea = area;
+              snap = box;
+            }
+          }
+        }
+      }
+      if (!snap) {
+        snap = detectSnapBox(canvasEl, touchX, touchY);
+      }
 
       if (snap) {
         e.preventDefault();

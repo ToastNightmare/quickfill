@@ -123,11 +123,11 @@ export function Toolbar({
         </button>
       ))}
 
-      {/* AI Auto-detect button */}
+      {/* Auto-detect button (visual + AI) */}
       <button
         onClick={onDetectFields}
         disabled={isDetecting}
-        title="Auto-detect form fields with AI"
+        title="Auto-detect form fields"
         className="flex h-10 items-center gap-2 rounded-lg px-2 text-sm font-medium text-text-muted hover:bg-purple-50 hover:text-purple-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
       >
         {isDetecting ? (
