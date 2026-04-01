@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import {
   Upload,
@@ -9,8 +9,238 @@ import {
   ArrowRight,
   Check,
   FileText,
+  User,
+  Clock,
+  LayoutDashboard,
+  CreditCard,
+  Loader2,
 } from "lucide-react";
+import { useAuth } from "@clerk/nextjs";
 import { APP_CONFIG } from "@/lib/config";
+
+interface FillEntry {
+  filename: string;
+  filledAt: string;
+  fieldCount: number;
+  pageCount: number;
+}
+
+interface UsageData {
+  used: number;
+  limit: number;
+  isPro: boolean;
+  tier: string;
+}
+
+interface FillsData {
+  fills: FillEntry[];
+  isPro: boolean;
+}
+
+function LoggedInHome() {
+  const [usage, setUsage] = useState<UsageData | null>(null);
+  const [fills, setFills] = useState<FillsData | null>(null);
+
+  useEffect(() => {
+    fetch("/api/usage").then((r) => r.json()).then(setUsage).catch(() => {});
+    fetch("/api/fills").then((r) => r.json()).then(setFills).catch(() => {});
+  }, []);
+
+  const recentFills = fills?.fills.slice(0, 3) ?? [];
+  const lastFilled = recentFills[0]?.filledAt;
+  const tierLabel = usage?.tier
+    ? usage.tier.charAt(0).toUpperCase() + usage.tier.slice(1)
+    : "Free";
+  const isUnlimited = usage?.tier === "pro";
+
+  return (
+    <div className="flex flex-col">
+      {/* Hero */}
+      <section className="relative overflow-hidden bg-navy px-4 py-20 sm:px-6 sm:py-24 lg:px-8">
+        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_#4f8ef720_0%,_transparent_60%)]" />
+        <div className="relative mx-auto max-w-4xl text-center">
+          <h1 className="text-4xl font-extrabold tracking-tight text-white sm:text-5xl">
+            Welcome back
+          </h1>
+          <p className="mx-auto mt-4 max-w-xl text-lg text-gray-300">
+            Ready to fill your next form?
+          </p>
+          <div className="mt-8 flex flex-col items-center gap-4 sm:flex-row sm:justify-center">
+            <Link
+              href="/editor"
+              className="flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-accent px-8 text-base font-semibold text-white shadow-lg shadow-accent/25 hover:bg-accent-hover transition-colors sm:w-auto"
+            >
+              Open Editor
+              <ArrowRight className="h-4 w-4" />
+            </Link>
+            <Link
+              href="/dashboard"
+              className="flex h-12 w-full items-center justify-center rounded-xl border border-white/20 px-6 text-base font-semibold text-white hover:bg-white/10 transition-colors sm:w-auto"
+            >
+              View Dashboard
+            </Link>
+          </div>
+        </div>
+      </section>
+
+      {/* Stats row */}
+      <section className="bg-surface px-4 py-12 sm:px-6 lg:px-8">
+        <div className="mx-auto grid max-w-4xl gap-6 sm:grid-cols-3">
+          <div className="rounded-xl border border-border bg-surface p-6 text-center">
+            <FileText className="mx-auto h-6 w-6 text-accent" />
+            <p className="mt-3 text-2xl font-bold">
+              {usage === null ? (
+                <Loader2 className="mx-auto h-5 w-5 animate-spin text-text-muted" />
+              ) : isUnlimited ? (
+                "Unlimited"
+              ) : (
+                `${usage.used} / ${usage.limit}`
+              )}
+            </p>
+            <p className="mt-1 text-sm text-text-muted">Fills used this month</p>
+          </div>
+          <div className="rounded-xl border border-border bg-surface p-6 text-center">
+            <CreditCard className="mx-auto h-6 w-6 text-accent" />
+            <p className="mt-3 text-2xl font-bold">
+              {usage === null ? (
+                <Loader2 className="mx-auto h-5 w-5 animate-spin text-text-muted" />
+              ) : (
+                tierLabel
+              )}
+            </p>
+            <p className="mt-1 text-sm text-text-muted">
+              Current plan
+              {usage?.tier === "free" && (
+                <>
+                  {" "}&middot;{" "}
+                  <Link href="/pricing" className="text-accent hover:underline">
+                    Upgrade
+                  </Link>
+                </>
+              )}
+            </p>
+          </div>
+          <div className="rounded-xl border border-border bg-surface p-6 text-center">
+            <Clock className="mx-auto h-6 w-6 text-accent" />
+            <p className="mt-3 text-2xl font-bold">
+              {fills === null ? (
+                <Loader2 className="mx-auto h-5 w-5 animate-spin text-text-muted" />
+              ) : lastFilled ? (
+                new Date(lastFilled).toLocaleDateString()
+              ) : (
+                "No fills yet"
+              )}
+            </p>
+            <p className="mt-1 text-sm text-text-muted">Last filled</p>
+          </div>
+        </div>
+      </section>
+
+      {/* Recent fills */}
+      <section className="bg-surface-alt px-4 py-12 sm:px-6 lg:px-8">
+        <div className="mx-auto max-w-4xl">
+          <div className="flex items-center justify-between">
+            <h2 className="text-xl font-bold">Recent Activity</h2>
+            {recentFills.length > 0 && (
+              <Link href="/dashboard" className="text-sm text-accent hover:underline">
+                View all
+              </Link>
+            )}
+          </div>
+          {fills === null ? (
+            <div className="mt-8 flex justify-center">
+              <Loader2 className="h-6 w-6 animate-spin text-text-muted" />
+            </div>
+          ) : recentFills.length === 0 ? (
+            <div className="mt-8 rounded-xl border border-border bg-surface p-8 text-center">
+              <p className="text-text-muted">Upload your first PDF to get started</p>
+              <Link
+                href="/editor"
+                className="mt-4 inline-flex h-10 items-center justify-center rounded-lg bg-accent px-5 text-sm font-semibold text-white hover:bg-accent-hover transition-colors"
+              >
+                Open Editor
+              </Link>
+            </div>
+          ) : (
+            <div className="mt-6 grid gap-4 sm:grid-cols-3">
+              {recentFills.map((fill, i) => (
+                <div
+                  key={i}
+                  className="rounded-xl border border-border bg-surface p-5"
+                >
+                  <p className="truncate font-medium">{fill.filename}</p>
+                  <p className="mt-1 text-sm text-text-muted">
+                    {new Date(fill.filledAt).toLocaleDateString()} &middot;{" "}
+                    {fill.fieldCount} fields
+                  </p>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </section>
+
+      {/* Quick actions */}
+      <section className="bg-surface px-4 py-12 sm:px-6 lg:px-8">
+        <div className="mx-auto max-w-4xl">
+          <div className="grid gap-4 sm:grid-cols-2">
+            {[
+              { label: "Fill a Form", href: "/editor", icon: FileText },
+              { label: "Auto-fill Profile", href: "/profile", icon: User },
+              { label: "View History", href: "/dashboard", icon: LayoutDashboard },
+              { label: "Pricing & Plans", href: "/pricing", icon: CreditCard },
+            ].map((action) => (
+              <Link
+                key={action.label}
+                href={action.href}
+                className="flex items-center gap-4 rounded-xl border border-border bg-surface p-5 hover:shadow-md transition-shadow"
+              >
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-accent/10">
+                  <action.icon className="h-5 w-5 text-accent" />
+                </div>
+                <span className="font-semibold">{action.label}</span>
+                <ArrowRight className="ml-auto h-4 w-4 text-text-muted" />
+              </Link>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Footer */}
+      <footer className="border-t border-border bg-navy px-4 py-12 sm:px-6 lg:px-8">
+        <div className="mx-auto flex max-w-6xl flex-col items-center gap-6 sm:flex-row sm:justify-between">
+          <div className="flex items-center gap-2 font-bold text-white">
+            <FileText className="h-5 w-5 text-accent" />
+            QuickFill
+          </div>
+          <div className="flex gap-6">
+            <Link
+              href="/editor"
+              className="text-sm text-gray-400 hover:text-white transition-colors"
+            >
+              Editor
+            </Link>
+            <Link
+              href="/#pricing"
+              className="text-sm text-gray-400 hover:text-white transition-colors"
+            >
+              Pricing
+            </Link>
+            <Link
+              href="/how-it-works"
+              className="text-sm text-gray-400 hover:text-white transition-colors"
+            >
+              How It Works
+            </Link>
+          </div>
+          <p className="text-sm text-gray-500">
+            &copy; {new Date().getFullYear()} QuickFill. All rights reserved.
+          </p>
+        </div>
+      </footer>
+    </div>
+  );
+}
 
 const features = [
   {
@@ -67,7 +297,20 @@ const verticals = [
 ];
 
 export default function Home() {
+  const { isLoaded, isSignedIn } = useAuth();
   const [billing, setBilling] = useState<"monthly" | "annual">("monthly");
+
+  if (!isLoaded) {
+    return (
+      <div className="flex min-h-[60vh] items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-accent" />
+      </div>
+    );
+  }
+
+  if (isSignedIn) {
+    return <LoggedInHome />;
+  }
 
   return (
     <div className="flex flex-col">
