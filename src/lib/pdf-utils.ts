@@ -1,5 +1,6 @@
 import { PDFDocument, rgb, StandardFonts } from "pdf-lib";
 import type { EditorField } from "./types";
+import { APP_CONFIG } from "./config";
 
 /**
  * Load a PDF and detect AcroForm fields with their positions.
@@ -120,7 +121,7 @@ export async function fillPdf(
     const pages = pdfDoc.getPages();
     for (const page of pages) {
       const { width } = page.getSize();
-      const text = "Filled with QuickFill — quickfill-ivory.vercel.app";
+      const text = `Filled with QuickFill \u2014 ${APP_CONFIG.domain}`;
       const textWidth = font.widthOfTextAtSize(text, 8);
       page.drawText(text, {
         x: width - textWidth - 12,

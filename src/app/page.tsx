@@ -10,6 +10,7 @@ import {
   Check,
   FileText,
 } from "lucide-react";
+import { APP_CONFIG } from "@/lib/config";
 
 const features = [
   {
@@ -38,6 +39,33 @@ const steps = [
   { number: "3", title: "Download", description: "Get your completed PDF instantly" },
 ];
 
+const verticals = [
+  {
+    emoji: "\ud83c\udfe0",
+    title: "Real Estate Agents",
+    description:
+      "Fill tenancy applications, lease agreements, and property documents in seconds.",
+  },
+  {
+    emoji: "\ud83d\udccb",
+    title: "Bookkeepers & Sole Traders",
+    description:
+      "ATO BAS forms, tax declarations, and business registrations \u2014 done fast.",
+  },
+  {
+    emoji: "\u26ea",
+    title: "Churches & Community Orgs",
+    description:
+      "Membership forms, event registrations, and grant applications sorted easily.",
+  },
+  {
+    emoji: "\ud83c\udfe5",
+    title: "Healthcare & Community Services",
+    description:
+      "Medicare, Centrelink, and client intake forms filled accurately every time.",
+  },
+];
+
 export default function Home() {
   const [billing, setBilling] = useState<"monthly" | "annual">("monthly");
 
@@ -51,7 +79,7 @@ export default function Home() {
             "@context": "https://schema.org",
             "@type": "WebApplication",
             name: "QuickFill",
-            url: "https://quickfill-ivory.vercel.app",
+            url: APP_CONFIG.url,
             applicationCategory: "BusinessApplication",
             operatingSystem: "Any",
             description:
@@ -70,6 +98,13 @@ export default function Home() {
                 priceCurrency: "AUD",
                 name: "Pro Plan",
                 description: "Unlimited documents per month",
+              },
+              {
+                "@type": "Offer",
+                price: "29",
+                priceCurrency: "AUD",
+                name: "Business Plan",
+                description: "50 documents per month with team features",
               },
             ],
             featureList: [
@@ -144,10 +179,36 @@ export default function Home() {
         </div>
       </section>
 
+      {/* Who uses QuickFill? */}
+      <section className="bg-surface-alt px-4 py-20 sm:px-6 lg:px-8">
+        <div className="mx-auto max-w-4xl">
+          <h2 className="text-center text-3xl font-bold tracking-tight sm:text-4xl">
+            Who uses QuickFill?
+          </h2>
+          <p className="mx-auto mt-4 max-w-2xl text-center text-text-muted">
+            Professionals across Australia rely on QuickFill to save hours on paperwork.
+          </p>
+          <div className="mt-12 grid gap-6 sm:grid-cols-2">
+            {verticals.map((v) => (
+              <div
+                key={v.title}
+                className="rounded-xl border border-border bg-surface p-6"
+              >
+                <div className="text-3xl">{v.emoji}</div>
+                <h3 className="mt-3 text-lg font-bold">{v.title}</h3>
+                <p className="mt-2 text-sm leading-relaxed text-text-muted">
+                  {v.description}
+                </p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
       {/* How it works */}
       <section
         id="how-it-works"
-        className="bg-surface-alt px-4 py-20 sm:px-6 lg:px-8"
+        className="bg-surface px-4 py-20 sm:px-6 lg:px-8"
       >
         <div className="mx-auto max-w-4xl">
           <h2 className="text-center text-3xl font-bold tracking-tight sm:text-4xl">
@@ -171,7 +232,7 @@ export default function Home() {
       </section>
 
       {/* Use cases */}
-      <section className="bg-surface px-4 py-16 sm:px-6 lg:px-8">
+      <section className="bg-surface-alt px-4 py-16 sm:px-6 lg:px-8">
         <div className="mx-auto max-w-4xl text-center">
           <h2 className="text-2xl font-bold tracking-tight sm:text-3xl">
             Works with any Australian PDF form
@@ -193,7 +254,7 @@ export default function Home() {
             ].map((label) => (
               <span
                 key={label}
-                className="rounded-full border border-border bg-surface-alt px-4 py-2 text-sm font-medium text-text-muted"
+                className="rounded-full border border-border bg-surface px-4 py-2 text-sm font-medium text-text-muted"
               >
                 {label}
               </span>
@@ -203,7 +264,7 @@ export default function Home() {
       </section>
 
       {/* Pricing */}
-      <section id="pricing" className="bg-surface-alt px-4 py-20 sm:px-6 lg:px-8">
+      <section id="pricing" className="bg-surface px-4 py-20 sm:px-6 lg:px-8">
         <div className="mx-auto max-w-4xl">
           <h2 className="text-center text-3xl font-bold tracking-tight sm:text-4xl">
             Simple, transparent pricing
@@ -214,7 +275,7 @@ export default function Home() {
 
           {/* Monthly/Annual toggle */}
           <div className="mt-8 flex justify-center">
-            <div className="inline-flex rounded-full bg-surface p-1">
+            <div className="inline-flex rounded-full bg-surface-alt p-1">
               <button
                 onClick={() => setBilling("monthly")}
                 className={`rounded-full px-5 py-2 text-sm font-medium transition-colors ${
@@ -238,7 +299,7 @@ export default function Home() {
             </div>
           </div>
 
-          <div className="mt-12 grid gap-8 sm:grid-cols-2">
+          <div className="mt-12 grid gap-8 sm:grid-cols-2 lg:grid-cols-3">
             {/* Free tier */}
             <div className="rounded-xl border border-border bg-surface p-8">
               <h3 className="text-lg font-semibold">Free</h3>
@@ -304,7 +365,7 @@ export default function Home() {
                 )}
               </div>
               <p className="mt-4 text-sm text-text-muted">
-                For professionals and teams.
+                For professionals who need volume.
               </p>
               <ul className="mt-6 space-y-3">
                 {[
@@ -333,6 +394,47 @@ export default function Home() {
                 <button
                   disabled
                   className="mt-8 flex h-11 w-full items-center justify-center rounded-lg bg-accent/60 text-sm font-semibold text-white cursor-not-allowed"
+                >
+                  Coming Soon
+                </button>
+              )}
+            </div>
+
+            {/* Business tier */}
+            <div className="rounded-xl border border-border bg-surface p-8">
+              <h3 className="text-lg font-semibold">Business</h3>
+              <div className="mt-4 flex items-baseline gap-1">
+                <span className="text-4xl font-extrabold">$29</span>
+                <span className="text-text-muted">/month</span>
+              </div>
+              <p className="mt-4 text-sm text-text-muted">
+                For teams and organisations.
+              </p>
+              <ul className="mt-6 space-y-3">
+                {[
+                  "50 documents per month",
+                  "Unlimited fill history",
+                  "Priority support",
+                  "Team profiles (coming soon)",
+                  "No watermarks",
+                ].map((item) => (
+                  <li key={item} className="flex items-start gap-2 text-sm">
+                    <Check className="mt-0.5 h-4 w-4 shrink-0 text-accent" />
+                    {item}
+                  </li>
+                ))}
+              </ul>
+              {billing === "monthly" ? (
+                <Link
+                  href="/editor"
+                  className="mt-8 flex h-11 items-center justify-center rounded-lg border-2 border-accent text-sm font-semibold text-accent hover:bg-accent hover:text-white transition-colors"
+                >
+                  Get Business
+                </Link>
+              ) : (
+                <button
+                  disabled
+                  className="mt-8 flex h-11 w-full items-center justify-center rounded-lg border border-border text-sm font-semibold text-text-muted cursor-not-allowed"
                 >
                   Coming Soon
                 </button>

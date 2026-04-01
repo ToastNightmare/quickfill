@@ -4,13 +4,16 @@ import { Check, X, Sparkles } from "lucide-react";
 import { useState } from "react";
 
 const features = [
-  { name: "Documents per month", free: "3", pro: "Unlimited" },
-  { name: "All field types (text, checkbox, signature, date)", free: true, pro: true },
-  { name: "AcroForm auto-detection", free: true, pro: true },
-  { name: "Instant PDF download", free: true, pro: true },
-  { name: "Auto-fill profile", free: true, pro: true },
-  { name: "Priority support", free: false, pro: true },
-  { name: "Batch processing", free: false, pro: true },
+  { name: "Documents per month", free: "3", pro: "Unlimited", business: "50" },
+  { name: "All field types (text, checkbox, signature, date)", free: true, pro: true, business: true },
+  { name: "AcroForm auto-detection", free: true, pro: true, business: true },
+  { name: "Instant PDF download", free: true, pro: true, business: true },
+  { name: "Auto-fill profile", free: true, pro: true, business: true },
+  { name: "Priority support", free: false, pro: true, business: true },
+  { name: "Batch processing", free: false, pro: true, business: true },
+  { name: "No watermark", free: false, pro: true, business: true },
+  { name: "Unlimited fill history", free: false, pro: false, business: true },
+  { name: "Team profiles (coming soon)", free: false, pro: false, business: true },
 ];
 
 const faqs = [
@@ -20,33 +23,41 @@ const faqs = [
   },
   {
     q: "What happens when I hit my free limit?",
-    a: "You'll be prompted to upgrade to Pro. Your filled documents are never lost \u2014 upgrade any time to continue.",
+    a: "You'll be prompted to upgrade to Pro or Business. Your filled documents are never lost — upgrade any time to continue.",
   },
   {
-    q: "Can I cancel my Pro subscription?",
-    a: "Absolutely. Cancel any time from your dashboard. You'll keep Pro access until the end of your billing period.",
+    q: "Can I cancel my subscription?",
+    a: "Absolutely. Cancel any time from your dashboard. You'll keep access until the end of your billing period.",
   },
   {
     q: "What PDF forms does QuickFill support?",
-    a: "QuickFill works with any PDF \u2014 tax forms, government applications, contracts, and more. It automatically detects AcroForm fields and supports manual field placement for flat PDFs.",
+    a: "QuickFill works with any PDF — tax forms, government applications, contracts, and more. It automatically detects AcroForm fields and supports manual field placement for flat PDFs.",
   },
   {
     q: "Is my data secure?",
     a: "Your PDFs are processed entirely in your browser. We never upload or store your documents on our servers.",
   },
   {
-    q: "Do you offer annual billing?",
-    a: "Yes! Save $45 per year with our annual plan at $99/year ($8.25/month). Switch to annual billing at any time.",
+    q: "What's the difference between Pro and Business?",
+    a: "Pro gives you unlimited fills per month. Business gives you 50 fills with unlimited fill history, priority support, and team profiles (coming soon). Choose Pro for volume, Business for team features.",
   },
 ];
 
 export default function PricingPage() {
   const [billing, setBilling] = useState<"monthly" | "annual">("monthly");
 
-  const handleUpgrade = async () => {
-    const res = await fetch("/api/stripe/checkout", { method: "POST" });
-    const { url } = await res.json();
-    if (url) window.location.href = url;
+  const handleUpgrade = async (plan: "pro" | "business") => {
+    const res = await fetch("/api/stripe/checkout", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ plan }),
+    });
+    const data = await res.json();
+    if (data.error) {
+      alert(data.error);
+      return;
+    }
+    if (data.url) window.location.href = data.url;
   };
 
   return (
@@ -59,12 +70,22 @@ export default function PricingPage() {
             "@type": "Product",
             name: "QuickFill Pro",
             description: "Unlimited PDF form filling with priority support.",
-            offers: {
-              "@type": "Offer",
-              price: "12.00",
-              priceCurrency: "USD",
-              availability: "https://schema.org/InStock",
-            },
+            offers: [
+              {
+                "@type": "Offer",
+                price: "12.00",
+                priceCurrency: "AUD",
+                availability: "https://schema.org/InStock",
+                name: "Pro",
+              },
+              {
+                "@type": "Offer",
+                price: "29.00",
+                priceCurrency: "AUD",
+                availability: "https://schema.org/InStock",
+                name: "Business",
+              },
+            ],
           }),
         }}
       />
@@ -110,7 +131,7 @@ export default function PricingPage() {
 
         {/* Plans */}
         <section className="bg-surface px-4 py-20 sm:px-6 lg:px-8">
-          <div className="mx-auto grid max-w-4xl gap-8 sm:grid-cols-2">
+          <div className="mx-auto grid max-w-5xl gap-8 sm:grid-cols-2 lg:grid-cols-3">
             {/* Free */}
             <div className="rounded-xl border border-border bg-surface p-8">
               <h2 className="text-lg font-semibold">Free</h2>
@@ -160,10 +181,10 @@ export default function PricingPage() {
                   </div>
                 )}
               </div>
-              <p className="mt-4 text-sm text-text-muted">For professionals and teams.</p>
+              <p className="mt-4 text-sm text-text-muted">For professionals who need volume.</p>
               {billing === "monthly" ? (
                 <button
-                  onClick={handleUpgrade}
+                  onClick={() => handleUpgrade("pro")}
                   className="mt-8 flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-accent text-sm font-semibold text-white hover:bg-accent-hover transition-colors"
                 >
                   <Sparkles className="h-4 w-4" />
@@ -178,16 +199,42 @@ export default function PricingPage() {
                 </button>
               )}
             </div>
+
+            {/* Business */}
+            <div className="rounded-xl border border-border bg-surface p-8">
+              <h2 className="text-lg font-semibold">Business</h2>
+              <div className="mt-4 flex items-baseline gap-1">
+                <span className="text-4xl font-extrabold">$29</span>
+                <span className="text-text-muted">/month</span>
+              </div>
+              <p className="mt-4 text-sm text-text-muted">For teams and organisations.</p>
+              {billing === "monthly" ? (
+                <button
+                  onClick={() => handleUpgrade("business")}
+                  className="mt-8 flex h-11 w-full items-center justify-center gap-2 rounded-xl border-2 border-accent text-sm font-semibold text-accent hover:bg-accent hover:text-white transition-colors"
+                >
+                  Get Business
+                </button>
+              ) : (
+                <button
+                  disabled
+                  className="mt-8 flex h-11 w-full items-center justify-center gap-2 rounded-xl border border-border text-sm font-semibold text-text-muted cursor-not-allowed"
+                >
+                  Coming Soon
+                </button>
+              )}
+            </div>
           </div>
 
           {/* Comparison table */}
-          <div className="mx-auto mt-16 max-w-4xl overflow-hidden rounded-xl border border-border">
+          <div className="mx-auto mt-16 max-w-5xl overflow-hidden rounded-xl border border-border">
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-surface-alt">
                   <th className="px-6 py-4 text-left font-semibold">Feature</th>
                   <th className="px-6 py-4 text-center font-semibold">Free</th>
                   <th className="px-6 py-4 text-center font-semibold text-accent">Pro</th>
+                  <th className="px-6 py-4 text-center font-semibold">Business</th>
                 </tr>
               </thead>
               <tbody>
@@ -207,6 +254,15 @@ export default function PricingPage() {
                       {typeof f.pro === "string" ? (
                         <span className="font-semibold text-accent">{f.pro}</span>
                       ) : f.pro ? (
+                        <Check className="mx-auto h-4 w-4 text-accent" />
+                      ) : (
+                        <X className="mx-auto h-4 w-4 text-text-muted/40" />
+                      )}
+                    </td>
+                    <td className="px-6 py-4 text-center">
+                      {typeof f.business === "string" ? (
+                        <span className="font-semibold">{f.business}</span>
+                      ) : f.business ? (
                         <Check className="mx-auto h-4 w-4 text-accent" />
                       ) : (
                         <X className="mx-auto h-4 w-4 text-text-muted/40" />

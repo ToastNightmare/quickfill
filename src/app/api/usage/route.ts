@@ -2,7 +2,12 @@ import { auth } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 import { getRedis } from "@/lib/redis";
 
-const FREE_LIMIT = 3;
+const TIER_LIMITS: Record<string, number> = {
+  free: 3,
+  pro: Infinity,
+  business: 50,
+};
+
 const TTL_SECONDS = 35 * 24 * 60 * 60; // 35 days
 
 function usageKey(userId: string) {
@@ -22,12 +27,15 @@ export async function GET() {
     getRedis().get<string>(`sub:${userId}`),
   ]);
 
-  const isPro = sub === "pro";
+  const tier = sub ?? "free";
+  const limit = TIER_LIMITS[tier] ?? TIER_LIMITS.free;
+  const isPro = tier === "pro" || tier === "business";
 
   return NextResponse.json({
     used: used ?? 0,
-    limit: FREE_LIMIT,
+    limit,
     isPro,
+    tier,
   });
 }
 

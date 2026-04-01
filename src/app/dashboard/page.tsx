@@ -10,6 +10,7 @@ interface UsageData {
   used: number;
   limit: number;
   isPro: boolean;
+  tier?: string;
 }
 
 interface FillEntry {
@@ -54,10 +55,13 @@ function DashboardContent() {
     if (url) window.location.href = url;
   };
 
-  const usedPct = usage ? Math.min(100, (usage.used / usage.limit) * 100) : 0;
-  const isPro = usage?.isPro ?? false;
-  const visibleFills = isPro ? fills : fills.slice(0, 3);
-  const lockedFills = isPro ? [] : fills.slice(3);
+  const tier = usage?.tier ?? "free";
+  const isPaid = tier === "pro" || tier === "business";
+  const usedPct = usage && !isPaid ? Math.min(100, (usage.used / usage.limit) * 100) : 0;
+  const visibleFills = isPaid ? fills : fills.slice(0, 3);
+  const lockedFills = isPaid ? [] : fills.slice(3);
+
+  const tierLabel = tier === "business" ? "Business Plan" : tier === "pro" ? "Pro Plan" : "Free Plan";
 
   return (
     <div className="mx-auto max-w-4xl px-4 py-10 sm:px-6 lg:px-8">
@@ -72,12 +76,12 @@ function DashboardContent() {
         {/* Plan badge */}
         {usage && (
           <div className={`flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold ${
-            isPro
+            isPaid
               ? "bg-accent/10 text-accent"
               : "bg-surface-alt text-text-muted"
           }`}>
-            {isPro ? <Sparkles className="h-3.5 w-3.5" /> : <User className="h-3.5 w-3.5" />}
-            {isPro ? "Pro Plan" : "Free Plan"}
+            {isPaid ? <Sparkles className="h-3.5 w-3.5" /> : <User className="h-3.5 w-3.5" />}
+            {tierLabel}
           </div>
         )}
       </div>
@@ -85,7 +89,7 @@ function DashboardContent() {
       {upgraded && (
         <div className="mt-4 rounded-xl border border-accent/30 bg-accent/5 p-4 text-sm text-accent font-medium">
           <Sparkles className="mr-2 inline h-4 w-4" />
-          You&apos;ve upgraded to Pro! Enjoy unlimited fills.
+          You&apos;ve upgraded! Enjoy your new plan.
         </div>
       )}
 
@@ -96,13 +100,15 @@ function DashboardContent() {
           {usage ? (
             <>
               <p className="mt-2 text-sm text-text-muted">
-                {isPro ? (
+                {tier === "pro" ? (
                   "Unlimited fills — Pro plan active"
+                ) : tier === "business" ? (
+                  <>{usage.used} of {usage.limit} fills used — Business plan</>
                 ) : (
                   <>{usage.used} of {usage.limit} free fills used</>
                 )}
               </p>
-              {!isPro && (
+              {!isPaid && (
                 <>
                   <div className="mt-3 h-2 rounded-full bg-surface-alt overflow-hidden">
                     <div
@@ -119,7 +125,24 @@ function DashboardContent() {
                   </button>
                 </>
               )}
-              {isPro && (
+              {tier === "business" && (
+                <>
+                  <div className="mt-3 h-2 rounded-full bg-surface-alt overflow-hidden">
+                    <div
+                      className="h-full rounded-full bg-accent transition-all"
+                      style={{ width: `${Math.min(100, (usage.used / usage.limit) * 100)}%` }}
+                    />
+                  </div>
+                  <button
+                    onClick={handleManageBilling}
+                    className="mt-4 flex h-11 w-full items-center justify-center gap-2 rounded-xl border border-border text-sm font-semibold hover:bg-surface-alt transition-colors"
+                  >
+                    <ExternalLink className="h-4 w-4" />
+                    Manage Billing
+                  </button>
+                </>
+              )}
+              {tier === "pro" && (
                 <button
                   onClick={handleManageBilling}
                   className="mt-4 flex h-11 w-full items-center justify-center gap-2 rounded-xl border border-border text-sm font-semibold hover:bg-surface-alt transition-colors"
@@ -217,7 +240,7 @@ function DashboardContent() {
       </div>
 
       {/* Upgrade banner for free users */}
-      {usage && !isPro && (
+      {usage && !isPaid && (
         <div className="mt-6 rounded-xl bg-navy p-6 text-white">
           <div className="flex flex-col items-start gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div>

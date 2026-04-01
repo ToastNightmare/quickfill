@@ -3,6 +3,7 @@ import { Inter } from "next/font/google";
 import { ClerkProvider } from "@clerk/nextjs";
 import "./globals.css";
 import { Navbar } from "@/components/Navbar";
+import { APP_CONFIG } from "@/lib/config";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -23,10 +24,11 @@ export const metadata: Metadata = {
     title: "Fill PDF Forms Online Free | QuickFill",
     description:
       "Upload any PDF form and fill it online in seconds. ATO, Medicare, Centrelink, rental apps, council forms. Smart field detection, instant download.",
-    url: "https://quickfill-ivory.vercel.app",
+    url: APP_CONFIG.url,
     siteName: "QuickFill",
     type: "website",
     locale: "en_AU",
+    images: [{ url: "/opengraph-image", width: 1200, height: 630 }],
   },
 };
 

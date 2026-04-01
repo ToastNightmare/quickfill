@@ -1,7 +1,8 @@
 import type { MetadataRoute } from "next";
+import { APP_CONFIG } from "@/lib/config";
 
 export default function sitemap(): MetadataRoute.Sitemap {
-  const base = "https://quickfill.app";
+  const base = APP_CONFIG.url;
 
   return [
     { url: base, lastModified: new Date(), changeFrequency: "weekly", priority: 1 },

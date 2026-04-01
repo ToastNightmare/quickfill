@@ -1,4 +1,5 @@
 import type { MetadataRoute } from "next";
+import { APP_CONFIG } from "@/lib/config";
 
 export default function robots(): MetadataRoute.Robots {
   return {
@@ -7,6 +8,6 @@ export default function robots(): MetadataRoute.Robots {
       allow: "/",
       disallow: ["/api/", "/dashboard"],
     },
-    sitemap: "https://quickfill.app/sitemap.xml",
+    sitemap: `${APP_CONFIG.url}/sitemap.xml`,
   };
 }
