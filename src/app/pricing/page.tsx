@@ -4,16 +4,16 @@ import { Check, X, Sparkles } from "lucide-react";
 import { useState } from "react";
 
 const features = [
-  { name: "Documents per month", free: "3", pro: "Unlimited", business: "50" },
-  { name: "All field types (text, checkbox, signature, date)", free: true, pro: true, business: true },
+  { name: "Documents per month", free: "3", pro: "Unlimited", business: "Unlimited" },
+  { name: "No watermark on downloads", free: false, pro: true, business: true },
+  { name: "Profile auto-fill", free: true, pro: true, business: true },
   { name: "AcroForm auto-detection", free: true, pro: true, business: true },
-  { name: "Instant PDF download", free: true, pro: true, business: true },
-  { name: "Auto-fill profile", free: true, pro: true, business: true },
+  { name: "All field types", free: true, pro: true, business: true },
+  { name: "Fill history", free: "Last 3", pro: "Last 10", business: "Unlimited" },
   { name: "Priority support", free: false, pro: true, business: true },
-  { name: "Batch processing", free: false, pro: true, business: true },
-  { name: "No watermark", free: false, pro: true, business: true },
-  { name: "Unlimited fill history", free: false, pro: false, business: true },
-  { name: "Team profiles (coming soon)", free: false, pro: false, business: true },
+  { name: "Dedicated account support", free: false, pro: false, business: true },
+  { name: "Team profiles", free: false, pro: false, business: "Coming soon" },
+  { name: "API access", free: false, pro: false, business: "Coming soon" },
 ];
 
 const faqs = [
@@ -39,7 +39,7 @@ const faqs = [
   },
   {
     q: "What's the difference between Pro and Business?",
-    a: "Pro gives you unlimited fills per month. Business gives you 50 fills with unlimited fill history, priority support, and team profiles (coming soon). Choose Pro for volume, Business for team features.",
+    a: "Pro gives you unlimited fills with no watermark — perfect for individuals and sole traders. Business adds unlimited fill history, dedicated support, and team features like shared profiles and API access — built for agencies and bookkeeping firms.",
   },
 ];
 
@@ -140,6 +140,7 @@ export default function PricingPage() {
                 <span className="text-text-muted">/month</span>
               </div>
               <p className="mt-4 text-sm text-text-muted">Perfect for occasional use.</p>
+              <p className="mt-2 text-xs font-medium text-text-muted">Best for: Occasional form filling</p>
               <a
                 href="/editor"
                 className="mt-8 flex h-11 items-center justify-center rounded-xl border border-border text-sm font-semibold hover:bg-surface-alt transition-colors"
@@ -181,7 +182,8 @@ export default function PricingPage() {
                   </div>
                 )}
               </div>
-              <p className="mt-4 text-sm text-text-muted">For professionals who need volume.</p>
+              <p className="mt-4 text-sm text-text-muted">Unlimited fills, no watermark, priority support.</p>
+              <p className="mt-2 text-xs font-medium text-text-muted">Best for: Sole traders, bookkeepers, individuals</p>
               {billing === "monthly" ? (
                 <button
                   onClick={() => handleUpgrade("pro")}
@@ -201,24 +203,25 @@ export default function PricingPage() {
             </div>
 
             {/* Business */}
-            <div className="rounded-xl border border-border bg-surface p-8">
-              <h2 className="text-lg font-semibold">Business</h2>
+            <div className="rounded-xl border border-white/10 p-8" style={{ backgroundColor: "#1a1a2e" }}>
+              <h2 className="text-lg font-semibold text-white">Business</h2>
               <div className="mt-4 flex items-baseline gap-1">
-                <span className="text-4xl font-extrabold">$29</span>
-                <span className="text-text-muted">/month</span>
+                <span className="text-4xl font-extrabold text-white">$29</span>
+                <span className="text-gray-400">/month</span>
               </div>
-              <p className="mt-4 text-sm text-text-muted">For teams and organisations.</p>
+              <p className="mt-4 text-sm text-gray-300">Built for agencies &amp; bookkeepers.</p>
+              <p className="mt-2 text-xs font-medium text-gray-400">Best for: Agencies, teams, and organisations</p>
               {billing === "monthly" ? (
                 <button
                   onClick={() => handleUpgrade("business")}
-                  className="mt-8 flex h-11 w-full items-center justify-center gap-2 rounded-xl border-2 border-accent text-sm font-semibold text-accent hover:bg-accent hover:text-white transition-colors"
+                  className="mt-8 flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-white text-sm font-semibold text-[#1a1a2e] hover:bg-gray-100 transition-colors"
                 >
                   Get Business
                 </button>
               ) : (
                 <button
                   disabled
-                  className="mt-8 flex h-11 w-full items-center justify-center gap-2 rounded-xl border border-border text-sm font-semibold text-text-muted cursor-not-allowed"
+                  className="mt-8 flex h-11 w-full items-center justify-center gap-2 rounded-xl border border-white/20 text-sm font-semibold text-gray-400 cursor-not-allowed"
                 >
                   Coming Soon
                 </button>
@@ -274,6 +277,11 @@ export default function PricingPage() {
             </table>
           </div>
         </section>
+
+        {/* Trust strip */}
+        <div className="bg-surface border-y border-border px-4 py-5 text-center text-sm text-text-muted">
+          🔒 Secure checkout via Stripe · Cancel any time · No setup fees · Instant access
+        </div>
 
         {/* FAQ */}
         <section className="bg-surface-alt px-4 py-20 sm:px-6 lg:px-8">
