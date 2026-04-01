@@ -10,6 +10,10 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
+  icons: {
+    icon: "/favicon.svg",
+    shortcut: "/favicon.svg",
+  },
   title: "Fill PDF Forms Online Free | QuickFill",
   description:
     "Fill PDF forms online free. Upload ATO tax forms, Medicare claims, Centrelink forms, rental applications, council permits and Australian documents. Smart field detection, instant download. No software required.",

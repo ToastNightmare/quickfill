@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { Menu, X, FileText } from "lucide-react";
+import { Menu, X } from "lucide-react";
+import { Logo } from "@/components/Logo";
 import { useAuth, UserButton } from "@clerk/nextjs";
 
 export function Navbar() {
@@ -12,9 +13,8 @@ export function Navbar() {
   return (
     <nav className="sticky top-0 z-50 border-b border-border bg-surface/95 backdrop-blur supports-[backdrop-filter]:bg-surface/80">
       <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
-        <Link href="/" className="flex items-center gap-2 font-bold text-xl text-navy">
-          <FileText className="h-6 w-6 text-accent" />
-          QuickFill
+        <Link href="/" className="flex items-center">
+          <Logo variant="full" className="h-8" />
         </Link>
 
         {/* Desktop nav */}
