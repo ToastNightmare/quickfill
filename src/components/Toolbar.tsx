@@ -1,6 +1,5 @@
 "use client";
 
-import { useState } from "react";
 import {
   Type,
   CheckSquare,
@@ -10,7 +9,6 @@ import {
   Redo2,
   Trash2,
   Download,
-  HelpCircle,
   Sparkles,
   UserCheck,
 } from "lucide-react";
@@ -60,8 +58,6 @@ export function Toolbar({
   onAutoFill,
   mobile,
 }: ToolbarProps) {
-  const [showShortcuts, setShowShortcuts] = useState(false);
-
   const showFontSize = selectedField && selectedField.type !== "checkbox";
   const currentFontSize = showFontSize
     ? (selectedField as { fontSize?: number }).fontSize ?? 14
@@ -212,54 +208,6 @@ export function Toolbar({
         <span className="hidden sm:inline">Clear All</span>
       </button>
 
-      <div className="mt-auto flex flex-col gap-2">
-        {/* Shortcuts help */}
-        <div className="relative">
-          <button
-            onClick={() => setShowShortcuts(!showShortcuts)}
-            title="Keyboard Shortcuts"
-            className="flex h-8 w-full items-center gap-2 rounded-lg px-2 text-xs font-medium text-text-muted hover:bg-surface-alt hover:text-text transition-colors"
-          >
-            <HelpCircle className="h-3.5 w-3.5 shrink-0" />
-            <span className="hidden sm:inline">Shortcuts</span>
-          </button>
-          {showShortcuts && (
-            <div className="absolute bottom-full left-0 z-50 mb-2 w-56 rounded-xl border border-border bg-surface p-4 shadow-xl">
-              <p className="mb-3 text-[10px] font-semibold uppercase tracking-widest text-text-muted">
-                Keyboard Shortcuts
-              </p>
-              <div className="space-y-1.5 text-xs">
-                {[
-                  ["Del / \u232b", "Remove selected"],
-                  ["Esc", "Deselect / cancel"],
-                  ["\u2190\u2191\u2192\u2193", "Nudge 1px"],
-                  ["Shift+\u2190\u2191\u2192\u2193", "Nudge 10px"],
-                  ["\u2318/Ctrl+D", "Duplicate field"],
-                ].map(([key, desc]) => (
-                  <div key={key} className="flex items-center justify-between gap-2">
-                    <span className="text-text-muted">{desc}</span>
-                    <kbd className="shrink-0 rounded bg-surface-alt px-1.5 py-0.5 text-[10px] font-mono">
-                      {key}
-                    </kbd>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-
-        <button
-          onClick={onDownload}
-          disabled={isDownloading}
-          title="Download PDF"
-          className="flex h-11 w-full items-center gap-2 rounded-lg bg-accent px-2 text-sm font-semibold text-white hover:bg-accent-hover transition-colors disabled:opacity-60"
-        >
-          <Download className="h-5 w-5 shrink-0" />
-          <span className="hidden sm:inline">
-            {isDownloading ? "Building..." : "Download PDF"}
-          </span>
-        </button>
-      </div>
     </div>
   );
 }

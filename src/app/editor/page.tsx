@@ -491,7 +491,7 @@ export default function EditorPage() {
   }
 
   return (
-    <div className="flex flex-1 flex-col overflow-hidden sm:flex-row">
+    <div className="flex flex-col h-[calc(100vh-64px)]">
       {/* Loading overlay */}
       {isLoading && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-surface/80">
@@ -516,28 +516,8 @@ export default function EditorPage() {
         </div>
       )}
 
-      <div className="flex-shrink-0 sticky top-0 self-start h-screen overflow-y-auto hidden sm:flex">
-        <Toolbar
-          activeTool={activeTool}
-          onToolSelect={setActiveTool}
-          onUndo={undo}
-          onRedo={redo}
-          onClear={handleClear}
-          onDownload={handleDownload}
-          canUndo={canUndo}
-          canRedo={canRedo}
-          isDownloading={isDownloading}
-          selectedField={selectedField}
-          onFontSizeChange={handleFontSizeChange}
-          onDetectFields={handleDetectFields}
-          isDetecting={isDetecting}
-          onAutoFill={handleAutoFillFromProfile}
-        />
-      </div>
-
-      <div ref={viewerContainerRef} className="flex-1 overflow-auto">
-        {/* Top bar with file name, zoom, progress, and page nav */}
-        <div className="flex items-center justify-between gap-2 border-b border-border bg-surface px-4 py-2">
+      {/* Top bar with file name, zoom, progress, and page nav */}
+      <div className="flex items-center justify-between gap-2 border-b border-border bg-surface px-4 py-2 flex-shrink-0">
           {/* Left: filename + start over */}
           <div className="flex items-center gap-2 min-w-0">
             <p className="truncate text-sm font-medium text-text-muted">{fileName}</p>
@@ -624,25 +604,48 @@ export default function EditorPage() {
           </div>
         </div>
 
-        <PdfViewer
-          ref={pdfViewerRef}
-          pdfBytes={pdfBytes}
-          currentPage={currentPage}
-          fields={fields}
-          activeTool={activeTool}
-          selectedFieldId={selectedFieldId}
-          onFieldAdd={handleFieldAdd}
-          onFieldUpdate={handleFieldUpdate}
-          onFieldSelect={setSelectedFieldId}
-          onToolSelect={setActiveTool}
-          onFieldDelete={handleFieldDelete}
-          onFieldDuplicate={handleFieldDuplicate}
-          onPageScaleSet={handlePageScaleSet}
-          totalPages={totalPages}
-          onTotalPagesChange={setTotalPages}
-          zoom={zoom}
-          highlightFieldIds={highlightFieldIds}
-        />
+      {/* Sidebar + Canvas row */}
+      <div className="flex flex-1 min-h-0">
+        <div className="flex-shrink-0 h-full overflow-y-auto hidden sm:flex">
+          <Toolbar
+            activeTool={activeTool}
+            onToolSelect={setActiveTool}
+            onUndo={undo}
+            onRedo={redo}
+            onClear={handleClear}
+            onDownload={handleDownload}
+            canUndo={canUndo}
+            canRedo={canRedo}
+            isDownloading={isDownloading}
+            selectedField={selectedField}
+            onFontSizeChange={handleFontSizeChange}
+            onDetectFields={handleDetectFields}
+            isDetecting={isDetecting}
+            onAutoFill={handleAutoFillFromProfile}
+          />
+        </div>
+
+        <div ref={viewerContainerRef} className="flex-1 h-full overflow-auto">
+          <PdfViewer
+            ref={pdfViewerRef}
+            pdfBytes={pdfBytes}
+            currentPage={currentPage}
+            fields={fields}
+            activeTool={activeTool}
+            selectedFieldId={selectedFieldId}
+            onFieldAdd={handleFieldAdd}
+            onFieldUpdate={handleFieldUpdate}
+            onFieldSelect={setSelectedFieldId}
+            onToolSelect={setActiveTool}
+            onFieldDelete={handleFieldDelete}
+            onFieldDuplicate={handleFieldDuplicate}
+            onPageScaleSet={handlePageScaleSet}
+            totalPages={totalPages}
+            onTotalPagesChange={setTotalPages}
+            zoom={zoom}
+            highlightFieldIds={highlightFieldIds}
+          />
+        </div>
       </div>
 
       {/* Floating field inspector */}

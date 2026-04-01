@@ -121,7 +121,7 @@ export async function fillPdf(
     const pages = pdfDoc.getPages();
     for (const page of pages) {
       const { width } = page.getSize();
-      const text = `Filled with QuickFill \u2014 ${APP_CONFIG.domain}`;
+      const text = `Filled with QuickFill - ${APP_CONFIG.domain}`;
       const textWidth = font.widthOfTextAtSize(text, 8);
       page.drawText(text, {
         x: width - textWidth - 12,

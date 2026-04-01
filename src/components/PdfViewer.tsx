@@ -444,6 +444,23 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
           style={{ width: dimensions.width, height: dimensions.height }}
         />
 
+        {snapPreview && (
+          <div
+            style={{
+              position: "absolute",
+              left: snapPreview.x * zoomFactor,
+              top: snapPreview.y * zoomFactor,
+              width: snapPreview.width * zoomFactor,
+              height: snapPreview.height * zoomFactor,
+              border: "2px dashed #4f8ef7",
+              borderRadius: 3,
+              backgroundColor: "rgba(79, 142, 247, 0.08)",
+              pointerEvents: "none",
+              zIndex: 10,
+            }}
+          />
+        )}
+
         <Stage
           width={dimensions.width}
           height={dimensions.height}
