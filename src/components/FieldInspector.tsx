@@ -1,6 +1,6 @@
 "use client";
 
-import { X, Minus, Plus } from "lucide-react";
+import { X, Minus, Plus, Lock } from "lucide-react";
 import type { EditorField } from "@/lib/types";
 
 const TYPE_LABELS: Record<string, string> = {
@@ -21,6 +21,7 @@ interface FieldInspectorProps {
 export function FieldInspector({ field, onUpdate, onDelete, onDeselect, position }: FieldInspectorProps) {
   const showFontSize = field.type !== "checkbox";
   const fontSize = showFontSize ? (field as { fontSize?: number }).fontSize ?? 14 : null;
+  const isSnapped = field.snapped ?? false;
 
   return (
     <div
@@ -28,11 +29,19 @@ export function FieldInspector({ field, onUpdate, onDelete, onDeselect, position
       style={{ top: position.y, left: position.x }}
     >
       <div className="rounded-lg border border-[#e5e7eb] bg-white p-3 shadow-lg">
-        {/* Row 1: Type badge + close */}
+        {/* Row 1: Type badge + snapped indicator + close */}
         <div className="flex items-center justify-between">
-          <span className="inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-medium text-gray-600">
-            {TYPE_LABELS[field.type] ?? field.type}
-          </span>
+          <div className="flex items-center gap-1.5">
+            <span className="inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-medium text-gray-600">
+              {TYPE_LABELS[field.type] ?? field.type}
+            </span>
+            {isSnapped && (
+              <span className="inline-flex items-center gap-0.5 rounded-full bg-blue-50 px-1.5 py-0.5 text-[9px] font-medium text-blue-600">
+                <Lock className="h-2.5 w-2.5" />
+                Snapped
+              </span>
+            )}
+          </div>
           <button
             onClick={onDeselect}
             className="flex h-5 w-5 items-center justify-center rounded text-gray-400 hover:bg-gray-100 hover:text-gray-600 transition-colors"
@@ -42,7 +51,7 @@ export function FieldInspector({ field, onUpdate, onDelete, onDeselect, position
           </button>
         </div>
 
-        {/* Row 2: Font size stepper */}
+        {/* Row 2: Font size stepper (always shown for text fields, snapped or not) */}
         {showFontSize && fontSize !== null && (
           <div className="mt-2 flex items-center gap-1.5">
             <button

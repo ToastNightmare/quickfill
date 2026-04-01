@@ -42,6 +42,13 @@ interface SnapPreview {
   height: number;
 }
 
+/** Infer a sensible font size from field height */
+function inferFontSize(boxHeight: number): number {
+  // Use ~60% of box height, clamped to 8-36px
+  const raw = Math.round(boxHeight * 0.6);
+  return Math.max(8, Math.min(36, raw));
+}
+
 export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function PdfViewer({
   pdfBytes,
   currentPage,
@@ -72,11 +79,16 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
   const [snapPreview, setSnapPreview] = useState<SnapPreview | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [cursorStyle, setCursorStyle] = useState("default");
+  const [snapPreviewOpacity, setSnapPreviewOpacity] = useState(0);
   const transformerRef = useRef<Konva.Transformer>(null);
   const selectedShapeRef = useRef<Konva.Node | null>(null);
   const dragStartedRef = useRef(false);
   const mouseDownPos = useRef<{x: number, y: number} | null>(null);
   const isDragMove = useRef(false);
+  const snapPreviewTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Suppress unused var warning
+  void onFieldDuplicate;
 
   useImperativeHandle(ref, () => ({
     getCanvasDataURL: () => canvasRef.current?.toDataURL("image/png") ?? null,
@@ -204,6 +216,16 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [selectedFieldId, editingFieldId, onFieldDelete]);
 
+  // Animate snap preview opacity
+  useEffect(() => {
+    if (snapPreview) {
+      // Fade in
+      requestAnimationFrame(() => setSnapPreviewOpacity(1));
+    } else {
+      setSnapPreviewOpacity(0);
+    }
+  }, [snapPreview]);
+
   // Update cursor based on context
   const updateCursor = useCallback((stage: Konva.Stage, pos: { x: number; y: number }) => {
     if (isDragging) {
@@ -215,7 +237,6 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
       return;
     }
 
-    // Check if hovering over a field
     const shape = stage.getIntersection(pos);
     if (shape) {
       setCursorStyle("move");
@@ -225,7 +246,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
     setCursorStyle("default");
   }, [activeTool, isDragging]);
 
-  // Hover snap preview on mouse move
+  // Hover snap preview on mouse move (throttled)
   const handleStageMouseMove = useCallback(
     (e: Konva.KonvaEventObject<MouseEvent>) => {
       const stage = e.target.getStage();
@@ -236,11 +257,16 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
       updateCursor(stage, pos);
 
       if (!activeTool || !canvasRef.current) {
-        setSnapPreview(null);
+        if (snapPreview) setSnapPreview(null);
         return;
       }
 
-      // Throttle snap detection
+      // Throttle snap detection to ~30fps
+      if (snapPreviewTimer.current) return;
+      snapPreviewTimer.current = setTimeout(() => {
+        snapPreviewTimer.current = null;
+      }, 33);
+
       try {
         const snap = detectSnapBox(canvasRef.current, pos.x, pos.y);
         if (snap) {
@@ -257,7 +283,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
         setSnapPreview(null);
       }
     },
-    [activeTool, zoomFactor, updateCursor]
+    [activeTool, zoomFactor, updateCursor, snapPreview]
   );
 
   const handleStageMouseLeave = useCallback(() => {
@@ -293,6 +319,90 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
       }
     },
     []
+  );
+
+  // Core field creation logic - shared by click and touch
+  const createFieldAtPoint = useCallback(
+    (posX: number, posY: number, clickedOnEmpty: boolean) => {
+      if (!activeTool || !clickedOnEmpty) return false;
+
+      const id = genId();
+
+      let fieldX = posX / zoomFactor;
+      let fieldY = posY / zoomFactor;
+      let fieldW: number;
+      let fieldH: number;
+      let snapped = false;
+
+      const defaults = {
+        text: { w: 200, h: 28 },
+        checkbox: { w: 24, h: 24 },
+        signature: { w: 200, h: 40 },
+        date: { w: 160, h: 28 },
+      };
+      fieldW = defaults[activeTool].w;
+      fieldH = defaults[activeTool].h;
+
+      // Snap-first: always try snap detection first
+      if (snapPreview) {
+        fieldX = snapPreview.x;
+        fieldY = snapPreview.y;
+        fieldW = snapPreview.width;
+        fieldH = snapPreview.height;
+        snapped = true;
+      } else if (canvasRef.current) {
+        try {
+          const snap = detectSnapBox(canvasRef.current, posX, posY);
+          if (snap) {
+            fieldX = snap.x / zoomFactor;
+            fieldY = snap.y / zoomFactor;
+            fieldW = snap.width / zoomFactor;
+            fieldH = snap.height / zoomFactor;
+            snapped = true;
+          }
+        } catch {
+          // Fall back to default placement
+        }
+      }
+
+      // Infer font size from box height when snapped
+      const inferredFontSize = snapped ? inferFontSize(fieldH) : undefined;
+
+      const base = { id, x: fieldX, y: fieldY, page: currentPage, snapped };
+
+      let field: EditorField;
+      switch (activeTool) {
+        case "text":
+          field = { ...base, type: "text", width: fieldW, height: fieldH, value: "", fontSize: inferredFontSize ?? 14 };
+          break;
+        case "checkbox":
+          field = { ...base, type: "checkbox", width: fieldW, height: fieldH, checked: false };
+          break;
+        case "signature":
+          field = { ...base, type: "signature", width: fieldW, height: fieldH, value: "", fontSize: inferredFontSize ?? 16 };
+          break;
+        case "date":
+          field = { ...base, type: "date", width: fieldW, height: fieldH, value: new Date().toLocaleDateString("en-US"), fontSize: inferredFontSize ?? 14 };
+          break;
+      }
+
+      onFieldAdd(field);
+      onFieldSelect(id);
+
+      // Immediately enter edit mode for text-like fields
+      if (activeTool !== "checkbox") {
+        setEditingFieldId(id);
+      }
+
+      // Flash confirmation on snap
+      if (snapped) {
+        setSnappedFieldId(id);
+        setTimeout(() => setSnappedFieldId(null), 600);
+      }
+
+      return true;
+    },
+    [activeTool, currentPage, onFieldAdd, onFieldSelect, zoomFactor, snapPreview]
   );
 
   const handleStageClick = useCallback(
@@ -334,89 +444,91 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
       }
 
       if (activeTool) {
+        createFieldAtPoint(pos.x, pos.y, true);
+      } else {
+        onFieldSelect(null);
+        setEditingFieldId(null);
+      }
+    },
+    [activeTool, currentPage, fields, onFieldSelect, onToolSelect, createFieldAtPoint]
+  );
+
+  // Touch handler for mobile tap-to-place
+  const handleTouchEnd = useCallback(
+    (e: React.TouchEvent<HTMLDivElement>) => {
+      if (!activeTool || !canvasRef.current) return;
+
+      // Only handle single-finger taps
+      if (e.changedTouches.length !== 1) return;
+
+      const touch = e.changedTouches[0];
+      const canvasEl = canvasRef.current;
+      const rect = canvasEl.getBoundingClientRect();
+
+      const touchX = touch.clientX - rect.left;
+      const touchY = touch.clientY - rect.top;
+
+      // Bounds check
+      if (touchX < 0 || touchY < 0 || touchX > rect.width || touchY > rect.height) return;
+
+      // Try snap detection at touch point
+      const snap = detectSnapBox(canvasEl, touchX, touchY);
+
+      if (snap) {
+        e.preventDefault();
+
         const id = genId();
+        const fieldX = snap.x / zoomFactor;
+        const fieldY = snap.y / zoomFactor;
+        const fieldW = snap.width / zoomFactor;
+        const fieldH = snap.height / zoomFactor;
+        const inferredFontSize = inferFontSize(fieldH);
 
-        let fieldX = pos.x / zoomFactor;
-        let fieldY = pos.y / zoomFactor;
-        let fieldW: number;
-        let fieldH: number;
-        let snapped = false;
-
-        // Default sizes per tool
-        const defaults = {
-          text: { w: 200, h: 28 },
-          checkbox: { w: 24, h: 24 },
-          signature: { w: 200, h: 40 },
-          date: { w: 160, h: 28 },
-        };
-        fieldW = defaults[activeTool].w;
-        fieldH = defaults[activeTool].h;
-
-        // Use snap preview if available, otherwise try detection
-        if (snapPreview) {
-          fieldX = snapPreview.x;
-          fieldY = snapPreview.y;
-          fieldW = snapPreview.width;
-          fieldH = snapPreview.height;
-          snapped = true;
-        } else if (canvasRef.current) {
-          try {
-            const snap = detectSnapBox(canvasRef.current, pos.x, pos.y);
-            if (snap) {
-              fieldX = snap.x / zoomFactor;
-              fieldY = snap.y / zoomFactor;
-              fieldW = snap.width / zoomFactor;
-              fieldH = snap.height / zoomFactor;
-              snapped = true;
-            }
-          } catch {
-            // Fall back to default placement
-          }
-        }
-
-        const base = { id, x: fieldX, y: fieldY, page: currentPage };
+        const base = { id, x: fieldX, y: fieldY, page: currentPage, snapped: true };
 
         let field: EditorField;
         switch (activeTool) {
           case "text":
-            field = { ...base, type: "text", width: fieldW, height: fieldH, value: "", fontSize: 14 };
+            field = { ...base, type: "text", width: fieldW, height: fieldH, value: "", fontSize: inferredFontSize };
             break;
           case "checkbox":
             field = { ...base, type: "checkbox", width: fieldW, height: fieldH, checked: false };
             break;
           case "signature":
-            field = { ...base, type: "signature", width: fieldW, height: fieldH, value: "", fontSize: 16 };
+            field = { ...base, type: "signature", width: fieldW, height: fieldH, value: "", fontSize: inferredFontSize };
             break;
           case "date":
-            field = { ...base, type: "date", width: fieldW, height: fieldH, value: new Date().toLocaleDateString("en-US"), fontSize: 14 };
+            field = { ...base, type: "date", width: fieldW, height: fieldH, value: new Date().toLocaleDateString("en-US"), fontSize: inferredFontSize };
             break;
         }
 
         onFieldAdd(field);
         onFieldSelect(id);
 
-        // Immediately enter edit mode for text-like fields
         if (activeTool !== "checkbox") {
           setEditingFieldId(id);
         }
 
-        // Flash blue border on snap
-        if (snapped) {
-          setSnappedFieldId(id);
-          setTimeout(() => setSnappedFieldId(null), 500);
-        }
-      } else {
-        onFieldSelect(null);
-        setEditingFieldId(null);
+        setSnappedFieldId(id);
+        setTimeout(() => setSnappedFieldId(null), 600);
       }
     },
-    [activeTool, currentPage, fields, onFieldAdd, onFieldSelect, onToolSelect, zoomFactor, snapPreview]
+    [activeTool, currentPage, onFieldAdd, onFieldSelect, zoomFactor]
   );
 
   const pageFields = fields.filter((f) => f.page === currentPage);
 
+  // Determine if selected field is snapped (for transformer behavior)
+  const selectedFieldIsSnapped = selectedFieldId
+    ? fields.find((f) => f.id === selectedFieldId)?.snapped ?? false
+    : false;
+
   return (
-    <div ref={containerRef} className="relative flex-1 overflow-auto bg-[#f0f0f0] p-4">
+    <div
+      ref={containerRef}
+      className="relative flex-1 overflow-auto bg-[#f0f0f0] p-4"
+      onTouchEnd={handleTouchEnd}
+    >
       {loading && (
         <div className="absolute inset-0 z-10 flex items-center justify-center bg-surface/80">
           <div className="flex flex-col items-center gap-3">
@@ -444,21 +556,47 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
           style={{ width: dimensions.width, height: dimensions.height }}
         />
 
-        {snapPreview && (
+        {/* Strong snap preview overlay */}
+        {activeTool && snapPreview && (
           <div
+            className="snap-preview-highlight"
             style={{
               position: "absolute",
               left: snapPreview.x * zoomFactor,
               top: snapPreview.y * zoomFactor,
               width: snapPreview.width * zoomFactor,
               height: snapPreview.height * zoomFactor,
-              border: "2px dashed #4f8ef7",
-              borderRadius: 3,
-              backgroundColor: "rgba(79, 142, 247, 0.08)",
+              border: "2.5px solid #3b82f6",
+              borderRadius: 4,
+              backgroundColor: "rgba(59, 130, 246, 0.12)",
+              boxShadow: "0 0 0 1px rgba(59, 130, 246, 0.25), inset 0 0 0 1px rgba(59, 130, 246, 0.08)",
               pointerEvents: "none",
               zIndex: 10,
+              opacity: snapPreviewOpacity,
+              transition: "opacity 150ms ease-out, left 80ms ease-out, top 80ms ease-out, width 80ms ease-out, height 80ms ease-out",
             }}
-          />
+          >
+            {/* Snap label */}
+            <div
+              style={{
+                position: "absolute",
+                top: -22,
+                left: 0,
+                fontSize: 10,
+                fontWeight: 600,
+                color: "#3b82f6",
+                backgroundColor: "rgba(255, 255, 255, 0.95)",
+                padding: "1px 6px",
+                borderRadius: 3,
+                border: "1px solid rgba(59, 130, 246, 0.3)",
+                lineHeight: "16px",
+                whiteSpace: "nowrap",
+                letterSpacing: "0.02em",
+              }}
+            >
+              Snap here
+            </div>
+          </div>
         )}
 
         <Stage
@@ -479,33 +617,6 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
           }}
         >
           <Layer>
-            {/* Snap preview rectangle with blue dashed border */}
-            {activeTool && snapPreview && (
-              <>
-                <Rect
-                  x={snapPreview.x}
-                  y={snapPreview.y}
-                  width={snapPreview.width}
-                  height={snapPreview.height}
-                  fill="rgba(79, 142, 247, 0.08)"
-                  stroke="#4f8ef7"
-                  strokeWidth={1.5}
-                  dash={[4, 3]}
-                  cornerRadius={2}
-                  listening={false}
-                />
-                <Text
-                  x={snapPreview.x + snapPreview.width - 32}
-                  y={snapPreview.y - 16}
-                  text="Snap"
-                  fontSize={10}
-                  fill="#4f8ef7"
-                  fontStyle="bold"
-                  listening={false}
-                />
-              </>
-            )}
-
             {pageFields.map((field) => (
               <FieldShape
                 key={field.id}
@@ -516,7 +627,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
                 isHovered={field.id === hoveredFieldId}
                 onSelect={() => {
                   onFieldSelect(field.id);
-                  onToolSelect(null); // FIX 3: Clear active tool when selecting a field
+                  onToolSelect(null);
                   selectedShapeRef.current = null;
                   if (!dragStartedRef.current) {
                     setEditingFieldId(field.id);
@@ -544,7 +655,6 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
                   setIsDragging(false);
                   setCursorStyle("move");
                   onFieldUpdate(field.id, { x, y });
-                  // Reset drag flag after a tick so onClick doesn't trigger edit
                   setTimeout(() => { dragStartedRef.current = false; }, 50);
                 }}
                 onTransformStart={() => {
@@ -575,10 +685,11 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
             <Transformer
               ref={transformerRef}
               rotateEnabled={false}
-              borderStroke="#4f8ef7"
-              anchorStroke="#4f8ef7"
+              borderStroke="#3b82f6"
+              anchorStroke="#3b82f6"
               anchorFill="#fff"
-              anchorSize={8}
+              anchorSize={selectedFieldIsSnapped ? 6 : 8}
+              enabledAnchors={selectedFieldIsSnapped ? [] : undefined}
               boundBoxFunc={(oldBox, newBox) => {
                 if (newBox.width < 20 || newBox.height < 16) return oldBox;
                 return newBox;
@@ -682,21 +793,25 @@ function FieldShape({
 
   const [dragOpacity, setDragOpacity] = useState(1);
 
+  const isSnapped = field.snapped ?? false;
+
   const getBorderColor = () => {
     if (isHighlighted) return "#2563eb";
-    if (isSelected || isEditing) return "rgba(79,142,247,1)";
-    if (isHovered) return "rgba(79,142,247,0.6)";
+    if (isSelected || isEditing) return "#3b82f6";
+    if (isHovered) return "rgba(59, 130, 246, 0.6)";
+    if (isSnapped) return "rgba(59, 130, 246, 0.25)";
     return "rgba(79,142,247,0.35)";
   };
   const getBorderWidth = () => {
-    if (isHighlighted) return 3;
+    if (isHighlighted) return 2.5;
     if (isSelected || isEditing) return 2;
     if (isHovered) return 1.5;
     return 1;
   };
   const getFill = () => {
-    if (isSelected || isEditing) return "rgba(79,142,247,0.06)";
-    if (isHovered) return "rgba(79,142,247,0.03)";
+    if (isHighlighted) return "rgba(59, 130, 246, 0.08)";
+    if (isSelected || isEditing) return "rgba(59, 130, 246, 0.05)";
+    if (isHovered) return "rgba(59, 130, 246, 0.03)";
     return "transparent";
   };
 
@@ -745,16 +860,16 @@ function FieldShape({
         <Rect
           width={field.width}
           height={field.height}
-          fill={field.checked ? "rgba(79,142,247,0.08)" : "white"}
-          stroke={isHighlighted ? "#2563eb" : isSelected ? "#4f8ef7" : isHovered ? "rgba(79,142,247,0.6)" : "#d1d5db"}
-          strokeWidth={isHighlighted ? 3 : isSelected ? 2 : isHovered ? 1.5 : 1}
+          fill={field.checked ? "rgba(59, 130, 246, 0.08)" : "white"}
+          stroke={isHighlighted ? "#2563eb" : isSelected ? "#3b82f6" : isHovered ? "rgba(59, 130, 246, 0.6)" : "#d1d5db"}
+          strokeWidth={isHighlighted ? 2.5 : isSelected ? 2 : isHovered ? 1.5 : 1}
           cornerRadius={4}
         />
         {field.checked && (
           <Text
             text={"\u2713"}
             fontSize={field.height * 0.75}
-            fill="#4f8ef7"
+            fill="#3b82f6"
             width={field.width}
             height={field.height}
             align="center"
@@ -824,7 +939,7 @@ function FieldShape({
         fill={getFill()}
         stroke={getBorderColor()}
         strokeWidth={getBorderWidth()}
-        cornerRadius={4}
+        cornerRadius={isSnapped ? 3 : 4}
       />
       {!isEditing && (
         <Text
@@ -844,4 +959,3 @@ function FieldShape({
     </Group>
   );
 }
-

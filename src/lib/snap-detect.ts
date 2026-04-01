@@ -2,6 +2,8 @@
  * Pixel-based form field boundary detection.
  * Scans a region of the PDF canvas around a click point to find
  * rectangular form boxes (input fields, lines) and returns snap coordinates.
+ *
+ * Supports full rectangles and underline-only form fields.
  */
 
 interface SnapResult {
@@ -11,13 +13,14 @@ interface SnapResult {
   height: number;
 }
 
-const DARK_THRESHOLD = 80; // pixel is "dark" if average RGB < this
-const SCAN_WIDTH = 240;
-const SCAN_HEIGHT = 80;
+const DARK_THRESHOLD = 100; // pixel is "dark" if average RGB < this (raised for lighter borders)
+const SCAN_WIDTH = 360; // wider scan to catch larger form fields
+const SCAN_HEIGHT = 120; // taller scan for better vertical coverage
 const MIN_LINE_LENGTH_H = 30; // minimum horizontal line length in pixels
-const MIN_LINE_LENGTH_V = 15; // minimum vertical line length in pixels
-const GAP_TOLERANCE = 4; // allow small gaps in lines
-const PADDING = 4;
+const MIN_LINE_LENGTH_V = 12; // minimum vertical line length in pixels
+const GAP_TOLERANCE = 6; // allow small gaps in lines (raised for dotted/dashed borders)
+const PADDING = 3;
+const UNDERLINE_DEFAULT_HEIGHT = 28; // default height for underline-only fields
 
 function isDark(data: Uint8ClampedArray, index: number): boolean {
   return (data[index] + data[index + 1] + data[index + 2]) / 3 < DARK_THRESHOLD;
@@ -108,6 +111,10 @@ function findVerticalLines(
  * Try to detect a rectangular form box around the click point.
  * Returns snap coordinates (in canvas pixel space) or null if no box found.
  *
+ * Supports:
+ * - Full rectangles (4-sided boxes)
+ * - Underline-only form fields (single horizontal line near/below click)
+ *
  * @param canvas - The PDF.js rendered canvas element
  * @param clickX - Click X in canvas pixel coordinates
  * @param clickY - Click Y in canvas pixel coordinates
@@ -140,66 +147,99 @@ export function detectSnapBox(
   const hLines = findHorizontalLines(data, sw, sh);
   const vLines = findVerticalLines(data, sw, sh);
 
-  if (hLines.length < 2 || vLines.length < 2) return null;
-
   // Sort horizontal lines by Y, vertical by X
   hLines.sort((a, b) => a.y - b.y);
   vLines.sort((a, b) => a.x - b.x);
 
-  // Find the best rectangle: two horizontal lines (top/bottom) and two vertical lines (left/right)
-  // that form a box containing the click point (relative to scan window)
+  // Click position relative to scan window
   const relClickX = clickX - sx;
   const relClickY = clickY - sy;
 
+  // --- Strategy 1: Full rectangle detection ---
   let bestBox: SnapResult | null = null;
   let bestArea = Infinity;
 
-  for (let ti = 0; ti < hLines.length - 1; ti++) {
-    const top = hLines[ti];
-    if (top.y > relClickY) break; // top must be above click
+  if (hLines.length >= 2 && vLines.length >= 2) {
+    for (let ti = 0; ti < hLines.length - 1; ti++) {
+      const top = hLines[ti];
+      if (top.y > relClickY) break;
 
-    for (let bi = ti + 1; bi < hLines.length; bi++) {
-      const bottom = hLines[bi];
-      if (bottom.y < relClickY) continue; // bottom must be below click
+      for (let bi = ti + 1; bi < hLines.length; bi++) {
+        const bottom = hLines[bi];
+        if (bottom.y < relClickY) continue;
 
-      const boxHeight = bottom.y - top.y;
-      if (boxHeight < 10 || boxHeight > 70) continue;
+        const boxHeight = bottom.y - top.y;
+        if (boxHeight < 10 || boxHeight > 80) continue;
 
-      // Check horizontal overlap
-      const overlapX1 = Math.max(top.x1, bottom.x1);
-      const overlapX2 = Math.min(top.x2, bottom.x2);
-      if (overlapX2 - overlapX1 < MIN_LINE_LENGTH_H) continue;
+        const overlapX1 = Math.max(top.x1, bottom.x1);
+        const overlapX2 = Math.min(top.x2, bottom.x2);
+        if (overlapX2 - overlapX1 < MIN_LINE_LENGTH_H) continue;
 
-      // Find left and right vertical lines within this horizontal range
-      for (let li = 0; li < vLines.length; li++) {
-        const left = vLines[li];
-        if (left.x > relClickX) break;
-        if (left.x < overlapX1 - 5 || left.x > overlapX1 + 5) continue;
-        if (left.y1 > top.y + 3 || left.y2 < bottom.y - 3) continue;
+        for (let li = 0; li < vLines.length; li++) {
+          const left = vLines[li];
+          if (left.x > relClickX) break;
+          if (left.x < overlapX1 - 8 || left.x > overlapX1 + 8) continue;
+          if (left.y1 > top.y + 5 || left.y2 < bottom.y - 5) continue;
 
-        for (let ri = li + 1; ri < vLines.length; ri++) {
-          const right = vLines[ri];
-          if (right.x < relClickX) continue;
-          if (right.x < overlapX2 - 5 || right.x > overlapX2 + 5) continue;
-          if (right.y1 > top.y + 3 || right.y2 < bottom.y - 3) continue;
+          for (let ri = li + 1; ri < vLines.length; ri++) {
+            const right = vLines[ri];
+            if (right.x < relClickX) continue;
+            if (right.x < overlapX2 - 8 || right.x > overlapX2 + 8) continue;
+            if (right.y1 > top.y + 5 || right.y2 < bottom.y - 5) continue;
 
-          const boxWidth = right.x - left.x;
-          if (boxWidth < 20) continue;
+            const boxWidth = right.x - left.x;
+            if (boxWidth < 20) continue;
 
-          const area = boxWidth * boxHeight;
-          if (area < bestArea) {
-            bestArea = area;
-            bestBox = {
-              x: sx + left.x + PADDING,
-              y: sy + top.y + PADDING,
-              width: boxWidth - PADDING * 2,
-              height: boxHeight - PADDING * 2,
-            };
+            const area = boxWidth * boxHeight;
+            if (area < bestArea) {
+              bestArea = area;
+              bestBox = {
+                x: sx + left.x + PADDING,
+                y: sy + top.y + PADDING,
+                width: boxWidth - PADDING * 2,
+                height: boxHeight - PADDING * 2,
+              };
+            }
           }
         }
       }
     }
   }
 
-  return bestBox;
+  if (bestBox) return bestBox;
+
+  // --- Strategy 2: Underline-only detection ---
+  // Many PDF forms use just a horizontal line as a text entry marker.
+  // Find the nearest horizontal line below or at the click Y, build a field above it.
+  if (hLines.length > 0) {
+    let bestUnderline: SnapResult | null = null;
+    let bestDist = Infinity;
+
+    for (const line of hLines) {
+      const lineLen = line.x2 - line.x1;
+      if (lineLen < 50) continue; // skip very short lines
+
+      // Line should be at or below the click point (within tolerance)
+      const dist = line.y - relClickY;
+      if (dist < -10 || dist > 40) continue; // line must be near/below click
+
+      // Click X should be within the line's span
+      if (relClickX < line.x1 - 10 || relClickX > line.x2 + 10) continue;
+
+      const absDist = Math.abs(dist);
+      if (absDist < bestDist) {
+        bestDist = absDist;
+        bestUnderline = {
+          x: sx + line.x1 + PADDING,
+          y: sy + line.y - UNDERLINE_DEFAULT_HEIGHT,
+          width: lineLen - PADDING * 2,
+          height: UNDERLINE_DEFAULT_HEIGHT,
+        };
+      }
+    }
+
+    if (bestUnderline) return bestUnderline;
+  }
+
+  return null;
 }
