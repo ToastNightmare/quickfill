@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useCallback, useEffect, useRef, useMemo } from "react";
-import { ChevronLeft, ChevronRight, Sparkles, X, RotateCcw, Minus, Plus } from "lucide-react";
+import { ChevronLeft, ChevronRight, Sparkles, X, RotateCcw, Minus, Plus, Download } from "lucide-react";
 import { UploadZone } from "@/components/UploadZone";
 import { Toolbar } from "@/components/Toolbar";
 import { PdfViewer } from "@/components/PdfViewer";
@@ -68,6 +68,7 @@ export default function EditorPage() {
   const { fields, set: setFields, undo, redo, reset, canUndo, canRedo } = useHistory();
   const restoredRef = useRef(false);
   const pdfViewerRef = useRef<PdfViewerHandle>(null);
+  const hasShownTipRef = useRef(false);
 
   // Restore session on mount
   useEffect(() => {
@@ -120,6 +121,15 @@ export default function EditorPage() {
   useEffect(() => {
     saveZoomToLocalStorage(zoom);
   }, [zoom]);
+
+  // Show shortcut tip on first PDF load
+  useEffect(() => {
+    if (pdfBytes && !hasShownTipRef.current) {
+      hasShownTipRef.current = true;
+      setToast("Tip: T = Text field, C = Checkbox, Cmd+Z = Undo");
+      setTimeout(() => setToast(null), 4000);
+    }
+  }, [pdfBytes]);
 
   // Keyboard shortcuts: Escape, arrow nudge, Ctrl+D duplicate
   useEffect(() => {
@@ -550,24 +560,26 @@ export default function EditorPage() {
         </div>
       )}
 
-      <Toolbar
-        activeTool={activeTool}
-        onToolSelect={setActiveTool}
-        onUndo={undo}
-        onRedo={redo}
-        onClear={handleClear}
-        onDownload={handleDownload}
-        canUndo={canUndo}
-        canRedo={canRedo}
-        isDownloading={isDownloading}
-        selectedField={selectedField}
-        onFontSizeChange={handleFontSizeChange}
-        onDetectFields={handleDetectFields}
-        isDetecting={isDetecting}
-        onAutoFill={handleAutoFillFromProfile}
-      />
+      <div className="flex-shrink-0 sticky top-0 self-start h-screen overflow-y-auto hidden sm:flex">
+        <Toolbar
+          activeTool={activeTool}
+          onToolSelect={setActiveTool}
+          onUndo={undo}
+          onRedo={redo}
+          onClear={handleClear}
+          onDownload={handleDownload}
+          canUndo={canUndo}
+          canRedo={canRedo}
+          isDownloading={isDownloading}
+          selectedField={selectedField}
+          onFontSizeChange={handleFontSizeChange}
+          onDetectFields={handleDetectFields}
+          isDetecting={isDetecting}
+          onAutoFill={handleAutoFillFromProfile}
+        />
+      </div>
 
-      <div className="flex flex-1 flex-col overflow-hidden">
+      <div className="flex-1 overflow-auto">
         {/* Top bar with file name, zoom, progress, and page nav */}
         <div className="flex items-center justify-between gap-2 border-b border-border bg-surface px-4 py-2">
           {/* Left: filename + start over */}
@@ -675,6 +687,48 @@ export default function EditorPage() {
           highlightFieldIds={highlightFieldIds}
         />
       </div>
+
+      {/* Floating bottom action bar */}
+      {pdfBytes && totalPages > 0 && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 hidden sm:flex items-center gap-2 rounded-full bg-navy shadow-xl border border-white/10 px-4 py-2">
+          <span className="text-xs text-white/70 font-medium">{currentPage + 1} / {totalPages}</span>
+          <div className="w-px h-4 bg-white/20" />
+          <button onClick={() => setCurrentPage(p => Math.max(0, p - 1))} disabled={currentPage === 0} className="text-white/70 hover:text-white disabled:opacity-30 transition-colors">
+            <ChevronLeft className="h-4 w-4" />
+          </button>
+          <button onClick={() => setCurrentPage(p => Math.min(totalPages - 1, p + 1))} disabled={currentPage >= totalPages - 1} className="text-white/70 hover:text-white disabled:opacity-30 transition-colors">
+            <ChevronRight className="h-4 w-4" />
+          </button>
+          <div className="w-px h-4 bg-white/20" />
+          <button
+            onClick={handleDownload}
+            disabled={isDownloading}
+            className="flex items-center gap-1.5 rounded-full bg-accent px-3 py-1 text-xs font-semibold text-white hover:bg-accent-hover disabled:opacity-50 transition-colors"
+          >
+            <Download className="h-3.5 w-3.5" />
+            {isDownloading ? "Saving..." : "Download"}
+          </button>
+        </div>
+      )}
+
+      {/* Mobile bottom toolbar */}
+      <Toolbar
+        activeTool={activeTool}
+        onToolSelect={setActiveTool}
+        onUndo={undo}
+        onRedo={redo}
+        onClear={handleClear}
+        onDownload={handleDownload}
+        canUndo={canUndo}
+        canRedo={canRedo}
+        isDownloading={isDownloading}
+        selectedField={selectedField}
+        onFontSizeChange={handleFontSizeChange}
+        onDetectFields={handleDetectFields}
+        isDetecting={isDetecting}
+        onAutoFill={handleAutoFillFromProfile}
+        mobile
+      />
 
       {/* Upgrade modal */}
       {showUpgradeModal && (
