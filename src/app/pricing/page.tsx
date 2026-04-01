@@ -23,7 +23,7 @@ const faqs = [
   },
   {
     q: "What happens when I hit my free limit?",
-    a: "You'll be prompted to upgrade to Pro or Business. Your filled documents are never lost — upgrade any time to continue.",
+    a: "You'll be prompted to upgrade to Pro or Business. Your filled documents are never lost  -  upgrade any time to continue.",
   },
   {
     q: "Can I cancel my subscription?",
@@ -31,7 +31,7 @@ const faqs = [
   },
   {
     q: "What PDF forms does QuickFill support?",
-    a: "QuickFill works with any PDF — tax forms, government applications, contracts, and more. It automatically detects AcroForm fields and supports manual field placement for flat PDFs.",
+    a: "QuickFill works with any PDF  -  tax forms, government applications, contracts, and more. It automatically detects AcroForm fields and supports manual field placement for flat PDFs.",
   },
   {
     q: "Is my data secure?",
@@ -39,7 +39,7 @@ const faqs = [
   },
   {
     q: "What's the difference between Pro and Business?",
-    a: "Pro gives you unlimited fills with no watermark — perfect for individuals and sole traders. Business adds unlimited fill history, dedicated support, and team features like shared profiles and API access — built for agencies and bookkeeping firms.",
+    a: "Pro gives you unlimited fills with no watermark  -  perfect for individuals and sole traders. Business adds unlimited fill history, dedicated support, and team features like shared profiles and API access  -  built for agencies and bookkeeping firms.",
   },
 ];
 

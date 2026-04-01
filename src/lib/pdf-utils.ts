@@ -101,7 +101,7 @@ export async function fillPdf(
           else cb.uncheck();
         }
       } catch {
-        // Field doesn't exist in AcroForm — draw it directly
+        // Field doesn't exist in AcroForm  -  draw it directly
         drawFieldOnPage(pdfDoc, field, pageScales, font);
       }
     }

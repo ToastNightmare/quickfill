@@ -336,7 +336,7 @@ export default function EditorPage() {
       }
       const profile = await res.json();
       if (!profile || !profile.fullName) {
-        showToast("No profile saved yet — go to your Profile page to set one up");
+        showToast("No profile saved yet  -  go to your Profile page to set one up");
         return;
       }
 
@@ -356,7 +356,7 @@ export default function EditorPage() {
       if (matched > 0) {
         showToast(`Auto-filled ${matched} field${matched > 1 ? "s" : ""} from your profile`);
       } else {
-        showToast("No matching fields found — try filling manually");
+        showToast("No matching fields found  -  try filling manually");
       }
     } catch {
       showToast("Failed to load profile");
@@ -406,7 +406,7 @@ export default function EditorPage() {
           }),
         });
       } catch {
-        // silent — non-critical
+        // silent  -  non-critical
       }
 
       if (addWatermark) {
@@ -436,7 +436,7 @@ export default function EditorPage() {
       const dims = pdfViewerRef.current.getCanvasDimensions();
 
       if (!imageBase64) {
-        showToast("AI detection unavailable — place fields manually");
+        showToast("AI detection unavailable  -  place fields manually");
         return;
       }
 
@@ -453,12 +453,12 @@ export default function EditorPage() {
       const data = await res.json();
 
       if (data.error) {
-        showToast("AI detection unavailable — place fields manually");
+        showToast("AI detection unavailable  -  place fields manually");
         return;
       }
 
       if (!data.fields || data.fields.length === 0) {
-        showToast("No fields detected — try placing fields manually");
+        showToast("No fields detected  -  try placing fields manually");
         return;
       }
 
@@ -499,10 +499,10 @@ export default function EditorPage() {
       setFields((prev) => [...prev, ...newFields]);
       setHighlightFieldIds(newIds);
       setTimeout(() => setHighlightFieldIds(new Set()), 2000);
-      showToast(`Detected ${newFields.length} fields — review and fill`);
+      showToast(`Detected ${newFields.length} fields  -  review and fill`);
     } catch (err) {
       console.error("AI detection failed:", err);
-      showToast("AI detection unavailable — place fields manually");
+      showToast("AI detection unavailable  -  place fields manually");
     } finally {
       setIsDetecting(false);
     }
@@ -702,7 +702,7 @@ export default function EditorPage() {
                 className="mt-6 flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-accent text-sm font-semibold text-white hover:bg-accent-hover transition-colors"
               >
                 <Sparkles className="h-4 w-4" />
-                Upgrade to Pro — $12/mo
+                Upgrade to Pro  -  $12/mo
               </button>
               <button
                 onClick={() => setShowUpgradeModal(false)}

@@ -1,6 +1,6 @@
 import { Redis } from "@upstash/redis";
 
-// Lazy singleton — only initialised at request time, not build time
+// Lazy singleton  -  only initialised at request time, not build time
 let _redis: Redis | null = null;
 
 export function getRedis(): Redis {

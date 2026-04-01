@@ -199,7 +199,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
       return;
     }
     if (activeTool) {
-      // Check if we have a snap preview — show pointer to indicate snappable target
+      // Check if we have a snap preview  -  show pointer to indicate snappable target
       if (snapPreview) {
         setCursorStyle("pointer");
       } else {

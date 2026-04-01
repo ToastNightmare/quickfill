@@ -1,6 +1,6 @@
 import Stripe from "stripe";
 
-// Lazy singleton — only initialised at request time, not build time
+// Lazy singleton  -  only initialised at request time, not build time
 let _stripe: Stripe | null = null;
 
 export function getStripe(): Stripe {

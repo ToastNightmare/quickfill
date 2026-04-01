@@ -17,7 +17,7 @@ export async function POST(req: NextRequest) {
       plan = body.plan;
     }
   } catch {
-    // No body or invalid JSON — default to pro
+    // No body or invalid JSON  -  default to pro
   }
 
   let priceId: string;

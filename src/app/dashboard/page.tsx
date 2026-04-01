@@ -101,9 +101,9 @@ function DashboardContent() {
             <>
               <p className="mt-2 text-sm text-text-muted">
                 {tier === "pro" ? (
-                  "Unlimited fills — Pro plan active"
+                  "Unlimited fills  -  Pro plan active"
                 ) : tier === "business" ? (
-                  <>{usage.used} of {usage.limit} fills used — Business plan</>
+                  <>{usage.used} of {usage.limit} fills used  -  Business plan</>
                 ) : (
                   <>{usage.used} of {usage.limit} free fills used</>
                 )}
@@ -121,7 +121,7 @@ function DashboardContent() {
                     className="mt-4 flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-accent text-sm font-semibold text-white hover:bg-accent-hover transition-colors"
                   >
                     <Sparkles className="h-4 w-4" />
-                    Upgrade to Pro — $12/mo
+                    Upgrade to Pro  -  $12/mo
                   </button>
                 </>
               )}
