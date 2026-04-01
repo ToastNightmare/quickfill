@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, useCallback, useImperativeHandle, forwardR
 import { Stage, Layer, Rect, Text, Group, Transformer, Image as KonvaImage } from "react-konva";
 import type Konva from "konva";
 import type { EditorField, ToolType, SignatureField } from "@/lib/types";
-import { detectSnapBox, detectAllBoxes } from "@/lib/snap-detect";
+import { detectSnapBox, detectAllBoxes, snapCredibilityScore } from "@/lib/snap-detect";
 import type { SnapResult } from "@/lib/snap-detect";
 
 export interface PdfViewerHandle {
@@ -285,8 +285,8 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
         let snap: SnapResult | null = null;
 
         if (preBoxes.length > 0) {
-          // Find the smallest pre-computed box containing the pointer
-          let bestArea = Infinity;
+          // Find the most credible pre-computed box containing the pointer
+          let bestScore = Infinity;
           for (const box of preBoxes) {
             if (
               pos.x >= box.x - 5 &&
@@ -294,9 +294,9 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
               pos.y >= box.y - 5 &&
               pos.y <= box.y + box.height + 5
             ) {
-              const area = box.width * box.height;
-              if (area < bestArea) {
-                bestArea = area;
+              const score = snapCredibilityScore(box);
+              if (score < bestScore) {
+                bestScore = score;
                 snap = box;
               }
             }
@@ -395,7 +395,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
         let foundSnap: SnapResult | null = null;
 
         if (preBoxes.length > 0) {
-          let bestArea = Infinity;
+          let bestScore = Infinity;
           for (const box of preBoxes) {
             if (
               posX >= box.x - 5 &&
@@ -403,9 +403,9 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
               posY >= box.y - 5 &&
               posY <= box.y + box.height + 5
             ) {
-              const area = box.width * box.height;
-              if (area < bestArea) {
-                bestArea = area;
+              const score = snapCredibilityScore(box);
+              if (score < bestScore) {
+                bestScore = score;
                 foundSnap = box;
               }
             }

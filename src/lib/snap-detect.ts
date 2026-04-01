@@ -339,7 +339,10 @@ function findTableCells(
 ): SnapResult[] {
   // Find clusters of horizontal lines at similar Y positions
   const hClusters = clusterByValue(hLines.map((l) => l.y), 4);
-  const vClusters = clusterByValue(vLines.map((l) => l.x), 4);
+  // Use relaxed clustering for vertical lines (accept single dividers)
+  // when we have strong horizontal structure (3+ row lines)
+  const vMinMembers = hClusters.length >= 3 ? 1 : 2;
+  const vClusters = clusterByValue(vLines.map((l) => l.x), 4, vMinMembers);
 
   // Need at least 2 horizontal and 2 vertical line clusters for a grid
   if (hClusters.length < 2 || vClusters.length < 2) return [];
@@ -385,7 +388,7 @@ function findTableCells(
 }
 
 /** Cluster numeric values within a tolerance, returning the average of each cluster. */
-function clusterByValue(values: number[], tolerance: number): number[] {
+function clusterByValue(values: number[], tolerance: number, minMembers = 2): number[] {
   if (values.length === 0) return [];
   const sorted = [...values].sort((a, b) => a - b);
   const clusters: number[][] = [[sorted[0]]];
@@ -399,10 +402,103 @@ function clusterByValue(values: number[], tolerance: number): number[] {
     }
   }
 
-  // Return average of each cluster, but only clusters with 2+ members (real grid lines repeat)
   return clusters
-    .filter((c) => c.length >= 2)
+    .filter((c) => c.length >= minMembers)
     .map((c) => Math.round(c.reduce((a, b) => a + b, 0) / c.length));
+}
+
+/**
+ * Segment large boxes that contain internal vertical dividers into sub-cells.
+ * If a box spans multiple columns (has vertical lines running through it),
+ * split into individual cell-sized regions and prefer those over the parent.
+ */
+function segmentByInternalDividers(
+  boxes: SnapResult[],
+  vLines: VLine[],
+): SnapResult[] {
+  const result: SnapResult[] = [];
+
+  for (const box of boxes) {
+    // Find vertical lines that run inside this box (not at its edges)
+    const interiorVLines: number[] = [];
+    const edgeTolerance = 8;
+
+    for (const vl of vLines) {
+      // Line must be interior (not at the left/right edge)
+      if (vl.x <= box.x + edgeTolerance) continue;
+      if (vl.x >= box.x + box.width - edgeTolerance) continue;
+      // Line must span most of the box height
+      if (vl.y1 > box.y + box.height * 0.3) continue;
+      if (vl.y2 < box.y + box.height * 0.7) continue;
+      interiorVLines.push(vl.x);
+    }
+
+    if (interiorVLines.length === 0) {
+      // No interior dividers, keep original
+      result.push(box);
+      continue;
+    }
+
+    // Deduplicate nearby interior lines
+    const dividers = deduplicateValues(interiorVLines, 6);
+    dividers.sort((a, b) => a - b);
+
+    // Build sub-cells from left edge through dividers to right edge
+    const edges = [box.x, ...dividers, box.x + box.width];
+    let addedCells = false;
+
+    for (let i = 0; i < edges.length - 1; i++) {
+      const cellX = edges[i];
+      const cellW = edges[i + 1] - edges[i];
+      if (cellW < MIN_BOX_WIDTH) continue;
+      result.push({ x: cellX, y: box.y, width: cellW, height: box.height });
+      addedCells = true;
+    }
+
+    // If segmentation produced no valid cells, keep original
+    if (!addedCells) {
+      result.push(box);
+    }
+  }
+
+  return result;
+}
+
+/** Deduplicate a sorted list of numeric values within a tolerance. */
+function deduplicateValues(values: number[], tolerance: number): number[] {
+  if (values.length === 0) return [];
+  const sorted = [...values].sort((a, b) => a - b);
+  const deduped: number[] = [sorted[0]];
+  for (let i = 1; i < sorted.length; i++) {
+    if (sorted[i] - deduped[deduped.length - 1] > tolerance) {
+      deduped.push(sorted[i]);
+    }
+  }
+  return deduped;
+}
+
+/**
+ * Score how "credible" a box is as an individual form field.
+ * Lower score = more credible. Typical input fields are 40-400px wide, 15-50px tall.
+ * Oversized row-spanning regions get penalized.
+ */
+export { fieldCredibilityScore as snapCredibilityScore };
+function fieldCredibilityScore(box: SnapResult): number {
+  const area = box.width * box.height;
+  const aspectRatio = box.width / Math.max(box.height, 1);
+
+  let score = area; // base: smaller is better
+
+  // Penalize very wide boxes (likely row-spanning)
+  if (box.width > 500) score += (box.width - 500) * 50;
+  // Penalize extreme aspect ratios (very wide and short = likely a full row)
+  if (aspectRatio > 12) score += aspectRatio * 200;
+  // Reward boxes in typical input field range
+  if (box.width >= 40 && box.width <= 400 && box.height >= 12 && box.height <= 55) {
+    score *= 0.5;
+  }
+
+  return score;
 }
 
 /**
@@ -460,10 +556,12 @@ export function detectSnapBox(
     hLines.sort((a, b) => a.y - b.y);
     vLines.sort((a, b) => a.x - b.x);
 
-    // --- Strategy 1: Full rectangle detection ---
-    const fullBoxes = findFullRectangles(hLines, vLines, relClickX, relClickY);
+    // --- Strategy 1: Full rectangle detection (with segmentation) ---
+    const fullBoxesRaw = findFullRectangles(hLines, vLines, relClickX, relClickY);
+    const fullBoxes = segmentByInternalDividers(fullBoxesRaw, vLines);
     if (fullBoxes.length > 0) {
-      // Pick the smallest box that contains or is near the click
+      // Collect all boxes containing or near the click, pick by credibility
+      const candidates: SnapResult[] = [];
       for (const box of fullBoxes) {
         if (
           relClickX >= box.x - 10 &&
@@ -471,16 +569,24 @@ export function detectSnapBox(
           relClickY >= box.y - 10 &&
           relClickY <= box.y + box.height + 10
         ) {
-          return offsetResult(box, sx, sy);
+          candidates.push(box);
         }
       }
-      // If no box contains click, return the smallest anyway
+      if (candidates.length > 0) {
+        // Pick the most credible field-sized candidate
+        candidates.sort((a, b) => fieldCredibilityScore(a) - fieldCredibilityScore(b));
+        return offsetResult(candidates[0], sx, sy);
+      }
+      // If no box contains click, return the most credible
+      fullBoxes.sort((a, b) => fieldCredibilityScore(a) - fieldCredibilityScore(b));
       return offsetResult(fullBoxes[0], sx, sy);
     }
 
-    // --- Strategy 2: 3-sided box detection ---
-    const threeBoxes = findThreeSidedBoxes(hLines, vLines, relClickX, relClickY);
+    // --- Strategy 2: 3-sided box detection (with segmentation) ---
+    const threeBoxesRaw = findThreeSidedBoxes(hLines, vLines, relClickX, relClickY);
+    const threeBoxes = segmentByInternalDividers(threeBoxesRaw, vLines);
     if (threeBoxes.length > 0) {
+      const candidates: SnapResult[] = [];
       for (const box of threeBoxes) {
         if (
           relClickX >= box.x - 10 &&
@@ -488,8 +594,12 @@ export function detectSnapBox(
           relClickY >= box.y - 10 &&
           relClickY <= box.y + box.height + 10
         ) {
-          return offsetResult(box, sx, sy);
+          candidates.push(box);
         }
+      }
+      if (candidates.length > 0) {
+        candidates.sort((a, b) => fieldCredibilityScore(a) - fieldCredibilityScore(b));
+        return offsetResult(candidates[0], sx, sy);
       }
     }
 
@@ -592,13 +702,16 @@ export function detectAllBoxes(canvas: HTMLCanvasElement): SnapResult[] {
 
     // Full rectangles (no click constraint)
     const fullBoxes = findFullRectangles(hLines, vLines);
-    allBoxes.push(...fullBoxes);
+    // Segment any row-wide boxes that contain internal vertical dividers
+    const segmented = segmentByInternalDividers(fullBoxes, vLines);
+    allBoxes.push(...segmented);
 
-    // 3-sided boxes
+    // 3-sided boxes (also segment these)
     const threeBoxes = findThreeSidedBoxes(hLines, vLines);
-    allBoxes.push(...threeBoxes);
+    const segmented3 = segmentByInternalDividers(threeBoxes, vLines);
+    allBoxes.push(...segmented3);
 
-    // Table cells
+    // Table cells (already cell-sized, no segmentation needed)
     const cells = findTableCells(hLines, vLines);
     allBoxes.push(...cells);
 
@@ -606,20 +719,30 @@ export function detectAllBoxes(canvas: HTMLCanvasElement): SnapResult[] {
     if (allBoxes.length > 0) break;
   }
 
-  // Deduplicate overlapping boxes (keep the smaller/more precise one)
+  // Deduplicate overlapping boxes (prefer smaller, more precise children)
   return deduplicateBoxes(allBoxes);
 }
 
-/** Remove boxes that significantly overlap with a smaller box. */
+/**
+ * Remove boxes that are dominated by smaller, more precise boxes.
+ *
+ * Two removal strategies:
+ * 1. Near-duplicate: if a smaller box already covers >70% of this box, skip it
+ * 2. Parent container: if a large box is mostly covered by the union of smaller
+ *    boxes inside it (>60% coverage), remove it in favor of its children
+ */
 function deduplicateBoxes(boxes: SnapResult[]): SnapResult[] {
   if (boxes.length <= 1) return boxes;
 
-  // Sort by area ascending
+  // Sort by area ascending (smallest first)
   const sorted = [...boxes].sort((a, b) => a.width * a.height - b.width * b.height);
   const kept: SnapResult[] = [];
 
   for (const box of sorted) {
-    const dominated = kept.some((existing) => {
+    const boxArea = box.width * box.height;
+
+    // Strategy 1: skip if a smaller existing box already covers most of this box
+    const nearDuplicate = kept.some((existing) => {
       const overlapX = Math.max(
         0,
         Math.min(box.x + box.width, existing.x + existing.width) - Math.max(box.x, existing.x),
@@ -630,13 +753,31 @@ function deduplicateBoxes(boxes: SnapResult[]): SnapResult[] {
       );
       const overlapArea = overlapX * overlapY;
       const existingArea = existing.width * existing.height;
-      // If >70% of the existing box overlaps with this one, skip it
       return existingArea > 0 && overlapArea / existingArea > 0.7;
     });
 
-    if (!dominated) {
-      kept.push(box);
+    if (nearDuplicate) continue;
+
+    // Strategy 2: check if children (smaller kept boxes inside this one) cover it
+    const children = kept.filter((child) => {
+      return (
+        child.x >= box.x - 4 &&
+        child.y >= box.y - 4 &&
+        child.x + child.width <= box.x + box.width + 4 &&
+        child.y + child.height <= box.y + box.height + 4
+      );
+    });
+
+    if (children.length >= 2) {
+      // Approximate union coverage of children within this box
+      const childAreaSum = children.reduce((s, c) => s + c.width * c.height, 0);
+      if (childAreaSum / boxArea > 0.6) {
+        // Children cover most of this parent box, skip it
+        continue;
+      }
     }
+
+    kept.push(box);
   }
 
   return kept;
