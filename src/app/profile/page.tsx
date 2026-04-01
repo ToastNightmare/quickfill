@@ -1,9 +1,10 @@
 "use client";
 
 import { useUser } from "@clerk/nextjs";
-import { useEffect, useState, FormEvent } from "react";
+import { useEffect, useState, useCallback, FormEvent } from "react";
 import Link from "next/link";
-import { Save, ArrowLeft } from "lucide-react";
+import { Save, ArrowLeft, PenTool } from "lucide-react";
+import { SignatureModal } from "@/components/SignatureModal";
 
 interface ProfileData {
   fullName: string;
@@ -41,16 +42,43 @@ export default function ProfilePage() {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [signatureDataUrl, setSignatureDataUrl] = useState<string | null>(null);
+  const [signatureModalOpen, setSignatureModalOpen] = useState(false);
 
   useEffect(() => {
-    fetch("/api/profile")
-      .then((r) => r.json())
-      .then((data) => {
-        if (data && data.fullName !== undefined) {
-          setProfile((prev) => ({ ...prev, ...data }));
+    Promise.all([
+      fetch("/api/profile").then((r) => r.json()),
+      fetch("/api/signature").then((r) => r.json()),
+    ])
+      .then(([profileData, sigData]) => {
+        if (profileData && profileData.fullName !== undefined) {
+          setProfile((prev) => ({ ...prev, ...profileData }));
+        }
+        if (sigData && sigData.signatureDataUrl) {
+          setSignatureDataUrl(sigData.signatureDataUrl);
         }
       })
       .finally(() => setLoading(false));
+  }, []);
+
+  const handleSignatureSave = useCallback(async (dataUrl: string) => {
+    const res = await fetch("/api/signature", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ signatureDataUrl: dataUrl }),
+    });
+    if (res.ok) {
+      setSignatureDataUrl(dataUrl);
+      setSignatureModalOpen(false);
+    }
+  }, []);
+
+  const handleSignatureDelete = useCallback(async () => {
+    const res = await fetch("/api/signature", { method: "DELETE" });
+    if (res.ok) {
+      setSignatureDataUrl(null);
+      setSignatureModalOpen(false);
+    }
   }, []);
 
   const handleSave = async (e: FormEvent) => {
@@ -131,6 +159,65 @@ export default function ProfilePage() {
           {saving ? "Saving..." : saved ? "Saved!" : "Save Profile"}
         </button>
       </form>
+
+      {/* Saved Signature Section */}
+      <div className="mt-8 rounded-xl border border-border bg-surface p-6 shadow-sm">
+        <div className="flex items-center gap-2">
+          <PenTool className="h-4 w-4 text-accent" />
+          <h2 className="text-sm font-semibold text-text-muted uppercase tracking-widest">
+            Saved Signature
+          </h2>
+        </div>
+        <p className="mt-2 text-sm text-text-muted">
+          Draw your signature once and reuse it across all your PDFs.
+        </p>
+
+        {signatureDataUrl ? (
+          <div className="mt-4 flex flex-col gap-3">
+            <div className="flex items-center justify-center rounded-lg border border-border bg-surface-alt p-4">
+              <img
+                src={signatureDataUrl}
+                alt="Your saved signature"
+                className="max-h-[80px] max-w-full object-contain"
+                draggable={false}
+              />
+            </div>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setSignatureModalOpen(true)}
+                className="flex h-10 flex-1 items-center justify-center gap-2 rounded-lg border border-border text-sm font-medium text-text hover:bg-surface-alt transition-colors"
+              >
+                Replace
+              </button>
+              <button
+                type="button"
+                onClick={handleSignatureDelete}
+                className="flex h-10 items-center justify-center gap-2 rounded-lg border border-red-200 px-4 text-sm font-medium text-red-600 hover:bg-red-50 transition-colors"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={() => setSignatureModalOpen(true)}
+            className="mt-4 flex h-11 w-full items-center justify-center gap-2 rounded-xl border-2 border-dashed border-border text-sm font-medium text-text-muted hover:border-accent hover:text-accent transition-colors"
+          >
+            <PenTool className="h-4 w-4" />
+            Draw Your Signature
+          </button>
+        )}
+      </div>
+
+      <SignatureModal
+        open={signatureModalOpen}
+        onClose={() => setSignatureModalOpen(false)}
+        onSave={handleSignatureSave}
+        onDelete={signatureDataUrl ? handleSignatureDelete : undefined}
+        existingSignature={signatureDataUrl}
+      />
     </div>
   );
 }

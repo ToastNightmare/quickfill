@@ -27,6 +27,8 @@ export interface SignatureField extends FieldBase {
   type: "signature";
   value: string;
   fontSize: number;
+  /** Base64 PNG data URL of a drawn/saved signature */
+  signatureDataUrl?: string;
 }
 
 export interface DateField extends FieldBase {

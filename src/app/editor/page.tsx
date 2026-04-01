@@ -6,6 +6,7 @@ import { UploadZone } from "@/components/UploadZone";
 import { Toolbar } from "@/components/Toolbar";
 import { PdfViewer } from "@/components/PdfViewer";
 import { FieldInspector } from "@/components/FieldInspector";
+import { SignatureModal } from "@/components/SignatureModal";
 import type { PdfViewerHandle } from "@/components/PdfViewer";
 import { useHistory } from "@/lib/use-history";
 import { detectAcroFormFields, fillPdf } from "@/lib/pdf-utils";
@@ -66,10 +67,25 @@ export default function EditorPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [highlightFieldIds, setHighlightFieldIds] = useState<Set<string>>(new Set());
+  const [savedSignature, setSavedSignature] = useState<string | null>(null);
+  const [signatureModalOpen, setSignatureModalOpen] = useState(false);
+  const [pendingSignatureField, setPendingSignatureField] = useState<EditorField | null>(null);
   const { fields, set: setFields, undo, redo, reset, canUndo, canRedo } = useHistory();
   const restoredRef = useRef(false);
   const pdfViewerRef = useRef<PdfViewerHandle>(null);
   const viewerContainerRef = useRef<HTMLDivElement>(null);
+
+  // Load saved signature on mount
+  useEffect(() => {
+    fetch("/api/signature")
+      .then((r) => r.ok ? r.json() : null)
+      .then((data) => {
+        if (data?.signatureDataUrl) {
+          setSavedSignature(data.signatureDataUrl);
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   // Restore session on mount
   useEffect(() => {
@@ -328,6 +344,74 @@ export default function EditorPage() {
       showToast("Failed to load profile");
     }
   }, [setFields, showToast]);
+
+  // Called by PdfViewer after a signature field is placed
+  const handleSignatureFieldPlaced = useCallback(
+    (fieldId: string) => {
+      if (savedSignature) {
+        // Auto-apply saved signature to the field
+        setFields((prev) =>
+          prev.map((f) =>
+            f.id === fieldId && f.type === "signature"
+              ? { ...f, signatureDataUrl: savedSignature, value: "Signed" } as EditorField
+              : f
+          )
+        );
+      } else {
+        // No saved signature - open modal to draw one
+        const field = fields.find((f) => f.id === fieldId);
+        if (field) {
+          setPendingSignatureField(field);
+          setSignatureModalOpen(true);
+        }
+      }
+    },
+    [savedSignature, setFields, fields]
+  );
+
+  const handleSignatureModalSave = useCallback(
+    async (dataUrl: string) => {
+      // Save to account
+      try {
+        await fetch("/api/signature", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ signatureDataUrl: dataUrl }),
+        });
+        setSavedSignature(dataUrl);
+      } catch {
+        // Still apply locally even if account save fails
+      }
+
+      // Apply to pending field
+      if (pendingSignatureField) {
+        setFields((prev) =>
+          prev.map((f) =>
+            f.id === pendingSignatureField.id && f.type === "signature"
+              ? { ...f, signatureDataUrl: dataUrl, value: "Signed" } as EditorField
+              : f
+          )
+        );
+      }
+      setPendingSignatureField(null);
+      setSignatureModalOpen(false);
+    },
+    [pendingSignatureField, setFields]
+  );
+
+  const handleSignatureModalUseExisting = useCallback(() => {
+    if (pendingSignatureField && savedSignature) {
+      setFields((prev) =>
+        prev.map((f) =>
+          f.id === pendingSignatureField.id && f.type === "signature"
+            ? { ...f, signatureDataUrl: savedSignature, value: "Signed" } as EditorField
+            : f
+        )
+      );
+    }
+    setPendingSignatureField(null);
+    setSignatureModalOpen(false);
+  }, [pendingSignatureField, savedSignature, setFields]);
 
   const handleDownload = useCallback(async () => {
     if (!pdfBytes) return;
@@ -644,6 +728,7 @@ export default function EditorPage() {
             onTotalPagesChange={setTotalPages}
             zoom={zoom}
             highlightFieldIds={highlightFieldIds}
+            onSignatureFieldPlaced={handleSignatureFieldPlaced}
           />
         </div>
       </div>
@@ -699,6 +784,19 @@ export default function EditorPage() {
         isDetecting={isDetecting}
         onAutoFill={handleAutoFillFromProfile}
         mobile
+      />
+
+      {/* Signature modal for editor */}
+      <SignatureModal
+        open={signatureModalOpen}
+        onClose={() => {
+          setSignatureModalOpen(false);
+          setPendingSignatureField(null);
+        }}
+        onSave={handleSignatureModalSave}
+        existingSignature={savedSignature}
+        useMode
+        onUseExisting={handleSignatureModalUseExisting}
       />
 
       {/* Upgrade modal */}

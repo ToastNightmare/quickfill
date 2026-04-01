@@ -92,7 +92,10 @@ export async function fillPdf(
     const form = pdfDoc.getForm();
     for (const field of editorFields) {
       try {
-        if (field.type === "text" || field.type === "date" || field.type === "signature") {
+        if (field.type === "signature" && field.signatureDataUrl) {
+          // Always draw signature images directly (not via AcroForm)
+          await drawFieldOnPage(pdfDoc, field, pageScales, font);
+        } else if (field.type === "text" || field.type === "date" || field.type === "signature") {
           const tf = form.getTextField(field.id);
           tf.setText(field.value);
         } else if (field.type === "checkbox") {
@@ -102,7 +105,7 @@ export async function fillPdf(
         }
       } catch {
         // Field doesn't exist in AcroForm  -  draw it directly
-        drawFieldOnPage(pdfDoc, field, pageScales, font);
+        await drawFieldOnPage(pdfDoc, field, pageScales, font);
       }
     }
     try {
@@ -112,7 +115,7 @@ export async function fillPdf(
     }
   } else {
     for (const field of editorFields) {
-      drawFieldOnPage(pdfDoc, field, pageScales, font);
+      await drawFieldOnPage(pdfDoc, field, pageScales, font);
     }
   }
 
@@ -136,7 +139,19 @@ export async function fillPdf(
   return pdfDoc.save();
 }
 
-function drawFieldOnPage(
+/** Decode a base64 data URL to raw bytes */
+function dataUrlToBytes(dataUrl: string): Uint8Array {
+  const base64 = dataUrl.split(",")[1];
+  if (!base64) return new Uint8Array(0);
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return bytes;
+}
+
+async function drawFieldOnPage(
   pdfDoc: PDFDocument,
   field: EditorField,
   pageScales: Map<number, number>,
@@ -148,8 +163,46 @@ function drawFieldOnPage(
   const scale = pageScales.get(field.page) ?? 1;
   const pdfX = field.x / scale;
   const pdfY = page.getHeight() - field.y / scale - field.height / scale;
+  const pdfW = field.width / scale;
+  const pdfH = field.height / scale;
 
-  if (field.type === "text" || field.type === "date" || field.type === "signature") {
+  if (field.type === "signature" && field.signatureDataUrl) {
+    // Embed signature as PNG image
+    try {
+      const pngBytes = dataUrlToBytes(field.signatureDataUrl);
+      const pngImage = await pdfDoc.embedPng(pngBytes);
+      const imgDims = pngImage.scale(1);
+      // Fit image within field bounds while maintaining aspect ratio
+      const imgAspect = imgDims.width / imgDims.height;
+      const fieldAspect = pdfW / pdfH;
+      let drawW = pdfW - 4;
+      let drawH = pdfH - 4;
+      if (imgAspect > fieldAspect) {
+        drawH = drawW / imgAspect;
+      } else {
+        drawW = drawH * imgAspect;
+      }
+      const drawX = pdfX + (pdfW - drawW) / 2;
+      const drawY = pdfY + (pdfH - drawH) / 2;
+      page.drawImage(pngImage, {
+        x: drawX,
+        y: drawY,
+        width: drawW,
+        height: drawH,
+      });
+    } catch {
+      // Fall back to text if image embedding fails
+      if (field.value) {
+        page.drawText(field.value, {
+          x: pdfX + 2,
+          y: pdfY + 4,
+          size: (field.fontSize ?? 16) / scale,
+          font,
+          color: rgb(0, 0, 0),
+        });
+      }
+    }
+  } else if (field.type === "text" || field.type === "date" || field.type === "signature") {
     if (field.value) {
       const fontSize = (field.type === "signature" ? 16 : field.fontSize ?? 14) / scale;
       page.drawText(field.value, {

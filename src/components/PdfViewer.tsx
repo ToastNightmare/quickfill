@@ -1,10 +1,11 @@
 "use client";
 
 import { useEffect, useRef, useState, useCallback, useImperativeHandle, forwardRef } from "react";
-import { Stage, Layer, Rect, Text, Group, Transformer } from "react-konva";
+import { Stage, Layer, Rect, Text, Group, Transformer, Image as KonvaImage } from "react-konva";
 import type Konva from "konva";
-import type { EditorField, ToolType } from "@/lib/types";
-import { detectSnapBox } from "@/lib/snap-detect";
+import type { EditorField, ToolType, SignatureField } from "@/lib/types";
+import { detectSnapBox, detectAllBoxes } from "@/lib/snap-detect";
+import type { SnapResult } from "@/lib/snap-detect";
 
 export interface PdfViewerHandle {
   getCanvasDataURL: () => string | null;
@@ -28,6 +29,7 @@ interface PdfViewerProps {
   onTotalPagesChange: (total: number) => void;
   zoom: number;
   highlightFieldIds?: Set<string>;
+  onSignatureFieldPlaced?: (fieldId: string) => void;
 }
 
 let nextFieldId = 1;
@@ -66,6 +68,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
   onTotalPagesChange,
   zoom,
   highlightFieldIds,
+  onSignatureFieldPlaced,
 }, ref) {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -80,6 +83,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
   const [isDragging, setIsDragging] = useState(false);
   const [cursorStyle, setCursorStyle] = useState("default");
   const [snapPreviewOpacity, setSnapPreviewOpacity] = useState(0);
+  const precomputedBoxesRef = useRef<SnapResult[]>([]);
   const transformerRef = useRef<Konva.Transformer>(null);
   const selectedShapeRef = useRef<Konva.Node | null>(null);
   const dragStartedRef = useRef(false);
@@ -149,6 +153,14 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
           viewport: scaledViewport,
           canvas: canvas,
         } as Parameters<typeof page.render>[0]).promise;
+
+        // Run batch visual detection after render for pre-computed snap targets
+        try {
+          const boxes = detectAllBoxes(canvas);
+          precomputedBoxesRef.current = boxes;
+        } catch {
+          precomputedBoxesRef.current = [];
+        }
 
         setLoading(false);
       } catch (err) {
@@ -268,7 +280,34 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
       }, 33);
 
       try {
-        const snap = detectSnapBox(canvasRef.current, pos.x, pos.y);
+        // First check pre-computed boxes (instant, no pixel scanning)
+        const preBoxes = precomputedBoxesRef.current;
+        let snap: SnapResult | null = null;
+
+        if (preBoxes.length > 0) {
+          // Find the smallest pre-computed box containing the pointer
+          let bestArea = Infinity;
+          for (const box of preBoxes) {
+            if (
+              pos.x >= box.x - 5 &&
+              pos.x <= box.x + box.width + 5 &&
+              pos.y >= box.y - 5 &&
+              pos.y <= box.y + box.height + 5
+            ) {
+              const area = box.width * box.height;
+              if (area < bestArea) {
+                bestArea = area;
+                snap = box;
+              }
+            }
+          }
+        }
+
+        // Fall back to per-click pixel scan if no pre-computed match
+        if (!snap) {
+          snap = detectSnapBox(canvasRef.current, pos.x, pos.y);
+        }
+
         if (snap) {
           setSnapPreview({
             x: snap.x / zoomFactor,
@@ -390,8 +429,11 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
       onFieldAdd(field);
       onFieldSelect(id);
 
-      // Immediately enter edit mode for text-like fields
-      if (activeTool !== "checkbox") {
+      // For signature fields, trigger signature placement flow
+      if (activeTool === "signature") {
+        onSignatureFieldPlaced?.(id);
+      } else if (activeTool !== "checkbox") {
+        // Immediately enter edit mode for text-like fields
         setEditingFieldId(id);
       }
 
@@ -403,7 +445,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
 
       return true;
     },
-    [activeTool, currentPage, onFieldAdd, onFieldSelect, zoomFactor, snapPreview]
+    [activeTool, currentPage, onFieldAdd, onFieldSelect, zoomFactor, snapPreview, onSignatureFieldPlaced]
   );
 
   const handleStageClick = useCallback(
@@ -507,7 +549,10 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
         onFieldAdd(field);
         onFieldSelect(id);
 
-        if (activeTool !== "checkbox") {
+        // For signature fields, trigger signature placement flow
+        if (activeTool === "signature") {
+          onSignatureFieldPlaced?.(id);
+        } else if (activeTool !== "checkbox") {
           setEditingFieldId(id);
         }
 
@@ -515,7 +560,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
         setTimeout(() => setSnappedFieldId(null), 600);
       }
     },
-    [activeTool, currentPage, onFieldAdd, onFieldSelect, zoomFactor]
+    [activeTool, currentPage, onFieldAdd, onFieldSelect, zoomFactor, onSignatureFieldPlaced]
   );
 
   const pageFields = fields.filter((f) => f.page === currentPage);
@@ -705,6 +750,8 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
           (() => {
             const editField = pageFields.find((f) => f.id === editingFieldId);
             if (!editField || editField.type === "checkbox") return null;
+            // Don't show text input for signature fields that have an image
+            if (editField.type === "signature" && (editField as SignatureField).signatureDataUrl) return null;
             const isEditSnapped = editField.snapped ?? false;
 
             return (
@@ -754,6 +801,21 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
     </div>
   );
 });
+
+/** Hook to load an HTMLImageElement from a data URL */
+function useLoadedImage(src: string | undefined): HTMLImageElement | null {
+  const [image, setImage] = useState<HTMLImageElement | null>(null);
+  useEffect(() => {
+    if (!src) {
+      setImage(null);
+      return;
+    }
+    const img = new window.Image();
+    img.onload = () => setImage(img);
+    img.src = src;
+  }, [src]);
+  return image;
+}
 
 // Individual field component
 function FieldShape({
@@ -888,14 +950,20 @@ function FieldShape({
   }
 
   // Text, date, signature fields
+  const sigDataUrl = field.type === "signature" ? (field as SignatureField).signatureDataUrl : undefined;
+  const sigImage = useLoadedImage(sigDataUrl);
+  const hasSignatureImage = field.type === "signature" && !!sigDataUrl && !!sigImage;
+
   const displayValue =
-    field.value ||
-    (field.type === "signature"
-      ? "Click to sign"
-      : field.type === "date"
-      ? "Click for date"
-      : "Click to type...");
-  const isEmpty = !field.value;
+    hasSignatureImage
+      ? ""
+      : field.value ||
+        (field.type === "signature"
+          ? "Click to sign"
+          : field.type === "date"
+          ? "Click for date"
+          : "Click to type...");
+  const isEmpty = !field.value && !hasSignatureImage;
 
   return (
     <Group
@@ -947,20 +1015,30 @@ function FieldShape({
         strokeWidth={getBorderWidth()}
         cornerRadius={isSnapped ? 3 : 4}
       />
-      {!isEditing && (
-        <Text
-          text={displayValue}
-          fontSize={(field as { fontSize?: number }).fontSize ?? 14}
-          fill={isEmpty ? "#9ca3af" : "#1a1a2e"}
-          fontFamily={field.type === "signature" ? "cursive" : "Arial"}
-          fontStyle={field.type === "signature" ? "italic" : "normal"}
-          width={field.width - (isSnapped ? 2 : 4)}
-          height={field.height}
-          padding={isSnapped ? 2 : 4}
-          verticalAlign="middle"
-          ellipsis
-          wrap="none"
+      {hasSignatureImage && sigImage ? (
+        <KonvaImage
+          image={sigImage}
+          x={2}
+          y={2}
+          width={field.width - 4}
+          height={field.height - 4}
         />
+      ) : (
+        !isEditing && (
+          <Text
+            text={displayValue}
+            fontSize={(field as { fontSize?: number }).fontSize ?? 14}
+            fill={isEmpty ? "#9ca3af" : "#1a1a2e"}
+            fontFamily={field.type === "signature" ? "cursive" : "Arial"}
+            fontStyle={field.type === "signature" ? "italic" : "normal"}
+            width={field.width - (isSnapped ? 2 : 4)}
+            height={field.height}
+            padding={isSnapped ? 2 : 4}
+            verticalAlign="middle"
+            ellipsis
+            wrap="none"
+          />
+        )
       )}
     </Group>
   );
