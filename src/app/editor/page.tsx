@@ -678,6 +678,7 @@ export default function EditorPage() {
           onFieldAdd={handleFieldAdd}
           onFieldUpdate={handleFieldUpdate}
           onFieldSelect={setSelectedFieldId}
+          onToolSelect={setActiveTool}
           onFieldDelete={handleFieldDelete}
           onFieldDuplicate={handleFieldDuplicate}
           onPageScaleSet={handlePageScaleSet}

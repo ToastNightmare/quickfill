@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, useCallback, useImperativeHandle, forwardRef } from "react";
-import { Stage, Layer, Rect, Text, Group, Transformer, Circle } from "react-konva";
+import { Stage, Layer, Rect, Text, Group, Transformer } from "react-konva";
 import type Konva from "konva";
 import type { EditorField, ToolType } from "@/lib/types";
 import { detectSnapBox } from "@/lib/snap-detect";
@@ -22,6 +22,7 @@ interface PdfViewerProps {
   onFieldSelect: (id: string | null) => void;
   onFieldDelete: (id: string) => void;
   onFieldDuplicate?: (id: string) => void;
+  onToolSelect: (tool: ToolType | null) => void;
   onPageScaleSet: (page: number, scale: number) => void;
   totalPages: number;
   onTotalPagesChange: (total: number) => void;
@@ -52,6 +53,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
   onFieldSelect,
   onFieldDelete,
   onFieldDuplicate,
+  onToolSelect,
   onPageScaleSet,
   totalPages: _totalPages,
   onTotalPagesChange,
@@ -184,6 +186,14 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
         selectedFieldId &&
         !editingFieldId
       ) {
+        const target = e.target as HTMLElement;
+        const isInput =
+          target.tagName === "INPUT" ||
+          target.tagName === "TEXTAREA" ||
+          target.tagName === "SELECT" ||
+          target.isContentEditable;
+        if (isInput) return;
+
         e.preventDefault();
         onFieldDelete(selectedFieldId);
       }
@@ -199,12 +209,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
       return;
     }
     if (activeTool) {
-      // Check if we have a snap preview  -  show pointer to indicate snappable target
-      if (snapPreview) {
-        setCursorStyle("pointer");
-      } else {
-        setCursorStyle("crosshair");
-      }
+      setCursorStyle("crosshair");
       return;
     }
 
@@ -217,12 +222,12 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
         setCursorStyle("pointer");
         return;
       }
-      setCursorStyle("grab");
+      setCursorStyle("move");
       return;
     }
 
     setCursorStyle("default");
-  }, [activeTool, isDragging, snapPreview]);
+  }, [activeTool, isDragging]);
 
   // Hover snap preview on mouse move
   const handleStageMouseMove = useCallback(
@@ -272,84 +277,90 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
       const pos = stage.getPointerPosition();
       if (!pos) return;
 
-      // Clicked on empty area
-      if (e.target === stage || e.target.getParent() === stage) {
-        if (activeTool) {
-          const id = genId();
+      // FIX 3: Only place new fields when clicking on truly empty canvas
+      // If clicked on a field element, the field's own onClick handles selection
+      const clickedOnEmpty = e.target === stage;
 
-          let fieldX = pos.x / zoomFactor;
-          let fieldY = pos.y / zoomFactor;
-          let fieldW: number;
-          let fieldH: number;
-          let snapped = false;
+      if (!clickedOnEmpty) {
+        // Clicked on a field or other element - don't place a new field
+        return;
+      }
 
-          // Default sizes per tool
-          const defaults = {
-            text: { w: 200, h: 28 },
-            checkbox: { w: 24, h: 24 },
-            signature: { w: 200, h: 40 },
-            date: { w: 160, h: 28 },
-          };
-          fieldW = defaults[activeTool].w;
-          fieldH = defaults[activeTool].h;
+      if (activeTool) {
+        const id = genId();
 
-          // Use snap preview if available, otherwise try detection
-          if (snapPreview) {
-            fieldX = snapPreview.x;
-            fieldY = snapPreview.y;
-            fieldW = snapPreview.width;
-            fieldH = snapPreview.height;
-            snapped = true;
-          } else if (canvasRef.current) {
-            try {
-              const snap = detectSnapBox(canvasRef.current, pos.x, pos.y);
-              if (snap) {
-                fieldX = snap.x / zoomFactor;
-                fieldY = snap.y / zoomFactor;
-                fieldW = snap.width / zoomFactor;
-                fieldH = snap.height / zoomFactor;
-                snapped = true;
-              }
-            } catch {
-              // Fall back to default placement
+        let fieldX = pos.x / zoomFactor;
+        let fieldY = pos.y / zoomFactor;
+        let fieldW: number;
+        let fieldH: number;
+        let snapped = false;
+
+        // Default sizes per tool
+        const defaults = {
+          text: { w: 200, h: 28 },
+          checkbox: { w: 24, h: 24 },
+          signature: { w: 200, h: 40 },
+          date: { w: 160, h: 28 },
+        };
+        fieldW = defaults[activeTool].w;
+        fieldH = defaults[activeTool].h;
+
+        // Use snap preview if available, otherwise try detection
+        if (snapPreview) {
+          fieldX = snapPreview.x;
+          fieldY = snapPreview.y;
+          fieldW = snapPreview.width;
+          fieldH = snapPreview.height;
+          snapped = true;
+        } else if (canvasRef.current) {
+          try {
+            const snap = detectSnapBox(canvasRef.current, pos.x, pos.y);
+            if (snap) {
+              fieldX = snap.x / zoomFactor;
+              fieldY = snap.y / zoomFactor;
+              fieldW = snap.width / zoomFactor;
+              fieldH = snap.height / zoomFactor;
+              snapped = true;
             }
+          } catch {
+            // Fall back to default placement
           }
-
-          const base = { id, x: fieldX, y: fieldY, page: currentPage };
-
-          let field: EditorField;
-          switch (activeTool) {
-            case "text":
-              field = { ...base, type: "text", width: fieldW, height: fieldH, value: "", fontSize: 14 };
-              break;
-            case "checkbox":
-              field = { ...base, type: "checkbox", width: fieldW, height: fieldH, checked: false };
-              break;
-            case "signature":
-              field = { ...base, type: "signature", width: fieldW, height: fieldH, value: "", fontSize: 16 };
-              break;
-            case "date":
-              field = { ...base, type: "date", width: fieldW, height: fieldH, value: new Date().toLocaleDateString("en-US"), fontSize: 14 };
-              break;
-          }
-
-          onFieldAdd(field);
-          onFieldSelect(id);
-
-          // Immediately enter edit mode for text-like fields
-          if (activeTool !== "checkbox") {
-            setEditingFieldId(id);
-          }
-
-          // Flash blue border on snap
-          if (snapped) {
-            setSnappedFieldId(id);
-            setTimeout(() => setSnappedFieldId(null), 500);
-          }
-        } else {
-          onFieldSelect(null);
-          setEditingFieldId(null);
         }
+
+        const base = { id, x: fieldX, y: fieldY, page: currentPage };
+
+        let field: EditorField;
+        switch (activeTool) {
+          case "text":
+            field = { ...base, type: "text", width: fieldW, height: fieldH, value: "", fontSize: 14 };
+            break;
+          case "checkbox":
+            field = { ...base, type: "checkbox", width: fieldW, height: fieldH, checked: false };
+            break;
+          case "signature":
+            field = { ...base, type: "signature", width: fieldW, height: fieldH, value: "", fontSize: 16 };
+            break;
+          case "date":
+            field = { ...base, type: "date", width: fieldW, height: fieldH, value: new Date().toLocaleDateString("en-US"), fontSize: 14 };
+            break;
+        }
+
+        onFieldAdd(field);
+        onFieldSelect(id);
+
+        // Immediately enter edit mode for text-like fields
+        if (activeTool !== "checkbox") {
+          setEditingFieldId(id);
+        }
+
+        // Flash blue border on snap
+        if (snapped) {
+          setSnappedFieldId(id);
+          setTimeout(() => setSnappedFieldId(null), 500);
+        }
+      } else {
+        onFieldSelect(null);
+        setEditingFieldId(null);
       }
     },
     [activeTool, currentPage, onFieldAdd, onFieldSelect, zoomFactor, snapPreview]
@@ -358,7 +369,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
   const pageFields = fields.filter((f) => f.page === currentPage);
 
   return (
-    <div ref={containerRef} className="relative flex-1 overflow-auto bg-gray-100 p-4">
+    <div ref={containerRef} className="relative flex-1 overflow-auto bg-[#f0f0f0] p-4">
       {loading && (
         <div className="absolute inset-0 z-10 flex items-center justify-center bg-surface/80">
           <div className="flex flex-col items-center gap-3">
@@ -377,7 +388,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
       )}
 
       <div
-        className="relative mx-auto shadow-lg"
+        className="relative mx-auto bg-white shadow-xl rounded-sm"
         style={{ width: dimensions.width, height: dimensions.height }}
       >
         <canvas
@@ -402,20 +413,31 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
           }}
         >
           <Layer>
-            {/* Snap preview rectangle */}
+            {/* Snap preview rectangle with blue dashed border */}
             {activeTool && snapPreview && (
-              <Rect
-                x={snapPreview.x}
-                y={snapPreview.y}
-                width={snapPreview.width}
-                height={snapPreview.height}
-                fill="rgba(79, 142, 247, 0.08)"
-                stroke="#4f8ef7"
-                strokeWidth={1.5}
-                dash={[4, 3]}
-                cornerRadius={2}
-                listening={false}
-              />
+              <>
+                <Rect
+                  x={snapPreview.x}
+                  y={snapPreview.y}
+                  width={snapPreview.width}
+                  height={snapPreview.height}
+                  fill="rgba(79, 142, 247, 0.08)"
+                  stroke="#4f8ef7"
+                  strokeWidth={1.5}
+                  dash={[4, 3]}
+                  cornerRadius={2}
+                  listening={false}
+                />
+                <Text
+                  x={snapPreview.x + snapPreview.width - 32}
+                  y={snapPreview.y - 16}
+                  text="Snap"
+                  fontSize={10}
+                  fill="#4f8ef7"
+                  fontStyle="bold"
+                  listening={false}
+                />
+              </>
             )}
 
             {pageFields.map((field) => (
@@ -428,16 +450,16 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
                 isHovered={field.id === hoveredFieldId}
                 onSelect={() => {
                   onFieldSelect(field.id);
+                  onToolSelect(null); // FIX 3: Clear active tool when selecting a field
                   selectedShapeRef.current = null;
-                  // Single click starts editing immediately for text fields
                   if (!dragStartedRef.current) {
                     setEditingFieldId(field.id);
                   }
                 }}
                 onMouseEnter={() => {
                   setHoveredFieldId(field.id);
-                  if (!activeTool) {
-                    setCursorStyle("grab");
+                  if (!activeTool && !isDragging) {
+                    setCursorStyle("move");
                   }
                 }}
                 onMouseLeave={() => {
@@ -454,7 +476,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
                 }}
                 onDragEnd={(x, y) => {
                   setIsDragging(false);
-                  setCursorStyle("grab");
+                  setCursorStyle("move");
                   onFieldUpdate(field.id, { x, y });
                   // Reset drag flag after a tick so onClick doesn't trigger edit
                   setTimeout(() => { dragStartedRef.current = false; }, 50);
@@ -598,10 +620,24 @@ function FieldShape({
     }
   }, [isSelected, setSelectedRef]);
 
-  // Compute border state
-  const showBorder = isHighlighted || isSelected || isEditing || isHovered;
-  const borderColor = isHighlighted ? "#2563eb" : (isSelected || isEditing) ? "#4f8ef7" : isHovered ? "#93b8fa" : "transparent";
-  const borderWidth = isHighlighted ? 3 : (isSelected || isEditing) ? 2 : isHovered ? 1.5 : 0;
+  // Updated field styling per FIX 4
+  const getBorderColor = () => {
+    if (isHighlighted) return "#2563eb";
+    if (isSelected || isEditing) return "#4f8ef7";
+    if (isHovered) return "rgba(79,142,247,0.6)";
+    return "rgba(79,142,247,0.4)";
+  };
+  const getBorderWidth = () => {
+    if (isHighlighted) return 3;
+    if (isSelected || isEditing) return 2;
+    if (isHovered) return 1.5;
+    return 1;
+  };
+  const getFill = () => {
+    if (isSelected || isEditing) return "rgba(79,142,247,0.05)";
+    if (isHovered) return "rgba(79,142,247,0.03)";
+    return "transparent";
+  };
 
   if (field.type === "checkbox") {
     return (
@@ -641,8 +677,8 @@ function FieldShape({
         <Rect
           width={field.width}
           height={field.height}
-          fill="white"
-          stroke={isHighlighted ? "#2563eb" : isSelected ? "#4f8ef7" : isHovered ? "#93b8fa" : "#d1d5db"}
+          fill={field.checked ? "rgba(79,142,247,0.08)" : "white"}
+          stroke={isHighlighted ? "#2563eb" : isSelected ? "#4f8ef7" : isHovered ? "rgba(79,142,247,0.6)" : "#d1d5db"}
           strokeWidth={isHighlighted ? 3 : isSelected ? 2 : isHovered ? 1.5 : 1}
           cornerRadius={3}
         />
@@ -718,9 +754,9 @@ function FieldShape({
       <Rect
         width={field.width}
         height={field.height}
-        fill={isHovered && !isSelected && !isEditing ? "rgba(79, 142, 247, 0.04)" : "transparent"}
-        stroke={showBorder ? borderColor : "transparent"}
-        strokeWidth={showBorder ? borderWidth : 0}
+        fill={getFill()}
+        stroke={getBorderColor()}
+        strokeWidth={getBorderWidth()}
         cornerRadius={3}
       />
       {!isEditing && (
