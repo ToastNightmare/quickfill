@@ -3,9 +3,11 @@ import Link from "next/link";
 import { Upload, MousePointerClick, Download, ArrowRight } from "lucide-react";
 
 export const metadata: Metadata = {
-  title: "How to Fill a PDF Form Online — QuickFill",
+  title: "How to Fill a PDF Form Online Free | QuickFill",
   description:
-    "Learn how to fill any PDF form online in 3 simple steps. Upload your PDF, fill in the fields, and download instantly. No software required.",
+    "Learn how to fill any PDF form online in 3 simple steps. Upload your ATO tax form, Medicare claim, rental application or any Australian PDF, fill in the fields, and download instantly. No software required.",
+  keywords:
+    "how to fill PDF online, fill ATO form online, fill Medicare form, PDF form filler Australia, fill rental application PDF, online form filler",
 };
 
 const steps = [
@@ -13,19 +15,19 @@ const steps = [
     icon: Upload,
     title: "Step 1: Upload Your PDF",
     description:
-      "Drag and drop any PDF form into the QuickFill editor, or click to browse your files. We support all standard PDF forms including tax documents, applications, contracts, and government forms. Files up to 50 MB are accepted.",
+      "Drag and drop any PDF form into the QuickFill editor, or click to browse your files. We support all standard PDF forms including ATO tax returns, Medicare claims, Centrelink forms, rental applications, council permits, and tenancy agreements. Files up to 50 MB are accepted.",
   },
   {
     icon: MousePointerClick,
     title: "Step 2: Fill in the Fields",
     description:
-      "QuickFill automatically detects fillable AcroForm fields in your PDF. For flat PDFs, simply select a tool — text, checkbox, signature, or date — and click where you want to place it. Type your answers, check boxes, and add your signature directly on the form.",
+      "QuickFill automatically detects fillable AcroForm fields in your PDF. For flat PDFs, simply select a tool \u2014 text, checkbox, signature, or date \u2014 and click where you want to place it. Use Auto-fill from Profile to instantly populate common fields like your name, address, ABN, and contact details.",
   },
   {
     icon: Download,
     title: "Step 3: Download Your Completed PDF",
     description:
-      "Click the download button to get your filled PDF instantly. Your answers are embedded directly into the document — no watermarks, no quality loss. The file is ready to print, email, or submit.",
+      "Click the download button to get your filled PDF instantly. Your answers are embedded directly into the document \u2014 ready to print, email, or submit to the ATO, Medicare, your real estate agent, or any government agency.",
   },
 ];
 
@@ -40,7 +42,7 @@ export default function HowItWorksPage() {
             "@type": "HowTo",
             name: "How to Fill a PDF Form Online",
             description:
-              "Fill any PDF form online in 3 simple steps using QuickFill.",
+              "Fill any PDF form online in 3 simple steps using QuickFill. Works with ATO, Medicare, Centrelink, rental applications, and all Australian government forms.",
             step: steps.map((s, i) => ({
               "@type": "HowToStep",
               position: i + 1,
@@ -60,7 +62,7 @@ export default function HowItWorksPage() {
             </h1>
             <p className="mx-auto mt-6 max-w-2xl text-lg text-gray-300">
               No software to install. No account required to try. Fill any PDF
-              form in your browser in under a minute.
+              form &mdash; ATO tax returns, Medicare, Centrelink, rental apps &mdash; in your browser in under a minute.
             </p>
           </div>
         </section>
@@ -91,7 +93,7 @@ export default function HowItWorksPage() {
               Ready to fill your first PDF?
             </h2>
             <p className="mt-4 text-text-muted">
-              It takes less than 60 seconds. Try it free — no sign up needed.
+              It takes less than 60 seconds. Try it free &mdash; no sign up needed.
             </p>
             <div className="mt-8 flex flex-col items-center gap-4 sm:flex-row sm:justify-center">
               <Link

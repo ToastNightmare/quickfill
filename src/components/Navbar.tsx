@@ -61,6 +61,12 @@ export function Navbar() {
               >
                 Dashboard
               </Link>
+              <Link
+                href="/profile"
+                className="text-sm font-medium text-text-muted hover:text-text transition-colors"
+              >
+                Profile
+              </Link>
               <UserButton
                 appearance={{
                   elements: {
@@ -126,13 +132,22 @@ export function Navbar() {
                 </Link>
               </>
             ) : (
-              <Link
-                href="/dashboard"
-                onClick={() => setMenuOpen(false)}
-                className="rounded-lg px-3 py-3 text-sm font-medium hover:bg-surface-alt transition-colors"
-              >
-                Dashboard
-              </Link>
+              <>
+                <Link
+                  href="/dashboard"
+                  onClick={() => setMenuOpen(false)}
+                  className="rounded-lg px-3 py-3 text-sm font-medium hover:bg-surface-alt transition-colors"
+                >
+                  Dashboard
+                </Link>
+                <Link
+                  href="/profile"
+                  onClick={() => setMenuOpen(false)}
+                  className="rounded-lg px-3 py-3 text-sm font-medium hover:bg-surface-alt transition-colors"
+                >
+                  Profile
+                </Link>
+              </>
             )}
           </div>
         </div>

@@ -16,7 +16,7 @@ const features = [
     icon: Upload,
     title: "Upload Any PDF",
     description:
-      "Drag and drop any PDF form \u2014 tax documents, applications, contracts. We handle them all.",
+      "Drag and drop any PDF form \u2014 ATO tax returns, Medicare claims, rental applications, council forms, and more.",
   },
   {
     icon: ScanSearch,
@@ -28,7 +28,7 @@ const features = [
     icon: Download,
     title: "Download Instantly",
     description:
-      "Get your filled PDF in seconds. Fields are embedded directly into the document \u2014 no watermarks.",
+      "Get your filled PDF in seconds. Fields are embedded directly into the document \u2014 ready to print, email, or submit.",
   },
 ];
 
@@ -43,18 +43,59 @@ export default function Home() {
 
   return (
     <div className="flex flex-col">
+      {/* JSON-LD Structured Data */}
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{
+          __html: JSON.stringify({
+            "@context": "https://schema.org",
+            "@type": "WebApplication",
+            name: "QuickFill",
+            url: "https://quickfill-ivory.vercel.app",
+            applicationCategory: "BusinessApplication",
+            operatingSystem: "Any",
+            description:
+              "Fill PDF forms online free. Upload any PDF \u2014 ATO tax forms, Medicare, Centrelink, rental applications, council forms \u2014 and fill it in seconds. Smart field detection and instant download.",
+            offers: [
+              {
+                "@type": "Offer",
+                price: "0",
+                priceCurrency: "AUD",
+                name: "Free Plan",
+                description: "3 documents per month",
+              },
+              {
+                "@type": "Offer",
+                price: "12",
+                priceCurrency: "AUD",
+                name: "Pro Plan",
+                description: "Unlimited documents per month",
+              },
+            ],
+            featureList: [
+              "PDF form filling",
+              "AcroForm field detection",
+              "Text, checkbox, signature, and date fields",
+              "AI-powered field detection",
+              "Instant PDF download",
+              "Auto-fill from saved profile",
+            ],
+          }),
+        }}
+      />
+
       {/* Hero */}
       <section className="relative overflow-hidden bg-navy px-4 py-24 sm:px-6 sm:py-32 lg:px-8">
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_#4f8ef720_0%,_transparent_60%)]" />
         <div className="relative mx-auto max-w-4xl text-center">
           <h1 className="text-4xl font-extrabold tracking-tight text-white sm:text-5xl lg:text-6xl">
-            Upload any form.{" "}
-            <span className="text-accent">Fill it in seconds.</span>
+            Fill PDF Forms Online Free.{" "}
+            <span className="text-accent">Done in seconds.</span>
           </h1>
           <p className="mx-auto mt-6 max-w-2xl text-lg text-gray-300 sm:text-xl">
-            The fastest way to fill out PDF forms online. Smart field detection,
-            drag-and-drop placement, and instant downloads &mdash; no software to
-            install.
+            The fastest way to fill out PDF forms online. Upload any form &mdash; ATO tax returns,
+            Medicare claims, Centrelink forms, rental applications, council permits &mdash; and
+            fill it with smart field detection and instant downloads. No software to install.
           </p>
           <div className="mt-10 flex flex-col items-center gap-4 sm:flex-row sm:justify-center">
             <Link
@@ -82,7 +123,7 @@ export default function Home() {
           </h2>
           <p className="mx-auto mt-4 max-w-2xl text-center text-text-muted">
             No more printing, hand-writing, and scanning. Fill any PDF form
-            directly in your browser.
+            directly in your browser &mdash; Australian government forms, tax documents, and more.
           </p>
           <div className="mt-16 grid gap-8 sm:grid-cols-2 lg:grid-cols-3">
             {features.map((feature) => (
@@ -129,8 +170,40 @@ export default function Home() {
         </div>
       </section>
 
+      {/* Use cases */}
+      <section className="bg-surface px-4 py-16 sm:px-6 lg:px-8">
+        <div className="mx-auto max-w-4xl text-center">
+          <h2 className="text-2xl font-bold tracking-tight sm:text-3xl">
+            Works with any Australian PDF form
+          </h2>
+          <p className="mx-auto mt-4 max-w-2xl text-text-muted">
+            Fill and submit forms for the ATO, Medicare, Centrelink, state government agencies,
+            councils, real estate agents, and more.
+          </p>
+          <div className="mt-8 flex flex-wrap justify-center gap-3">
+            {[
+              "ATO Tax Returns",
+              "Medicare Claims",
+              "Centrelink Forms",
+              "Rental Applications",
+              "Council Permits",
+              "Tenancy Agreements",
+              "ABN Registration",
+              "Business Forms",
+            ].map((label) => (
+              <span
+                key={label}
+                className="rounded-full border border-border bg-surface-alt px-4 py-2 text-sm font-medium text-text-muted"
+              >
+                {label}
+              </span>
+            ))}
+          </div>
+        </div>
+      </section>
+
       {/* Pricing */}
-      <section id="pricing" className="bg-surface px-4 py-20 sm:px-6 lg:px-8">
+      <section id="pricing" className="bg-surface-alt px-4 py-20 sm:px-6 lg:px-8">
         <div className="mx-auto max-w-4xl">
           <h2 className="text-center text-3xl font-bold tracking-tight sm:text-4xl">
             Simple, transparent pricing
@@ -141,7 +214,7 @@ export default function Home() {
 
           {/* Monthly/Annual toggle */}
           <div className="mt-8 flex justify-center">
-            <div className="inline-flex rounded-full bg-surface-alt p-1">
+            <div className="inline-flex rounded-full bg-surface p-1">
               <button
                 onClick={() => setBilling("monthly")}
                 className={`rounded-full px-5 py-2 text-sm font-medium transition-colors ${
@@ -238,9 +311,10 @@ export default function Home() {
                   "Unlimited documents",
                   "All field types",
                   "AcroForm detection",
-                  "Instant PDF download",
+                  "No watermarks",
+                  "Auto-fill from profile",
+                  "Full fill history",
                   "Priority support",
-                  "Batch processing",
                 ].map((item) => (
                   <li key={item} className="flex items-start gap-2 text-sm">
                     <Check className="mt-0.5 h-4 w-4 shrink-0 text-accent" />
@@ -287,6 +361,12 @@ export default function Home() {
               className="text-sm text-gray-400 hover:text-white transition-colors"
             >
               Pricing
+            </Link>
+            <Link
+              href="/how-it-works"
+              className="text-sm text-gray-400 hover:text-white transition-colors"
+            >
+              How It Works
             </Link>
           </div>
           <p className="text-sm text-gray-500">

@@ -73,12 +73,14 @@ export async function detectAcroFormFields(pdfBytes: ArrayBuffer) {
 
 /**
  * Fill a PDF with user-placed fields and return the modified PDF bytes.
+ * If addWatermark is true, adds a small footer watermark to each page.
  */
 export async function fillPdf(
   originalPdfBytes: ArrayBuffer,
   editorFields: EditorField[],
   pageScales: Map<number, number>,
-  hasAcroForm: boolean
+  hasAcroForm: boolean,
+  addWatermark = false
 ): Promise<Uint8Array> {
   const pdfDoc = await PDFDocument.load(originalPdfBytes, {
     ignoreEncryption: true,
@@ -110,6 +112,23 @@ export async function fillPdf(
   } else {
     for (const field of editorFields) {
       drawFieldOnPage(pdfDoc, field, pageScales, font);
+    }
+  }
+
+  // Add watermark for free-tier users
+  if (addWatermark) {
+    const pages = pdfDoc.getPages();
+    for (const page of pages) {
+      const { width } = page.getSize();
+      const text = "Filled with QuickFill — quickfill-ivory.vercel.app";
+      const textWidth = font.widthOfTextAtSize(text, 8);
+      page.drawText(text, {
+        x: width - textWidth - 12,
+        y: 10,
+        size: 8,
+        font,
+        color: rgb(0.6, 0.6, 0.6),
+      });
     }
   }
 

@@ -10,16 +10,16 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "QuickFill — Fill PDF Forms Online Free",
+  title: "Fill PDF Forms Online Free | QuickFill",
   description:
-    "Upload any PDF form and fill it online in seconds. Smart field detection, drag-and-drop fields, instant download. Free to try — no software required.",
+    "Fill PDF forms online free. Upload ATO tax forms, Medicare claims, Centrelink forms, rental applications, council permits and Australian documents. Smart field detection, instant download. No software required.",
   keywords:
-    "fill PDF online, PDF form filler, fill PDF free, online PDF editor, ATO form filler, fill form online Australia",
+    "fill PDF online, PDF form filler, fill PDF free, online PDF editor, ATO form filler, fill form online Australia, Medicare form filler, Centrelink form, rental application PDF, council form filler, Australian PDF forms",
   openGraph: {
-    title: "QuickFill — Fill PDF Forms Online Free",
+    title: "Fill PDF Forms Online Free | QuickFill",
     description:
-      "Upload any PDF form and fill it online in seconds. Smart field detection, drag-and-drop fields, instant download.",
-    url: "https://quickfill.app",
+      "Upload any PDF form and fill it online in seconds. ATO, Medicare, Centrelink, rental apps, council forms. Smart field detection, instant download.",
+    url: "https://quickfill-ivory.vercel.app",
     siteName: "QuickFill",
     type: "website",
     locale: "en_AU",

@@ -12,6 +12,7 @@ import {
   Download,
   HelpCircle,
   Sparkles,
+  UserCheck,
 } from "lucide-react";
 import type { ToolType, EditorField } from "@/lib/types";
 
@@ -31,6 +32,7 @@ interface ToolbarProps {
   onFontSizeChange: (size: number) => void;
   onDetectFields: () => void;
   isDetecting: boolean;
+  onAutoFill: () => void;
 }
 
 const tools: { type: ToolType; icon: typeof Type; label: string }[] = [
@@ -54,6 +56,7 @@ export function Toolbar({
   onFontSizeChange,
   onDetectFields,
   isDetecting,
+  onAutoFill,
 }: ToolbarProps) {
   const [showShortcuts, setShowShortcuts] = useState(false);
 
@@ -100,6 +103,18 @@ export function Toolbar({
         </span>
       </button>
 
+      <div className="my-1.5 h-px bg-border" />
+
+      {/* Auto-fill from Profile */}
+      <button
+        onClick={onAutoFill}
+        title="Auto-fill from saved profile"
+        className="flex h-10 items-center gap-2 rounded-lg px-2 text-sm font-medium text-text-muted hover:bg-green-50 hover:text-green-700 transition-colors"
+      >
+        <UserCheck className="h-4.5 w-4.5 shrink-0" />
+        <span className="hidden sm:inline">Auto-fill Profile</span>
+      </button>
+
       {/* Font Size selector */}
       {showFontSize && (
         <>
@@ -127,12 +142,12 @@ export function Toolbar({
       <p className="hidden px-2 pb-1 text-[10px] font-semibold uppercase tracking-widest text-text-muted sm:block">
         Actions
       </p>
-      <div className="flex gap-1 sm:flex-col">
+      <div className="flex flex-wrap gap-1 sm:flex-col">
         <button
           onClick={onUndo}
           disabled={!canUndo}
           title="Undo (Ctrl+Z)"
-          className="flex h-9 flex-1 items-center gap-2 rounded-lg px-2 text-sm font-medium text-text-muted hover:bg-surface-alt hover:text-text transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+          className="flex h-9 flex-1 items-center gap-2 rounded-lg px-2 text-sm font-medium text-text-muted hover:bg-surface-alt hover:text-text transition-colors disabled:opacity-30 disabled:cursor-not-allowed sm:flex-initial"
         >
           <Undo2 className="h-4 w-4 shrink-0" />
           <span className="hidden sm:inline">Undo</span>
@@ -141,7 +156,7 @@ export function Toolbar({
           onClick={onRedo}
           disabled={!canRedo}
           title="Redo (Ctrl+Shift+Z)"
-          className="flex h-9 flex-1 items-center gap-2 rounded-lg px-2 text-sm font-medium text-text-muted hover:bg-surface-alt hover:text-text transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+          className="flex h-9 flex-1 items-center gap-2 rounded-lg px-2 text-sm font-medium text-text-muted hover:bg-surface-alt hover:text-text transition-colors disabled:opacity-30 disabled:cursor-not-allowed sm:flex-initial"
         >
           <Redo2 className="h-4 w-4 shrink-0" />
           <span className="hidden sm:inline">Redo</span>

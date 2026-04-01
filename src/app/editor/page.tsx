@@ -25,6 +25,29 @@ import type { EditorField, ToolType } from "@/lib/types";
 
 const ZOOM_LEVELS = [50, 75, 100, 125, 150, 175, 200];
 
+// Profile field matching keywords
+const PROFILE_MATCHERS: { key: string; keywords: string[] }[] = [
+  { key: "fullName", keywords: ["name", "full name", "fullname", "given name", "applicant"] },
+  { key: "email", keywords: ["email", "e-mail", "email address"] },
+  { key: "phone", keywords: ["phone", "telephone", "mobile", "tel", "contact number"] },
+  { key: "street", keywords: ["address", "street", "address line 1", "address1"] },
+  { key: "city", keywords: ["city", "suburb", "town", "locality"] },
+  { key: "state", keywords: ["state", "territory", "province", "region"] },
+  { key: "postcode", keywords: ["postcode", "post code", "zip", "postal", "post"] },
+  { key: "abn", keywords: ["abn", "business number"] },
+  { key: "organisation", keywords: ["organisation", "organization", "company", "employer"] },
+];
+
+function matchProfileKey(fieldId: string): string | null {
+  const lower = fieldId.toLowerCase().replace(/[_\-\.]/g, " ");
+  for (const { key, keywords } of PROFILE_MATCHERS) {
+    for (const kw of keywords) {
+      if (lower.includes(kw)) return key;
+    }
+  }
+  return null;
+}
+
 export default function EditorPage() {
   const [pdfBytes, setPdfBytes] = useState<ArrayBuffer | null>(null);
   const [fileName, setFileName] = useState<string>("");
@@ -39,6 +62,7 @@ export default function EditorPage() {
   const [zoom, setZoom] = useState(100);
   const [pageScales] = useState(() => new Map<number, number>());
   const [isDetecting, setIsDetecting] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [highlightFieldIds, setHighlightFieldIds] = useState<Set<string>>(new Set());
   const { fields, set: setFields, undo, redo, reset, canUndo, canRedo } = useHistory();
@@ -174,6 +198,7 @@ export default function EditorPage() {
 
   const handleFileLoad = useCallback(
     async (file: File, bytes: ArrayBuffer) => {
+      setIsLoading(true);
       setPdfBytes(bytes);
       setFileName(file.name);
       setCurrentPage(0);
@@ -222,6 +247,8 @@ export default function EditorPage() {
       } catch {
         setHasAcroForm(false);
         reset([]);
+      } finally {
+        setIsLoading(false);
       }
     },
     [reset]
@@ -295,22 +322,66 @@ export default function EditorPage() {
     if (data.url) window.location.href = data.url;
   };
 
+  const showToast = useCallback((msg: string, duration = 3000) => {
+    setToast(msg);
+    setTimeout(() => setToast(null), duration);
+  }, []);
+
+  const handleAutoFillFromProfile = useCallback(async () => {
+    try {
+      const res = await fetch("/api/profile");
+      if (!res.ok) {
+        showToast("Sign in and save your profile first");
+        return;
+      }
+      const profile = await res.json();
+      if (!profile || !profile.fullName) {
+        showToast("No profile saved yet — go to your Profile page to set one up");
+        return;
+      }
+
+      let matched = 0;
+      setFields((prev) =>
+        prev.map((f) => {
+          if (f.type === "checkbox") return f;
+          const profileKey = matchProfileKey(f.id);
+          if (profileKey && profile[profileKey]) {
+            matched++;
+            return { ...f, value: profile[profileKey] } as EditorField;
+          }
+          return f;
+        })
+      );
+
+      if (matched > 0) {
+        showToast(`Auto-filled ${matched} field${matched > 1 ? "s" : ""} from your profile`);
+      } else {
+        showToast("No matching fields found — try filling manually");
+      }
+    } catch {
+      showToast("Failed to load profile");
+    }
+  }, [setFields, showToast]);
+
   const handleDownload = useCallback(async () => {
     if (!pdfBytes) return;
     setIsDownloading(true);
     try {
       // Check usage before downloading
+      let isPro = false;
       const usageRes = await fetch("/api/usage");
       if (usageRes.ok) {
         const usage = await usageRes.json();
-        if (!usage.isPro && usage.used >= usage.limit) {
+        isPro = usage.isPro;
+        if (!isPro && usage.used >= usage.limit) {
           setShowUpgradeModal(true);
           setIsDownloading(false);
           return;
         }
       }
 
-      const result = await fillPdf(pdfBytes, fields, pageScales, hasAcroForm);
+      const addWatermark = !isPro;
+      const result = await fillPdf(pdfBytes, fields, pageScales, hasAcroForm, addWatermark);
       const blob = new Blob([result.buffer as ArrayBuffer], { type: "application/pdf" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
@@ -321,13 +392,33 @@ export default function EditorPage() {
 
       // Increment usage after successful download
       await fetch("/api/usage", { method: "POST" });
+
+      // Save fill history
+      try {
+        await fetch("/api/fills", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            filename: fileName,
+            filledAt: new Date().toISOString(),
+            fieldCount: fields.length,
+            pageCount: totalPages || 1,
+          }),
+        });
+      } catch {
+        // silent — non-critical
+      }
+
+      if (addWatermark) {
+        showToast("Download includes QuickFill watermark. Upgrade to Pro to remove it.", 5000);
+      }
     } catch (err) {
       console.error("Download failed:", err);
-      alert("Failed to generate PDF. Please try again.");
+      showToast("Failed to generate PDF. Please try again.");
     } finally {
       setIsDownloading(false);
     }
-  }, [pdfBytes, fields, pageScales, hasAcroForm, fileName]);
+  }, [pdfBytes, fields, pageScales, hasAcroForm, fileName, totalPages, showToast]);
 
   const handlePageScaleSet = useCallback(
     (page: number, scale: number) => {
@@ -335,11 +426,6 @@ export default function EditorPage() {
     },
     [pageScales]
   );
-
-  const showToast = useCallback((msg: string, duration = 3000) => {
-    setToast(msg);
-    setTimeout(() => setToast(null), duration);
-  }, []);
 
   const handleDetectFields = useCallback(async () => {
     if (!pdfViewerRef.current) return;
@@ -423,11 +509,33 @@ export default function EditorPage() {
   }, [currentPage, zoom, setFields, showToast]);
 
   if (!pdfBytes) {
-    return <UploadZone onFileLoad={handleFileLoad} />;
+    return (
+      <>
+        {isLoading && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-surface/80">
+            <div className="flex flex-col items-center gap-3">
+              <div className="h-10 w-10 animate-spin rounded-full border-3 border-accent border-t-transparent" />
+              <p className="text-sm font-medium text-text-muted">Loading PDF...</p>
+            </div>
+          </div>
+        )}
+        <UploadZone onFileLoad={handleFileLoad} />
+      </>
+    );
   }
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden sm:flex-row">
+      {/* Loading overlay */}
+      {isLoading && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-surface/80">
+          <div className="flex flex-col items-center gap-3">
+            <div className="h-10 w-10 animate-spin rounded-full border-3 border-accent border-t-transparent" />
+            <p className="text-sm font-medium text-text-muted">Loading PDF...</p>
+          </div>
+        </div>
+      )}
+
       {/* Session restored banner */}
       {showRestoredBanner && (
         <div className="fixed left-1/2 top-16 z-50 -translate-x-1/2 rounded-lg bg-accent/90 px-4 py-2 text-sm font-medium text-white shadow-lg animate-fade-in">
@@ -437,7 +545,7 @@ export default function EditorPage() {
 
       {/* Toast notification */}
       {toast && (
-        <div className="fixed left-1/2 top-16 z-50 -translate-x-1/2 rounded-lg bg-gray-900/90 px-4 py-2 text-sm font-medium text-white shadow-lg animate-fade-in">
+        <div className="fixed left-1/2 top-16 z-50 -translate-x-1/2 rounded-lg bg-gray-900/90 px-4 py-2 text-sm font-medium text-white shadow-lg animate-fade-in max-w-md text-center">
           {toast}
         </div>
       )}
@@ -456,6 +564,7 @@ export default function EditorPage() {
         onFontSizeChange={handleFontSizeChange}
         onDetectFields={handleDetectFields}
         isDetecting={isDetecting}
+        onAutoFill={handleAutoFillFromProfile}
       />
 
       <div className="flex flex-1 flex-col overflow-hidden">
