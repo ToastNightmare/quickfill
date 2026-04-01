@@ -277,12 +277,28 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
       const pos = stage.getPointerPosition();
       if (!pos) return;
 
-      // FIX 3: Only place new fields when clicking on truly empty canvas
-      // If clicked on a field element, the field's own onClick handles selection
       const clickedOnEmpty = e.target === stage;
 
       if (!clickedOnEmpty) {
-        // Clicked on a field or other element - don't place a new field
+        // Clicked on a field element - select it and deactivate tool
+        if (activeTool) {
+          const currentFields = fields.filter((f) => f.page === currentPage);
+          let node: Konva.Node | null = e.target;
+          while (node && node !== stage) {
+            const parent = node.getParent();
+            if (parent) {
+              const matchedField = currentFields.find(
+                (f) => f.x === parent.x() && f.y === parent.y()
+              );
+              if (matchedField) {
+                onFieldSelect(matchedField.id);
+                onToolSelect(null);
+                break;
+              }
+            }
+            node = parent;
+          }
+        }
         return;
       }
 
@@ -363,7 +379,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
         setEditingFieldId(null);
       }
     },
-    [activeTool, currentPage, onFieldAdd, onFieldSelect, zoomFactor, snapPreview]
+    [activeTool, currentPage, fields, onFieldAdd, onFieldSelect, onToolSelect, zoomFactor, snapPreview]
   );
 
   const pageFields = fields.filter((f) => f.page === currentPage);

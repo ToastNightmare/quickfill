@@ -5,6 +5,7 @@ import { ChevronLeft, ChevronRight, Sparkles, X, RotateCcw, Minus, Plus, Downloa
 import { UploadZone } from "@/components/UploadZone";
 import { Toolbar } from "@/components/Toolbar";
 import { PdfViewer } from "@/components/PdfViewer";
+import { FieldInspector } from "@/components/FieldInspector";
 import type { PdfViewerHandle } from "@/components/PdfViewer";
 import { useHistory } from "@/lib/use-history";
 import { detectAcroFormFields, fillPdf } from "@/lib/pdf-utils";
@@ -68,7 +69,7 @@ export default function EditorPage() {
   const { fields, set: setFields, undo, redo, reset, canUndo, canRedo } = useHistory();
   const restoredRef = useRef(false);
   const pdfViewerRef = useRef<PdfViewerHandle>(null);
-  const hasShownTipRef = useRef(false);
+  const viewerContainerRef = useRef<HTMLDivElement>(null);
 
   // Restore session on mount
   useEffect(() => {
@@ -122,73 +123,22 @@ export default function EditorPage() {
     saveZoomToLocalStorage(zoom);
   }, [zoom]);
 
-  // Show shortcut tip on first PDF load
-  useEffect(() => {
-    if (pdfBytes && !hasShownTipRef.current) {
-      hasShownTipRef.current = true;
-      setToast("Tip: T = Text field, C = Checkbox, Cmd+Z = Undo");
-      setTimeout(() => setToast(null), 4000);
-    }
-  }, [pdfBytes]);
-
-  // Keyboard shortcuts: Escape, arrow nudge, Ctrl+D duplicate
-  useEffect(() => {
-    function handleKeyDown(e: KeyboardEvent) {
-      const target = e.target as HTMLElement;
-      const isInput =
-        target.tagName === "INPUT" ||
-        target.tagName === "TEXTAREA" ||
-        target.tagName === "SELECT" ||
-        target.isContentEditable;
-
-      // Escape always works
-      if (e.key === "Escape") {
-        setActiveTool(null);
-        setSelectedFieldId(null);
-        return;
-      }
-
-      // Everything below requires no active input
-      if (isInput) return;
-
-      // Arrow key nudging
-      if (selectedFieldId && ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.key)) {
-        e.preventDefault();
-        const step = e.shiftKey ? 10 : 1;
-        const field = fields.find((f) => f.id === selectedFieldId);
-        if (!field) return;
-
-        let dx = 0, dy = 0;
-        if (e.key === "ArrowLeft") dx = -step;
-        if (e.key === "ArrowRight") dx = step;
-        if (e.key === "ArrowUp") dy = -step;
-        if (e.key === "ArrowDown") dy = step;
-
-        setFields((prev) =>
-          prev.map((f) =>
-            f.id === selectedFieldId
-              ? ({ ...f, x: f.x + dx, y: f.y + dy } as EditorField)
-              : f
-          )
-        );
-        return;
-      }
-
-      // Ctrl/Cmd+D: duplicate selected field
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "d" && selectedFieldId) {
-        e.preventDefault();
-        handleFieldDuplicate(selectedFieldId);
-        return;
-      }
-    }
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [selectedFieldId, fields, setFields]);
-
   const selectedField = useMemo(() => {
     if (!selectedFieldId) return null;
     return fields.find((f) => f.id === selectedFieldId) ?? null;
   }, [fields, selectedFieldId]);
+
+  const inspectorPosition = useMemo(() => {
+    if (!selectedField || !viewerContainerRef.current) return null;
+    const rect = viewerContainerRef.current.getBoundingClientRect();
+    const zoomFactor = zoom / 100;
+    const x = rect.left + (selectedField.x + selectedField.width) * zoomFactor + 12;
+    const y = rect.top + selectedField.y * zoomFactor;
+    // Keep within viewport
+    const clampedX = Math.min(x, window.innerWidth - 210);
+    const clampedY = Math.max(8, Math.min(y, window.innerHeight - 250));
+    return { x: clampedX, y: clampedY };
+  }, [selectedField, zoom]);
 
   const filledCount = useMemo(() => {
     return fields.filter((f) => {
@@ -579,7 +529,7 @@ export default function EditorPage() {
         />
       </div>
 
-      <div className="flex-1 overflow-auto">
+      <div ref={viewerContainerRef} className="flex-1 overflow-auto">
         {/* Top bar with file name, zoom, progress, and page nav */}
         <div className="flex items-center justify-between gap-2 border-b border-border bg-surface px-4 py-2">
           {/* Left: filename + start over */}
@@ -688,6 +638,17 @@ export default function EditorPage() {
           highlightFieldIds={highlightFieldIds}
         />
       </div>
+
+      {/* Floating field inspector */}
+      {selectedField && inspectorPosition && (
+        <FieldInspector
+          field={selectedField}
+          onUpdate={handleFieldUpdate}
+          onDelete={handleFieldDelete}
+          onDeselect={() => setSelectedFieldId(null)}
+          position={inspectorPosition}
+        />
+      )}
 
       {/* Floating bottom action bar */}
       {pdfBytes && totalPages > 0 && (
