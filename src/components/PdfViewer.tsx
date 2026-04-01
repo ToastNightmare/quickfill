@@ -75,6 +75,8 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
   const transformerRef = useRef<Konva.Transformer>(null);
   const selectedShapeRef = useRef<Konva.Node | null>(null);
   const dragStartedRef = useRef(false);
+  const mouseDownPos = useRef<{x: number, y: number} | null>(null);
+  const isDragMove = useRef(false);
 
   useImperativeHandle(ref, () => ({
     getCanvasDataURL: () => canvasRef.current?.toDataURL("image/png") ?? null,
@@ -216,12 +218,6 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
     // Check if hovering over a field
     const shape = stage.getIntersection(pos);
     if (shape) {
-      const parent = shape.getParent();
-      // Check if it's an action button (delete/duplicate)
-      if (parent && (parent.name() === "action-btn")) {
-        setCursorStyle("pointer");
-        return;
-      }
       setCursorStyle("move");
       return;
     }
@@ -269,8 +265,43 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
     setCursorStyle(activeTool ? "crosshair" : "default");
   }, [activeTool]);
 
+  const handleStageMouseDown = useCallback(
+    (e: Konva.KonvaEventObject<MouseEvent>) => {
+      const stage = e.target.getStage();
+      if (!stage) return;
+      const pos = stage.getPointerPosition();
+      if (pos) {
+        mouseDownPos.current = { x: pos.x, y: pos.y };
+      }
+      isDragMove.current = false;
+    },
+    []
+  );
+
+  const handleStageMouseUp = useCallback(
+    (e: Konva.KonvaEventObject<MouseEvent>) => {
+      const stage = e.target.getStage();
+      if (!stage) return;
+      const pos = stage.getPointerPosition();
+      if (pos && mouseDownPos.current) {
+        const dx = pos.x - mouseDownPos.current.x;
+        const dy = pos.y - mouseDownPos.current.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist > 5) {
+          isDragMove.current = true;
+        }
+      }
+    },
+    []
+  );
+
   const handleStageClick = useCallback(
     (e: Konva.KonvaEventObject<MouseEvent>) => {
+      if (isDragMove.current) {
+        isDragMove.current = false;
+        return;
+      }
+
       const stage = e.target.getStage();
       if (!stage) return;
 
@@ -418,6 +449,8 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
           height={dimensions.height}
           scaleX={zoomFactor}
           scaleY={zoomFactor}
+          onMouseDown={handleStageMouseDown}
+          onMouseUp={handleStageMouseUp}
           onClick={handleStageClick}
           onMouseMove={handleStageMouseMove}
           onMouseLeave={handleStageMouseLeave}
@@ -504,8 +537,6 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
                   onFieldUpdate(field.id, { width, height, x, y })
                 }
                 onDoubleClick={() => setEditingFieldId(field.id)}
-                onDelete={() => onFieldDelete(field.id)}
-                onDuplicate={onFieldDuplicate ? () => onFieldDuplicate(field.id) : undefined}
                 onValueChange={(value) => {
                   if (field.type === "checkbox") {
                     onFieldUpdate(field.id, { checked: value } as Partial<EditorField>);
@@ -607,8 +638,6 @@ function FieldShape({
   onDoubleClick,
   onValueChange,
   setSelectedRef,
-  onDelete,
-  onDuplicate,
 }: {
   field: EditorField;
   isSelected: boolean;
@@ -625,8 +654,6 @@ function FieldShape({
   onDoubleClick: () => void;
   onValueChange: (value: string | boolean) => void;
   setSelectedRef: (node: Konva.Node | null) => void;
-  onDelete?: () => void;
-  onDuplicate?: () => void;
 }) {
   const groupRef = useRef<Konva.Group>(null);
 
@@ -636,12 +663,13 @@ function FieldShape({
     }
   }, [isSelected, setSelectedRef]);
 
-  // Updated field styling per FIX 4
+  const [dragOpacity, setDragOpacity] = useState(1);
+
   const getBorderColor = () => {
     if (isHighlighted) return "#2563eb";
-    if (isSelected || isEditing) return "#4f8ef7";
+    if (isSelected || isEditing) return "rgba(79,142,247,1)";
     if (isHovered) return "rgba(79,142,247,0.6)";
-    return "rgba(79,142,247,0.4)";
+    return "rgba(79,142,247,0.35)";
   };
   const getBorderWidth = () => {
     if (isHighlighted) return 3;
@@ -650,7 +678,7 @@ function FieldShape({
     return 1;
   };
   const getFill = () => {
-    if (isSelected || isEditing) return "rgba(79,142,247,0.05)";
+    if (isSelected || isEditing) return "rgba(79,142,247,0.06)";
     if (isHovered) return "rgba(79,142,247,0.03)";
     return "transparent";
   };
@@ -663,7 +691,8 @@ function FieldShape({
         y={field.y}
         width={field.width}
         height={field.height}
-        draggable
+        opacity={dragOpacity}
+        draggable={true}
         onMouseEnter={() => onMouseEnter?.()}
         onMouseLeave={() => onMouseLeave?.()}
         onClick={(e) => {
@@ -674,8 +703,14 @@ function FieldShape({
             onSelect();
           }
         }}
-        onDragStart={() => onDragStart?.()}
-        onDragEnd={(e) => onDragEnd(e.target.x(), e.target.y())}
+        onDragStart={() => {
+          setDragOpacity(0.7);
+          onDragStart?.();
+        }}
+        onDragEnd={(e) => {
+          setDragOpacity(1);
+          onDragEnd(e.target.x(), e.target.y());
+        }}
         onTransformEnd={(e) => {
           const node = e.target;
           const scaleX = node.scaleX();
@@ -696,7 +731,7 @@ function FieldShape({
           fill={field.checked ? "rgba(79,142,247,0.08)" : "white"}
           stroke={isHighlighted ? "#2563eb" : isSelected ? "#4f8ef7" : isHovered ? "rgba(79,142,247,0.6)" : "#d1d5db"}
           strokeWidth={isHighlighted ? 3 : isSelected ? 2 : isHovered ? 1.5 : 1}
-          cornerRadius={3}
+          cornerRadius={4}
         />
         {field.checked && (
           <Text
@@ -708,14 +743,6 @@ function FieldShape({
             align="center"
             verticalAlign="middle"
             fontStyle="bold"
-          />
-        )}
-        {/* Action chip for checkbox */}
-        {isSelected && (
-          <ActionChip
-            fieldWidth={field.width}
-            onDelete={onDelete}
-            onDuplicate={onDuplicate}
           />
         )}
       </Group>
@@ -739,7 +766,8 @@ function FieldShape({
       y={field.y}
       width={field.width}
       height={field.height}
-      draggable
+      opacity={dragOpacity}
+      draggable={true}
       onMouseEnter={() => onMouseEnter?.()}
       onMouseLeave={() => onMouseLeave?.()}
       onClick={(e) => {
@@ -750,8 +778,14 @@ function FieldShape({
         e.cancelBubble = true;
         onDoubleClick();
       }}
-      onDragStart={() => onDragStart?.()}
-      onDragEnd={(e) => onDragEnd(e.target.x(), e.target.y())}
+      onDragStart={() => {
+        setDragOpacity(0.7);
+        onDragStart?.();
+      }}
+      onDragEnd={(e) => {
+        setDragOpacity(1);
+        onDragEnd(e.target.x(), e.target.y());
+      }}
       onTransformStart={() => onTransformStart?.()}
       onTransformEnd={(e) => {
         const node = e.target;
@@ -773,7 +807,7 @@ function FieldShape({
         fill={getFill()}
         stroke={getBorderColor()}
         strokeWidth={getBorderWidth()}
-        cornerRadius={3}
+        cornerRadius={4}
       />
       {!isEditing && (
         <Text
@@ -790,92 +824,7 @@ function FieldShape({
           wrap="none"
         />
       )}
-      {/* Action chip: duplicate + delete */}
-      {isSelected && (
-        <ActionChip
-          fieldWidth={field.width}
-          onDelete={onDelete}
-          onDuplicate={onDuplicate}
-        />
-      )}
     </Group>
   );
 }
 
-/** Floating action chip above the selected field with duplicate + delete buttons */
-function ActionChip({
-  fieldWidth,
-  onDelete,
-  onDuplicate,
-}: {
-  fieldWidth: number;
-  onDelete?: () => void;
-  onDuplicate?: () => void;
-}) {
-  const chipWidth = onDuplicate ? 56 : 28;
-  const chipX = fieldWidth / 2 - chipWidth / 2;
-
-  return (
-    <Group x={chipX} y={-32} name="action-btn">
-      {/* Background pill */}
-      <Rect
-        width={chipWidth}
-        height={24}
-        fill="#1f2937"
-        cornerRadius={12}
-        shadowColor="rgba(0,0,0,0.15)"
-        shadowBlur={6}
-        shadowOffsetY={2}
-      />
-
-      {/* Duplicate button */}
-      {onDuplicate && (
-        <Group
-          x={4}
-          y={0}
-          name="action-btn"
-          onClick={(e) => {
-            e.cancelBubble = true;
-            onDuplicate();
-          }}
-        >
-          <Rect width={24} height={24} fill="transparent" cornerRadius={12} />
-          <Text
-            text="⧉"
-            fontSize={14}
-            fill="#d1d5db"
-            width={24}
-            height={24}
-            align="center"
-            verticalAlign="middle"
-          />
-        </Group>
-      )}
-
-      {/* Delete button */}
-      {onDelete && (
-        <Group
-          x={onDuplicate ? 28 : 0}
-          y={0}
-          name="action-btn"
-          onClick={(e) => {
-            e.cancelBubble = true;
-            onDelete();
-          }}
-        >
-          <Rect width={28} height={24} fill="transparent" cornerRadius={12} />
-          <Text
-            text="×"
-            fontSize={16}
-            fill="#f87171"
-            width={28}
-            height={24}
-            align="center"
-            verticalAlign="middle"
-            fontStyle="bold"
-          />
-        </Group>
-      )}
-    </Group>
-  );
-}

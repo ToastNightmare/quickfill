@@ -132,11 +132,17 @@ export default function EditorPage() {
     if (!selectedField || !viewerContainerRef.current) return null;
     const rect = viewerContainerRef.current.getBoundingClientRect();
     const zoomFactor = zoom / 100;
-    const x = rect.left + (selectedField.x + selectedField.width) * zoomFactor + 12;
-    const y = rect.top + selectedField.y * zoomFactor;
+    // Center above the field, with the triangle pointing down at it
+    const fieldCenterX = rect.left + (selectedField.x + selectedField.width / 2) * zoomFactor;
+    const inspectorWidth = 176; // w-44 = 11rem = 176px
+    const x = fieldCenterX - inspectorWidth / 2;
+    // Estimate inspector height: ~80px for checkbox, ~110px for text fields with font size
+    const estimatedHeight = selectedField.type === "checkbox" ? 80 : 110;
+    const fieldTopY = rect.top + selectedField.y * zoomFactor;
+    const y = fieldTopY - estimatedHeight - 6; // 6px gap for triangle
     // Keep within viewport
-    const clampedX = Math.min(x, window.innerWidth - 210);
-    const clampedY = Math.max(8, Math.min(y, window.innerHeight - 250));
+    const clampedX = Math.max(8, Math.min(x, window.innerWidth - inspectorWidth - 8));
+    const clampedY = Math.max(8, y);
     return { x: clampedX, y: clampedY };
   }, [selectedField, zoom]);
 
