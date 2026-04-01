@@ -44,8 +44,8 @@ interface SnapPreview {
 
 /** Infer a sensible font size from field height */
 function inferFontSize(boxHeight: number): number {
-  // Use ~60% of box height, clamped to 8-36px
-  const raw = Math.round(boxHeight * 0.6);
+  // Use ~65% of box height for tighter fill, clamped to 8-36px
+  const raw = Math.round(boxHeight * 0.65);
   return Math.max(8, Math.min(36, raw));
 }
 
@@ -368,7 +368,8 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
       // Infer font size from box height when snapped
       const inferredFontSize = snapped ? inferFontSize(fieldH) : undefined;
 
-      const base = { id, x: fieldX, y: fieldY, page: currentPage, snapped };
+      const snapBounds = snapped ? { x: fieldX, y: fieldY, width: fieldW, height: fieldH } : undefined;
+      const base = { id, x: fieldX, y: fieldY, page: currentPage, snapped, snapBounds };
 
       let field: EditorField;
       switch (activeTool) {
@@ -484,7 +485,8 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
         const fieldH = snap.height / zoomFactor;
         const inferredFontSize = inferFontSize(fieldH);
 
-        const base = { id, x: fieldX, y: fieldY, page: currentPage, snapped: true };
+        const snapBounds = { x: fieldX, y: fieldY, width: fieldW, height: fieldH };
+        const base = { id, x: fieldX, y: fieldY, page: currentPage, snapped: true, snapBounds };
 
         let field: EditorField;
         switch (activeTool) {
@@ -636,7 +638,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
                 onMouseEnter={() => {
                   setHoveredFieldId(field.id);
                   if (!activeTool && !isDragging) {
-                    setCursorStyle("move");
+                    setCursorStyle(field.snapped ? "pointer" : "move");
                   }
                 }}
                 onMouseLeave={() => {
@@ -703,12 +705,13 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
           (() => {
             const editField = pageFields.find((f) => f.id === editingFieldId);
             if (!editField || editField.type === "checkbox") return null;
+            const isEditSnapped = editField.snapped ?? false;
 
             return (
               <input
                 autoFocus
                 type="text"
-                className="absolute z-20 border-2 border-accent bg-white/90 px-1 outline-none"
+                className="absolute z-20 border-2 border-accent bg-white/90 outline-none"
                 style={{
                   left: editField.x * zoomFactor,
                   top: editField.y * zoomFactor,
@@ -720,6 +723,9 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
                   fontFamily:
                     editField.type === "signature" ? "cursive" : "inherit",
                   cursor: "text",
+                  paddingLeft: isEditSnapped ? 2 * zoomFactor : 4,
+                  paddingRight: isEditSnapped ? 2 * zoomFactor : 4,
+                  boxSizing: "border-box",
                 }}
                 value={editField.value}
                 placeholder={
@@ -824,7 +830,7 @@ function FieldShape({
         width={field.width}
         height={field.height}
         opacity={dragOpacity}
-        draggable={true}
+        draggable={!isSnapped}
         onMouseEnter={() => onMouseEnter?.()}
         onMouseLeave={() => onMouseLeave?.()}
         onClick={(e) => {
@@ -899,7 +905,7 @@ function FieldShape({
       width={field.width}
       height={field.height}
       opacity={dragOpacity}
-      draggable={true}
+      draggable={!isSnapped}
       onMouseEnter={() => onMouseEnter?.()}
       onMouseLeave={() => onMouseLeave?.()}
       onClick={(e) => {
@@ -948,9 +954,9 @@ function FieldShape({
           fill={isEmpty ? "#9ca3af" : "#1a1a2e"}
           fontFamily={field.type === "signature" ? "cursive" : "Arial"}
           fontStyle={field.type === "signature" ? "italic" : "normal"}
-          width={field.width - 4}
+          width={field.width - (isSnapped ? 2 : 4)}
           height={field.height}
-          padding={4}
+          padding={isSnapped ? 2 : 4}
           verticalAlign="middle"
           ellipsis
           wrap="none"

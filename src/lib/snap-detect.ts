@@ -19,7 +19,6 @@ const SCAN_HEIGHT = 120; // taller scan for better vertical coverage
 const MIN_LINE_LENGTH_H = 30; // minimum horizontal line length in pixels
 const MIN_LINE_LENGTH_V = 12; // minimum vertical line length in pixels
 const GAP_TOLERANCE = 6; // allow small gaps in lines (raised for dotted/dashed borders)
-const PADDING = 3;
 const UNDERLINE_DEFAULT_HEIGHT = 28; // default height for underline-only fields
 
 function isDark(data: Uint8ClampedArray, index: number): boolean {
@@ -194,10 +193,10 @@ export function detectSnapBox(
             if (area < bestArea) {
               bestArea = area;
               bestBox = {
-                x: sx + left.x + PADDING,
-                y: sy + top.y + PADDING,
-                width: boxWidth - PADDING * 2,
-                height: boxHeight - PADDING * 2,
+                x: sx + left.x,
+                y: sy + top.y,
+                width: boxWidth,
+                height: boxHeight,
               };
             }
           }
@@ -230,9 +229,9 @@ export function detectSnapBox(
       if (absDist < bestDist) {
         bestDist = absDist;
         bestUnderline = {
-          x: sx + line.x1 + PADDING,
+          x: sx + line.x1,
           y: sy + line.y - UNDERLINE_DEFAULT_HEIGHT,
-          width: lineLen - PADDING * 2,
+          width: lineLen,
           height: UNDERLINE_DEFAULT_HEIGHT,
         };
       }

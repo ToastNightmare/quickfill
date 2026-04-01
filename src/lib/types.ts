@@ -9,6 +9,7 @@ export interface FieldBase {
   height: number;
   page: number;
   snapped?: boolean;
+  snapBounds?: { x: number; y: number; width: number; height: number };
 }
 
 export interface TextField extends FieldBase {

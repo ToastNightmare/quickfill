@@ -1,6 +1,6 @@
 "use client";
 
-import { X, Minus, Plus, Lock } from "lucide-react";
+import { X, Minus, Plus, Lock, Unlock } from "lucide-react";
 import type { EditorField } from "@/lib/types";
 
 const TYPE_LABELS: Record<string, string> = {
@@ -51,7 +51,18 @@ export function FieldInspector({ field, onUpdate, onDelete, onDeselect, position
           </button>
         </div>
 
-        {/* Row 2: Font size stepper (always shown for text fields, snapped or not) */}
+        {/* Row 2: Detach button for snapped fields */}
+        {isSnapped && (
+          <button
+            onClick={() => onUpdate(field.id, { snapped: false, snapBounds: undefined } as Partial<EditorField>)}
+            className="mt-2 flex w-full items-center justify-center gap-1 rounded border border-[#e5e7eb] px-2 py-1 text-[10px] font-medium text-gray-500 hover:bg-gray-50 hover:text-gray-700 transition-colors"
+          >
+            <Unlock className="h-2.5 w-2.5" />
+            Detach from box
+          </button>
+        )}
+
+        {/* Row 3: Font size stepper (always shown for text fields, snapped or not) */}
         {showFontSize && fontSize !== null && (
           <div className="mt-2 flex items-center gap-1.5">
             <button
@@ -81,7 +92,7 @@ export function FieldInspector({ field, onUpdate, onDelete, onDeselect, position
           </div>
         )}
 
-        {/* Row 3: Delete field */}
+        {/* Row 4: Delete field */}
         <button
           onClick={() => onDelete(field.id)}
           className="mt-2 text-xs font-medium text-red-500 hover:text-red-700 transition-colors"
