@@ -1,4 +1,4 @@
-import { auth } from "@clerk/nextjs/server";
+import { auth, currentUser } from "@clerk/nextjs/server";
 import { NextRequest, NextResponse } from "next/server";
 import { getStripe } from "@/lib/stripe";
 
@@ -7,6 +7,9 @@ export async function POST(req: NextRequest) {
   if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+
+  const user = await currentUser();
+  const email = user?.emailAddresses?.[0]?.emailAddress;
 
   const origin = req.headers.get("origin") ?? "http://localhost:3000";
 
@@ -42,6 +45,7 @@ export async function POST(req: NextRequest) {
         quantity: 1,
       },
     ],
+    customer_email: email ?? undefined,
     success_url: `${origin}/dashboard?upgraded=true`,
     cancel_url: `${origin}/pricing`,
     metadata: {

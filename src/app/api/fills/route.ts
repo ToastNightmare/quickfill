@@ -15,9 +15,11 @@ export async function GET() {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const fills = await getRedis().lrange<FillEntry>(`fills:${userId}`, 0, 9);
   const sub = await getRedis().get<string>(`sub:${userId}`);
+  const isBusiness = sub === "business";
   const isPro = sub === "pro";
+  const limit = isBusiness ? -1 : 9;
+  const fills = await getRedis().lrange<FillEntry>(`fills:${userId}`, 0, limit);
 
   return NextResponse.json({ fills: fills ?? [], isPro });
 }
@@ -30,9 +32,11 @@ export async function POST(req: Request) {
 
   const body = (await req.json()) as FillEntry;
   const key = `fills:${userId}`;
+  const sub = await getRedis().get<string>(`sub:${userId}`);
+  const maxEntries = sub === "business" ? 99 : 9;
 
   await getRedis().lpush(key, body);
-  await getRedis().ltrim(key, 0, 9);
+  await getRedis().ltrim(key, 0, maxEntries);
 
   return NextResponse.json({ ok: true });
 }

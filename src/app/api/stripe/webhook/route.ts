@@ -66,6 +66,26 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  if (event.type === "customer.subscription.updated") {
+    const subscription = event.data.object as Stripe.Subscription;
+    const userId = subscription.metadata?.userId;
+    if (userId) {
+      const status = subscription.status;
+      if (status === "active") {
+        const priceId = subscription.items.data[0]?.price?.id;
+        const tier = priceId ? tierFromPriceId(priceId) : null;
+        await getRedis().set(`sub:${userId}`, tier ?? "pro", { ex: TTL_SECONDS });
+      } else if (
+        status === "canceled" ||
+        status === "unpaid" ||
+        status === "past_due" ||
+        status === "paused"
+      ) {
+        await getRedis().del(`sub:${userId}`);
+      }
+    }
+  }
+
   if (event.type === "customer.subscription.deleted") {
     const subscription = event.data.object as Stripe.Subscription;
     const userId = subscription.metadata?.userId;

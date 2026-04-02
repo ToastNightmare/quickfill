@@ -181,54 +181,60 @@ export default function EditorPage() {
   const handleFileLoad = useCallback(
     async (file: File, bytes: ArrayBuffer) => {
       setIsLoading(true);
-      setPdfBytes(bytes);
-      setFileName(file.name);
-      setCurrentPage(0);
-      setSelectedFieldId(null);
-      setActiveTool(null);
-
-      // Persist PDF and filename
-      savePdfToIndexedDB(bytes);
-      saveFileNameToLocalStorage(file.name);
-
-      // Detect AcroForm fields
       try {
-        const acroFields = await detectAcroFormFields(bytes);
-        if (acroFields.length > 0) {
-          setHasAcroForm(true);
-          const editorFields: EditorField[] = acroFields.map((af) => {
-            if (af.type === "checkbox") {
+        setPdfBytes(bytes);
+        setFileName(file.name);
+        setCurrentPage(0);
+        setSelectedFieldId(null);
+        setActiveTool(null);
+
+        // Persist PDF and filename
+        savePdfToIndexedDB(bytes);
+        saveFileNameToLocalStorage(file.name);
+
+        // Detect AcroForm fields
+        try {
+          const acroFields = await detectAcroFormFields(bytes);
+          if (acroFields.length > 0) {
+            setHasAcroForm(true);
+            const editorFields: EditorField[] = acroFields.map((af) => {
+              if (af.type === "checkbox") {
+                return {
+                  id: af.name,
+                  type: "checkbox" as const,
+                  x: af.x,
+                  y: af.y,
+                  width: af.width,
+                  height: af.height,
+                  page: af.page,
+                  checked: false,
+                };
+              }
               return {
                 id: af.name,
-                type: "checkbox" as const,
+                type: "text" as const,
                 x: af.x,
                 y: af.y,
                 width: af.width,
                 height: af.height,
                 page: af.page,
-                checked: false,
+                value: af.value,
+                fontSize: 12,
               };
-            }
-            return {
-              id: af.name,
-              type: "text" as const,
-              x: af.x,
-              y: af.y,
-              width: af.width,
-              height: af.height,
-              page: af.page,
-              value: af.value,
-              fontSize: 12,
-            };
-          });
-          reset(editorFields);
-        } else {
+            });
+            reset(editorFields);
+          } else {
+            setHasAcroForm(false);
+            reset([]);
+          }
+        } catch {
           setHasAcroForm(false);
           reset([]);
         }
       } catch {
-        setHasAcroForm(false);
-        reset([]);
+        setPdfBytes(null);
+        setToast("This PDF could not be opened. It may be encrypted or corrupted. Try a different file.");
+        setTimeout(() => setToast(null), 5000);
       } finally {
         setIsLoading(false);
       }

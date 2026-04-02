@@ -34,13 +34,20 @@ function DashboardContent() {
   const upgraded = searchParams.get("upgraded");
 
   const [usage, setUsage] = useState<UsageData | null>(null);
+  const [usageError, setUsageError] = useState(false);
   const [fills, setFills] = useState<FillEntry[]>([]);
 
   useEffect(() => {
-    fetch("/api/usage").then((r) => r.json()).then(setUsage);
-    fetch("/api/fills").then((r) => r.json()).then((data) => {
-      if (data && data.fills) setFills(data.fills);
-    });
+    fetch("/api/usage")
+      .then((r) => r.json())
+      .then(setUsage)
+      .catch(() => setUsageError(true));
+    fetch("/api/fills")
+      .then((r) => r.json())
+      .then((data) => {
+        if (data && data.fills) setFills(data.fills);
+      })
+      .catch(() => {});
   }, []);
 
   const handleUpgrade = async () => {
@@ -97,7 +104,9 @@ function DashboardContent() {
         {/* Usage card */}
         <div className="rounded-xl border border-border bg-surface p-6 shadow-sm">
           <h2 className="text-lg font-semibold">Usage This Month</h2>
-          {usage ? (
+          {usageError ? (
+            <p className="mt-2 text-sm text-red-500">Could not load usage data. Please refresh the page.</p>
+          ) : usage ? (
             <>
               <p className="mt-2 text-sm text-text-muted">
                 {tier === "pro" ? (
