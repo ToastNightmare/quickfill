@@ -260,21 +260,21 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
         let snap: SnapResult | null = null;
 
         if (preBoxes.length > 0) {
-          // Find the most credible pre-computed box containing the pointer
-          let bestScore = Infinity;
+          // Find all boxes containing the pointer, pick the most credible (smallest cell)
+          const containing: SnapResult[] = [];
           for (const box of preBoxes) {
             if (
-              pos.x >= box.x - 5 &&
-              pos.x <= box.x + box.width + 5 &&
-              pos.y >= box.y - 5 &&
-              pos.y <= box.y + box.height + 5
+              pos.x >= box.x - 3 &&
+              pos.x <= box.x + box.width + 3 &&
+              pos.y >= box.y - 3 &&
+              pos.y <= box.y + box.height + 3
             ) {
-              const score = snapCredibilityScore(box);
-              if (score < bestScore) {
-                bestScore = score;
-                snap = box;
-              }
+              containing.push(box);
             }
+          }
+          if (containing.length > 0) {
+            containing.sort((a, b) => snapCredibilityScore(a) - snapCredibilityScore(b));
+            snap = containing[0];
           }
         }
 
@@ -370,20 +370,26 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
         let foundSnap: SnapResult | null = null;
 
         if (preBoxes.length > 0) {
-          let bestScore = Infinity;
+          // First pass: find all boxes that strictly contain the click point
+          const containing: SnapResult[] = [];
           for (const box of preBoxes) {
             if (
-              posX >= box.x - 5 &&
-              posX <= box.x + box.width + 5 &&
-              posY >= box.y - 5 &&
-              posY <= box.y + box.height + 5
+              posX >= box.x - 3 &&
+              posX <= box.x + box.width + 3 &&
+              posY >= box.y - 3 &&
+              posY <= box.y + box.height + 3
             ) {
-              const score = snapCredibilityScore(box);
-              if (score < bestScore) {
-                bestScore = score;
-                foundSnap = box;
-              }
+              containing.push(box);
             }
+          }
+          if (containing.length > 0) {
+            // Pick the smallest containing box (most precise cell)
+            containing.sort((a, b) => {
+              const scoreA = snapCredibilityScore(a);
+              const scoreB = snapCredibilityScore(b);
+              return scoreA - scoreB;
+            });
+            foundSnap = containing[0];
           }
         }
 

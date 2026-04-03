@@ -28,8 +28,8 @@ const DARK_THRESHOLD = 145;
 const MEDIUM_THRESHOLD = 170;
 
 // Scan window for click-time detection (wider + taller for better coverage)
-const SCAN_WIDTH = 500;
-const SCAN_HEIGHT = 180;
+const SCAN_WIDTH = 600;
+const SCAN_HEIGHT = 250;
 
 // Line detection parameters
 const MIN_LINE_LENGTH_H = 25; // minimum horizontal line length in pixels
@@ -38,7 +38,7 @@ const GAP_TOLERANCE = 8; // allow small gaps in lines (dotted/dashed borders)
 
 // Box validation
 const MIN_BOX_HEIGHT = 8;
-const MAX_BOX_HEIGHT = 120; // raised from 80 to catch taller fields
+const MAX_BOX_HEIGHT = 200; // raised to catch tall cells in any form
 const MIN_BOX_WIDTH = 18;
 
 // Underline defaults
@@ -479,23 +479,30 @@ function deduplicateValues(values: number[], tolerance: number): number[] {
 
 /**
  * Score how "credible" a box is as an individual form field.
- * Lower score = more credible. Typical input fields are 40-400px wide, 15-50px tall.
- * Oversized row-spanning regions get penalized.
+ * Lower score = more credible. Strongly prefers smallest containing box.
+ * Wide row-spanning boxes get heavily penalised.
  */
 export { fieldCredibilityScore as snapCredibilityScore };
 function fieldCredibilityScore(box: SnapResult): number {
   const area = box.width * box.height;
   const aspectRatio = box.width / Math.max(box.height, 1);
 
-  let score = area; // base: smaller is better
+  let score = area; // base: smaller area = better
 
-  // Penalize very wide boxes (likely row-spanning)
-  if (box.width > 500) score += (box.width - 500) * 50;
-  // Penalize extreme aspect ratios (very wide and short = likely a full row)
-  if (aspectRatio > 12) score += aspectRatio * 200;
+  // Strong exponential penalty for wide boxes (row-spanning detected as one box)
+  if (box.width > 350) {
+    const excess = box.width - 350;
+    score += Math.pow(excess, 1.8) * 3;
+  }
+  // Additional hard penalty for very wide boxes
+  if (box.width > 600) score += (box.width - 600) * 800;
+
+  // Penalize extreme aspect ratios (very wide and short = full row span)
+  if (aspectRatio > 8) score += Math.pow(aspectRatio - 8, 2) * 1000;
+
   // Reward boxes in typical input field range
-  if (box.width >= 40 && box.width <= 400 && box.height >= 12 && box.height <= 55) {
-    score *= 0.5;
+  if (box.width >= 30 && box.width <= 350 && box.height >= 10 && box.height <= 80) {
+    score *= 0.35; // strong reward for well-sized fields
   }
 
   return score;
