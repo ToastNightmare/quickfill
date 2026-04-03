@@ -634,8 +634,8 @@ export function floodFillCell(
   const cellH = 60; // estimated cell height for parallel scan offsets
   const offsets = [-Math.round(cellH * 0.3), -Math.round(cellH * 0.1), 0, Math.round(cellH * 0.1), Math.round(cellH * 0.3)];
 
-  const maxHoriz = 700;
-  const maxVert  = 300;
+  const maxHoriz = 1200;
+  const maxVert  = 400;
 
   let minLeft   = maxHoriz;
   let minRight  = maxHoriz;
@@ -666,8 +666,12 @@ export function floodFillCell(
   const h = bottom - top;
 
   if (w < MIN_BOX_WIDTH || h < MIN_BOX_HEIGHT) return null;
-  // Reject if result is too wide (multi-cell span) — max 420px
-  if (w > 420 || h > MAX_BOX_HEIGHT) return null;
+  if (h > MAX_BOX_HEIGHT) return null;
+
+  // Reject only if aspect ratio is extreme — genuine full-row spans
+  // (wide-but-reasonable cells like "Name" input are valid)
+  const aspectRatio = w / Math.max(h, 1);
+  if (aspectRatio > 14) return null;
 
   return { x: left, y: top, width: w, height: h };
 }

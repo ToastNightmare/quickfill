@@ -276,8 +276,8 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
             containing.sort((a, b) => snapCredibilityScore(a) - snapCredibilityScore(b));
             const best = containing[0];
             const aspectRatio = best.width / Math.max(best.height, 1);
-            // Skip pre-computed if box is row-spanning (too wide or bad aspect ratio)
-            if (best.width <= 300 && aspectRatio <= 4) {
+            // Skip pre-computed if box is row-spanning (extreme aspect ratio)
+            if (aspectRatio <= 10) {
               snap = best;
             }
           }
@@ -399,8 +399,8 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
             containing.sort((a, b) => snapCredibilityScore(a) - snapCredibilityScore(b));
             const best = containing[0];
             const aspectRatio = best.width / Math.max(best.height, 1);
-            // Only use pre-computed if it's a single-cell sized box
-            if (best.width <= 300 && aspectRatio <= 4) {
+            // Only use pre-computed if it looks like a single cell (not a full row span)
+            if (aspectRatio <= 10) {
               foundSnap = best;
             }
           }
