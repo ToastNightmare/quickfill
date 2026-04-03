@@ -28,8 +28,8 @@ const DARK_THRESHOLD = 145;
 const MEDIUM_THRESHOLD = 170;
 
 // Scan window for click-time detection (wider + taller for better coverage)
-const SCAN_WIDTH = 600;
-const SCAN_HEIGHT = 250;
+const SCAN_WIDTH = 800;
+const SCAN_HEIGHT = 350;
 
 // Line detection parameters
 const MIN_LINE_LENGTH_H = 25; // minimum horizontal line length in pixels
@@ -594,7 +594,7 @@ function fieldCredibilityScore(box: SnapResult): number {
   if (box.width > 500) score += (box.width - 500) * 2000;
 
   // Penalize extreme aspect ratios (very wide and short = full row span)
-  if (aspectRatio > 6) score += Math.pow(aspectRatio - 6, 2) * 1500;
+  if (aspectRatio > 4) score += Math.pow(aspectRatio - 4, 2) * 2000;
 
   // Reward boxes in typical input field range (single cell)
   if (box.width >= 30 && box.width <= 280 && box.height >= 10 && box.height <= 80) {
