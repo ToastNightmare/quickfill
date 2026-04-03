@@ -71,6 +71,7 @@ export default function EditorPage() {
   const [signatureModalOpen, setSignatureModalOpen] = useState(false);
   const [pendingSignatureField, setPendingSignatureField] = useState<EditorField | null>(null);
   const [showWelcome, setShowWelcome] = useState(false);
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
   const { fields, set: setFields, undo, redo, reset, canUndo, canRedo } = useHistory();
   const restoredRef = useRef(false);
   const pdfViewerRef = useRef<PdfViewerHandle>(null);
@@ -278,6 +279,39 @@ export default function EditorPage() {
     [setFields, selectedFieldId]
   );
 
+  // Keyboard shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Ignore if user is typing in an input
+      const target = e.target as HTMLElement;
+      if (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable) return;
+
+      // Undo: Ctrl+Z / Cmd+Z
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key === "z") {
+        e.preventDefault();
+        undo();
+      }
+      // Redo: Ctrl+Shift+Z / Cmd+Shift+Z or Ctrl+Y
+      if (((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === "z") || ((e.ctrlKey || e.metaKey) && e.key === "y")) {
+        e.preventDefault();
+        redo();
+      }
+      // Delete selected field: Delete or Backspace
+      if ((e.key === "Delete" || e.key === "Backspace") && selectedFieldId) {
+        e.preventDefault();
+        handleFieldDelete(selectedFieldId);
+      }
+      // Escape: deselect
+      if (e.key === "Escape") {
+        setSelectedFieldId(null);
+        setActiveTool(null);
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [undo, redo, selectedFieldId, handleFieldDelete]);
+
   const handleFieldDuplicate = useCallback(
     (id: string) => {
       const source = fields.find((f) => f.id === id);
@@ -291,8 +325,13 @@ export default function EditorPage() {
   );
 
   const handleClear = useCallback(() => {
+    setShowClearConfirm(true);
+  }, []);
+
+  const confirmClear = useCallback(() => {
     setFields([]);
     setSelectedFieldId(null);
+    setShowClearConfirm(false);
   }, [setFields]);
 
   const handleFontSizeChange = useCallback(
@@ -877,6 +916,30 @@ export default function EditorPage() {
         useMode
         onUseExisting={handleSignatureModalUseExisting}
       />
+
+      {/* Clear all confirmation */}
+      {showClearConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4">
+          <div className="w-full max-w-sm rounded-2xl bg-surface p-6 shadow-2xl">
+            <h2 className="text-lg font-bold">Clear all fields?</h2>
+            <p className="mt-2 text-sm text-text-muted">This will remove all placed fields. This cannot be undone.</p>
+            <div className="mt-5 flex gap-3">
+              <button
+                onClick={confirmClear}
+                className="flex-1 rounded-xl bg-red-500 py-2.5 text-sm font-semibold text-white hover:bg-red-600 transition-colors"
+              >
+                Clear All
+              </button>
+              <button
+                onClick={() => setShowClearConfirm(false)}
+                className="flex-1 rounded-xl border border-border py-2.5 text-sm font-semibold hover:bg-surface-alt transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Upgrade modal */}
       {showUpgradeModal && (

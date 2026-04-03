@@ -1,7 +1,7 @@
 "use client";
 
-import { useCallback } from "react";
-import { useDropzone } from "react-dropzone";
+import { useCallback, useState } from "react";
+import { useDropzone, type FileRejection } from "react-dropzone";
 import { Upload, FileText } from "lucide-react";
 
 interface UploadZoneProps {
@@ -9,8 +9,16 @@ interface UploadZoneProps {
 }
 
 export function UploadZone({ onFileLoad }: UploadZoneProps) {
+  const [sizeError, setSizeError] = useState(false);
+
   const onDrop = useCallback(
-    (acceptedFiles: File[]) => {
+    (acceptedFiles: File[], rejectedFiles: FileRejection[]) => {
+      setSizeError(false);
+      if (rejectedFiles.length > 0) {
+        setSizeError(true);
+        setTimeout(() => setSizeError(false), 4000);
+        return;
+      }
       const file = acceptedFiles[0];
       if (!file) return;
       const reader = new FileReader();
@@ -28,6 +36,7 @@ export function UploadZone({ onFileLoad }: UploadZoneProps) {
     onDrop,
     accept: { "application/pdf": [".pdf"] },
     multiple: false,
+    maxSize: 50 * 1024 * 1024, // 50MB
   });
 
   return (
@@ -53,6 +62,11 @@ export function UploadZone({ onFileLoad }: UploadZoneProps) {
         </p>
         <p className="mt-1 text-sm text-text-muted">or click to browse</p>
         <p className="mt-4 text-xs text-text-muted">PDF files only, up to 50MB</p>
+        {sizeError && (
+          <p className="mt-3 text-sm font-medium text-red-500">
+            File too large. Please upload a PDF under 50MB.
+          </p>
+        )}
       </div>
     </div>
   );

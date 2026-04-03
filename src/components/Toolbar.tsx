@@ -89,6 +89,30 @@ export function Toolbar({
           <Redo2 className="h-4 w-4" />
         </button>
         <div className="w-px h-5 bg-border shrink-0" />
+        {/* Auto-detect */}
+        <button
+          onClick={onDetectFields}
+          disabled={isDetecting}
+          title="Auto-detect fields"
+          className="flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium text-text-muted hover:bg-surface-alt hover:text-text disabled:opacity-50 transition-colors"
+        >
+          {isDetecting ? (
+            <div className="h-4 w-4 animate-spin rounded-full border-2 border-accent border-t-transparent" />
+          ) : (
+            <Sparkles className="h-4 w-4" />
+          )}
+          {isDetecting ? "Detecting..." : "Detect"}
+        </button>
+        {/* Auto-fill */}
+        <button
+          onClick={onAutoFill}
+          title="Auto-fill from profile"
+          className="flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium text-text-muted hover:bg-surface-alt hover:text-text transition-colors"
+        >
+          <UserCheck className="h-4 w-4" />
+          Auto-fill
+        </button>
+        <div className="w-px h-5 bg-border shrink-0" />
         <button
           onClick={onDownload}
           disabled={isDownloading}
@@ -118,7 +142,7 @@ export function Toolbar({
               : "text-text-muted hover:bg-surface-alt hover:text-text"
           }`}
         >
-          <Icon className="h-4.5 w-4.5 shrink-0" />
+          <Icon className="h-5 w-5 shrink-0" />
           <span className="hidden flex-1 sm:inline">{label}</span>
         </button>
       ))}
@@ -128,12 +152,12 @@ export function Toolbar({
         onClick={onDetectFields}
         disabled={isDetecting}
         title="Auto-detect form fields"
-        className="flex h-10 items-center gap-2 rounded-lg px-2 text-sm font-medium text-text-muted hover:bg-purple-50 hover:text-purple-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+        className="flex h-10 items-center gap-2 rounded-lg px-2 text-sm font-medium text-text-muted hover:bg-accent/10 hover:text-accent transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
       >
         {isDetecting ? (
-          <div className="h-4.5 w-4.5 shrink-0 animate-spin rounded-full border-2 border-purple-400 border-t-transparent" />
+          <div className="h-5 w-5 shrink-0 animate-spin rounded-full border-2 border-accent border-t-transparent" />
         ) : (
-          <Sparkles className="h-4.5 w-4.5 shrink-0" />
+          <Sparkles className="h-5 w-5 shrink-0" />
         )}
         <span className="hidden sm:inline">
           {isDetecting ? "Detecting..." : "Auto-detect"}
@@ -148,7 +172,7 @@ export function Toolbar({
         title="Auto-fill from saved profile"
         className="flex h-10 items-center gap-2 rounded-lg px-2 text-sm font-medium text-text-muted hover:bg-green-50 hover:text-green-700 transition-colors"
       >
-        <UserCheck className="h-4.5 w-4.5 shrink-0" />
+        <UserCheck className="h-5 w-5 shrink-0" />
         <span className="hidden sm:inline">Auto-fill Profile</span>
       </button>
 
