@@ -70,6 +70,7 @@ export default function EditorPage() {
   const [savedSignature, setSavedSignature] = useState<string | null>(null);
   const [signatureModalOpen, setSignatureModalOpen] = useState(false);
   const [pendingSignatureField, setPendingSignatureField] = useState<EditorField | null>(null);
+  const [showWelcome, setShowWelcome] = useState(false);
   const { fields, set: setFields, undo, redo, reset, canUndo, canRedo } = useHistory();
   const restoredRef = useRef(false);
   const pdfViewerRef = useRef<PdfViewerHandle>(null);
@@ -85,6 +86,17 @@ export default function EditorPage() {
         }
       })
       .catch(() => {});
+  }, []);
+
+  // Show welcome banner for first-time users
+  useEffect(() => {
+    const dismissed = localStorage.getItem("qf_welcome_dismissed");
+    if (!dismissed) setShowWelcome(true);
+  }, []);
+
+  const dismissWelcome = useCallback(() => {
+    localStorage.setItem("qf_welcome_dismissed", "1");
+    setShowWelcome(false);
   }, []);
 
   // Restore session on mount
@@ -622,6 +634,18 @@ export default function EditorPage() {
               <div className="h-10 w-10 animate-spin rounded-full border-3 border-accent border-t-transparent" />
               <p className="text-sm font-medium text-text-muted">Loading PDF...</p>
             </div>
+          </div>
+        )}
+        {showWelcome && (
+          <div className="mx-4 mt-4 flex items-start gap-3 rounded-xl border border-accent/20 bg-accent/5 px-5 py-4">
+            <Sparkles className="mt-0.5 h-5 w-5 shrink-0 text-accent" />
+            <div className="flex-1 text-sm">
+              <span className="font-semibold text-accent">Welcome to QuickFill!</span>
+              <span className="ml-1 text-text-muted">Upload any PDF form to get started — it takes less than 60 seconds.</span>
+            </div>
+            <button onClick={dismissWelcome} className="shrink-0 text-text-muted hover:text-text transition-colors">
+              <X className="h-4 w-4" />
+            </button>
           </div>
         )}
         <UploadZone onFileLoad={handleFileLoad} />

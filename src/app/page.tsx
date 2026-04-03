@@ -308,6 +308,27 @@ const verticals = [
   },
 ];
 
+const testimonials = [
+  {
+    name: "Sarah M.",
+    role: "Bookkeeper, Perth WA",
+    text: "I fill ATO BAS forms for 12 clients every quarter. QuickFill cut my processing time in half. No more printing, scanning, or installing software.",
+    initials: "SM",
+  },
+  {
+    name: "James T.",
+    role: "Property Manager, Brisbane",
+    text: "Rental applications, tenancy agreements, condition reports — all done in the browser. My team uses it every day. The auto-fill profile feature is a game changer.",
+    initials: "JT",
+  },
+  {
+    name: "Linda K.",
+    role: "Sole Trader, Melbourne",
+    text: "I was dreading my tax return forms. Uploaded the PDF, filled it in minutes, downloaded it. Done. Wish I found this years ago.",
+    initials: "LK",
+  },
+];
+
 export default function Home() {
   const { isLoaded, isSignedIn } = useAuth();
 
@@ -459,10 +480,40 @@ export default function Home() {
         </div>
       </section>
 
+      {/* Testimonials */}
+      <section className="bg-surface px-4 py-20 sm:px-6 lg:px-8">
+        <div className="mx-auto max-w-6xl">
+          <h2 className="text-center text-3xl font-bold tracking-tight sm:text-4xl">
+            Trusted by professionals across Australia
+          </h2>
+          <div className="mt-12 grid gap-8 sm:grid-cols-2 lg:grid-cols-3">
+            {testimonials.map((t) => (
+              <div
+                key={t.name}
+                className="rounded-xl border border-border bg-surface p-6 shadow-sm"
+              >
+                <p className="text-sm leading-relaxed text-text-muted">
+                  &ldquo;{t.text}&rdquo;
+                </p>
+                <div className="mt-5 flex items-center gap-3">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-accent/10 text-sm font-bold text-accent">
+                    {t.initials}
+                  </div>
+                  <div>
+                    <p className="text-sm font-semibold">{t.name}</p>
+                    <p className="text-xs text-text-muted">{t.role}</p>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
       {/* How it works */}
       <section
         id="how-it-works"
-        className="bg-surface px-4 py-20 sm:px-6 lg:px-8"
+        className="bg-surface-alt px-4 py-20 sm:px-6 lg:px-8"
       >
         <div className="mx-auto max-w-4xl">
           <h2 className="text-center text-3xl font-bold tracking-tight sm:text-4xl">
