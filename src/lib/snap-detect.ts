@@ -670,44 +670,58 @@ export function floodFillCell(
     : [0];
 
   // Step 3: Scan horizontally at each Y offset within the row
-  let minLeft  = maxHoriz;
-  let minRight = maxHoriz;
+  // Collect all measurements then use majority vote to pick boundary
+  const leftMeasures:  number[] = [];
+  const rightMeasures: number[] = [];
   for (const yOff of yOffsets) {
     const scanY = sy + yOff;
     if (scanY >= 0 && scanY < canvasHeight) {
-      minLeft  = Math.min(minLeft,  scanLine(sx, scanY, -1, 0, maxHoriz));
-      minRight = Math.min(minRight, scanLine(sx, scanY,  1, 0, maxHoriz));
+      leftMeasures.push(scanLine(sx, scanY, -1, 0, maxHoriz));
+      rightMeasures.push(scanLine(sx, scanY,  1, 0, maxHoriz));
     }
   }
 
-  // Step 4: Check if the right boundary is a phantom line from an adjacent row.
-  // If the vertical line at our right boundary only covers < 40% of the current
-  // row height, it's likely an artifact — try scanning past it.
-  const rightBoundaryX = sx + minRight;
-  if (rightBoundaryX < canvasWidth - 3) {
+  // Sort measurements and pick the MEDIAN value.
+  // Median is robust — phantom lines that stop a minority of scans early
+  // get outvoted by the majority that reach the real border.
+  const median = (arr: number[]) => {
+    if (arr.length === 0) return maxHoriz;
+    const s = [...arr].sort((a, b) => a - b);
+    const mid = Math.floor(s.length / 2);
+    return s.length % 2 === 0 ? Math.round((s[mid - 1] + s[mid]) / 2) : s[mid];
+  };
+
+  const medLeft  = median(leftMeasures);
+  const medRight = median(rightMeasures);
+
+  // Also check: if the boundary at median has low row-coverage (phantom line),
+  // use the maximum instead of median
+  const checkBoundaryX = (boundaryDist: number, direction: 1 | -1): number => {
+    const boundX = sx + direction * boundaryDist;
+    if (boundX < 1 || boundX >= canvasWidth - 1) return boundaryDist;
     let darkInRow = 0;
-    for (let y = rowTop; y <= rowBottom; y++) {
-      if (brightness(rightBoundaryX, y) < BORDER) darkInRow++;
+    const checkStep = Math.max(1, Math.round(rowHeight / 8));
+    let checked = 0;
+    for (let y = rowTop + 1; y < rowBottom; y += checkStep) {
+      if (brightness(boundX, y) < BORDER) darkInRow++;
+      checked++;
     }
-    const darkFraction = darkInRow / Math.max(1, rowBottom - rowTop);
-    if (darkFraction < 0.45) {
-      // Thin phantom line — peek 3px beyond and check for more white space
-      const beyondX = rightBoundaryX + 3;
-      if (beyondX < canvasWidth && brightness(beyondX, sy) > 228) {
-        const furtherRight = scanLine(beyondX, sy, 1, 0, maxHoriz - minRight - 3);
-        if (furtherRight > 25) {
-          // Verify the extended area is white (input cell, not label)
-          const midBr = brightness(beyondX + Math.round(furtherRight / 2), sy);
-          if (midBr > 228) {
-            minRight = minRight + 3 + furtherRight;
-          }
-        }
-      }
+    const darkFraction = checked > 0 ? darkInRow / checked : 1;
+    if (darkFraction < 0.4) {
+      // Phantom line — use the maximum boundary (widest scan)
+      const maxMeasure = direction === 1
+        ? Math.max(...rightMeasures)
+        : Math.max(...leftMeasures);
+      return maxMeasure;
     }
-  }
+    return boundaryDist;
+  };
 
-  const left   = sx - minLeft;
-  const right  = sx + minRight;
+  const finalLeft  = checkBoundaryX(medLeft,  -1);
+  const finalRight = checkBoundaryX(medRight,  1);
+
+  const left   = sx - finalLeft;
+  const right  = sx + finalRight;
   const top    = rowTop;
   const bottom = rowBottom;
 
