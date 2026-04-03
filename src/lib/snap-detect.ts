@@ -464,6 +464,61 @@ function segmentByInternalDividers(
   return result;
 }
 
+/**
+ * Segment tall boxes that contain internal horizontal dividers into sub-rows.
+ * Mirror of segmentByInternalDividers but for horizontal lines.
+ */
+function segmentByInternalHorizontalDividers(
+  boxes: SnapResult[],
+  hLines: HLine[],
+): SnapResult[] {
+  const result: SnapResult[] = [];
+
+  for (const box of boxes) {
+    // Only try to split boxes taller than ~1.8x a typical row height
+    if (box.height < MIN_BOX_HEIGHT * 3) {
+      result.push(box);
+      continue;
+    }
+
+    const interiorHLines: number[] = [];
+    const edgeTolerance = 6;
+
+    for (const hl of hLines) {
+      // Line must be interior (not at top/bottom edge)
+      if (hl.y <= box.y + edgeTolerance) continue;
+      if (hl.y >= box.y + box.height - edgeTolerance) continue;
+      // Line must span most of the box width
+      if (hl.x1 > box.x + box.width * 0.3) continue;
+      if (hl.x2 < box.x + box.width * 0.7) continue;
+      interiorHLines.push(hl.y);
+    }
+
+    if (interiorHLines.length === 0) {
+      result.push(box);
+      continue;
+    }
+
+    const dividers = deduplicateValues(interiorHLines, 4);
+    dividers.sort((a, b) => a - b);
+
+    const edges = [box.y, ...dividers, box.y + box.height];
+    let addedCells = false;
+
+    for (let i = 0; i < edges.length - 1; i++) {
+      const cellY = edges[i];
+      const cellH = edges[i + 1] - edges[i];
+      if (cellH < MIN_BOX_HEIGHT) continue;
+      result.push({ x: box.x, y: cellY, width: box.width, height: cellH });
+      addedCells = true;
+    }
+
+    if (!addedCells) result.push(box);
+  }
+
+  return result;
+}
+
 /** Deduplicate a sorted list of numeric values within a tolerance. */
 function deduplicateValues(values: number[], tolerance: number): number[] {
   if (values.length === 0) return [];
@@ -608,9 +663,16 @@ export function detectSnapBox(
     const whiteOnly = (boxes: SnapResult[]) =>
       boxes.filter((b) => isWhiteInterior(data, sw, b, 0, 0));
 
+    // Helper: full segmentation — vertical then horizontal
+    const segment = (boxes: SnapResult[]) =>
+      segmentByInternalHorizontalDividers(
+        segmentByInternalDividers(boxes, vLines),
+        hLines,
+      );
+
     // --- Strategy 1: Full rectangle detection (with segmentation) ---
     const fullBoxesRaw = findFullRectangles(hLines, vLines, relClickX, relClickY);
-    const fullBoxesAll = segmentByInternalDividers(fullBoxesRaw, vLines);
+    const fullBoxesAll = segment(fullBoxesRaw);
     const fullBoxes = whiteOnly(fullBoxesAll);
     if (fullBoxes.length > 0) {
       const candidates = fullBoxes.filter((box) =>
@@ -629,7 +691,7 @@ export function detectSnapBox(
 
     // --- Strategy 2: 3-sided box detection (with segmentation) ---
     const threeBoxesRaw = findThreeSidedBoxes(hLines, vLines, relClickX, relClickY);
-    const threeBoxesAll = segmentByInternalDividers(threeBoxesRaw, vLines);
+    const threeBoxesAll = segment(threeBoxesRaw);
     const threeBoxes = whiteOnly(threeBoxesAll);
     if (threeBoxes.length > 0) {
       const candidates = threeBoxes.filter((box) =>
@@ -745,14 +807,21 @@ export function detectAllBoxes(canvas: HTMLCanvasElement): SnapResult[] {
     const whiteOnly = (boxes: SnapResult[]) =>
       boxes.filter((b) => isWhiteInterior(data, w, b, 0, 0));
 
+    // Helper: full segmentation — vertical then horizontal
+    const segment = (boxes: SnapResult[]) =>
+      segmentByInternalHorizontalDividers(
+        segmentByInternalDividers(boxes, vLines),
+        hLines,
+      );
+
     // Full rectangles (no click constraint)
     const fullBoxes = findFullRectangles(hLines, vLines);
-    const segmented = whiteOnly(segmentByInternalDividers(fullBoxes, vLines));
+    const segmented = whiteOnly(segment(fullBoxes));
     allBoxes.push(...segmented);
 
     // 3-sided boxes (also segment these)
     const threeBoxes = findThreeSidedBoxes(hLines, vLines);
-    const segmented3 = whiteOnly(segmentByInternalDividers(threeBoxes, vLines));
+    const segmented3 = whiteOnly(segment(threeBoxes));
     allBoxes.push(...segmented3);
 
     // Table cells (already cell-sized, no segmentation needed)
