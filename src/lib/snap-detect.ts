@@ -575,9 +575,8 @@ export function isWhiteInterior(
 
 /**
  * Flood-fill based cell detection.
- * Starting from a click point, expands outward in 4 directions until hitting
- * dark border pixels. Returns the bounding box of the white region.
- * This directly finds the exact cell clicked, regardless of border thickness.
+ * Scans outward from the click point along the exact centerlines until hitting
+ * a dark border pixel. Works reliably for any border thickness including 1px.
  */
 export function floodFillCell(
   data: Uint8ClampedArray,
@@ -586,22 +585,21 @@ export function floodFillCell(
   startX: number,
   startY: number,
 ): SnapResult | null {
-  // If start pixel is dark (on a border), nudge inward slightly
-  const checkPixel = (x: number, y: number): boolean => {
-    if (x < 0 || y < 0 || x >= canvasWidth || y >= canvasHeight) return false;
+  // Pixel brightness at a point
+  const brightness = (x: number, y: number): number => {
+    if (x < 0 || y < 0 || x >= canvasWidth || y >= canvasHeight) return 0;
     const idx = (y * canvasWidth + x) * 4;
-    const brightness = (data[idx] + data[idx + 1] + data[idx + 2]) / 3;
-    return brightness > 180; // light pixel = inside cell
+    return (data[idx] + data[idx + 1] + data[idx + 2]) / 3;
   };
 
-  // Find a light starting pixel near click (nudge up to 8px in each direction)
+  // Find a light starting pixel near click (nudge up to 10px)
   let sx = startX;
   let sy = startY;
-  if (!checkPixel(sx, sy)) {
+  if (brightness(sx, sy) < 200) {
     let found = false;
-    for (let d = 1; d <= 8 && !found; d++) {
-      for (const [dx, dy] of [[0, d], [0, -d], [d, 0], [-d, 0]]) {
-        if (checkPixel(sx + dx, sy + dy)) {
+    for (let d = 1; d <= 10 && !found; d++) {
+      for (const [dx, dy] of [[0,d],[0,-d],[d,0],[-d,0],[d,d],[-d,-d],[d,-d],[-d,d]]) {
+        if (brightness(sx+dx, sy+dy) > 200) {
           sx += dx; sy += dy; found = true; break;
         }
       }
@@ -609,72 +607,43 @@ export function floodFillCell(
     if (!found) return null;
   }
 
-  // Verify starting pixel is white enough (input field, not grey label)
-  const startIdx = (sy * canvasWidth + sx) * 4;
-  const startBrightness = (data[startIdx] + data[startIdx + 1] + data[startIdx + 2]) / 3;
-  if (startBrightness < 235) return null; // clicked in a shaded cell
+  // Reject shaded/coloured cells (label cells, headers)
+  if (brightness(sx, sy) < 238) return null;
 
-  // Scan outward from start point to find cell boundaries
-  // Expand left, right, up, down until we hit dark pixels
-  const isBorder = (x: number, y: number): boolean => {
-    if (x < 0 || y < 0 || x >= canvasWidth || y >= canvasHeight) return true;
-    const idx = (y * canvasWidth + x) * 4;
-    return (data[idx] + data[idx + 1] + data[idx + 2]) / 3 < 160;
-  };
+  // Border threshold — catches both solid and anti-aliased lines
+  const BORDER = 180;
 
-  // Scan each direction with majority voting to handle noise/text
-  const scanEdge = (
-    start: number,
-    end: number,
-    step: number,
-    isEdge: (pos: number) => boolean,
-    maxGap = 3
-  ): number => {
-    let pos = start;
-    let gapCount = 0;
-    while (pos !== end) {
-      if (isEdge(pos)) {
-        gapCount++;
-        if (gapCount > maxGap) return pos - step * gapCount;
-      } else {
-        gapCount = 0;
-      }
-      pos += step;
+  // Scan along a single row/column from center outward.
+  // At each step, check 3 pixels: the exact position + ±1 orthogonal.
+  // Stop as soon as ANY of the 3 is dark (catches 1px anti-aliased lines).
+  const scanH = (fromX: number, step: number, limit: number): number => {
+    for (let x = fromX; x !== limit; x += step) {
+      // Check the pixel and its vertical neighbours
+      if (brightness(x, sy) < BORDER) return x - step;
+      if (brightness(x, sy - 1) < BORDER && brightness(x, sy + 1) < BORDER) return x - step;
     }
-    return end;
+    return limit;
   };
 
-  // Scan row by row to find left/right bounds at each y, take median
-  const top = scanEdge(sy, Math.max(0, sy - 200), -1, (y) => {
-    // Check majority of pixels in a horizontal band
-    let darkCount = 0;
-    for (let x = sx - 5; x <= sx + 5; x++) if (isBorder(x, y)) darkCount++;
-    return darkCount >= 6;
-  });
+  const scanV = (fromY: number, step: number, limit: number): number => {
+    for (let y = fromY; y !== limit; y += step) {
+      if (brightness(sx, y) < BORDER) return y - step;
+      if (brightness(sx - 1, y) < BORDER && brightness(sx + 1, y) < BORDER) return y - step;
+    }
+    return limit;
+  };
 
-  const bottom = scanEdge(sy, Math.min(canvasHeight - 1, sy + 200), 1, (y) => {
-    let darkCount = 0;
-    for (let x = sx - 5; x <= sx + 5; x++) if (isBorder(x, y)) darkCount++;
-    return darkCount >= 6;
-  });
-
-  const left = scanEdge(sx, Math.max(0, sx - 600), -1, (x) => {
-    let darkCount = 0;
-    for (let y = sy - 3; y <= sy + 3; y++) if (isBorder(x, y)) darkCount++;
-    return darkCount >= 4;
-  });
-
-  const right = scanEdge(sx, Math.min(canvasWidth - 1, sx + 600), 1, (x) => {
-    let darkCount = 0;
-    for (let y = sy - 3; y <= sy + 3; y++) if (isBorder(x, y)) darkCount++;
-    return darkCount >= 4;
-  });
+  const left   = scanH(sx,   -1, Math.max(0, sx - 700));
+  const right  = scanH(sx,    1, Math.min(canvasWidth  - 1, sx + 700));
+  const top    = scanV(sy,   -1, Math.max(0, sy - 300));
+  const bottom = scanV(sy,    1, Math.min(canvasHeight - 1, sy + 300));
 
   const w = right - left;
   const h = bottom - top;
 
   if (w < MIN_BOX_WIDTH || h < MIN_BOX_HEIGHT) return null;
-  if (w > 800 || h > MAX_BOX_HEIGHT) return null; // sanity bounds
+  // Reject if result is too wide (multi-cell span) — max 420px
+  if (w > 420 || h > MAX_BOX_HEIGHT) return null;
 
   return { x: left, y: top, width: w, height: h };
 }
