@@ -93,10 +93,9 @@ function DashboardContent() {
         )}
       </div>
 
-      {upgraded && (
-        <div className="mt-4 rounded-xl border border-accent/30 bg-accent/5 p-4 text-sm text-accent font-medium">
-          <Sparkles className="mr-2 inline h-4 w-4" />
-          You&apos;ve upgraded! Enjoy your new plan.
+      {upgraded === "true" && (
+        <div className="mb-6 mt-4 rounded-xl bg-green-50 border border-green-200 px-5 py-4 text-sm text-green-800 font-medium">
+          Welcome to Pro! Your account has been upgraded. Enjoy unlimited fills.
         </div>
       )}
 

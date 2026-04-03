@@ -44,8 +44,6 @@ const faqs = [
 ];
 
 export default function PricingPage() {
-  const [billing, setBilling] = useState<"monthly" | "annual">("monthly");
-
   const handleUpgrade = async (plan: "pro" | "business") => {
     const res = await fetch("/api/stripe/checkout", {
       method: "POST",
@@ -101,31 +99,7 @@ export default function PricingPage() {
               Start free. Upgrade when you need more.
             </p>
 
-            {/* Monthly/Annual toggle */}
-            <div className="mt-8 flex justify-center">
-              <div className="inline-flex rounded-full bg-white/10 p-1">
-                <button
-                  onClick={() => setBilling("monthly")}
-                  className={`rounded-full px-5 py-2 text-sm font-medium transition-colors ${
-                    billing === "monthly"
-                      ? "bg-white text-navy shadow"
-                      : "text-gray-300 hover:text-white"
-                  }`}
-                >
-                  Monthly
-                </button>
-                <button
-                  onClick={() => setBilling("annual")}
-                  className={`rounded-full px-5 py-2 text-sm font-medium transition-colors ${
-                    billing === "annual"
-                      ? "bg-white text-navy shadow"
-                      : "text-gray-300 hover:text-white"
-                  }`}
-                >
-                  Annual
-                </button>
-              </div>
-            </div>
+            {/* Annual toggle removed — monthly only for now */}
           </div>
         </section>
 
@@ -151,55 +125,23 @@ export default function PricingPage() {
 
             {/* Pro */}
             <div className="relative rounded-xl border-2 border-accent bg-surface p-8 shadow-lg shadow-accent/10">
-              {billing === "annual" ? (
-                <div className="absolute -top-3 left-6 rounded-full bg-green-500 px-3 py-0.5 text-xs font-semibold text-white">
-                  Best Value
-                </div>
-              ) : (
-                <div className="absolute -top-3 left-6 rounded-full bg-accent px-3 py-0.5 text-xs font-semibold text-white">
-                  Most Popular
-                </div>
-              )}
+              <div className="absolute -top-3 left-6 rounded-full bg-accent px-3 py-0.5 text-xs font-semibold text-white">
+                Most Popular
+              </div>
               <h2 className="text-lg font-semibold">Pro</h2>
-              <div className="mt-4">
-                {billing === "monthly" ? (
-                  <div className="flex items-baseline gap-1">
-                    <span className="text-4xl font-extrabold">$12</span>
-                    <span className="text-text-muted">/month</span>
-                  </div>
-                ) : (
-                  <div>
-                    <div className="flex items-baseline gap-2">
-                      <span className="text-4xl font-extrabold">$99</span>
-                      <span className="text-text-muted">/year</span>
-                      <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs font-semibold text-green-700">
-                        Save $45
-                      </span>
-                    </div>
-                    <p className="mt-1 text-sm text-text-muted">
-                      $8.25/month, billed annually
-                    </p>
-                  </div>
-                )}
+              <div className="mt-4 flex items-baseline gap-1">
+                <span className="text-4xl font-extrabold">$12</span>
+                <span className="text-text-muted">/month</span>
               </div>
               <p className="mt-4 text-sm text-text-muted">Unlimited fills, no watermark, priority support.</p>
               <p className="mt-2 text-xs font-medium text-text-muted">Best for: Sole traders, bookkeepers, individuals</p>
-              {billing === "monthly" ? (
-                <button
-                  onClick={() => handleUpgrade("pro")}
-                  className="mt-8 flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-accent text-sm font-semibold text-white hover:bg-accent-hover transition-colors"
-                >
-                  <Sparkles className="h-4 w-4" />
-                  Upgrade to Pro
-                </button>
-              ) : (
-                <button
-                  disabled
-                  className="mt-8 flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-accent/60 text-sm font-semibold text-white cursor-not-allowed"
-                >
-                  Coming Soon
-                </button>
-              )}
+              <button
+                onClick={() => handleUpgrade("pro")}
+                className="mt-8 flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-accent text-sm font-semibold text-white hover:bg-accent-hover transition-colors"
+              >
+                <Sparkles className="h-4 w-4" />
+                Upgrade to Pro
+              </button>
             </div>
 
             {/* Business */}
@@ -211,21 +153,12 @@ export default function PricingPage() {
               </div>
               <p className="mt-4 text-sm text-gray-300">Built for agencies &amp; bookkeepers.</p>
               <p className="mt-2 text-xs font-medium text-gray-400">Best for: Agencies, teams, and organisations</p>
-              {billing === "monthly" ? (
-                <button
-                  onClick={() => handleUpgrade("business")}
-                  className="mt-8 flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-white text-sm font-semibold text-[#1a1a2e] hover:bg-gray-100 transition-colors"
-                >
-                  Get Business
-                </button>
-              ) : (
-                <button
-                  disabled
-                  className="mt-8 flex h-11 w-full items-center justify-center gap-2 rounded-xl border border-white/20 text-sm font-semibold text-gray-400 cursor-not-allowed"
-                >
-                  Coming Soon
-                </button>
-              )}
+              <button
+                onClick={() => handleUpgrade("business")}
+                className="mt-8 flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-white text-sm font-semibold text-[#1a1a2e] hover:bg-gray-100 transition-colors"
+              >
+                Get Business
+              </button>
             </div>
           </div>
 

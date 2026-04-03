@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import {
   Upload,
@@ -221,7 +221,7 @@ function LoggedInHome() {
               Editor
             </Link>
             <Link
-              href="/#pricing"
+              href="/pricing"
               className="text-sm text-gray-400 hover:text-white transition-colors"
             >
               Pricing
@@ -231,6 +231,18 @@ function LoggedInHome() {
               className="text-sm text-gray-400 hover:text-white transition-colors"
             >
               How It Works
+            </Link>
+            <Link
+              href="/privacy"
+              className="text-sm text-gray-400 hover:text-white transition-colors"
+            >
+              Privacy
+            </Link>
+            <Link
+              href="/terms"
+              className="text-sm text-gray-400 hover:text-white transition-colors"
+            >
+              Terms
             </Link>
           </div>
           <p className="text-sm text-gray-500">
@@ -298,7 +310,6 @@ const verticals = [
 
 export default function Home() {
   const { isLoaded, isSignedIn } = useAuth();
-  const [billing, setBilling] = useState<"monthly" | "annual">("monthly");
 
   if (!isLoaded) {
     return (
@@ -347,7 +358,7 @@ export default function Home() {
                 price: "29",
                 priceCurrency: "AUD",
                 name: "Business Plan",
-                description: "50 documents per month with team features",
+                description: "Unlimited documents per month with team features",
               },
             ],
             featureList: [
@@ -516,32 +527,6 @@ export default function Home() {
             Start free. Upgrade when you need more.
           </p>
 
-          {/* Monthly/Annual toggle */}
-          <div className="mt-8 flex justify-center">
-            <div className="inline-flex rounded-full bg-surface-alt p-1">
-              <button
-                onClick={() => setBilling("monthly")}
-                className={`rounded-full px-5 py-2 text-sm font-medium transition-colors ${
-                  billing === "monthly"
-                    ? "bg-surface shadow text-text"
-                    : "text-text-muted hover:text-text"
-                }`}
-              >
-                Monthly
-              </button>
-              <button
-                onClick={() => setBilling("annual")}
-                className={`rounded-full px-5 py-2 text-sm font-medium transition-colors ${
-                  billing === "annual"
-                    ? "bg-surface shadow text-text"
-                    : "text-text-muted hover:text-text"
-                }`}
-              >
-                Annual
-              </button>
-            </div>
-          </div>
-
           <div className="mt-12 grid gap-8 sm:grid-cols-2 lg:grid-cols-3">
             {/* Free tier */}
             <div className="rounded-xl border border-border bg-surface p-8">
@@ -567,7 +552,7 @@ export default function Home() {
                 ))}
               </ul>
               <Link
-                href="/editor"
+                href="/sign-up"
                 className="mt-8 flex h-11 items-center justify-center rounded-lg border border-border text-sm font-semibold hover:bg-surface-alt transition-colors"
               >
                 Get Started Free
@@ -576,36 +561,13 @@ export default function Home() {
 
             {/* Pro tier */}
             <div className="relative rounded-xl border-2 border-accent bg-surface p-8 shadow-lg shadow-accent/10">
-              {billing === "annual" ? (
-                <div className="absolute -top-3 left-6 rounded-full bg-green-500 px-3 py-0.5 text-xs font-semibold text-white">
-                  Best Value
-                </div>
-              ) : (
-                <div className="absolute -top-3 left-6 rounded-full bg-accent px-3 py-0.5 text-xs font-semibold text-white">
-                  Most Popular
-                </div>
-              )}
+              <div className="absolute -top-3 left-6 rounded-full bg-accent px-3 py-0.5 text-xs font-semibold text-white">
+                Most Popular
+              </div>
               <h3 className="text-lg font-semibold">Pro</h3>
-              <div className="mt-4">
-                {billing === "monthly" ? (
-                  <div className="flex items-baseline gap-1">
-                    <span className="text-4xl font-extrabold">$12</span>
-                    <span className="text-text-muted">/month</span>
-                  </div>
-                ) : (
-                  <div>
-                    <div className="flex items-baseline gap-2">
-                      <span className="text-4xl font-extrabold">$99</span>
-                      <span className="text-text-muted">/year</span>
-                      <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs font-semibold text-green-700">
-                        Save $45
-                      </span>
-                    </div>
-                    <p className="mt-1 text-sm text-text-muted">
-                      $8.25/month, billed annually
-                    </p>
-                  </div>
-                )}
+              <div className="mt-4 flex items-baseline gap-1">
+                <span className="text-4xl font-extrabold">$12</span>
+                <span className="text-text-muted">/month</span>
               </div>
               <p className="mt-4 text-sm text-text-muted">
                 For professionals who need volume.
@@ -626,21 +588,24 @@ export default function Home() {
                   </li>
                 ))}
               </ul>
-              {billing === "monthly" ? (
-                <Link
-                  href="/editor"
-                  className="mt-8 flex h-11 items-center justify-center rounded-lg bg-accent text-sm font-semibold text-white hover:bg-accent-hover transition-colors"
-                >
-                  Start Pro Trial
-                </Link>
-              ) : (
-                <button
-                  disabled
-                  className="mt-8 flex h-11 w-full items-center justify-center rounded-lg bg-accent/60 text-sm font-semibold text-white cursor-not-allowed"
-                >
-                  Coming Soon
-                </button>
-              )}
+              <button
+                onClick={async () => {
+                  const res = await fetch("/api/stripe/checkout", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ plan: "pro" }),
+                  });
+                  const data = await res.json();
+                  if (data.error) {
+                    window.location.href = "/sign-up?redirect_url=/pricing";
+                    return;
+                  }
+                  if (data.url) window.location.href = data.url;
+                }}
+                className="mt-8 flex h-11 w-full items-center justify-center rounded-lg bg-accent text-sm font-semibold text-white hover:bg-accent-hover transition-colors"
+              >
+                Start Pro &mdash; $12/month
+              </button>
             </div>
 
             {/* Business tier */}
@@ -655,7 +620,7 @@ export default function Home() {
               </p>
               <ul className="mt-6 space-y-3">
                 {[
-                  "50 documents per month",
+                  "Unlimited documents",
                   "Unlimited fill history",
                   "Priority support",
                   "Team profiles (coming soon)",
@@ -667,21 +632,24 @@ export default function Home() {
                   </li>
                 ))}
               </ul>
-              {billing === "monthly" ? (
-                <Link
-                  href="/editor"
-                  className="mt-8 flex h-11 items-center justify-center rounded-lg border-2 border-accent text-sm font-semibold text-accent hover:bg-accent hover:text-white transition-colors"
-                >
-                  Get Business
-                </Link>
-              ) : (
-                <button
-                  disabled
-                  className="mt-8 flex h-11 w-full items-center justify-center rounded-lg border border-border text-sm font-semibold text-text-muted cursor-not-allowed"
-                >
-                  Coming Soon
-                </button>
-              )}
+              <button
+                onClick={async () => {
+                  const res = await fetch("/api/stripe/checkout", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ plan: "business" }),
+                  });
+                  const data = await res.json();
+                  if (data.error) {
+                    window.location.href = "/sign-up?redirect_url=/pricing";
+                    return;
+                  }
+                  if (data.url) window.location.href = data.url;
+                }}
+                className="mt-8 flex h-11 w-full items-center justify-center rounded-lg border-2 border-accent text-sm font-semibold text-accent hover:bg-accent hover:text-white transition-colors"
+              >
+                Get Business &mdash; $29/month
+              </button>
             </div>
           </div>
         </div>
@@ -702,7 +670,7 @@ export default function Home() {
               Editor
             </Link>
             <Link
-              href="/#pricing"
+              href="/pricing"
               className="text-sm text-gray-400 hover:text-white transition-colors"
             >
               Pricing
@@ -712,6 +680,18 @@ export default function Home() {
               className="text-sm text-gray-400 hover:text-white transition-colors"
             >
               How It Works
+            </Link>
+            <Link
+              href="/privacy"
+              className="text-sm text-gray-400 hover:text-white transition-colors"
+            >
+              Privacy
+            </Link>
+            <Link
+              href="/terms"
+              className="text-sm text-gray-400 hover:text-white transition-colors"
+            >
+              Terms
             </Link>
           </div>
           <p className="text-sm text-gray-500">
