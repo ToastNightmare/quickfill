@@ -1086,8 +1086,10 @@ function FieldShape({
         width={field.width}
         height={field.height}
         fill={getFill()}
+        fillEnabled={!hasValue || isSelected || isEditing || isHovered || isHighlighted}
         stroke={getBorderColor()}
         strokeWidth={getBorderWidth()}
+        strokeEnabled={isSelected || isEditing || isHovered || isHighlighted || !hasValue}
         cornerRadius={isSnapped ? 3 : 4}
       />
       {hasSignatureImage && sigImage ? (
