@@ -614,7 +614,7 @@ export function floodFillCell(
   const BORDER = 175;
 
   // Scan a single line from a point outward until hitting a dark pixel.
-  // Returns the position just before the dark pixel.
+  // Returns the number of steps taken (distance to border).
   const scanLine = (
     fromX: number, fromY: number,
     dx: number, dy: number,
@@ -628,39 +628,53 @@ export function floodFillCell(
     return maxSteps;
   };
 
-  // Scan multiple parallel lines and use the MINIMUM distance found.
-  // This catches dividers that have gaps at row intersections — at least
-  // one scanline will hit the divider even if others skip through gaps.
-  const cellH = 60; // estimated cell height for parallel scan offsets
-  const offsets = [-Math.round(cellH * 0.3), -Math.round(cellH * 0.1), 0, Math.round(cellH * 0.1), Math.round(cellH * 0.3)];
-
   const maxHoriz = 1200;
   const maxVert  = 400;
 
-  let minLeft   = maxHoriz;
-  let minRight  = maxHoriz;
+  // Step 1: Find vertical bounds using center column + ±3px neighbours
+  // This gives us the actual row height before we scan horizontally
   let minTop    = maxVert;
   let minBottom = maxVert;
-
-  for (const off of offsets) {
-    // Horizontal scans at different Y offsets
-    const scanY = sy + off;
-    if (scanY >= 0 && scanY < canvasHeight) {
-      minLeft   = Math.min(minLeft,   scanLine(sx, scanY, -1,  0, maxHoriz));
-      minRight  = Math.min(minRight,  scanLine(sx, scanY,  1,  0, maxHoriz));
-    }
-    // Vertical scans at different X offsets
-    const scanX = sx + off;
+  for (const xOff of [-3, 0, 3]) {
+    const scanX = sx + xOff;
     if (scanX >= 0 && scanX < canvasWidth) {
-      minTop    = Math.min(minTop,    scanLine(scanX, sy,  0, -1, maxVert));
-      minBottom = Math.min(minBottom, scanLine(scanX, sy,  0,  1, maxVert));
+      minTop    = Math.min(minTop,    scanLine(scanX, sy, 0, -1, maxVert));
+      minBottom = Math.min(minBottom, scanLine(scanX, sy, 0,  1, maxVert));
+    }
+  }
+
+  // Step 2: Calculate proportional offsets WITHIN the detected row
+  // This ensures horizontal scans never cross into adjacent rows
+  const rowTop    = sy - minTop;
+  const rowBottom = sy + minBottom;
+  const rowHeight = rowBottom - rowTop;
+
+  // Use 5 scanlines at 15%, 30%, 50%, 70%, 85% of row height
+  const yOffsets = rowHeight > 4
+    ? [
+        rowTop + Math.round(rowHeight * 0.15) - sy,
+        rowTop + Math.round(rowHeight * 0.30) - sy,
+        0,
+        rowTop + Math.round(rowHeight * 0.70) - sy,
+        rowTop + Math.round(rowHeight * 0.85) - sy,
+      ]
+    : [0];
+
+  // Step 3: Scan horizontally at each Y offset within the row
+  let minLeft  = maxHoriz;
+  let minRight = maxHoriz;
+  for (const yOff of yOffsets) {
+    const scanY = sy + yOff;
+    if (scanY >= 0 && scanY < canvasHeight) {
+      minLeft  = Math.min(minLeft,  scanLine(sx, scanY, -1, 0, maxHoriz));
+      minRight = Math.min(minRight, scanLine(sx, scanY,  1, 0, maxHoriz));
     }
   }
 
   const left   = sx - minLeft;
   const right  = sx + minRight;
-  const top    = sy - minTop;
-  const bottom = sy + minBottom;
+  const top    = rowTop;
+  const bottom = rowBottom;
 
   const w = right - left;
   const h = bottom - top;
