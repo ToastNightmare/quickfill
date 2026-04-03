@@ -680,6 +680,32 @@ export function floodFillCell(
     }
   }
 
+  // Step 4: Check if the right boundary is a phantom line from an adjacent row.
+  // If the vertical line at our right boundary only covers < 40% of the current
+  // row height, it's likely an artifact — try scanning past it.
+  const rightBoundaryX = sx + minRight;
+  if (rightBoundaryX < canvasWidth - 3) {
+    let darkInRow = 0;
+    for (let y = rowTop; y <= rowBottom; y++) {
+      if (brightness(rightBoundaryX, y) < BORDER) darkInRow++;
+    }
+    const darkFraction = darkInRow / Math.max(1, rowBottom - rowTop);
+    if (darkFraction < 0.45) {
+      // Thin phantom line — peek 3px beyond and check for more white space
+      const beyondX = rightBoundaryX + 3;
+      if (beyondX < canvasWidth && brightness(beyondX, sy) > 228) {
+        const furtherRight = scanLine(beyondX, sy, 1, 0, maxHoriz - minRight - 3);
+        if (furtherRight > 25) {
+          // Verify the extended area is white (input cell, not label)
+          const midBr = brightness(beyondX + Math.round(furtherRight / 2), sy);
+          if (midBr > 228) {
+            minRight = minRight + 3 + furtherRight;
+          }
+        }
+      }
+    }
+  }
+
   const left   = sx - minLeft;
   const right  = sx + minRight;
   const top    = rowTop;
