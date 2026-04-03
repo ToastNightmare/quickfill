@@ -805,27 +805,26 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
                   top: editField.y * zoomFactor,
                   width: editField.width * zoomFactor,
                   height: editField.height * zoomFactor,
-                  fontSize:
-                    ((editField as { fontSize?: number }).fontSize ?? 14) *
-                    zoomFactor,
-                  fontFamily:
-                    editField.type === "signature" ? "cursive" : "inherit",
+                  fontSize: ((editField as { fontSize?: number }).fontSize ?? 14) * zoomFactor,
+                  fontFamily: editField.type === "signature" ? "cursive" : "Arial, sans-serif",
+                  color: "#1a1a2e",
                   cursor: "text",
-                  paddingLeft: isEditSnapped ? 2 * zoomFactor : 4,
-                  paddingRight: isEditSnapped ? 2 * zoomFactor : 4,
+                  // Match Konva text padding exactly so text aligns
+                  paddingLeft: isEditSnapped ? 2 : 4,
+                  paddingRight: isEditSnapped ? 2 : 4,
+                  paddingTop: 0,
+                  paddingBottom: 0,
                   boxSizing: "border-box",
-                  // Transparent background so PDF shows through
-                  background: "transparent",
-                  // Blue bottom border only — subtle, clean
-                  borderTop: "none",
-                  borderLeft: "none",
-                  borderRight: "none",
-                  borderBottom: "2px solid #3b82f6",
-                  // Allow text to scroll horizontally — user can type freely
-                  overflow: "scroll",
+                  // Fully transparent — no background at all
+                  backgroundColor: "rgba(0,0,0,0)",
+                  background: "none",
+                  WebkitAppearance: "none",
+                  // Underline only while editing
+                  border: "none",
+                  borderBottom: "1.5px solid rgba(59,130,246,0.7)",
+                  // No scrollbar, text just extends right
+                  overflow: "hidden",
                   whiteSpace: "nowrap",
-                  scrollbarWidth: "none", // hide scrollbar but allow scrolling
-                  msOverflowStyle: "none",
                 }}
                 value={editField.value}
                 placeholder={
