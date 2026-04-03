@@ -478,6 +478,47 @@ function deduplicateValues(values: number[], tolerance: number): number[] {
 }
 
 /**
+ * Check if a box has a white/near-white interior (i.e. it's an input field, not a label cell).
+ * Samples a grid of pixels inside the box. Returns true if the interior is white enough.
+ */
+export function isWhiteInterior(
+  data: Uint8ClampedArray,
+  canvasWidth: number,
+  box: SnapResult,
+  offsetX = 0,
+  offsetY = 0,
+): boolean {
+  const insetX = Math.max(2, box.width * 0.08);
+  const insetY = Math.max(2, box.height * 0.15);
+  const x1 = Math.floor(box.x - offsetX + insetX);
+  const y1 = Math.floor(box.y - offsetY + insetY);
+  const x2 = Math.floor(box.x - offsetX + box.width - insetX);
+  const y2 = Math.floor(box.y - offsetY + box.height - insetY);
+
+  if (x2 <= x1 || y2 <= y1) return true; // Too small to check, assume white
+
+  let totalBrightness = 0;
+  let samples = 0;
+  const stepX = Math.max(1, Math.floor((x2 - x1) / 6));
+  const stepY = Math.max(1, Math.floor((y2 - y1) / 4));
+
+  for (let y = y1; y <= y2; y += stepY) {
+    for (let x = x1; x <= x2; x += stepX) {
+      const idx = (y * canvasWidth + x) * 4;
+      if (idx < 0 || idx + 2 >= data.length) continue;
+      const brightness = (data[idx] + data[idx + 1] + data[idx + 2]) / 3;
+      totalBrightness += brightness;
+      samples++;
+    }
+  }
+
+  if (samples === 0) return true;
+  const avgBrightness = totalBrightness / samples;
+  // Input fields are white (>240). Shaded/coloured cells are darker.
+  return avgBrightness > 230;
+}
+
+/**
  * Score how "credible" a box is as an individual form field.
  * Lower score = more credible. Strongly prefers smallest containing box.
  * Wide row-spanning boxes get heavily penalised.
@@ -563,47 +604,40 @@ export function detectSnapBox(
     hLines.sort((a, b) => a.y - b.y);
     vLines.sort((a, b) => a.x - b.x);
 
+    // Helper: filter boxes to only white-interior (input) cells
+    const whiteOnly = (boxes: SnapResult[]) =>
+      boxes.filter((b) => isWhiteInterior(data, sw, b, 0, 0));
+
     // --- Strategy 1: Full rectangle detection (with segmentation) ---
     const fullBoxesRaw = findFullRectangles(hLines, vLines, relClickX, relClickY);
-    const fullBoxes = segmentByInternalDividers(fullBoxesRaw, vLines);
+    const fullBoxesAll = segmentByInternalDividers(fullBoxesRaw, vLines);
+    const fullBoxes = whiteOnly(fullBoxesAll);
     if (fullBoxes.length > 0) {
-      // Collect all boxes containing or near the click, pick by credibility
-      const candidates: SnapResult[] = [];
-      for (const box of fullBoxes) {
-        if (
-          relClickX >= box.x - 10 &&
-          relClickX <= box.x + box.width + 10 &&
-          relClickY >= box.y - 10 &&
-          relClickY <= box.y + box.height + 10
-        ) {
-          candidates.push(box);
-        }
-      }
+      const candidates = fullBoxes.filter((box) =>
+        relClickX >= box.x - 10 &&
+        relClickX <= box.x + box.width + 10 &&
+        relClickY >= box.y - 10 &&
+        relClickY <= box.y + box.height + 10
+      );
       if (candidates.length > 0) {
-        // Pick the most credible field-sized candidate
         candidates.sort((a, b) => fieldCredibilityScore(a) - fieldCredibilityScore(b));
         return offsetResult(candidates[0], sx, sy);
       }
-      // If no box contains click, return the most credible
       fullBoxes.sort((a, b) => fieldCredibilityScore(a) - fieldCredibilityScore(b));
       return offsetResult(fullBoxes[0], sx, sy);
     }
 
     // --- Strategy 2: 3-sided box detection (with segmentation) ---
     const threeBoxesRaw = findThreeSidedBoxes(hLines, vLines, relClickX, relClickY);
-    const threeBoxes = segmentByInternalDividers(threeBoxesRaw, vLines);
+    const threeBoxesAll = segmentByInternalDividers(threeBoxesRaw, vLines);
+    const threeBoxes = whiteOnly(threeBoxesAll);
     if (threeBoxes.length > 0) {
-      const candidates: SnapResult[] = [];
-      for (const box of threeBoxes) {
-        if (
-          relClickX >= box.x - 10 &&
-          relClickX <= box.x + box.width + 10 &&
-          relClickY >= box.y - 10 &&
-          relClickY <= box.y + box.height + 10
-        ) {
-          candidates.push(box);
-        }
-      }
+      const candidates = threeBoxes.filter((box) =>
+        relClickX >= box.x - 10 &&
+        relClickX <= box.x + box.width + 10 &&
+        relClickY >= box.y - 10 &&
+        relClickY <= box.y + box.height + 10
+      );
       if (candidates.length > 0) {
         candidates.sort((a, b) => fieldCredibilityScore(a) - fieldCredibilityScore(b));
         return offsetResult(candidates[0], sx, sy);
@@ -611,9 +645,9 @@ export function detectSnapBox(
     }
 
     // --- Strategy 3: Table cell detection ---
-    const cells = findTableCells(hLines, vLines);
+    const allCells = findTableCells(hLines, vLines);
+    const cells = whiteOnly(allCells);
     if (cells.length > 0) {
-      // Find the cell containing the click
       for (const cell of cells) {
         if (
           relClickX >= cell.x - 5 &&
@@ -707,19 +741,22 @@ export function detectAllBoxes(canvas: HTMLCanvasElement): SnapResult[] {
     hLines.sort((a, b) => a.y - b.y);
     vLines.sort((a, b) => a.x - b.x);
 
+    // Helper: only keep white-interior boxes (input fields, not label cells)
+    const whiteOnly = (boxes: SnapResult[]) =>
+      boxes.filter((b) => isWhiteInterior(data, w, b, 0, 0));
+
     // Full rectangles (no click constraint)
     const fullBoxes = findFullRectangles(hLines, vLines);
-    // Segment any row-wide boxes that contain internal vertical dividers
-    const segmented = segmentByInternalDividers(fullBoxes, vLines);
+    const segmented = whiteOnly(segmentByInternalDividers(fullBoxes, vLines));
     allBoxes.push(...segmented);
 
     // 3-sided boxes (also segment these)
     const threeBoxes = findThreeSidedBoxes(hLines, vLines);
-    const segmented3 = segmentByInternalDividers(threeBoxes, vLines);
+    const segmented3 = whiteOnly(segmentByInternalDividers(threeBoxes, vLines));
     allBoxes.push(...segmented3);
 
     // Table cells (already cell-sized, no segmentation needed)
-    const cells = findTableCells(hLines, vLines);
+    const cells = whiteOnly(findTableCells(hLines, vLines));
     allBoxes.push(...cells);
 
     // If dark threshold found boxes, skip medium pass
