@@ -683,9 +683,9 @@ export function floodFillCell(
   if (h > MAX_BOX_HEIGHT) return null;
 
   // Reject only if aspect ratio is extreme — genuine full-row spans
-  // (wide-but-reasonable cells like "Name" input are valid)
+  // Wide single cells (Name, Address) are valid even at 20:1
   const aspectRatio = w / Math.max(h, 1);
-  if (aspectRatio > 14) return null;
+  if (aspectRatio > 22) return null;
 
   return { x: left, y: top, width: w, height: h };
 }

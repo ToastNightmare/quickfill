@@ -799,7 +799,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
               <input
                 autoFocus
                 type="text"
-                className="absolute z-20 border-2 border-accent bg-white/90 outline-none"
+                className="absolute z-20 outline-none"
                 style={{
                   left: editField.x * zoomFactor,
                   top: editField.y * zoomFactor,
@@ -814,6 +814,17 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
                   paddingLeft: isEditSnapped ? 2 * zoomFactor : 4,
                   paddingRight: isEditSnapped ? 2 * zoomFactor : 4,
                   boxSizing: "border-box",
+                  // Transparent background so PDF shows through
+                  background: "transparent",
+                  // Blue bottom border only — subtle, clean
+                  borderTop: "none",
+                  borderLeft: "none",
+                  borderRight: "none",
+                  borderBottom: "2px solid #3b82f6",
+                  // Allow text to scroll horizontally when longer than field
+                  overflow: "hidden",
+                  whiteSpace: "nowrap",
+                  textOverflow: "clip",
                 }}
                 value={editField.value}
                 placeholder={
@@ -904,17 +915,22 @@ function FieldShape({
 
   const isSnapped = field.snapped ?? false;
 
+  const hasValue = field.type === "checkbox" ? field.checked : !!(field as {value?: string}).value;
+
   const getBorderColor = () => {
     if (isHighlighted) return "#2563eb";
     if (isSelected || isEditing) return "#3b82f6";
-    if (isHovered) return "rgba(59, 130, 246, 0.6)";
-    if (isSnapped) return "rgba(59, 130, 246, 0.25)";
-    return "rgba(79,142,247,0.35)";
+    if (isHovered) return "rgba(59, 130, 246, 0.5)";
+    if (isSnapped) return "rgba(59, 130, 246, 0.2)";
+    // Hide border entirely when field has a value (looks clean on PDF)
+    if (hasValue) return "transparent";
+    return "rgba(79,142,247,0.25)";
   };
   const getBorderWidth = () => {
     if (isHighlighted) return 2.5;
     if (isSelected || isEditing) return 2;
     if (isHovered) return 1.5;
+    if (hasValue && !isSnapped) return 0;
     return 1;
   };
   const getFill = () => {
