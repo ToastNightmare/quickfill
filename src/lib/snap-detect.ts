@@ -611,32 +611,56 @@ export function floodFillCell(
   if (brightness(sx, sy) < 238) return null;
 
   // Border threshold — catches both solid and anti-aliased lines
-  const BORDER = 180;
+  const BORDER = 175;
 
-  // Scan along a single row/column from center outward.
-  // At each step, check 3 pixels: the exact position + ±1 orthogonal.
-  // Stop as soon as ANY of the 3 is dark (catches 1px anti-aliased lines).
-  const scanH = (fromX: number, step: number, limit: number): number => {
-    for (let x = fromX; x !== limit; x += step) {
-      // Check the pixel and its vertical neighbours
-      if (brightness(x, sy) < BORDER) return x - step;
-      if (brightness(x, sy - 1) < BORDER && brightness(x, sy + 1) < BORDER) return x - step;
+  // Scan a single line from a point outward until hitting a dark pixel.
+  // Returns the position just before the dark pixel.
+  const scanLine = (
+    fromX: number, fromY: number,
+    dx: number, dy: number,
+    maxSteps: number
+  ): number => {
+    for (let i = 1; i <= maxSteps; i++) {
+      const x = fromX + dx * i;
+      const y = fromY + dy * i;
+      if (brightness(x, y) < BORDER) return i - 1;
     }
-    return limit;
+    return maxSteps;
   };
 
-  const scanV = (fromY: number, step: number, limit: number): number => {
-    for (let y = fromY; y !== limit; y += step) {
-      if (brightness(sx, y) < BORDER) return y - step;
-      if (brightness(sx - 1, y) < BORDER && brightness(sx + 1, y) < BORDER) return y - step;
-    }
-    return limit;
-  };
+  // Scan multiple parallel lines and use the MINIMUM distance found.
+  // This catches dividers that have gaps at row intersections — at least
+  // one scanline will hit the divider even if others skip through gaps.
+  const cellH = 60; // estimated cell height for parallel scan offsets
+  const offsets = [-Math.round(cellH * 0.3), -Math.round(cellH * 0.1), 0, Math.round(cellH * 0.1), Math.round(cellH * 0.3)];
 
-  const left   = scanH(sx,   -1, Math.max(0, sx - 700));
-  const right  = scanH(sx,    1, Math.min(canvasWidth  - 1, sx + 700));
-  const top    = scanV(sy,   -1, Math.max(0, sy - 300));
-  const bottom = scanV(sy,    1, Math.min(canvasHeight - 1, sy + 300));
+  const maxHoriz = 700;
+  const maxVert  = 300;
+
+  let minLeft   = maxHoriz;
+  let minRight  = maxHoriz;
+  let minTop    = maxVert;
+  let minBottom = maxVert;
+
+  for (const off of offsets) {
+    // Horizontal scans at different Y offsets
+    const scanY = sy + off;
+    if (scanY >= 0 && scanY < canvasHeight) {
+      minLeft   = Math.min(minLeft,   scanLine(sx, scanY, -1,  0, maxHoriz));
+      minRight  = Math.min(minRight,  scanLine(sx, scanY,  1,  0, maxHoriz));
+    }
+    // Vertical scans at different X offsets
+    const scanX = sx + off;
+    if (scanX >= 0 && scanX < canvasWidth) {
+      minTop    = Math.min(minTop,    scanLine(scanX, sy,  0, -1, maxVert));
+      minBottom = Math.min(minBottom, scanLine(scanX, sy,  0,  1, maxVert));
+    }
+  }
+
+  const left   = sx - minLeft;
+  const right  = sx + minRight;
+  const top    = sy - minTop;
+  const bottom = sy + minBottom;
 
   const w = right - left;
   const h = bottom - top;
