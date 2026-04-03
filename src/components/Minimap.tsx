@@ -81,7 +81,8 @@ export function Minimap({ sourceCanvas, viewerRef, pageWidth, pageHeight, zoom, 
   if (!visible) return (
     <button
       onClick={() => setVisible(true)}
-      className="absolute bottom-20 left-3 z-40 rounded-lg bg-surface/90 border border-border px-2 py-1 text-xs text-text-muted hover:text-text shadow-md"
+      className="absolute bottom-20 z-40 rounded-lg bg-surface/90 border border-border px-2 py-1 text-xs text-text-muted hover:text-text shadow-md"
+      style={{ left: 68 }}
       title="Show overview"
     >
       Overview
@@ -90,8 +91,8 @@ export function Minimap({ sourceCanvas, viewerRef, pageWidth, pageHeight, zoom, 
 
   return (
     <div
-      className="absolute bottom-20 left-3 z-40 rounded-xl border border-border bg-surface shadow-xl overflow-hidden"
-      style={{ width: MINIMAP_W }}
+      className="absolute bottom-20 z-40 rounded-xl border border-border bg-surface shadow-xl overflow-hidden"
+      style={{ width: MINIMAP_W, left: 68 }}
     >
       {/* Header */}
       <div className="flex items-center justify-between px-2 py-1 border-b border-border">
