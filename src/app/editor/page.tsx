@@ -27,6 +27,8 @@ import {
 import type { EditorField, ToolType } from "@/lib/types";
 
 const ZOOM_LEVELS = [50, 75, 100, 125, 150, 175, 200];
+const SNAP_MIN = 125;
+const SNAP_MAX = 175;
 
 // Profile field matching keywords
 const PROFILE_MATCHERS: { key: string; keywords: string[] }[] = [
@@ -191,11 +193,11 @@ export default function EditorPage() {
   const totalFieldCount = fields.length;
 
   const handleZoomIn = useCallback(() => {
-    setZoom((prev) => ZOOM_LEVELS.find((z) => z > prev) ?? prev);
+    setZoom((prev) => ZOOM_LEVELS.find((z) => z > prev && z <= SNAP_MAX) ?? prev);
   }, []);
 
   const handleZoomOut = useCallback(() => {
-    setZoom((prev) => [...ZOOM_LEVELS].reverse().find((z) => z < prev) ?? prev);
+    setZoom((prev) => [...ZOOM_LEVELS].reverse().find((z) => z < prev && z >= SNAP_MIN) ?? prev);
   }, []);
 
   const handleFileLoad = useCallback(
@@ -751,7 +753,7 @@ export default function EditorPage() {
           <div className="flex items-center gap-1">
             <button
               onClick={handleZoomOut}
-              disabled={zoom <= ZOOM_LEVELS[0]}
+              disabled={zoom <= SNAP_MIN}
               title="Zoom Out"
               className="flex h-7 w-7 items-center justify-center rounded-md text-text-muted hover:bg-surface-alt transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
             >
@@ -771,7 +773,7 @@ export default function EditorPage() {
             )}
             <button
               onClick={handleZoomIn}
-              disabled={zoom >= ZOOM_LEVELS[ZOOM_LEVELS.length - 1]}
+              disabled={zoom >= SNAP_MAX}
               title="Zoom In"
               className="flex h-7 w-7 items-center justify-center rounded-md text-text-muted hover:bg-surface-alt transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
             >
@@ -865,6 +867,7 @@ export default function EditorPage() {
               pageWidth={800}
               pageHeight={1100}
               zoom={zoom}
+              onRequestRefresh={() => setTimeout(() => setMinimapCanvas(pdfViewerRef.current?.getCanvas() ?? null), 300)}
             />
           )}
           <PdfViewer

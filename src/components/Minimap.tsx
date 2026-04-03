@@ -8,9 +8,10 @@ interface MinimapProps {
   pageWidth: number;
   pageHeight: number;
   zoom: number;
+  onRequestRefresh?: () => void;
 }
 
-export function Minimap({ sourceCanvas, viewerRef, pageWidth, pageHeight, zoom }: MinimapProps) {
+export function Minimap({ sourceCanvas, viewerRef, pageWidth, pageHeight, zoom, onRequestRefresh }: MinimapProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [viewport, setViewport] = useState({ x: 0, y: 0, w: 100, h: 100 });
   const [visible, setVisible] = useState(true);
@@ -19,15 +20,23 @@ export function Minimap({ sourceCanvas, viewerRef, pageWidth, pageHeight, zoom }
   const aspect = pageHeight / Math.max(pageWidth, 1);
   const MINIMAP_H = Math.min(Math.round(MINIMAP_W * aspect), 220);
 
-  // Draw PDF thumbnail onto minimap canvas
+  // Draw PDF thumbnail onto minimap canvas whenever source changes
   useEffect(() => {
     if (!sourceCanvas || !canvasRef.current) return;
-    const ctx = canvasRef.current.getContext("2d");
-    if (!ctx) return;
-    canvasRef.current.width = MINIMAP_W;
-    canvasRef.current.height = MINIMAP_H;
-    ctx.drawImage(sourceCanvas, 0, 0, MINIMAP_W, MINIMAP_H);
+    const miniCtx = canvasRef.current.getContext("2d");
+    if (!miniCtx) return;
+    canvasRef.current.width = MINIMAP_W * 2; // retina
+    canvasRef.current.height = MINIMAP_H * 2;
+    miniCtx.scale(2, 2);
+    miniCtx.drawImage(sourceCanvas, 0, 0, MINIMAP_W, MINIMAP_H);
   }, [sourceCanvas, MINIMAP_W, MINIMAP_H]);
+
+  // Re-request canvas on zoom change (PDF re-renders at new zoom)
+  useEffect(() => {
+    if (onRequestRefresh) {
+      onRequestRefresh();
+    }
+  }, [zoom, onRequestRefresh]);
 
   // Track scroll position to show viewport indicator
   useEffect(() => {
@@ -54,19 +63,34 @@ export function Minimap({ sourceCanvas, viewerRef, pageWidth, pageHeight, zoom }
     };
   }, [viewerRef, pageWidth, pageHeight, zoom, MINIMAP_W, MINIMAP_H]);
 
+  // Click on minimap to scroll to that position
+  const handleMinimapClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    const el = viewerRef.current;
+    if (!el || !canvasRef.current) return;
+    const rect = canvasRef.current.getBoundingClientRect();
+    const clickX = e.clientX - rect.left;
+    const clickY = e.clientY - rect.top;
+    const scaledW = pageWidth * zoom / 100;
+    const scaledH = pageHeight * zoom / 100;
+    const scaleX = scaledW / MINIMAP_W;
+    const scaleY = scaledH / MINIMAP_H;
+    el.scrollLeft = clickX * scaleX - el.clientWidth / 2;
+    el.scrollTop = clickY * scaleY - el.clientHeight / 2;
+  };
+
   if (!visible) return (
     <button
       onClick={() => setVisible(true)}
-      className="absolute bottom-20 right-3 z-40 rounded-lg bg-surface/90 border border-border px-2 py-1 text-xs text-text-muted hover:text-text shadow-md"
-      title="Show minimap"
+      className="absolute bottom-20 left-3 z-40 rounded-lg bg-surface/90 border border-border px-2 py-1 text-xs text-text-muted hover:text-text shadow-md"
+      title="Show overview"
     >
-      Map
+      Overview
     </button>
   );
 
   return (
     <div
-      className="absolute bottom-20 right-3 z-40 rounded-xl border border-border bg-surface/95 shadow-xl overflow-hidden"
+      className="absolute bottom-20 left-3 z-40 rounded-xl border border-border bg-surface shadow-xl overflow-hidden"
       style={{ width: MINIMAP_W }}
     >
       {/* Header */}
@@ -79,8 +103,12 @@ export function Minimap({ sourceCanvas, viewerRef, pageWidth, pageHeight, zoom }
           ✕
         </button>
       </div>
-      {/* Thumbnail */}
-      <div className="relative" style={{ height: MINIMAP_H }}>
+      {/* Thumbnail — clickable to scroll */}
+      <div
+        className="relative cursor-crosshair"
+        style={{ height: MINIMAP_H }}
+        onClick={handleMinimapClick}
+      >
         <canvas
           ref={canvasRef}
           style={{ width: MINIMAP_W, height: MINIMAP_H, display: "block" }}
