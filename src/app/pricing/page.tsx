@@ -10,7 +10,7 @@ const features = [
   { name: "Profile auto-fill", free: true, pro: true, business: true },
   { name: "AcroForm auto-detection", free: true, pro: true, business: true },
   { name: "All field types", free: true, pro: true, business: true },
-  { name: "Fill history", free: "Last 3", pro: "Last 10", business: "Unlimited" },
+  { name: "Fill history", free: "Last 10", pro: "Last 30", business: "Unlimited" },
   { name: "Priority support", free: false, pro: true, business: true },
   { name: "Dedicated account support", free: false, pro: false, business: true },
   { name: "Team profiles", free: false, pro: false, business: "Coming soon" },

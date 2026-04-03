@@ -1,6 +1,8 @@
 import { useState, useCallback } from "react";
 import type { EditorField } from "./types";
 
+const MAX_HISTORY = 50;
+
 export function useHistory(initial: EditorField[] = []) {
   const [past, setPast] = useState<EditorField[][]>([]);
   const [present, setPresent] = useState<EditorField[]>(initial);
@@ -11,7 +13,11 @@ export function useHistory(initial: EditorField[] = []) {
       setPresent((prev) => {
         const next =
           typeof newFields === "function" ? newFields(prev) : newFields;
-        setPast((p) => [...p, prev]);
+        setPast((p) => {
+          const updated = [...p, prev];
+          // Cap history to MAX_HISTORY states to prevent memory bloat
+          return updated.length > MAX_HISTORY ? updated.slice(updated.length - MAX_HISTORY) : updated;
+        });
         setFuture([]);
         return next;
       });
