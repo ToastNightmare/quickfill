@@ -79,7 +79,18 @@ export function loadFieldsFromLocalStorage(): EditorField[] {
   try {
     const raw = localStorage.getItem(FIELDS_KEY);
     if (!raw) return [];
-    return JSON.parse(raw) as EditorField[];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    const valid = parsed.filter(
+      (f) =>
+        f &&
+        typeof f === "object" &&
+        typeof f.id === "string" &&
+        typeof f.type === "string" &&
+        typeof f.x === "number" &&
+        typeof f.y === "number"
+    );
+    return valid as EditorField[];
   } catch (err) {
     console.warn("Failed to load fields from localStorage:", err);
     return [];
@@ -142,6 +153,7 @@ export function clearEditorState(): void {
     localStorage.removeItem(FIELDS_KEY);
     localStorage.removeItem(PAGE_KEY);
     localStorage.removeItem(FILENAME_KEY);
+    localStorage.removeItem(ZOOM_KEY);
   } catch {
     // silent
   }

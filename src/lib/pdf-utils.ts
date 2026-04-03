@@ -87,6 +87,7 @@ export async function fillPdf(
     ignoreEncryption: true,
   });
   const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+  const signatureFont = await pdfDoc.embedFont(StandardFonts.TimesRomanItalic);
 
   if (hasAcroForm) {
     const form = pdfDoc.getForm();
@@ -94,7 +95,7 @@ export async function fillPdf(
       try {
         if (field.type === "signature" && field.signatureDataUrl) {
           // Always draw signature images directly (not via AcroForm)
-          await drawFieldOnPage(pdfDoc, field, pageScales, font);
+          await drawFieldOnPage(pdfDoc, field, pageScales, font, signatureFont);
         } else if (field.type === "text" || field.type === "date" || field.type === "signature") {
           const tf = form.getTextField(field.id);
           tf.setText(field.value);
@@ -105,7 +106,7 @@ export async function fillPdf(
         }
       } catch {
         // Field doesn't exist in AcroForm  -  draw it directly
-        await drawFieldOnPage(pdfDoc, field, pageScales, font);
+        await drawFieldOnPage(pdfDoc, field, pageScales, font, signatureFont);
       }
     }
     try {
@@ -115,7 +116,7 @@ export async function fillPdf(
     }
   } else {
     for (const field of editorFields) {
-      await drawFieldOnPage(pdfDoc, field, pageScales, font);
+      await drawFieldOnPage(pdfDoc, field, pageScales, font, signatureFont);
     }
   }
 
@@ -155,7 +156,8 @@ async function drawFieldOnPage(
   pdfDoc: PDFDocument,
   field: EditorField,
   pageScales: Map<number, number>,
-  font: Awaited<ReturnType<PDFDocument["embedFont"]>>
+  font: Awaited<ReturnType<PDFDocument["embedFont"]>>,
+  signatureFont: Awaited<ReturnType<PDFDocument["embedFont"]>>
 ) {
   const page = pdfDoc.getPages()[field.page];
   if (!page) return;
@@ -197,7 +199,7 @@ async function drawFieldOnPage(
           x: pdfX + 2,
           y: pdfY + 4,
           size: (field.fontSize ?? 16) / scale,
-          font,
+          font: signatureFont,
           color: rgb(0, 0, 0),
         });
       }
@@ -205,11 +207,12 @@ async function drawFieldOnPage(
   } else if (field.type === "text" || field.type === "date" || field.type === "signature") {
     if (field.value) {
       const fontSize = (field.type === "signature" ? 16 : field.fontSize ?? 14) / scale;
+      const activeFont = field.type === "signature" ? signatureFont : font;
       page.drawText(field.value, {
         x: pdfX + 2,
         y: pdfY + 4,
         size: fontSize,
-        font,
+        font: activeFont,
         color: rgb(0, 0, 0),
       });
     }

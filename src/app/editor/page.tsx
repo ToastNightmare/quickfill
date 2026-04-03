@@ -33,6 +33,7 @@ const PROFILE_MATCHERS: { key: string; keywords: string[] }[] = [
   { key: "email", keywords: ["email", "e-mail", "email address"] },
   { key: "phone", keywords: ["phone", "telephone", "mobile", "tel", "contact number"] },
   { key: "street", keywords: ["address", "street", "address line 1", "address1"] },
+  { key: "addressLine2", keywords: ["address line 2", "address2", "apt", "unit", "suite", "floor", "level"] },
   { key: "city", keywords: ["city", "suburb", "town", "locality"] },
   { key: "state", keywords: ["state", "territory", "province", "region"] },
   { key: "postcode", keywords: ["postcode", "post code", "zip", "postal", "post"] },

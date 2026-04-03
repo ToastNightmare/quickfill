@@ -19,6 +19,7 @@ interface ProfileData {
   abn: string;
   street: string;
   organisation: string;
+  [key: string]: string;
 }
 
 const emptyProfile: ProfileData = {
@@ -131,6 +132,7 @@ export default function ProfilePage() {
             <Field label="Email" type="email" value={profile.email} onChange={(v) => setProfile({ ...profile, email: v })} />
             <Field label="Phone" type="tel" value={profile.phone} onChange={(v) => setProfile({ ...profile, phone: v })} />
             <Field label="ABN" value={profile.abn} onChange={(v) => setProfile({ ...profile, abn: v })} placeholder="Optional" />
+            <Field label="Organisation / Business Name" value={profile.organisation ?? ""} onChange={(v) => setProfile({ ...profile, organisation: v })} placeholder="Optional" />
           </div>
         </div>
 
