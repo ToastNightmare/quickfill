@@ -152,7 +152,7 @@ export function SignatureModal({
           ) : (
             <div className="flex flex-col items-center gap-4">
               {/* Drawing area */}
-              <div className="relative w-full overflow-hidden rounded-xl border-2 border-dashed border-border bg-white">
+              <div className="relative w-full overflow-hidden rounded-xl border-2 border-dashed border-border bg-surface">
                 {canvasElement}
                 {!hasContent && (
                   <div className="pointer-events-none absolute inset-0 flex items-center justify-center">

@@ -91,8 +91,6 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
   const isDragMove = useRef(false);
   const snapPreviewTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Suppress unused var warning
-  void onFieldDuplicate;
 
   useImperativeHandle(ref, () => ({
     getCanvasDataURL: () => canvasRef.current?.toDataURL("image/png") ?? null,
@@ -204,29 +202,6 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
     tr.getLayer()?.batchDraw();
   }, [selectedFieldId]);
 
-  // Keyboard delete
-  useEffect(() => {
-    function handleKeyDown(e: KeyboardEvent) {
-      if (
-        (e.key === "Delete" || e.key === "Backspace") &&
-        selectedFieldId &&
-        !editingFieldId
-      ) {
-        const target = e.target as HTMLElement;
-        const isInput =
-          target.tagName === "INPUT" ||
-          target.tagName === "TEXTAREA" ||
-          target.tagName === "SELECT" ||
-          target.isContentEditable;
-        if (isInput) return;
-
-        e.preventDefault();
-        onFieldDelete(selectedFieldId);
-      }
-    }
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [selectedFieldId, editingFieldId, onFieldDelete]);
 
   // Animate snap preview opacity
   useEffect(() => {
@@ -448,7 +423,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
           field = { ...base, type: "signature", width: fieldW, height: fieldH, value: "", fontSize: inferredFontSize ?? 16 };
           break;
         case "date":
-          field = { ...base, type: "date", width: fieldW, height: fieldH, value: new Date().toLocaleDateString("en-US"), fontSize: inferredFontSize ?? 14 };
+          field = { ...base, type: "date", width: fieldW, height: fieldH, value: new Date().toLocaleDateString("en-AU"), fontSize: inferredFontSize ?? 14 };
           break;
       }
 
@@ -589,7 +564,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
             field = { ...base, type: "signature", width: fieldW, height: fieldH, value: "", fontSize: inferredFontSize };
             break;
           case "date":
-            field = { ...base, type: "date", width: fieldW, height: fieldH, value: new Date().toLocaleDateString("en-US"), fontSize: inferredFontSize };
+            field = { ...base, type: "date", width: fieldW, height: fieldH, value: new Date().toLocaleDateString("en-AU"), fontSize: inferredFontSize };
             break;
         }
 

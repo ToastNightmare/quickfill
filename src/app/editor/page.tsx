@@ -183,6 +183,16 @@ export default function EditorPage() {
     }).length;
   }, [fields]);
 
+  const totalFilledCount = useMemo(() => {
+    return fields.filter((f) => {
+      if (f.type === "checkbox") return f.checked;
+      if ("value" in f) return (f as { value: string }).value !== "";
+      return false;
+    }).length;
+  }, [fields]);
+
+  const totalFieldCount = fields.length;
+
   const handleZoomIn = useCallback(() => {
     setZoom((prev) => ZOOM_LEVELS.find((z) => z > prev) ?? prev);
   }, []);
@@ -279,6 +289,18 @@ export default function EditorPage() {
     [setFields, selectedFieldId]
   );
 
+  const handleFieldDuplicate = useCallback(
+    (id: string) => {
+      const source = fields.find((f) => f.id === id);
+      if (!source) return;
+      const newId = `dup-${Date.now()}`;
+      const dup = { ...source, id: newId, x: source.x + 12, y: source.y + 12 } as EditorField;
+      setFields((prev) => [...prev, dup]);
+      setSelectedFieldId(newId);
+    },
+    [fields, setFields]
+  );
+
   // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -301,6 +323,11 @@ export default function EditorPage() {
         e.preventDefault();
         handleFieldDelete(selectedFieldId);
       }
+      // Duplicate selected field: Ctrl+D / Cmd+D
+      if ((e.ctrlKey || e.metaKey) && e.key === "d" && selectedFieldId) {
+        e.preventDefault();
+        handleFieldDuplicate(selectedFieldId);
+      }
       // Escape: deselect
       if (e.key === "Escape") {
         setSelectedFieldId(null);
@@ -310,19 +337,8 @@ export default function EditorPage() {
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [undo, redo, selectedFieldId, handleFieldDelete]);
+  }, [undo, redo, selectedFieldId, handleFieldDelete, handleFieldDuplicate]);
 
-  const handleFieldDuplicate = useCallback(
-    (id: string) => {
-      const source = fields.find((f) => f.id === id);
-      if (!source) return;
-      const newId = `dup-${Date.now()}`;
-      const dup = { ...source, id: newId, x: source.x + 12, y: source.y + 12 } as EditorField;
-      setFields((prev) => [...prev, dup]);
-      setSelectedFieldId(newId);
-    },
-    [fields, setFields]
-  );
 
   const handleClear = useCallback(() => {
     setShowClearConfirm(true);
@@ -620,7 +636,7 @@ export default function EditorPage() {
                   x: f.x / zoomFactor, y: f.y / zoomFactor,
                   width: f.width / zoomFactor, height: f.height / zoomFactor,
                   page: currentPage,
-                  value: fieldType === "date" ? new Date().toLocaleDateString("en-US") : "",
+                  value: fieldType === "date" ? new Date().toLocaleDateString("en-AU") : "",
                   fontSize: fieldType === "signature" ? 16 : 14,
                 };
               }
@@ -766,18 +782,18 @@ export default function EditorPage() {
           {/* Right: progress + page nav */}
           <div className="flex items-center gap-4">
             {/* AcroForm progress indicator */}
-            {hasAcroForm && fields.length > 0 && (
+            {hasAcroForm && totalFieldCount > 0 && (
               <div className="hidden items-center gap-2 sm:flex">
                 <div className="h-1.5 w-16 overflow-hidden rounded-full bg-surface-alt">
                   <div
                     className="h-full rounded-full bg-accent transition-all duration-300"
                     style={{
-                      width: `${Math.round((filledCount / fields.length) * 100)}%`,
+                      width: `${Math.round((totalFilledCount / totalFieldCount) * 100)}%`,
                     }}
                   />
                 </div>
                 <span className="text-xs tabular-nums text-text-muted whitespace-nowrap">
-                  {filledCount} of {fields.length} filled
+                  {totalFilledCount} of {totalFieldCount} filled{totalPages > 1 ? " (all pages)" : ""}
                 </span>
               </div>
             )}
