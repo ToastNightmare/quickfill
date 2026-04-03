@@ -514,8 +514,8 @@ export function isWhiteInterior(
 
   if (samples === 0) return true;
   const avgBrightness = totalBrightness / samples;
-  // Input fields are white (>240). Shaded/coloured cells are darker.
-  return avgBrightness > 230;
+  // Input fields are white/near-white (>242). Light blue/grey label cells are darker.
+  return avgBrightness > 242;
 }
 
 /**
@@ -531,19 +531,19 @@ function fieldCredibilityScore(box: SnapResult): number {
   let score = area; // base: smaller area = better
 
   // Strong exponential penalty for wide boxes (row-spanning detected as one box)
-  if (box.width > 350) {
-    const excess = box.width - 350;
-    score += Math.pow(excess, 1.8) * 3;
+  if (box.width > 280) {
+    const excess = box.width - 280;
+    score += Math.pow(excess, 2) * 5;
   }
-  // Additional hard penalty for very wide boxes
-  if (box.width > 600) score += (box.width - 600) * 800;
+  // Hard penalty for very wide boxes
+  if (box.width > 500) score += (box.width - 500) * 2000;
 
   // Penalize extreme aspect ratios (very wide and short = full row span)
-  if (aspectRatio > 8) score += Math.pow(aspectRatio - 8, 2) * 1000;
+  if (aspectRatio > 6) score += Math.pow(aspectRatio - 6, 2) * 1500;
 
-  // Reward boxes in typical input field range
-  if (box.width >= 30 && box.width <= 350 && box.height >= 10 && box.height <= 80) {
-    score *= 0.35; // strong reward for well-sized fields
+  // Reward boxes in typical input field range (single cell)
+  if (box.width >= 30 && box.width <= 280 && box.height >= 10 && box.height <= 80) {
+    score *= 0.25; // strong reward for well-sized single cells
   }
 
   return score;

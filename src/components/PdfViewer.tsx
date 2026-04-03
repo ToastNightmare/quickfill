@@ -274,7 +274,11 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
           }
           if (containing.length > 0) {
             containing.sort((a, b) => snapCredibilityScore(a) - snapCredibilityScore(b));
-            snap = containing[0];
+            const best = containing[0];
+            // If best box is very wide (row-spanning), skip pre-computed and let pixel scan handle it
+            if (best.width <= 500) {
+              snap = best;
+            }
           }
         }
 
@@ -383,17 +387,16 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
             }
           }
           if (containing.length > 0) {
-            // Pick the smallest containing box (most precise cell)
-            containing.sort((a, b) => {
-              const scoreA = snapCredibilityScore(a);
-              const scoreB = snapCredibilityScore(b);
-              return scoreA - scoreB;
-            });
-            foundSnap = containing[0];
+            containing.sort((a, b) => snapCredibilityScore(a) - snapCredibilityScore(b));
+            const best = containing[0];
+            // Only use pre-computed if it's a reasonably-sized cell
+            if (best.width <= 500) {
+              foundSnap = best;
+            }
           }
         }
 
-        // Fall back to per-click pixel scan
+        // Fall back to per-click pixel scan (better for fine-grained cell detection)
         if (!foundSnap && canvasRef.current) {
           try {
             foundSnap = detectSnapBox(canvasRef.current, posX, posY);
