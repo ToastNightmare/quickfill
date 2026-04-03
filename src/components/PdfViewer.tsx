@@ -10,6 +10,7 @@ import type { SnapResult } from "@/lib/snap-detect";
 export interface PdfViewerHandle {
   getCanvasDataURL: () => string | null;
   getCanvasDimensions: () => { width: number; height: number };
+  getCanvas: () => HTMLCanvasElement | null;
 }
 
 interface PdfViewerProps {
@@ -95,6 +96,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
   useImperativeHandle(ref, () => ({
     getCanvasDataURL: () => canvasRef.current?.toDataURL("image/png") ?? null,
     getCanvasDimensions: () => dimensions,
+    getCanvas: () => canvasRef.current,
   }));
 
   const zoomFactor = zoom / 100;

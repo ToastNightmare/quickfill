@@ -3,6 +3,7 @@
 import { useState, useCallback, useEffect, useRef, useMemo } from "react";
 import { ChevronLeft, ChevronRight, Sparkles, X, RotateCcw, Minus, Plus, Download } from "lucide-react";
 import { UploadZone } from "@/components/UploadZone";
+import { Minimap } from "@/components/Minimap";
 import { Toolbar } from "@/components/Toolbar";
 import { PdfViewer } from "@/components/PdfViewer";
 import { FieldInspector } from "@/components/FieldInspector";
@@ -72,6 +73,7 @@ export default function EditorPage() {
   const [signatureModalOpen, setSignatureModalOpen] = useState(false);
   const [pendingSignatureField, setPendingSignatureField] = useState<EditorField | null>(null);
   const [showWelcome, setShowWelcome] = useState(false);
+  const [minimapCanvas, setMinimapCanvas] = useState<HTMLCanvasElement | null>(null);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
   const { fields, set: setFields, undo, redo, reset, canUndo, canRedo } = useHistory();
   const restoredRef = useRef(false);
@@ -123,6 +125,7 @@ export default function EditorPage() {
       }
       setShowRestoredBanner(true);
       setTimeout(() => setShowRestoredBanner(false), 3000);
+      setTimeout(() => setMinimapCanvas(pdfViewerRef.current?.getCanvas() ?? null), 500);
 
       // Detect AcroForm for progress tracking
       try {
@@ -141,10 +144,11 @@ export default function EditorPage() {
     }
   }, [fields, pdfBytes]);
 
-  // Persist page on change
+  // Persist page on change + update minimap
   useEffect(() => {
     if (pdfBytes) {
       savePageToLocalStorage(currentPage);
+      setTimeout(() => setMinimapCanvas(pdfViewerRef.current?.getCanvas() ?? null), 600);
     }
   }, [currentPage, pdfBytes]);
 
@@ -253,6 +257,7 @@ export default function EditorPage() {
         setTimeout(() => setToast(null), 5000);
       } finally {
         setIsLoading(false);
+        setTimeout(() => setMinimapCanvas(pdfViewerRef.current?.getCanvas() ?? null), 600);
       }
     },
     [reset]
@@ -755,6 +760,15 @@ export default function EditorPage() {
             <span className="min-w-[3rem] text-center text-xs tabular-nums text-text-muted select-none">
               {zoom}%
             </span>
+            {zoom < 125 && (
+              <span className="hidden sm:inline text-[10px] text-amber-500 font-medium">↑snap</span>
+            )}
+            {zoom >= 125 && zoom <= 175 && (
+              <span className="hidden sm:inline text-[10px] text-green-500 font-medium">✓snap</span>
+            )}
+            {zoom > 175 && (
+              <span className="hidden sm:inline text-[10px] text-amber-500 font-medium">↓snap</span>
+            )}
             <button
               onClick={handleZoomIn}
               disabled={zoom >= ZOOM_LEVELS[ZOOM_LEVELS.length - 1]}
@@ -769,6 +783,13 @@ export default function EditorPage() {
               className="ml-1 rounded-md px-2 py-1 text-xs font-medium text-text-muted hover:bg-surface-alt hover:text-text transition-colors"
             >
               Fit
+            </button>
+            <button
+              onClick={() => setZoom(150)}
+              title="Best zoom for snap detection (150%)"
+              className={`rounded-md px-2 py-1 text-xs font-medium transition-colors ${zoom >= 125 && zoom <= 175 ? "text-green-600 bg-green-50 hover:bg-green-100" : "text-text-muted hover:bg-surface-alt hover:text-text"}`}
+            >
+              Snap
             </button>
           </div>
 
@@ -836,7 +857,16 @@ export default function EditorPage() {
           />
         </div>
 
-        <div ref={viewerContainerRef} className="flex-1 h-full overflow-auto">
+        <div ref={viewerContainerRef} className="flex-1 h-full overflow-auto relative">
+          {pdfBytes && (
+            <Minimap
+              sourceCanvas={minimapCanvas}
+              viewerRef={viewerContainerRef}
+              pageWidth={800}
+              pageHeight={1100}
+              zoom={zoom}
+            />
+          )}
           <PdfViewer
             ref={pdfViewerRef}
             pdfBytes={pdfBytes}
