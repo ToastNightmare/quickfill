@@ -304,12 +304,6 @@ export default function EditorPage() {
     reset([]);
   }, [reset]);
 
-  const handleUpgrade = async () => {
-    const res = await fetch("/api/stripe/checkout", { method: "POST" });
-    const data = await res.json();
-    if (data.url) window.location.href = data.url;
-  };
-
   const showToast = useCallback((msg: string, duration = 3000) => {
     setToast(msg);
     setTimeout(() => setToast(null), duration);
@@ -862,38 +856,30 @@ export default function EditorPage() {
 
       {/* Upgrade modal */}
       {showUpgradeModal && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 px-4">
-          <div className="relative w-full max-w-md rounded-xl bg-surface p-8 shadow-2xl">
-            <button
-              onClick={() => setShowUpgradeModal(false)}
-              className="absolute right-4 top-4 flex h-8 w-8 items-center justify-center rounded-lg hover:bg-surface-alt transition-colors"
-              aria-label="Close"
-            >
-              <X className="h-4 w-4" />
-            </button>
-
-            <div className="flex flex-col items-center text-center">
-              <div className="flex h-14 w-14 items-center justify-center rounded-full bg-accent/10">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4">
+          <div className="w-full max-w-md rounded-2xl bg-surface p-8 shadow-2xl">
+            <div className="text-center">
+              <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-accent/10">
                 <Sparkles className="h-7 w-7 text-accent" />
               </div>
               <h2 className="mt-4 text-xl font-bold">Free limit reached</h2>
               <p className="mt-2 text-sm text-text-muted">
-                You&apos;ve used your 3 free fills this month. Upgrade to Pro for
-                unlimited fills.
+                You have used all 3 of your free fills this month. Upgrade to Pro for unlimited fills with no watermarks.
               </p>
-              <button
-                onClick={handleUpgrade}
-                className="mt-6 flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-accent text-sm font-semibold text-white hover:bg-accent-hover transition-colors"
-              >
-                <Sparkles className="h-4 w-4" />
-                Upgrade to Pro  -  $12/mo
-              </button>
-              <button
-                onClick={() => setShowUpgradeModal(false)}
-                className="mt-3 text-sm text-text-muted hover:text-text transition-colors"
-              >
-                Maybe later
-              </button>
+              <div className="mt-6 flex flex-col gap-3">
+                <a
+                  href="/pricing"
+                  className="flex h-11 w-full items-center justify-center rounded-xl bg-accent text-sm font-semibold text-white hover:bg-accent-hover transition-colors"
+                >
+                  Upgrade to Pro — $12/month
+                </a>
+                <button
+                  onClick={() => setShowUpgradeModal(false)}
+                  className="flex h-11 w-full items-center justify-center rounded-xl border border-border text-sm font-semibold hover:bg-surface-alt transition-colors"
+                >
+                  Maybe later
+                </button>
+              </div>
             </div>
           </div>
         </div>

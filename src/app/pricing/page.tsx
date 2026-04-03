@@ -2,6 +2,7 @@
 
 import { Check, X, Sparkles } from "lucide-react";
 import { useState } from "react";
+import { useAuth } from "@clerk/nextjs";
 
 const features = [
   { name: "Documents per month", free: "3", pro: "Unlimited", business: "Unlimited" },
@@ -44,6 +45,7 @@ const faqs = [
 ];
 
 export default function PricingPage() {
+  const { isSignedIn } = useAuth();
   const handleUpgrade = async (plan: "pro" | "business") => {
     const res = await fetch("/api/stripe/checkout", {
       method: "POST",
@@ -116,7 +118,7 @@ export default function PricingPage() {
               <p className="mt-4 text-sm text-text-muted">Perfect for occasional use.</p>
               <p className="mt-2 text-xs font-medium text-text-muted">Best for: Occasional form filling</p>
               <a
-                href="/editor"
+                href={isSignedIn ? "/editor" : "/sign-up"}
                 className="mt-8 flex h-11 items-center justify-center rounded-xl border border-border text-sm font-semibold hover:bg-surface-alt transition-colors"
               >
                 Get Started Free
@@ -145,7 +147,7 @@ export default function PricingPage() {
             </div>
 
             {/* Business */}
-            <div className="rounded-xl border border-white/10 p-8" style={{ backgroundColor: "#1a1a2e" }}>
+            <div className="rounded-xl border border-border bg-navy p-8">
               <h2 className="text-lg font-semibold text-white">Business</h2>
               <div className="mt-4 flex items-baseline gap-1">
                 <span className="text-4xl font-extrabold text-white">$29</span>
@@ -155,7 +157,7 @@ export default function PricingPage() {
               <p className="mt-2 text-xs font-medium text-gray-400">Best for: Agencies, teams, and organisations</p>
               <button
                 onClick={() => handleUpgrade("business")}
-                className="mt-8 flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-white text-sm font-semibold text-[#1a1a2e] hover:bg-gray-100 transition-colors"
+                className="mt-8 flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-white text-sm font-semibold text-navy hover:bg-gray-100 transition-colors"
               >
                 Get Business
               </button>
