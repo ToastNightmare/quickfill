@@ -574,6 +574,112 @@ export function isWhiteInterior(
 }
 
 /**
+ * Flood-fill based cell detection.
+ * Starting from a click point, expands outward in 4 directions until hitting
+ * dark border pixels. Returns the bounding box of the white region.
+ * This directly finds the exact cell clicked, regardless of border thickness.
+ */
+export function floodFillCell(
+  data: Uint8ClampedArray,
+  canvasWidth: number,
+  canvasHeight: number,
+  startX: number,
+  startY: number,
+): SnapResult | null {
+  // If start pixel is dark (on a border), nudge inward slightly
+  const checkPixel = (x: number, y: number): boolean => {
+    if (x < 0 || y < 0 || x >= canvasWidth || y >= canvasHeight) return false;
+    const idx = (y * canvasWidth + x) * 4;
+    const brightness = (data[idx] + data[idx + 1] + data[idx + 2]) / 3;
+    return brightness > 180; // light pixel = inside cell
+  };
+
+  // Find a light starting pixel near click (nudge up to 8px in each direction)
+  let sx = startX;
+  let sy = startY;
+  if (!checkPixel(sx, sy)) {
+    let found = false;
+    for (let d = 1; d <= 8 && !found; d++) {
+      for (const [dx, dy] of [[0, d], [0, -d], [d, 0], [-d, 0]]) {
+        if (checkPixel(sx + dx, sy + dy)) {
+          sx += dx; sy += dy; found = true; break;
+        }
+      }
+    }
+    if (!found) return null;
+  }
+
+  // Verify starting pixel is white enough (input field, not grey label)
+  const startIdx = (sy * canvasWidth + sx) * 4;
+  const startBrightness = (data[startIdx] + data[startIdx + 1] + data[startIdx + 2]) / 3;
+  if (startBrightness < 235) return null; // clicked in a shaded cell
+
+  // Scan outward from start point to find cell boundaries
+  // Expand left, right, up, down until we hit dark pixels
+  const isBorder = (x: number, y: number): boolean => {
+    if (x < 0 || y < 0 || x >= canvasWidth || y >= canvasHeight) return true;
+    const idx = (y * canvasWidth + x) * 4;
+    return (data[idx] + data[idx + 1] + data[idx + 2]) / 3 < 160;
+  };
+
+  // Scan each direction with majority voting to handle noise/text
+  const scanEdge = (
+    start: number,
+    end: number,
+    step: number,
+    isEdge: (pos: number) => boolean,
+    maxGap = 3
+  ): number => {
+    let pos = start;
+    let gapCount = 0;
+    while (pos !== end) {
+      if (isEdge(pos)) {
+        gapCount++;
+        if (gapCount > maxGap) return pos - step * gapCount;
+      } else {
+        gapCount = 0;
+      }
+      pos += step;
+    }
+    return end;
+  };
+
+  // Scan row by row to find left/right bounds at each y, take median
+  const top = scanEdge(sy, Math.max(0, sy - 200), -1, (y) => {
+    // Check majority of pixels in a horizontal band
+    let darkCount = 0;
+    for (let x = sx - 5; x <= sx + 5; x++) if (isBorder(x, y)) darkCount++;
+    return darkCount >= 6;
+  });
+
+  const bottom = scanEdge(sy, Math.min(canvasHeight - 1, sy + 200), 1, (y) => {
+    let darkCount = 0;
+    for (let x = sx - 5; x <= sx + 5; x++) if (isBorder(x, y)) darkCount++;
+    return darkCount >= 6;
+  });
+
+  const left = scanEdge(sx, Math.max(0, sx - 600), -1, (x) => {
+    let darkCount = 0;
+    for (let y = sy - 3; y <= sy + 3; y++) if (isBorder(x, y)) darkCount++;
+    return darkCount >= 4;
+  });
+
+  const right = scanEdge(sx, Math.min(canvasWidth - 1, sx + 600), 1, (x) => {
+    let darkCount = 0;
+    for (let y = sy - 3; y <= sy + 3; y++) if (isBorder(x, y)) darkCount++;
+    return darkCount >= 4;
+  });
+
+  const w = right - left;
+  const h = bottom - top;
+
+  if (w < MIN_BOX_WIDTH || h < MIN_BOX_HEIGHT) return null;
+  if (w > 800 || h > MAX_BOX_HEIGHT) return null; // sanity bounds
+
+  return { x: left, y: top, width: w, height: h };
+}
+
+/**
  * Score how "credible" a box is as an individual form field.
  * Lower score = more credible. Strongly prefers smallest containing box.
  * Wide row-spanning boxes get heavily penalised.
@@ -648,6 +754,14 @@ export function detectSnapBox(
   const relClickX = clickX - sx;
   const relClickY = clickY - sy;
 
+  // --- Strategy 0: Flood-fill cell detection (primary, most accurate) ---
+  // Directly finds the white region around the click point
+  const floodResult = floodFillCell(data, sw, sh, relClickX, relClickY);
+  if (floodResult) {
+    return offsetResult(floodResult, sx, sy);
+  }
+
+  // --- Fallback: Line-based detection (for underline fields and AcroForms) ---
   // Try with primary (dark) threshold first, then medium threshold
   for (const darkFn of [isDark, isMedium]) {
     const hLinesRaw = findHorizontalLines(data, sw, sh, darkFn);

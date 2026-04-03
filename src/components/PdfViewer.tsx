@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, useCallback, useImperativeHandle, forwardR
 import { Stage, Layer, Rect, Text, Group, Transformer, Image as KonvaImage } from "react-konva";
 import type Konva from "konva";
 import type { EditorField, ToolType, SignatureField } from "@/lib/types";
-import { detectSnapBox, detectAllBoxes, snapCredibilityScore } from "@/lib/snap-detect";
+import { detectSnapBox, detectAllBoxes, snapCredibilityScore, floodFillCell } from "@/lib/snap-detect";
 import type { SnapResult } from "@/lib/snap-detect";
 
 export interface PdfViewerHandle {
@@ -283,9 +283,17 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
           }
         }
 
-        // Fall back to per-click pixel scan if no pre-computed match
-        if (!snap) {
-          snap = detectSnapBox(canvasRef.current, pos.x, pos.y);
+        // Fall back: try flood fill directly on canvas, then line-based scan
+        if (!snap && canvasRef.current) {
+          const ctx = canvasRef.current.getContext("2d");
+          if (ctx) {
+            try {
+              const imgData = ctx.getImageData(0, 0, canvasRef.current.width, canvasRef.current.height);
+              const ff = floodFillCell(imgData.data, canvasRef.current.width, canvasRef.current.height, Math.round(pos.x), Math.round(pos.y));
+              if (ff) snap = ff;
+            } catch { /* silent */ }
+          }
+          if (!snap) snap = detectSnapBox(canvasRef.current, pos.x, pos.y);
         }
 
         if (snap) {
