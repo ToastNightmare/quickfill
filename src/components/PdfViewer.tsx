@@ -248,11 +248,11 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
         return;
       }
 
-      // Throttle snap detection to ~30fps
+      // Throttle snap detection to ~20fps — reduces jitter on fast mouse movement
       if (snapPreviewTimer.current) return;
       snapPreviewTimer.current = setTimeout(() => {
         snapPreviewTimer.current = null;
-      }, 33);
+      }, 50);
 
       try {
         // First check pre-computed boxes (instant, no pixel scanning)
@@ -297,11 +297,21 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
         }
 
         if (snap) {
-          setSnapPreview({
+          const newPreview = {
             x: snap.x / zoomFactor,
             y: snap.y / zoomFactor,
             width: snap.width / zoomFactor,
             height: snap.height / zoomFactor,
+          };
+          // Only update if snap changed significantly (>8px) — prevents flicker
+          setSnapPreview(prev => {
+            if (!prev) return newPreview;
+            const dx = Math.abs(newPreview.x - prev.x);
+            const dy = Math.abs(newPreview.y - prev.y);
+            const dw = Math.abs(newPreview.width - prev.width);
+            const dh = Math.abs(newPreview.height - prev.height);
+            if (dx < 8 && dy < 8 && dw < 8 && dh < 8) return prev; // no change
+            return newPreview;
           });
         } else {
           setSnapPreview(null);

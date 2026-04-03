@@ -592,14 +592,14 @@ export function floodFillCell(
     return (data[idx] + data[idx + 1] + data[idx + 2]) / 3;
   };
 
-  // Find a light starting pixel near click (nudge up to 10px)
+  // Find a light starting pixel near click (nudge up to 14px)
   let sx = startX;
   let sy = startY;
-  if (brightness(sx, sy) < 200) {
+  if (brightness(sx, sy) < 210) {
     let found = false;
-    for (let d = 1; d <= 10 && !found; d++) {
+    for (let d = 1; d <= 14 && !found; d++) {
       for (const [dx, dy] of [[0,d],[0,-d],[d,0],[-d,0],[d,d],[-d,-d],[d,-d],[-d,d]]) {
-        if (brightness(sx+dx, sy+dy) > 200) {
+        if (brightness(sx+dx, sy+dy) > 210) {
           sx += dx; sy += dy; found = true; break;
         }
       }
@@ -607,8 +607,25 @@ export function floodFillCell(
     if (!found) return null;
   }
 
+  // Push start point 4px away from any nearby border to avoid edge instability
+  // This prevents the scan from starting on anti-aliased border pixels
+  const PUSH = 4;
+  if (brightness(sx - PUSH, sy) > 210) sx = sx; // already fine
+  // Find a stable interior point by moving toward the center of the white region
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const bL = brightness(sx - 2, sy);
+    const bR = brightness(sx + 2, sy);
+    const bT = brightness(sx, sy - 2);
+    const bB = brightness(sx, sy + 2);
+    if (bL < 180 && bR > 210) { sx += 3; continue; }
+    if (bR < 180 && bL > 210) { sx -= 3; continue; }
+    if (bT < 180 && bB > 210) { sy += 3; continue; }
+    if (bB < 180 && bT > 210) { sy -= 3; continue; }
+    break;
+  }
+
   // Reject shaded/coloured cells (label cells, headers)
-  // Sample a 3x3 area to get reliable brightness reading
+  // Sample a 5x5 area to get reliable brightness reading
   let avgBr = 0;
   let brSamples = 0;
   for (let dy = -2; dy <= 2; dy++) {
@@ -617,7 +634,7 @@ export function floodFillCell(
       if (b > 0) { avgBr += b; brSamples++; }
     }
   }
-  if (brSamples > 0 && avgBr / brSamples < 236) return null;
+  if (brSamples > 0 && avgBr / brSamples < 234) return null;
 
   // Border threshold — catches both solid and anti-aliased lines
   const BORDER = 175;
