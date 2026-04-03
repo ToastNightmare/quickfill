@@ -1,6 +1,7 @@
 import { auth } from "@clerk/nextjs/server";
 import { NextRequest, NextResponse } from "next/server";
 import { getStripe } from "@/lib/stripe";
+import { getRedis } from "@/lib/redis";
 
 export async function POST(req: NextRequest) {
   const { userId } = await auth();
@@ -10,22 +11,15 @@ export async function POST(req: NextRequest) {
 
   const origin = req.headers.get("origin") ?? "http://localhost:3000";
 
-  // Find the customer by metadata
-  const customers = await getStripe().customers.list({
-    limit: 1,
-    expand: ["data.subscriptions"],
-  });
+  // Look up stored customer ID from Redis
+  const customerId = await getRedis().get<string>(`stripe_customer:${userId}`);
 
-  const customer = customers.data.find((c) =>
-    c.metadata?.userId === userId
-  );
-
-  if (!customer) {
-    return NextResponse.json({ error: "No subscription found" }, { status: 404 });
+  if (!customerId) {
+    return NextResponse.json({ error: "No subscription found. Please upgrade first." }, { status: 404 });
   }
 
   const session = await getStripe().billingPortal.sessions.create({
-    customer: customer.id,
+    customer: customerId,
     return_url: `${origin}/dashboard`,
   });
 

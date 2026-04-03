@@ -175,14 +175,6 @@ export default function EditorPage() {
     return { x: clampedX, y: clampedY };
   }, [selectedField, zoom]);
 
-  const filledCount = useMemo(() => {
-    return fields.filter((f) => {
-      if (f.type === "checkbox") return f.checked;
-      if ("value" in f) return (f as { value: string }).value !== "";
-      return false;
-    }).length;
-  }, [fields]);
-
   const totalFilledCount = useMemo(() => {
     return fields.filter((f) => {
       if (f.type === "checkbox") return f.checked;

@@ -63,6 +63,11 @@ export async function POST(req: NextRequest) {
       }
 
       await getRedis().set(`sub:${userId}`, tier ?? "pro", { ex: TTL_SECONDS });
+
+      // Store Stripe customer ID for portal access
+      if (session.customer) {
+        await getRedis().set(`stripe_customer:${userId}`, session.customer as string);
+      }
     }
   }
 

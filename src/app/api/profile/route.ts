@@ -7,11 +7,14 @@ export interface UserProfile {
   email: string;
   phone: string;
   street: string;
+  addressLine1?: string;
+  addressLine2?: string;
   city: string;
   state: string;
   postcode: string;
+  country?: string;
   abn: string;
-  organisation: string;
+  organisation?: string;
 }
 
 export async function GET() {

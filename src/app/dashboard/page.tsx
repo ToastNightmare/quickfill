@@ -36,6 +36,7 @@ function DashboardContent() {
   const [usage, setUsage] = useState<UsageData | null>(null);
   const [usageError, setUsageError] = useState(false);
   const [fills, setFills] = useState<FillEntry[]>([]);
+  const [billingError, setBillingError] = useState<string | null>(null);
 
   useEffect(() => {
     fetch("/api/usage")
@@ -58,8 +59,13 @@ function DashboardContent() {
 
   const handleManageBilling = async () => {
     const res = await fetch("/api/stripe/portal", { method: "POST" });
-    const { url } = await res.json();
-    if (url) window.location.href = url;
+    const data = await res.json();
+    if (data.url) {
+      window.location.href = data.url;
+    } else {
+      setBillingError(data.error || "Could not open billing portal.");
+      setTimeout(() => setBillingError(null), 5000);
+    }
   };
 
   const tier = usage?.tier ?? "free";
@@ -148,16 +154,24 @@ function DashboardContent() {
                     <ExternalLink className="h-4 w-4" />
                     Manage Billing
                   </button>
+                  {billingError && (
+                    <p className="mt-2 text-xs text-red-500">{billingError}</p>
+                  )}
                 </>
               )}
               {tier === "pro" && (
-                <button
-                  onClick={handleManageBilling}
-                  className="mt-4 flex h-11 w-full items-center justify-center gap-2 rounded-xl border border-border text-sm font-semibold hover:bg-surface-alt transition-colors"
-                >
-                  <ExternalLink className="h-4 w-4" />
-                  Manage Billing
-                </button>
+                <>
+                  <button
+                    onClick={handleManageBilling}
+                    className="mt-4 flex h-11 w-full items-center justify-center gap-2 rounded-xl border border-border text-sm font-semibold hover:bg-surface-alt transition-colors"
+                  >
+                    <ExternalLink className="h-4 w-4" />
+                    Manage Billing
+                  </button>
+                  {billingError && (
+                    <p className="mt-2 text-xs text-red-500">{billingError}</p>
+                  )}
+                </>
               )}
             </>
           ) : (
