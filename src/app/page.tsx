@@ -331,6 +331,26 @@ const testimonials = [
 
 export default function Home() {
   const { isLoaded, isSignedIn } = useAuth();
+  const [upgradingPlan, setUpgradingPlan] = useState<string | null>(null);
+
+  const handleUpgrade = async (plan: "pro" | "business") => {
+    setUpgradingPlan(plan);
+    try {
+      const res = await fetch("/api/stripe/checkout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ plan }),
+      });
+      const data = await res.json();
+      if (data.error) {
+        window.location.href = "/sign-up?redirect_url=/pricing";
+        return;
+      }
+      if (data.url) window.location.href = data.url;
+    } finally {
+      setUpgradingPlan(null);
+    }
+  };
 
   if (!isLoaded) {
     return (
@@ -630,7 +650,7 @@ export default function Home() {
                   "AcroForm detection",
                   "No watermarks",
                   "Auto-fill from profile",
-                  "Full fill history",
+                  "Last 30 fills history",
                   "Priority support",
                 ].map((item) => (
                   <li key={item} className="flex items-start gap-2 text-sm">
@@ -640,22 +660,13 @@ export default function Home() {
                 ))}
               </ul>
               <button
-                onClick={async () => {
-                  const res = await fetch("/api/stripe/checkout", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ plan: "pro" }),
-                  });
-                  const data = await res.json();
-                  if (data.error) {
-                    window.location.href = "/sign-up?redirect_url=/pricing";
-                    return;
-                  }
-                  if (data.url) window.location.href = data.url;
-                }}
-                className="mt-8 flex h-11 w-full items-center justify-center rounded-lg bg-accent text-sm font-semibold text-white hover:bg-accent-hover transition-colors"
+                onClick={() => handleUpgrade("pro")}
+                disabled={!!upgradingPlan}
+                className="mt-8 flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-accent text-sm font-semibold text-white hover:bg-accent-hover transition-colors disabled:opacity-70"
               >
-                Start Pro &mdash; $12/month
+                {upgradingPlan === "pro" ? (
+                  <><div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" /> Loading...</>
+                ) : "Start Pro — $12/month"}
               </button>
             </div>
 
@@ -684,22 +695,13 @@ export default function Home() {
                 ))}
               </ul>
               <button
-                onClick={async () => {
-                  const res = await fetch("/api/stripe/checkout", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ plan: "business" }),
-                  });
-                  const data = await res.json();
-                  if (data.error) {
-                    window.location.href = "/sign-up?redirect_url=/pricing";
-                    return;
-                  }
-                  if (data.url) window.location.href = data.url;
-                }}
-                className="mt-8 flex h-11 w-full items-center justify-center rounded-lg border-2 border-accent text-sm font-semibold text-accent hover:bg-accent hover:text-white transition-colors"
+                onClick={() => handleUpgrade("business")}
+                disabled={!!upgradingPlan}
+                className="mt-8 flex h-11 w-full items-center justify-center gap-2 rounded-lg border-2 border-accent text-sm font-semibold text-accent hover:bg-accent hover:text-white transition-colors disabled:opacity-70"
               >
-                Get Business &mdash; $29/month
+                {upgradingPlan === "business" ? (
+                  <><div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" /> Loading...</>
+                ) : "Get Business — $29/month"}
               </button>
             </div>
           </div>
