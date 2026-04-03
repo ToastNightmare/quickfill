@@ -835,11 +835,29 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
                     ? "MM/DD/YYYY"
                     : "Type here..."
                 }
-                onChange={(e) =>
-                  onFieldUpdate(editField.id, {
-                    value: e.target.value,
-                  } as Partial<EditorField>)
-                }
+                onChange={(e) => {
+                  const newValue = e.target.value;
+                  onFieldUpdate(editField.id, { value: newValue } as Partial<EditorField>);
+
+                  // Auto-expand field width if text overflows
+                  const fontSize = ((editField as { fontSize?: number }).fontSize ?? 14) * zoomFactor;
+                  const padding = (isEditSnapped ? 2 : 4) * 2;
+                  // Measure text width using canvas
+                  const canvas = document.createElement("canvas");
+                  const ctx = canvas.getContext("2d");
+                  if (ctx) {
+                    ctx.font = `${fontSize}px ${editField.type === "signature" ? "cursive" : "Arial, sans-serif"}`;
+                    const textWidth = ctx.measureText(newValue).width + padding + 8;
+                    const currentWidth = editField.width * zoomFactor;
+                    if (textWidth > currentWidth) {
+                      // Expand field to fit text, in unscaled coords
+                      onFieldUpdate(editField.id, {
+                        value: newValue,
+                        width: Math.ceil(textWidth / zoomFactor),
+                      } as Partial<EditorField>);
+                    }
+                  }
+                }}
                 onBlur={() => setEditingFieldId(null)}
                 onKeyDown={(e) => {
                   if (e.key === "Enter" || e.key === "Escape") {
