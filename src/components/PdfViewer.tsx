@@ -821,10 +821,11 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
                   borderLeft: "none",
                   borderRight: "none",
                   borderBottom: "2px solid #3b82f6",
-                  // Allow text to scroll horizontally when longer than field
-                  overflow: "hidden",
+                  // Allow text to scroll horizontally — user can type freely
+                  overflow: "scroll",
                   whiteSpace: "nowrap",
-                  textOverflow: "clip",
+                  scrollbarWidth: "none", // hide scrollbar but allow scrolling
+                  msOverflowStyle: "none",
                 }}
                 value={editField.value}
                 placeholder={
@@ -1092,8 +1093,8 @@ function FieldShape({
             height={field.height}
             padding={isSnapped ? 2 : 4}
             verticalAlign="middle"
-            ellipsis
             wrap="none"
+            clip={{ x: 0, y: 0, width: field.width - (isSnapped ? 2 : 4), height: field.height }}
           />
         )
       )}

@@ -608,7 +608,16 @@ export function floodFillCell(
   }
 
   // Reject shaded/coloured cells (label cells, headers)
-  if (brightness(sx, sy) < 238) return null;
+  // Sample a 3x3 area to get reliable brightness reading
+  let avgBr = 0;
+  let brSamples = 0;
+  for (let dy = -2; dy <= 2; dy++) {
+    for (let dx = -2; dx <= 2; dx++) {
+      const b = brightness(sx + dx, sy + dy);
+      if (b > 0) { avgBr += b; brSamples++; }
+    }
+  }
+  if (brSamples > 0 && avgBr / brSamples < 236) return null;
 
   // Border threshold — catches both solid and anti-aliased lines
   const BORDER = 175;
