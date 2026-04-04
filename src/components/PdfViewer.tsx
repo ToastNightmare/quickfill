@@ -1147,16 +1147,18 @@ function FieldShape({
         width={field.width}
         height={field.height}
         fill={
-          field.type === "signature" && !hasSignatureImage
-            ? (isSelected || isHovered ? "rgba(79,142,247,0.06)" : "rgba(249,250,251,0.8)")
+          field.type === "signature"
+            ? (hasSignatureImage ? "transparent" : (isSelected || isHovered ? "rgba(79,142,247,0.06)" : "rgba(249,250,251,0.8)"))
             : getFill()
         }
         stroke={
           field.type === "signature"
-            ? (isSelected ? "#3b82f6" : isHovered ? "rgba(59,130,246,0.5)" : "rgba(79,142,247,0.35)")
+            ? (hasSignatureImage
+                ? (isSelected ? "rgba(59,130,246,0.4)" : isHovered ? "rgba(59,130,246,0.2)" : "transparent")
+                : (isSelected ? "#3b82f6" : isHovered ? "rgba(59,130,246,0.5)" : "rgba(79,142,247,0.35)"))
             : getBorderColor()
         }
-        strokeWidth={isSelected ? 1.5 : 1}
+        strokeWidth={isSelected ? 1 : 0}
         dash={field.type === "signature" && !hasSignatureImage ? [4, 3] : undefined}
         cornerRadius={isSnapped ? 3 : 4}
       />
