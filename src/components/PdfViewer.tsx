@@ -221,6 +221,10 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
       setCursorStyle("grabbing");
       return;
     }
+    if (activeTool === "checkbox") {
+      setCursorStyle("cell");
+      return;
+    }
     if (activeTool) {
       setCursorStyle("crosshair");
       return;
@@ -245,7 +249,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
 
       updateCursor(stage, pos);
 
-      if (!activeTool || !canvasRef.current) {
+      if (!activeTool || activeTool === "checkbox" || !canvasRef.current) {
         if (snapPreview) setSnapPreview(null);
         return;
       }
@@ -382,71 +386,52 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
       fieldW = defaults[activeTool].w;
       fieldH = defaults[activeTool].h;
 
-      // Snap-first: always try snap detection first
-      if (snapPreview) {
-        fieldX = snapPreview.x;
-        fieldY = snapPreview.y;
-        fieldW = snapPreview.width;
-        fieldH = snapPreview.height;
-        snapped = true;
-      } else {
-        // Try pre-computed boxes first (fast lookup)
-        const preBoxes = precomputedBoxesRef.current;
-        let foundSnap: SnapResult | null = null;
-
-        if (preBoxes.length > 0) {
-          // First pass: find all boxes that strictly contain the click point
-          const containing: SnapResult[] = [];
-          for (const box of preBoxes) {
-            if (
-              posX >= box.x - 3 &&
-              posX <= box.x + box.width + 3 &&
-              posY >= box.y - 3 &&
-              posY <= box.y + box.height + 3
-            ) {
-              containing.push(box);
-            }
-          }
-          if (containing.length > 0) {
-            containing.sort((a, b) => snapCredibilityScore(a) - snapCredibilityScore(b));
-            const best = containing[0];
-            const aspectRatio = best.width / Math.max(best.height, 1);
-            // Only use pre-computed if it looks like a single cell (not a full row span)
-            if (aspectRatio <= 10) {
-              foundSnap = best;
-            }
-          }
-        }
-
-        // Fall back to per-click pixel scan (better for fine-grained cell detection)
-        if (!foundSnap && canvasRef.current) {
-          try {
-            foundSnap = detectSnapBox(canvasRef.current, posX, posY);
-          } catch {
-            // Fall back to default placement
-          }
-        }
-
-        if (foundSnap) {
-          fieldX = foundSnap.x / zoomFactor;
-          fieldY = foundSnap.y / zoomFactor;
-          fieldW = foundSnap.width / zoomFactor;
-          fieldH = foundSnap.height / zoomFactor;
-          // For checkboxes: honour small snap targets (they're real checkbox boxes)
-          // but enforce a readable minimum so the stamp is visible
-          if (activeTool === "checkbox") {
-            const MIN = 14;
-            if (fieldW < MIN || fieldH < MIN) {
-              // Centre a minimum-size field on the snap target
-              const newW = Math.max(fieldW, MIN);
-              const newH = Math.max(fieldH, MIN);
-              fieldX -= (newW - fieldW) / 2;
-              fieldY -= (newH - fieldH) / 2;
-              fieldW = newW;
-              fieldH = newH;
-            }
-          }
+      // Checkboxes never snap — just place centred on click point
+      if (activeTool !== "checkbox") {
+        // Snap-first: always try snap detection first
+        if (snapPreview) {
+          fieldX = snapPreview.x;
+          fieldY = snapPreview.y;
+          fieldW = snapPreview.width;
+          fieldH = snapPreview.height;
           snapped = true;
+        } else {
+          const preBoxes = precomputedBoxesRef.current;
+          let foundSnap: SnapResult | null = null;
+
+          if (preBoxes.length > 0) {
+            const containing: SnapResult[] = [];
+            for (const box of preBoxes) {
+              if (
+                posX >= box.x - 3 &&
+                posX <= box.x + box.width + 3 &&
+                posY >= box.y - 3 &&
+                posY <= box.y + box.height + 3
+              ) {
+                containing.push(box);
+              }
+            }
+            if (containing.length > 0) {
+              containing.sort((a, b) => snapCredibilityScore(a) - snapCredibilityScore(b));
+              const best = containing[0];
+              const aspectRatio = best.width / Math.max(best.height, 1);
+              if (aspectRatio <= 10) foundSnap = best;
+            }
+          }
+
+          if (!foundSnap && canvasRef.current) {
+            try {
+              foundSnap = detectSnapBox(canvasRef.current, posX, posY);
+            } catch { /* fall back to default */ }
+          }
+
+          if (foundSnap) {
+            fieldX = foundSnap.x / zoomFactor;
+            fieldY = foundSnap.y / zoomFactor;
+            fieldW = foundSnap.width / zoomFactor;
+            fieldH = foundSnap.height / zoomFactor;
+            snapped = true;
+          }
         }
       }
 
