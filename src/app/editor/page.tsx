@@ -6,7 +6,7 @@ import { UploadZone } from "@/components/UploadZone";
 import { MobileFiller } from "@/components/MobileFiller";
 import { Toolbar } from "@/components/Toolbar";
 import { PdfViewer } from "@/components/PdfViewer";
-import { FieldToolbar } from "@/components/FieldToolbar";
+import { ContextBar } from "@/components/ContextBar";
 import { SignatureModal } from "@/components/SignatureModal";
 import type { PdfViewerHandle } from "@/components/PdfViewer";
 import { useHistory } from "@/lib/use-history";
@@ -78,24 +78,11 @@ export default function EditorPage() {
   const [pendingSignatureField, setPendingSignatureField] = useState<EditorField | null>(null);
   const [showWelcome, setShowWelcome] = useState(false);
   const [minimapCanvas, setMinimapCanvas] = useState<HTMLCanvasElement | null>(null);
-  const [viewerRect, setViewerRect] = useState<DOMRect | null>(null);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
   const { fields, set: setFields, undo, redo, reset, canUndo, canRedo } = useHistory();
   const restoredRef = useRef(false);
 
-  // Keep viewerRect fresh for FieldToolbar positioning
-  useEffect(() => {
-    const el = viewerContainerRef.current;
-    if (!el) return;
-    const update = () => setViewerRect(el.getBoundingClientRect());
-    update();
-    el.addEventListener("scroll", update);
-    window.addEventListener("resize", update);
-    return () => {
-      el.removeEventListener("scroll", update);
-      window.removeEventListener("resize", update);
-    };
-  }, [pdfBytes]);
+
   const pdfViewerRef = useRef<PdfViewerHandle>(null);
   const viewerContainerRef = useRef<HTMLDivElement>(null);
 
@@ -869,6 +856,24 @@ export default function EditorPage() {
           </div>
         </div>
 
+      {/* Context bar — tool active or field selected */}
+      <ContextBar
+        activeTool={activeTool}
+        selectedField={selectedField}
+        onToolCancel={() => setActiveTool(null)}
+        onFieldUpdate={handleFieldUpdate}
+        onFieldDelete={handleFieldDelete}
+        onFieldDeselect={() => setSelectedFieldId(null)}
+        onStampChange={(stamp) => {
+          if (selectedField) {
+            handleFieldUpdate(selectedField.id, {
+              stamp,
+              checked: stamp !== "none",
+            } as Partial<EditorField>);
+          }
+        }}
+      />
+
       {/* Sidebar + Canvas row */}
       <div className="flex flex-1 min-h-0">
         <div className="flex-shrink-0 h-full overflow-y-auto hidden sm:flex">
@@ -918,23 +923,7 @@ export default function EditorPage() {
         </div>
       </div>
 
-      {/* Floating field toolbar */}
-      {selectedField && viewerRect && (
-        <FieldToolbar
-          field={selectedField}
-          zoom={zoom}
-          viewerRect={viewerRect}
-          onUpdate={handleFieldUpdate}
-          onDelete={handleFieldDelete}
-          onDeselect={() => setSelectedFieldId(null)}
-          onStampChange={(stamp) => {
-            handleFieldUpdate(selectedField.id, {
-              stamp,
-              checked: stamp !== "none",
-            } as Partial<typeof selectedField>);
-          }}
-        />
-      )}
+
 
       {/* Floating bottom action bar */}
       {pdfBytes && totalPages > 0 && (
