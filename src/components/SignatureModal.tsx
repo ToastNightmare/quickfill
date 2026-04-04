@@ -48,12 +48,15 @@ export function SignatureModal({
     height: 180,
   });
 
-  // Reset mode when modal opens
+  // Reset mode + clear pad when modal opens
   useEffect(() => {
     if (open) {
       setMode(existingSignature ? "view" : "draw");
+      // Small delay so canvas is mounted before clearing
+      setTimeout(() => clear(), 50);
     }
-  }, [open, existingSignature]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
 
   const handleSave = useCallback(async () => {
     const dataUrl = toDataURL();
@@ -88,7 +91,11 @@ export function SignatureModal({
       />
 
       {/* Modal panel - bottom sheet on mobile, centered on desktop */}
-      <div className="relative w-full sm:w-auto sm:max-w-lg rounded-t-2xl sm:rounded-2xl bg-surface shadow-2xl animate-fade-in">
+      <div
+        className="relative z-10 w-full sm:w-auto sm:max-w-lg rounded-t-2xl sm:rounded-2xl bg-surface shadow-2xl animate-fade-in"
+        onMouseDown={(e) => e.stopPropagation()}
+        onClick={(e) => e.stopPropagation()}
+      >
         {/* Header */}
         <div className="flex items-center justify-between border-b border-border px-5 py-4">
           <h2 className="text-lg font-semibold text-text">
@@ -152,15 +159,19 @@ export function SignatureModal({
           ) : (
             <div className="flex flex-col items-center gap-4">
               {/* Drawing area */}
-              <div className="relative w-full overflow-hidden rounded-xl border-2 border-dashed border-border bg-surface">
+              <div
+                className="relative w-full overflow-hidden rounded-xl border-2 border-border bg-white shadow-inner"
+                style={{ cursor: "crosshair" }}
+              >
                 {canvasElement}
                 {!hasContent && (
-                  <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-                    <p className="text-sm text-text-muted/50 select-none">
-                      Draw your signature here
-                    </p>
+                  <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-1">
+                    <p className="text-sm text-text-muted/40 select-none">Draw your signature here</p>
+                    <p className="text-xs text-text-muted/30 select-none">Use your mouse or finger</p>
                   </div>
                 )}
+                {/* Bottom line like a real signature line */}
+                <div className="absolute bottom-8 left-6 right-6 h-px bg-border/60 pointer-events-none" />
               </div>
 
               {/* Actions */}

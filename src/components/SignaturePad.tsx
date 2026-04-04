@@ -12,177 +12,190 @@ export function useSignaturePad({
   height = 180,
 }: UseSignaturePadOptions = {}) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const isDrawingRef = useRef(false);
-  const lastPointRef = useRef<{ x: number; y: number } | null>(null);
+
+  // Use refs for drawing state so event handlers never need re-registration
+  const isDrawingRef   = useRef(false);
+  const lastPointRef   = useRef<{ x: number; y: number } | null>(null);
+  const hasContentRef  = useRef(false);
+
+  // UI state — only used to enable/disable the Save button
   const [hasContent, setHasContent] = useState(false);
 
-  // Set up canvas resolution for sharp rendering
+  // ── Canvas setup — retina scaling ──────────────────────────────────────────
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
     const dpr = window.devicePixelRatio || 1;
-    canvas.width = width * dpr;
-    canvas.height = height * dpr;
+    canvas.width  = Math.round(width  * dpr);
+    canvas.height = Math.round(height * dpr);
 
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
     ctx.scale(dpr, dpr);
-    ctx.lineCap = "round";
-    ctx.lineJoin = "round";
+    ctx.lineCap    = "round";
+    ctx.lineJoin   = "round";
     ctx.strokeStyle = "#1a1a2e";
-    ctx.lineWidth = 2.5;
+    ctx.lineWidth  = 2.5;
+
+    // Reset drawing state when dimensions change
+    isDrawingRef.current  = false;
+    lastPointRef.current  = null;
+    hasContentRef.current = false;
+    setHasContent(false);
   }, [width, height]);
 
-  const getPoint = useCallback(
-    (e: MouseEvent | Touch): { x: number; y: number } => {
-      const canvas = canvasRef.current;
-      if (!canvas) return { x: 0, y: 0 };
-      const rect = canvas.getBoundingClientRect();
-      return {
-        x: e.clientX - rect.left,
-        y: e.clientY - rect.top,
-      };
-    },
-    []
-  );
+  // ── Helpers ────────────────────────────────────────────────────────────────
+  const getPoint = useCallback((e: MouseEvent | Touch): { x: number; y: number } => {
+    const canvas = canvasRef.current;
+    if (!canvas) return { x: 0, y: 0 };
+    const rect = canvas.getBoundingClientRect();
+    return {
+      x: e.clientX - rect.left,
+      y: e.clientY - rect.top,
+    };
+  }, []);
 
-  const startStroke = useCallback((point: { x: number; y: number }) => {
-    isDrawingRef.current = true;
-    lastPointRef.current = point;
+  // ── Event handlers — stable refs, never re-registered ─────────────────────
+  const handleMouseDown = useCallback((e: MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const pt = getPoint(e);
+    isDrawingRef.current  = true;
+    lastPointRef.current  = pt;
 
     const ctx = canvasRef.current?.getContext("2d");
     if (!ctx) return;
-
     ctx.fillStyle = "#1a1a2e";
     ctx.beginPath();
-    ctx.arc(point.x, point.y, 1.25, 0, Math.PI * 2);
+    ctx.arc(pt.x, pt.y, 1.25, 0, Math.PI * 2);
     ctx.fill();
-  }, []);
+  }, [getPoint]);
 
-  const continueStroke = useCallback(
-    (point: { x: number; y: number }) => {
-      if (!isDrawingRef.current || !lastPointRef.current) return;
+  const handleMouseMove = useCallback((e: MouseEvent) => {
+    e.preventDefault();
+    if (!isDrawingRef.current || !lastPointRef.current) return;
+    const pt = getPoint(e);
+    const ctx = canvasRef.current?.getContext("2d");
+    if (!ctx) return;
+    ctx.beginPath();
+    ctx.moveTo(lastPointRef.current.x, lastPointRef.current.y);
+    ctx.lineTo(pt.x, pt.y);
+    ctx.stroke();
+    lastPointRef.current = pt;
 
-      const ctx = canvasRef.current?.getContext("2d");
-      if (!ctx) return;
+    if (!hasContentRef.current) {
+      hasContentRef.current = true;
+      setHasContent(true);
+    }
+  }, [getPoint]);
 
-      ctx.beginPath();
-      ctx.moveTo(lastPointRef.current.x, lastPointRef.current.y);
-      ctx.lineTo(point.x, point.y);
-      ctx.stroke();
-      lastPointRef.current = point;
-
-      if (!hasContent) {
-        setHasContent(true);
-      }
-    },
-    [hasContent]
-  );
-
-  const endStroke = useCallback(() => {
-    if (isDrawingRef.current && lastPointRef.current) {
-      if (!hasContent) {
-        setHasContent(true);
-      }
+  const handleMouseUp = useCallback(() => {
+    if (isDrawingRef.current && !hasContentRef.current) {
+      hasContentRef.current = true;
+      setHasContent(true);
     }
     isDrawingRef.current = false;
     lastPointRef.current = null;
-  }, [hasContent]);
+  }, []);
 
-  // Mouse events
+  const handleTouchStart = useCallback((e: TouchEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.touches.length !== 1) return;
+    const pt = getPoint(e.touches[0]);
+    isDrawingRef.current = true;
+    lastPointRef.current = pt;
+
+    const ctx = canvasRef.current?.getContext("2d");
+    if (!ctx) return;
+    ctx.fillStyle = "#1a1a2e";
+    ctx.beginPath();
+    ctx.arc(pt.x, pt.y, 1.25, 0, Math.PI * 2);
+    ctx.fill();
+  }, [getPoint]);
+
+  const handleTouchMove = useCallback((e: TouchEvent) => {
+    e.preventDefault();
+    if (!isDrawingRef.current || !lastPointRef.current || e.touches.length !== 1) return;
+    const pt = getPoint(e.touches[0]);
+    const ctx = canvasRef.current?.getContext("2d");
+    if (!ctx) return;
+    ctx.beginPath();
+    ctx.moveTo(lastPointRef.current.x, lastPointRef.current.y);
+    ctx.lineTo(pt.x, pt.y);
+    ctx.stroke();
+    lastPointRef.current = pt;
+
+    if (!hasContentRef.current) {
+      hasContentRef.current = true;
+      setHasContent(true);
+    }
+  }, [getPoint]);
+
+  const handleTouchEnd = useCallback((e: TouchEvent) => {
+    e.preventDefault();
+    if (isDrawingRef.current && !hasContentRef.current) {
+      hasContentRef.current = true;
+      setHasContent(true);
+    }
+    isDrawingRef.current = false;
+    lastPointRef.current = null;
+  }, []);
+
+  // ── Attach events once — stable callbacks mean no teardown needed ──────────
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
-    const onMouseDown = (e: MouseEvent) => {
-      e.preventDefault();
-      startStroke(getPoint(e));
-    };
-    const onMouseMove = (e: MouseEvent) => {
-      e.preventDefault();
-      continueStroke(getPoint(e));
-    };
-    const onMouseUp = () => endStroke();
-    const onMouseLeave = () => endStroke();
-
-    canvas.addEventListener("mousedown", onMouseDown);
-    canvas.addEventListener("mousemove", onMouseMove);
-    canvas.addEventListener("mouseup", onMouseUp);
-    canvas.addEventListener("mouseleave", onMouseLeave);
+    canvas.addEventListener("mousedown",  handleMouseDown);
+    canvas.addEventListener("mousemove",  handleMouseMove);
+    canvas.addEventListener("mouseup",    handleMouseUp);
+    canvas.addEventListener("mouseleave", handleMouseUp);
+    canvas.addEventListener("touchstart", handleTouchStart, { passive: false });
+    canvas.addEventListener("touchmove",  handleTouchMove,  { passive: false });
+    canvas.addEventListener("touchend",   handleTouchEnd,   { passive: false });
 
     return () => {
-      canvas.removeEventListener("mousedown", onMouseDown);
-      canvas.removeEventListener("mousemove", onMouseMove);
-      canvas.removeEventListener("mouseup", onMouseUp);
-      canvas.removeEventListener("mouseleave", onMouseLeave);
+      canvas.removeEventListener("mousedown",  handleMouseDown);
+      canvas.removeEventListener("mousemove",  handleMouseMove);
+      canvas.removeEventListener("mouseup",    handleMouseUp);
+      canvas.removeEventListener("mouseleave", handleMouseUp);
+      canvas.removeEventListener("touchstart", handleTouchStart);
+      canvas.removeEventListener("touchmove",  handleTouchMove);
+      canvas.removeEventListener("touchend",   handleTouchEnd);
     };
-  }, [getPoint, startStroke, continueStroke, endStroke]);
+  // Only re-attach if the canvas remounts (width/height change)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [width, height]);
 
-  // Touch events
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-
-    const onTouchStart = (e: TouchEvent) => {
-      e.preventDefault();
-      if (e.touches.length === 1) {
-        startStroke(getPoint(e.touches[0]));
-      }
-    };
-    const onTouchMove = (e: TouchEvent) => {
-      e.preventDefault();
-      if (e.touches.length === 1) {
-        continueStroke(getPoint(e.touches[0]));
-      }
-    };
-    const onTouchEnd = (e: TouchEvent) => {
-      e.preventDefault();
-      endStroke();
-    };
-
-    canvas.addEventListener("touchstart", onTouchStart, { passive: false });
-    canvas.addEventListener("touchmove", onTouchMove, { passive: false });
-    canvas.addEventListener("touchend", onTouchEnd, { passive: false });
-
-    return () => {
-      canvas.removeEventListener("touchstart", onTouchStart);
-      canvas.removeEventListener("touchmove", onTouchMove);
-      canvas.removeEventListener("touchend", onTouchEnd);
-    };
-  }, [getPoint, startStroke, continueStroke, endStroke]);
-
+  // ── Clear ──────────────────────────────────────────────────────────────────
   const clear = useCallback(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
-
     const dpr = window.devicePixelRatio || 1;
     ctx.clearRect(0, 0, canvas.width / dpr, canvas.height / dpr);
+    hasContentRef.current = false;
     setHasContent(false);
   }, []);
 
+  // ── Export ─────────────────────────────────────────────────────────────────
   const toDataURL = useCallback((): string | null => {
     const canvas = canvasRef.current;
-    if (!canvas || !hasContent) return null;
-
+    if (!canvas || !hasContentRef.current) return null;
     const ctx = canvas.getContext("2d");
     if (!ctx) return null;
 
     const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
     const { data, width: iw, height: ih } = imageData;
 
-    // Find bounding box of drawn content
-    let minX = iw,
-      minY = ih,
-      maxX = 0,
-      maxY = 0;
+    let minX = iw, minY = ih, maxX = 0, maxY = 0;
     for (let y = 0; y < ih; y++) {
       for (let x = 0; x < iw; x++) {
-        const alpha = data[(y * iw + x) * 4 + 3];
-        if (alpha > 10) {
+        if (data[(y * iw + x) * 4 + 3] > 10) {
           if (x < minX) minX = x;
           if (x > maxX) maxX = x;
           if (y < minY) minY = y;
@@ -193,7 +206,6 @@ export function useSignaturePad({
 
     if (maxX <= minX || maxY <= minY) return null;
 
-    // Pad and trim
     const pad = 10;
     minX = Math.max(0, minX - pad);
     minY = Math.max(0, minY - pad);
@@ -204,24 +216,26 @@ export function useSignaturePad({
     const trimH = maxY - minY + 1;
     const trimmed = ctx.getImageData(minX, minY, trimW, trimH);
 
-    const outCanvas = document.createElement("canvas");
-    outCanvas.width = trimW;
-    outCanvas.height = trimH;
-    const outCtx = outCanvas.getContext("2d");
+    const out = document.createElement("canvas");
+    out.width  = trimW;
+    out.height = trimH;
+    const outCtx = out.getContext("2d");
     if (!outCtx) return null;
     outCtx.putImageData(trimmed, 0, 0);
-
-    return outCanvas.toDataURL("image/png");
-  }, [hasContent]);
+    return out.toDataURL("image/png");
+  }, []);
 
   const canvasElement = (
     <canvas
       ref={canvasRef}
-      className="touch-none"
       style={{
         width,
         height,
         cursor: "crosshair",
+        touchAction: "none",
+        pointerEvents: "auto",
+        display: "block",
+        userSelect: "none",
       }}
     />
   );
