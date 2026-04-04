@@ -3,6 +3,7 @@
 import { useState, useCallback, useEffect, useRef, useMemo } from "react";
 import { ChevronLeft, ChevronRight, Sparkles, X, RotateCcw, Minus, Plus, Download } from "lucide-react";
 import { UploadZone } from "@/components/UploadZone";
+import { MobileGate } from "@/components/MobileGate";
 import { Toolbar } from "@/components/Toolbar";
 import { PdfViewer } from "@/components/PdfViewer";
 import { FieldInspector } from "@/components/FieldInspector";
@@ -700,33 +701,36 @@ export default function EditorPage() {
 
   if (!pdfBytes) {
     return (
-      <>
-        {isLoading && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-surface/80">
-            <div className="flex flex-col items-center gap-3">
-              <div className="h-10 w-10 animate-spin rounded-full border-3 border-accent border-t-transparent" />
-              <p className="text-sm font-medium text-text-muted">Loading PDF...</p>
+      <MobileGate>
+        <>
+          {isLoading && (
+            <div className="fixed inset-0 z-[100] flex items-center justify-center bg-surface/80">
+              <div className="flex flex-col items-center gap-3">
+                <div className="h-10 w-10 animate-spin rounded-full border-3 border-accent border-t-transparent" />
+                <p className="text-sm font-medium text-text-muted">Loading PDF...</p>
+              </div>
             </div>
-          </div>
-        )}
-        {showWelcome && (
-          <div className="mx-4 mt-4 flex items-start gap-3 rounded-xl border border-accent/20 bg-accent/5 px-5 py-4">
-            <Sparkles className="mt-0.5 h-5 w-5 shrink-0 text-accent" />
-            <div className="flex-1 text-sm">
-              <span className="font-semibold text-accent">Welcome to QuickFill!</span>
-              <span className="ml-1 text-text-muted">Upload any PDF form to get started — it takes less than 60 seconds.</span>
+          )}
+          {showWelcome && (
+            <div className="mx-4 mt-4 flex items-start gap-3 rounded-xl border border-accent/20 bg-accent/5 px-5 py-4">
+              <Sparkles className="mt-0.5 h-5 w-5 shrink-0 text-accent" />
+              <div className="flex-1 text-sm">
+                <span className="font-semibold text-accent">Welcome to QuickFill!</span>
+                <span className="ml-1 text-text-muted">Upload any PDF form to get started — it takes less than 60 seconds.</span>
+              </div>
+              <button onClick={dismissWelcome} className="shrink-0 text-text-muted hover:text-text transition-colors">
+                <X className="h-4 w-4" />
+              </button>
             </div>
-            <button onClick={dismissWelcome} className="shrink-0 text-text-muted hover:text-text transition-colors">
-              <X className="h-4 w-4" />
-            </button>
-          </div>
-        )}
-        <UploadZone onFileLoad={handleFileLoad} />
-      </>
+          )}
+          <UploadZone onFileLoad={handleFileLoad} />
+        </>
+      </MobileGate>
     );
   }
 
   return (
+    <MobileGate>
     <div className="flex flex-col h-[calc(100svh-64px)]">
       {/* Loading overlay */}
       {isLoading && (
@@ -1026,5 +1030,6 @@ export default function EditorPage() {
         </div>
       )}
     </div>
+    </MobileGate>
   );
 }
