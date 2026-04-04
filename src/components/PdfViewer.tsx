@@ -812,39 +812,6 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
           </Layer>
         </Stage>
 
-        {/* Hover delete badge for checkboxes */}
-        {pageFields
-          .filter((f) => f.type === "checkbox" && f.id === hoveredFieldId)
-          .map((f) => (
-            <button
-              key={`del-${f.id}`}
-              onClick={(e) => { e.stopPropagation(); onFieldDelete(f.id); if (selectedFieldId === f.id) onFieldSelect(null); }}
-              title="Remove"
-              style={{
-                position: "absolute",
-                left: f.x * zoomFactor - 8,
-                top: f.y * zoomFactor - 8,
-                width: 18,
-                height: 18,
-                borderRadius: "50%",
-                background: "#ef4444",
-                color: "#fff",
-                border: "none",
-                cursor: "pointer",
-                fontSize: 10,
-                fontWeight: 700,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                zIndex: 30,
-                lineHeight: 1,
-                boxShadow: "0 1px 3px rgba(0,0,0,0.3)",
-              }}
-            >
-              ✕
-            </button>
-          ))}
-
         {/* HTML input overlay for text editing */}
         {editingFieldId &&
           (() => {
@@ -1044,10 +1011,6 @@ function FieldShape({
           onValueChange(next);
           if (!isSelected) onSelect();
         }}
-        onContextMenu={(e) => {
-          e.cancelBubble = true;
-          onDelete();
-        }}
         onDragStart={() => {
           setDragOpacity(0.7);
           onDragStart?.();
@@ -1138,10 +1101,6 @@ function FieldShape({
       onDblClick={(e) => {
         e.cancelBubble = true;
         onDoubleClick();
-      }}
-      onContextMenu={(e) => {
-        e.cancelBubble = true;
-        onDelete();
       }}
       onDragStart={() => {
         setDragOpacity(0.7);

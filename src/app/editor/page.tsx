@@ -6,7 +6,7 @@ import { UploadZone } from "@/components/UploadZone";
 import { MobileFiller } from "@/components/MobileFiller";
 import { Toolbar } from "@/components/Toolbar";
 import { PdfViewer } from "@/components/PdfViewer";
-import { FieldInspector } from "@/components/FieldInspector";
+import { FieldToolbar } from "@/components/FieldToolbar";
 import { SignatureModal } from "@/components/SignatureModal";
 import type { PdfViewerHandle } from "@/components/PdfViewer";
 import { useHistory } from "@/lib/use-history";
@@ -166,23 +166,7 @@ export default function EditorPage() {
     return fields.find((f) => f.id === selectedFieldId) ?? null;
   }, [fields, selectedFieldId]);
 
-  const inspectorPosition = useMemo(() => {
-    if (!selectedField || !viewerContainerRef.current) return null;
-    const rect = viewerContainerRef.current.getBoundingClientRect();
-    const zoomFactor = zoom / 100;
-    // Center above the field, with the triangle pointing down at it
-    const fieldCenterX = rect.left + (selectedField.x + selectedField.width / 2) * zoomFactor;
-    const inspectorWidth = 176; // w-44 = 11rem = 176px
-    const x = fieldCenterX - inspectorWidth / 2;
-    // Estimate inspector height: ~80px for checkbox, ~110px for text fields with font size
-    const estimatedHeight = selectedField.type === "checkbox" ? 80 : 110;
-    const fieldTopY = rect.top + selectedField.y * zoomFactor;
-    const y = fieldTopY - estimatedHeight - 6; // 6px gap for triangle
-    // Keep within viewport
-    const clampedX = Math.max(8, Math.min(x, window.innerWidth - inspectorWidth - 8));
-    const clampedY = Math.max(8, y);
-    return { x: clampedX, y: clampedY };
-  }, [selectedField, zoom]);
+
 
   const totalFilledCount = useMemo(() => {
     return fields.filter((f) => {
@@ -919,14 +903,21 @@ export default function EditorPage() {
         </div>
       </div>
 
-      {/* Floating field inspector */}
-      {selectedField && inspectorPosition && (
-        <FieldInspector
+      {/* Floating field toolbar */}
+      {selectedField && (
+        <FieldToolbar
           field={selectedField}
+          zoom={zoom}
+          viewerRect={viewerContainerRef.current?.getBoundingClientRect() ?? null}
           onUpdate={handleFieldUpdate}
           onDelete={handleFieldDelete}
           onDeselect={() => setSelectedFieldId(null)}
-          position={inspectorPosition}
+          onStampChange={(stamp) => {
+            handleFieldUpdate(selectedField.id, {
+              stamp,
+              checked: stamp !== "none",
+            } as Partial<typeof selectedField>);
+          }}
         />
       )}
 
