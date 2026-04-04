@@ -3,7 +3,7 @@
 import { useState, useCallback, useEffect, useRef, useMemo } from "react";
 import { ChevronLeft, ChevronRight, Sparkles, X, RotateCcw, Minus, Plus, Download } from "lucide-react";
 import { UploadZone } from "@/components/UploadZone";
-import { MobileGate } from "@/components/MobileGate";
+import { MobileFiller } from "@/components/MobileFiller";
 import { Toolbar } from "@/components/Toolbar";
 import { PdfViewer } from "@/components/PdfViewer";
 import { FieldInspector } from "@/components/FieldInspector";
@@ -701,8 +701,13 @@ export default function EditorPage() {
 
   if (!pdfBytes) {
     return (
-      <MobileGate>
-        <>
+      <>
+        {/* Mobile — dedicated filler flow */}
+        <div className="sm:hidden">
+          <MobileFiller />
+        </div>
+        {/* Desktop — full editor upload */}
+        <div className="hidden sm:flex sm:flex-col sm:flex-1">
           {isLoading && (
             <div className="fixed inset-0 z-[100] flex items-center justify-center bg-surface/80">
               <div className="flex flex-col items-center gap-3">
@@ -724,14 +729,19 @@ export default function EditorPage() {
             </div>
           )}
           <UploadZone onFileLoad={handleFileLoad} />
-        </>
-      </MobileGate>
+        </div>
+      </>
     );
   }
 
   return (
-    <MobileGate>
-    <div className="flex flex-col h-[calc(100svh-64px)]">
+    <>
+    {/* Mobile — filler flow (replaces canvas editor entirely) */}
+    <div className="sm:hidden">
+      <MobileFiller />
+    </div>
+    {/* Desktop — full canvas editor */}
+    <div className="hidden sm:flex sm:flex-col h-[calc(100svh-64px)]">
       {/* Loading overlay */}
       {isLoading && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-surface/80">
@@ -1030,6 +1040,6 @@ export default function EditorPage() {
         </div>
       )}
     </div>
-    </MobileGate>
+    </>
   );
 }
