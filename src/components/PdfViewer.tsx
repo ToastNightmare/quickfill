@@ -1012,7 +1012,7 @@ function FieldShape({
           if (!isSelected) onSelect();
         }}
         onDragStart={() => {
-          setDragOpacity(0.2);
+          setDragOpacity(0.85);
           onDragStart?.();
         }}
         onDragEnd={(e) => {
@@ -1033,6 +1033,17 @@ function FieldShape({
           );
         }}
       >
+        {/* Drag shadow — "lifted" feel without hiding the stamp */}
+        {dragOpacity < 1 && (
+          <Rect
+            width={field.width}
+            height={field.height}
+            fill="transparent"
+            shadowColor="rgba(0,0,0,0.25)"
+            shadowBlur={8}
+            shadowOffsetY={3}
+          />
+        )}
         {/* Selection/hover indicator — subtle dashed border, only on interact */}
         {(isSelected || isHovered || isHighlighted) && (
           <Rect
@@ -1103,7 +1114,7 @@ function FieldShape({
         onDoubleClick();
       }}
       onDragStart={() => {
-        setDragOpacity(0.2);
+        setDragOpacity(0.85);
         onDragStart?.();
       }}
       onDragEnd={(e) => {
