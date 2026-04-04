@@ -769,6 +769,10 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
                   onFieldUpdate(field.id, { width, height, x, y })
                 }
                 onDoubleClick={() => setEditingFieldId(field.id)}
+                onDelete={() => {
+                  onFieldDelete(field.id);
+                  if (selectedFieldId === field.id) onFieldSelect(null);
+                }}
                 onValueChange={(value) => {
                   if (field.type === "checkbox") {
                     // value is a CheckboxStamp when cycling
@@ -807,6 +811,39 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
             />
           </Layer>
         </Stage>
+
+        {/* Hover delete badge for checkboxes */}
+        {pageFields
+          .filter((f) => f.type === "checkbox" && f.id === hoveredFieldId)
+          .map((f) => (
+            <button
+              key={`del-${f.id}`}
+              onClick={(e) => { e.stopPropagation(); onFieldDelete(f.id); if (selectedFieldId === f.id) onFieldSelect(null); }}
+              title="Remove"
+              style={{
+                position: "absolute",
+                left: f.x * zoomFactor - 8,
+                top: f.y * zoomFactor - 8,
+                width: 18,
+                height: 18,
+                borderRadius: "50%",
+                background: "#ef4444",
+                color: "#fff",
+                border: "none",
+                cursor: "pointer",
+                fontSize: 10,
+                fontWeight: 700,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                zIndex: 30,
+                lineHeight: 1,
+                boxShadow: "0 1px 3px rgba(0,0,0,0.3)",
+              }}
+            >
+              ✕
+            </button>
+          ))}
 
         {/* HTML input overlay for text editing */}
         {editingFieldId &&
@@ -925,6 +962,7 @@ function FieldShape({
   onTransformEnd,
   onDoubleClick,
   onValueChange,
+  onDelete,
   setSelectedRef,
 }: {
   field: EditorField;
@@ -941,6 +979,7 @@ function FieldShape({
   onTransformEnd: (w: number, h: number, x: number, y: number) => void;
   onDoubleClick: () => void;
   onValueChange: (value: string | boolean | CheckboxStamp) => void;
+  onDelete: () => void;
   setSelectedRef: (node: Konva.Node | null) => void;
 }) {
   const groupRef = useRef<Konva.Group>(null);
@@ -994,11 +1033,20 @@ function FieldShape({
         onMouseLeave={() => onMouseLeave?.()}
         onClick={(e) => {
           e.cancelBubble = true;
-          // Single click cycles: none → tick → cross → none
+          // Single click cycles: none → tick → cross → delete
           const current: CheckboxStamp = (field as { stamp?: CheckboxStamp }).stamp ?? (field.checked ? "tick" : "none");
-          const next: CheckboxStamp = current === "none" ? "tick" : current === "tick" ? "cross" : "none";
+          if (current === "cross") {
+            // Third click = delete the field entirely
+            onDelete();
+            return;
+          }
+          const next: CheckboxStamp = current === "none" ? "tick" : "cross";
           onValueChange(next);
           if (!isSelected) onSelect();
+        }}
+        onContextMenu={(e) => {
+          e.cancelBubble = true;
+          onDelete();
         }}
         onDragStart={() => {
           setDragOpacity(0.7);
@@ -1090,6 +1138,10 @@ function FieldShape({
       onDblClick={(e) => {
         e.cancelBubble = true;
         onDoubleClick();
+      }}
+      onContextMenu={(e) => {
+        e.cancelBubble = true;
+        onDelete();
       }}
       onDragStart={() => {
         setDragOpacity(0.7);
