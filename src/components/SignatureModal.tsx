@@ -48,15 +48,20 @@ export function SignatureModal({
     height: 180,
   });
 
-  // Reset mode + clear pad when modal opens
+  // Reset mode when modal opens
   useEffect(() => {
     if (open) {
       setMode(existingSignature ? "view" : "draw");
-      // Small delay so canvas is mounted before clearing
-      setTimeout(() => clear(), 50);
+    }
+  }, [open, existingSignature]);
+
+  // Clear pad whenever draw mode becomes active (open fresh or Re-sign)
+  useEffect(() => {
+    if (mode === "draw") {
+      setTimeout(() => clear(), 30);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open]);
+  }, [mode]);
 
   const handleSave = useCallback(async () => {
     const dataUrl = toDataURL();

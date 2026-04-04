@@ -11,140 +11,165 @@ export function useSignaturePad({
   width = 400,
   height = 180,
 }: UseSignaturePadOptions = {}) {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-
-  // Use refs for drawing state so event handlers never need re-registration
+  const canvasRef      = useRef<HTMLCanvasElement>(null);
   const isDrawingRef   = useRef(false);
-  const lastPointRef   = useRef<{ x: number; y: number } | null>(null);
+  const pointsRef      = useRef<{ x: number; y: number }[]>([]);
   const hasContentRef  = useRef(false);
-
-  // UI state — only used to enable/disable the Save button
   const [hasContent, setHasContent] = useState(false);
 
-  // ── Canvas setup — retina scaling ──────────────────────────────────────────
-  useEffect(() => {
+  // ── Canvas setup ────────────────────────────────────────────────────────────
+  const initCanvas = useCallback(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-
     const dpr = window.devicePixelRatio || 1;
     canvas.width  = Math.round(width  * dpr);
     canvas.height = Math.round(height * dpr);
-
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
-
     ctx.scale(dpr, dpr);
-    ctx.lineCap    = "round";
-    ctx.lineJoin   = "round";
+    ctx.lineCap     = "round";
+    ctx.lineJoin    = "round";
     ctx.strokeStyle = "#1a1a2e";
-    ctx.lineWidth  = 2.5;
-
-    // Reset drawing state when dimensions change
-    isDrawingRef.current  = false;
-    lastPointRef.current  = null;
-    hasContentRef.current = false;
-    setHasContent(false);
+    ctx.lineWidth   = 2.2;
+    // Slight smoothing for crisp curves
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = "high";
   }, [width, height]);
 
-  // ── Helpers ────────────────────────────────────────────────────────────────
-  const getPoint = useCallback((e: MouseEvent | Touch): { x: number; y: number } => {
+  useEffect(() => {
+    initCanvas();
+    isDrawingRef.current  = false;
+    pointsRef.current     = [];
+    hasContentRef.current = false;
+    setHasContent(false);
+  }, [initCanvas]);
+
+  // ── Point helpers ──────────────────────────────────────────────────────────
+  const getPoint = useCallback((e: MouseEvent | Touch) => {
     const canvas = canvasRef.current;
     if (!canvas) return { x: 0, y: 0 };
     const rect = canvas.getBoundingClientRect();
     return {
-      x: e.clientX - rect.left,
-      y: e.clientY - rect.top,
+      x: (e.clientX - rect.left),
+      y: (e.clientY - rect.top),
     };
   }, []);
 
-  // ── Event handlers — stable refs, never re-registered ─────────────────────
-  const handleMouseDown = useCallback((e: MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    const pt = getPoint(e);
-    isDrawingRef.current  = true;
-    lastPointRef.current  = pt;
-
-    const ctx = canvasRef.current?.getContext("2d");
+  // ── Bezier curve drawing ───────────────────────────────────────────────────
+  // Draws a smooth curve through the last 3+ points using quadratic bezier midpoints
+  const drawSmooth = useCallback(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
     if (!ctx) return;
+    const pts = pointsRef.current;
+    if (pts.length < 2) return;
+
+    ctx.beginPath();
+
+    if (pts.length === 2) {
+      ctx.moveTo(pts[0].x, pts[0].y);
+      ctx.lineTo(pts[1].x, pts[1].y);
+    } else {
+      ctx.moveTo(pts[0].x, pts[0].y);
+      for (let i = 1; i < pts.length - 1; i++) {
+        const midX = (pts[i].x + pts[i + 1].x) / 2;
+        const midY = (pts[i].y + pts[i + 1].y) / 2;
+        ctx.quadraticCurveTo(pts[i].x, pts[i].y, midX, midY);
+      }
+      // Last segment to current point
+      const last = pts[pts.length - 1];
+      ctx.lineTo(last.x, last.y);
+    }
+    ctx.stroke();
+  }, []);
+
+  // ── Pressure simulation — vary line width based on speed ──────────────────
+  const getVelocity = useCallback((pts: { x: number; y: number }[]) => {
+    if (pts.length < 2) return 0;
+    const a = pts[pts.length - 2];
+    const b = pts[pts.length - 1];
+    return Math.sqrt((b.x - a.x) ** 2 + (b.y - a.y) ** 2);
+  }, []);
+
+  // ── Start stroke ───────────────────────────────────────────────────────────
+  const startStroke = useCallback((pt: { x: number; y: number }) => {
+    isDrawingRef.current = true;
+    pointsRef.current    = [pt];
+
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    // Dot for tap/click
     ctx.fillStyle = "#1a1a2e";
     ctx.beginPath();
-    ctx.arc(pt.x, pt.y, 1.25, 0, Math.PI * 2);
+    ctx.arc(pt.x, pt.y, 1.1, 0, Math.PI * 2);
     ctx.fill();
-  }, [getPoint]);
+  }, []);
+
+  // ── Continue stroke ────────────────────────────────────────────────────────
+  const continueStroke = useCallback((pt: { x: number; y: number }) => {
+    if (!isDrawingRef.current) return;
+    const pts = pointsRef.current;
+    pts.push(pt);
+
+    // Vary line width by velocity for natural feel
+    const vel = getVelocity(pts);
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    // Faster = slightly thinner (pen lifts), slower = slightly thicker
+    ctx.lineWidth = Math.max(1.4, Math.min(3.0, 2.8 - vel * 0.04));
+
+    drawSmooth();
+
+    if (!hasContentRef.current) {
+      hasContentRef.current = true;
+      setHasContent(true);
+    }
+  }, [drawSmooth, getVelocity]);
+
+  // ── End stroke ─────────────────────────────────────────────────────────────
+  const endStroke = useCallback(() => {
+    if (!isDrawingRef.current) return;
+    isDrawingRef.current = false;
+    pointsRef.current    = [];
+    if (!hasContentRef.current) {
+      hasContentRef.current = true;
+      setHasContent(true);
+    }
+  }, []);
+
+  // ── Event handlers ─────────────────────────────────────────────────────────
+  const handleMouseDown = useCallback((e: MouseEvent) => {
+    e.preventDefault(); e.stopPropagation();
+    startStroke(getPoint(e));
+  }, [startStroke, getPoint]);
 
   const handleMouseMove = useCallback((e: MouseEvent) => {
     e.preventDefault();
-    if (!isDrawingRef.current || !lastPointRef.current) return;
-    const pt = getPoint(e);
-    const ctx = canvasRef.current?.getContext("2d");
-    if (!ctx) return;
-    ctx.beginPath();
-    ctx.moveTo(lastPointRef.current.x, lastPointRef.current.y);
-    ctx.lineTo(pt.x, pt.y);
-    ctx.stroke();
-    lastPointRef.current = pt;
+    continueStroke(getPoint(e));
+  }, [continueStroke, getPoint]);
 
-    if (!hasContentRef.current) {
-      hasContentRef.current = true;
-      setHasContent(true);
-    }
-  }, [getPoint]);
-
-  const handleMouseUp = useCallback(() => {
-    if (isDrawingRef.current && !hasContentRef.current) {
-      hasContentRef.current = true;
-      setHasContent(true);
-    }
-    isDrawingRef.current = false;
-    lastPointRef.current = null;
-  }, []);
+  const handleMouseUp   = useCallback(() => endStroke(), [endStroke]);
 
   const handleTouchStart = useCallback((e: TouchEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (e.touches.length !== 1) return;
-    const pt = getPoint(e.touches[0]);
-    isDrawingRef.current = true;
-    lastPointRef.current = pt;
-
-    const ctx = canvasRef.current?.getContext("2d");
-    if (!ctx) return;
-    ctx.fillStyle = "#1a1a2e";
-    ctx.beginPath();
-    ctx.arc(pt.x, pt.y, 1.25, 0, Math.PI * 2);
-    ctx.fill();
-  }, [getPoint]);
+    e.preventDefault(); e.stopPropagation();
+    if (e.touches.length === 1) startStroke(getPoint(e.touches[0]));
+  }, [startStroke, getPoint]);
 
   const handleTouchMove = useCallback((e: TouchEvent) => {
     e.preventDefault();
-    if (!isDrawingRef.current || !lastPointRef.current || e.touches.length !== 1) return;
-    const pt = getPoint(e.touches[0]);
-    const ctx = canvasRef.current?.getContext("2d");
-    if (!ctx) return;
-    ctx.beginPath();
-    ctx.moveTo(lastPointRef.current.x, lastPointRef.current.y);
-    ctx.lineTo(pt.x, pt.y);
-    ctx.stroke();
-    lastPointRef.current = pt;
+    if (e.touches.length === 1) continueStroke(getPoint(e.touches[0]));
+  }, [continueStroke, getPoint]);
 
-    if (!hasContentRef.current) {
-      hasContentRef.current = true;
-      setHasContent(true);
-    }
-  }, [getPoint]);
+  const handleTouchEnd  = useCallback((e: TouchEvent) => {
+    e.preventDefault(); endStroke();
+  }, [endStroke]);
 
-  const handleTouchEnd = useCallback((e: TouchEvent) => {
-    e.preventDefault();
-    if (isDrawingRef.current && !hasContentRef.current) {
-      hasContentRef.current = true;
-      setHasContent(true);
-    }
-    isDrawingRef.current = false;
-    lastPointRef.current = null;
-  }, []);
-
-  // ── Attach events once — stable callbacks mean no teardown needed ──────────
+  // ── Attach events once per canvas mount ────────────────────────────────────
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -166,37 +191,36 @@ export function useSignaturePad({
       canvas.removeEventListener("touchmove",  handleTouchMove);
       canvas.removeEventListener("touchend",   handleTouchEnd);
     };
-  // Only re-attach if the canvas remounts (width/height change)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [width, height]);
 
-  // ── Clear — full context reset so drawing works immediately after ──────────
+  // ── Clear — save/restore approach preserves dimensions ────────────────────
   const clear = useCallback(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-
-    // Reset drawing state refs first
-    isDrawingRef.current  = false;
-    lastPointRef.current  = null;
-    hasContentRef.current = false;
-    setHasContent(false);
-
-    // Full canvas reset — reassigning width clears all pixels AND resets context state
-    const dpr = window.devicePixelRatio || 1;
-    canvas.width  = Math.round(canvas.offsetWidth  * dpr);
-    canvas.height = Math.round(canvas.offsetHeight * dpr);
-
-    // Reinitialise context properties
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
-    ctx.scale(dpr, dpr);
+
+    // Save full transform, clear, restore — never touches width/height/scale
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.restore();
+
+    // Reset stroke properties (they may have changed via pressure simulation)
     ctx.lineCap     = "round";
     ctx.lineJoin    = "round";
     ctx.strokeStyle = "#1a1a2e";
-    ctx.lineWidth   = 2.5;
+    ctx.lineWidth   = 2.2;
+
+    // Reset state
+    isDrawingRef.current  = false;
+    pointsRef.current     = [];
+    hasContentRef.current = false;
+    setHasContent(false);
   }, []);
 
-  // ── Export ─────────────────────────────────────────────────────────────────
+  // ── Export — trim whitespace ───────────────────────────────────────────────
   const toDataURL = useCallback((): string | null => {
     const canvas = canvasRef.current;
     if (!canvas || !hasContentRef.current) return null;
@@ -220,7 +244,7 @@ export function useSignaturePad({
 
     if (maxX <= minX || maxY <= minY) return null;
 
-    const pad = 10;
+    const pad = 12;
     minX = Math.max(0, minX - pad);
     minY = Math.max(0, minY - pad);
     maxX = Math.min(iw - 1, maxX + pad);
