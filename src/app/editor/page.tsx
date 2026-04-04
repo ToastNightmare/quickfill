@@ -78,9 +78,24 @@ export default function EditorPage() {
   const [pendingSignatureField, setPendingSignatureField] = useState<EditorField | null>(null);
   const [showWelcome, setShowWelcome] = useState(false);
   const [minimapCanvas, setMinimapCanvas] = useState<HTMLCanvasElement | null>(null);
+  const [viewerRect, setViewerRect] = useState<DOMRect | null>(null);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
   const { fields, set: setFields, undo, redo, reset, canUndo, canRedo } = useHistory();
   const restoredRef = useRef(false);
+
+  // Keep viewerRect fresh for FieldToolbar positioning
+  useEffect(() => {
+    const el = viewerContainerRef.current;
+    if (!el) return;
+    const update = () => setViewerRect(el.getBoundingClientRect());
+    update();
+    el.addEventListener("scroll", update);
+    window.addEventListener("resize", update);
+    return () => {
+      el.removeEventListener("scroll", update);
+      window.removeEventListener("resize", update);
+    };
+  }, [pdfBytes]);
   const pdfViewerRef = useRef<PdfViewerHandle>(null);
   const viewerContainerRef = useRef<HTMLDivElement>(null);
 
@@ -904,11 +919,11 @@ export default function EditorPage() {
       </div>
 
       {/* Floating field toolbar */}
-      {selectedField && (
+      {selectedField && viewerRect && (
         <FieldToolbar
           field={selectedField}
           zoom={zoom}
-          viewerRect={viewerContainerRef.current?.getBoundingClientRect() ?? null}
+          viewerRect={viewerRect}
           onUpdate={handleFieldUpdate}
           onDelete={handleFieldDelete}
           onDeselect={() => setSelectedFieldId(null)}

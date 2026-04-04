@@ -66,18 +66,10 @@ export function FieldToolbar({
 
   return (
     <>
-      {/* Scrim — deselects on outside click */}
-      <div
-        className="fixed inset-0 z-40"
-        onMouseDown={onDeselect}
-        style={{ background: "transparent" }}
-      />
-
       {/* Toolbar bar */}
       <div
         className="fixed z-50 flex items-center gap-0.5 rounded-lg border border-border bg-surface shadow-lg px-1"
         style={{ top, left, height: BAR_H }}
-        onMouseDown={(e) => e.stopPropagation()}
       >
         {field.type === "checkbox" ? (
           <>

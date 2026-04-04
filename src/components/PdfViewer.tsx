@@ -1012,7 +1012,7 @@ function FieldShape({
           if (!isSelected) onSelect();
         }}
         onDragStart={() => {
-          setDragOpacity(0.7);
+          setDragOpacity(0.2);
           onDragStart?.();
         }}
         onDragEnd={(e) => {
@@ -1103,7 +1103,7 @@ function FieldShape({
         onDoubleClick();
       }}
       onDragStart={() => {
-        setDragOpacity(0.7);
+        setDragOpacity(0.2);
         onDragStart?.();
       }}
       onDragEnd={(e) => {
