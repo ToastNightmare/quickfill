@@ -43,8 +43,9 @@ export function ContextPanel({
   isDetecting,
 }: ContextPanelProps) {
 
-  // ── Tool active ────────────────────────────────────────────────────────────
-  if (activeTool) {
+  // ── Field selected takes priority over tool active ─────────────────────────
+  // ── Tool active (only when no field selected) ─────────────────────────────
+  if (activeTool && !selectedField) {
     const { icon: Icon, label, hint, color } = TOOL_META[activeTool];
     return (
       <Panel>

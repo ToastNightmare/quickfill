@@ -459,6 +459,8 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
 
       onFieldAdd(field);
       onFieldSelect(id);
+      // Deactivate tool after placing so panel switches to field controls
+      onToolSelect(null);
 
       // For signature fields, trigger signature placement flow
       if (activeTool === "signature") {
@@ -600,6 +602,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
 
         onFieldAdd(field);
         onFieldSelect(id);
+        onToolSelect(null);
 
         // For signature fields, trigger signature placement flow
         if (activeTool === "signature") {
