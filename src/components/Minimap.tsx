@@ -9,16 +9,20 @@ interface MinimapProps {
   pageHeight: number;
   zoom: number;
   onRequestRefresh?: () => void;
+  /** When true, renders as an inline block (no absolute positioning, no toggle) */
+  inline?: boolean;
 }
 
-export function Minimap({ sourceCanvas, viewerRef, pageWidth, pageHeight, zoom, onRequestRefresh }: MinimapProps) {
+export function Minimap({ sourceCanvas, viewerRef, pageWidth, pageHeight, zoom, onRequestRefresh, inline }: MinimapProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
   const [viewport, setViewport] = useState({ x: 0, y: 0, w: 100, h: 100 });
   const [visible, setVisible] = useState(true);
 
-  const MINIMAP_W = 160;
+  // For floating mode, fixed width. For inline, fill the container.
+  const MINIMAP_W = inline ? 240 : 160;
   const aspect = pageHeight / Math.max(pageWidth, 1);
-  const MINIMAP_H = Math.min(Math.round(MINIMAP_W * aspect), 220);
+  const MINIMAP_H = Math.min(Math.round(MINIMAP_W * aspect), inline ? 300 : 220);
 
   // Draw PDF thumbnail onto minimap canvas whenever source changes
   useEffect(() => {
@@ -78,6 +82,36 @@ export function Minimap({ sourceCanvas, viewerRef, pageWidth, pageHeight, zoom, 
     el.scrollTop = clickY * scaleY - el.clientHeight / 2;
   };
 
+  // ── Inline mode (embedded in sidebar) ──────────────────────────────────────
+  if (inline) {
+    return (
+      <div ref={containerRef} className="w-full">
+        {/* Thumbnail — clickable to scroll */}
+        <div
+          className="relative cursor-crosshair w-full"
+          style={{ height: MINIMAP_H }}
+          onClick={handleMinimapClick}
+        >
+          <canvas
+            ref={canvasRef}
+            style={{ width: MINIMAP_W, height: MINIMAP_H, display: "block" }}
+          />
+          {/* Viewport indicator */}
+          <div
+            className="absolute border-2 border-accent/80 bg-accent/10 pointer-events-none rounded-sm"
+            style={{
+              left: viewport.x,
+              top: viewport.y,
+              width: Math.max(viewport.w, 8),
+              height: Math.max(viewport.h, 8),
+            }}
+          />
+        </div>
+      </div>
+    );
+  }
+
+  // ── Floating mode (legacy, overlay on canvas) ───────────────────────────────
   if (!visible) return (
     <button
       onClick={() => setVisible(true)}
@@ -94,7 +128,6 @@ export function Minimap({ sourceCanvas, viewerRef, pageWidth, pageHeight, zoom, 
       className="absolute bottom-20 z-40 rounded-xl border border-border bg-surface shadow-xl overflow-hidden"
       style={{ width: MINIMAP_W, left: 68 }}
     >
-      {/* Header */}
       <div className="flex items-center justify-between px-2 py-1 border-b border-border">
         <span className="text-[10px] font-medium text-text-muted uppercase tracking-wider">Overview</span>
         <button
@@ -104,7 +137,6 @@ export function Minimap({ sourceCanvas, viewerRef, pageWidth, pageHeight, zoom, 
           ✕
         </button>
       </div>
-      {/* Thumbnail — clickable to scroll */}
       <div
         className="relative cursor-crosshair"
         style={{ height: MINIMAP_H }}
@@ -114,7 +146,6 @@ export function Minimap({ sourceCanvas, viewerRef, pageWidth, pageHeight, zoom, 
           ref={canvasRef}
           style={{ width: MINIMAP_W, height: MINIMAP_H, display: "block" }}
         />
-        {/* Viewport indicator */}
         <div
           className="absolute border-2 border-accent/80 bg-accent/10 pointer-events-none rounded-sm"
           style={{

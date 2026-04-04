@@ -3,7 +3,6 @@
 import { useState, useCallback, useEffect, useRef, useMemo } from "react";
 import { ChevronLeft, ChevronRight, Sparkles, X, RotateCcw, Minus, Plus, Download } from "lucide-react";
 import { UploadZone } from "@/components/UploadZone";
-import { Minimap } from "@/components/Minimap";
 import { Toolbar } from "@/components/Toolbar";
 import { PdfViewer } from "@/components/PdfViewer";
 import { FieldInspector } from "@/components/FieldInspector";
@@ -872,20 +871,14 @@ export default function EditorPage() {
             onDetectFields={handleDetectFields}
             isDetecting={isDetecting}
             onAutoFill={handleAutoFillFromProfile}
+            minimapCanvas={minimapCanvas}
+            viewerRef={viewerContainerRef}
+            zoom={zoom}
+            onMinimapRefresh={() => { let qa = 0; const qp = () => { const c = pdfViewerRef.current?.getCanvas(); if (c) { try { const x = c.getContext("2d")?.getImageData(c.width/2,c.height/2,1,1); if (x && x.data[3]>0) { setMinimapCanvas(c); return; } } catch{} } if (qa++<15) setTimeout(qp,200); }; setTimeout(qp,500); }}
           />
         </div>
 
         <div ref={viewerContainerRef} className="flex-1 h-full overflow-auto relative">
-          {pdfBytes && (
-            <Minimap
-              sourceCanvas={minimapCanvas}
-              viewerRef={viewerContainerRef}
-              pageWidth={800}
-              pageHeight={1100}
-              zoom={zoom}
-              onRequestRefresh={() => { let qa = 0; const qp = () => { const c = pdfViewerRef.current?.getCanvas(); if (c) { try { const x = c.getContext("2d")?.getImageData(c.width/2,c.height/2,1,1); if (x && x.data[3]>0) { setMinimapCanvas(c); return; } } catch{} } if (qa++<15) setTimeout(qp,200); }; setTimeout(qp,500); }}
-            />
-          )}
           <PdfViewer
             ref={pdfViewerRef}
             pdfBytes={pdfBytes}
