@@ -738,7 +738,12 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
                   onToolSelect(null);
                   selectedShapeRef.current = null;
                   if (!dragStartedRef.current) {
-                    setEditingFieldId(field.id);
+                    if (field.type === "signature") {
+                      // Signature fields open modal, never text input
+                      onSignatureFieldPlaced?.(field.id);
+                    } else {
+                      setEditingFieldId(field.id);
+                    }
                   }
                 }}
                 onMouseEnter={() => {
@@ -820,8 +825,8 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
           (() => {
             const editField = pageFields.find((f) => f.id === editingFieldId);
             if (!editField || editField.type === "checkbox") return null;
-            // Don't show text input for signature fields that have an image
-            if (editField.type === "signature" && (editField as SignatureField).signatureDataUrl) return null;
+            // Signature fields never use text input — always use SignatureModal
+            if (editField.type === "signature") return null;
             const isEditSnapped = editField.snapped ?? false;
 
             return (
@@ -835,7 +840,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
                   width: editField.width * zoomFactor,
                   height: editField.height * zoomFactor,
                   fontSize: Math.max(16, ((editField as { fontSize?: number }).fontSize ?? 14) * zoomFactor),
-                  fontFamily: editField.type === "signature" ? "cursive" : "Arial, sans-serif",
+                  fontFamily: "Arial, sans-serif",
                   color: "#1a1a2e",
                   cursor: "text",
                   // Match Konva text padding exactly so text aligns
@@ -857,9 +862,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
                 }}
                 value={editField.value}
                 placeholder={
-                  editField.type === "signature"
-                    ? "Type your signature"
-                    : editField.type === "date"
+                  editField.type === "date"
                     ? "MM/DD/YYYY"
                     : "Type here..."
                 }
@@ -874,7 +877,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
                   const canvas = document.createElement("canvas");
                   const ctx = canvas.getContext("2d");
                   if (ctx) {
-                    ctx.font = `${fontSize}px ${editField.type === "signature" ? "cursive" : "Arial, sans-serif"}`;
+                    ctx.font = `${fontSize}px Arial, sans-serif`;
                     const textWidth = ctx.measureText(newValue).width + padding + 8;
                     const currentWidth = editField.width * zoomFactor;
                     if (textWidth > currentWidth) {
@@ -1142,11 +1145,18 @@ function FieldShape({
       <Rect
         width={field.width}
         height={field.height}
-        fill={getFill()}
-        fillEnabled={!hasValue || isSelected || isEditing || isHovered || isHighlighted}
-        stroke={getBorderColor()}
-        strokeWidth={getBorderWidth()}
-        strokeEnabled={isSelected || isEditing || isHovered || isHighlighted || !hasValue}
+        fill={
+          field.type === "signature" && !hasSignatureImage
+            ? (isSelected || isHovered ? "rgba(79,142,247,0.06)" : "rgba(249,250,251,0.8)")
+            : getFill()
+        }
+        stroke={
+          field.type === "signature"
+            ? (isSelected ? "#3b82f6" : isHovered ? "rgba(59,130,246,0.5)" : "rgba(79,142,247,0.35)")
+            : getBorderColor()
+        }
+        strokeWidth={isSelected ? 1.5 : 1}
+        dash={field.type === "signature" && !hasSignatureImage ? [4, 3] : undefined}
         cornerRadius={isSnapped ? 3 : 4}
       />
       {hasSignatureImage && sigImage ? (
@@ -1157,14 +1167,25 @@ function FieldShape({
           width={field.width - 4}
           height={field.height - 4}
         />
+      ) : field.type === "signature" ? (
+        /* Unsigned — pen icon + "Click to sign" */
+        <Text
+          text="✎  Click to sign"
+          fontSize={Math.min(13, field.height * 0.38)}
+          fill="#9ca3af"
+          fontStyle="italic"
+          width={field.width}
+          height={field.height}
+          align="center"
+          verticalAlign="middle"
+        />
       ) : (
         !isEditing && (
           <Text
             text={displayValue}
             fontSize={(field as { fontSize?: number }).fontSize ?? 14}
             fill={isEmpty ? "#9ca3af" : "#1a1a2e"}
-            fontFamily={field.type === "signature" ? "cursive" : "Arial"}
-            fontStyle={field.type === "signature" ? "italic" : "normal"}
+            fontFamily="Arial"
             width={field.width - (isSnapped ? 2 : 4)}
             height={field.height}
             padding={isSnapped ? 2 : 4}

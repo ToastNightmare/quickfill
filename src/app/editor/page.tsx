@@ -923,6 +923,13 @@ export default function EditorPage() {
           onAutoFill={handleAutoFillFromProfile}
           onDetectFields={handleDetectFields}
           isDetecting={isDetecting}
+          onSignatureRequest={(fieldId) => {
+            const field = fields.find((f) => f.id === fieldId);
+            if (field) {
+              setPendingSignatureField(field);
+              setSignatureModalOpen(true);
+            }
+          }}
         />
 
       </div>

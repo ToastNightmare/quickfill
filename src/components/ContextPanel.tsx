@@ -5,7 +5,7 @@ import {
   Minus, Plus, Trash2, MousePointer2,
   Sparkles, UserCheck,
 } from "lucide-react";
-import type { EditorField, ToolType } from "@/lib/types";
+import type { EditorField, ToolType, SignatureField } from "@/lib/types";
 import type { CheckboxStamp } from "@/lib/types";
 
 const FONT_SIZES = [8, 10, 11, 12, 14, 16, 18, 24, 36];
@@ -25,6 +25,7 @@ interface ContextPanelProps {
   onFieldDelete: (id: string) => void;
   onFieldDeselect: () => void;
   onStampChange: (stamp: CheckboxStamp) => void;
+  onSignatureRequest: (fieldId: string) => void;
   onAutoFill: () => void;
   onDetectFields: () => void;
   isDetecting: boolean;
@@ -38,6 +39,7 @@ export function ContextPanel({
   onFieldDelete,
   onFieldDeselect,
   onStampChange,
+  onSignatureRequest,
   onAutoFill,
   onDetectFields,
   isDetecting,
@@ -120,8 +122,53 @@ export function ContextPanel({
           );
         })()}
 
-        {/* Font size controls */}
-        {fieldType !== "checkbox" && (() => {
+        {/* Signature controls */}
+        {fieldType === "signature" && (() => {
+          const sigField = selectedField as SignatureField;
+          const isSigned = !!sigField.signatureDataUrl;
+          return (
+            <Section label="Signature">
+              {isSigned ? (
+                <>
+                  {/* Preview */}
+                  <div className="mb-3 flex items-center justify-center rounded-xl border-2 border-dashed border-green-200 bg-green-50 p-3 min-h-[72px]">
+                    <img
+                      src={sigField.signatureDataUrl}
+                      alt="Signature"
+                      className="max-h-14 max-w-full object-contain"
+                    />
+                  </div>
+                  <button
+                    onClick={() => onSignatureRequest(selectedField.id)}
+                    className="flex w-full items-center justify-center gap-2 rounded-xl border border-border py-2.5 text-sm font-medium text-text-muted hover:bg-surface-alt transition-colors"
+                  >
+                    <PenTool className="h-4 w-4" />
+                    Re-sign
+                  </button>
+                </>
+              ) : (
+                <>
+                  <div className="mb-3 flex items-center justify-center rounded-xl border-2 border-dashed border-border bg-surface-alt p-4 min-h-[72px]">
+                    <div className="text-center">
+                      <PenTool className="h-6 w-6 text-text-muted mx-auto mb-1" />
+                      <p className="text-xs text-text-muted">Not signed yet</p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => onSignatureRequest(selectedField.id)}
+                    className="flex w-full items-center justify-center gap-2 rounded-xl bg-accent py-2.5 text-sm font-semibold text-white hover:bg-accent-hover transition-colors"
+                  >
+                    <PenTool className="h-4 w-4" />
+                    Sign Now
+                  </button>
+                </>
+              )}
+            </Section>
+          );
+        })()}
+
+        {/* Font size controls — text and date only */}
+        {(fieldType === "text" || fieldType === "date") && (() => {
           const fontSize = (selectedField as { fontSize?: number }).fontSize ?? 14;
           const prevSize = FONT_SIZES.slice().reverse().find((s) => s < fontSize);
           const nextSize = FONT_SIZES.find((s) => s > fontSize);
