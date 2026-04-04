@@ -85,28 +85,21 @@ export function Minimap({ sourceCanvas, viewerRef, pageWidth, pageHeight, zoom, 
   // ── Inline mode (embedded in sidebar) ──────────────────────────────────────
   if (inline) {
     return (
-      <div ref={containerRef} className="w-full">
-        {/* Thumbnail — clickable to scroll */}
+      <div ref={containerRef} className="w-full h-full relative cursor-crosshair" onClick={handleMinimapClick}>
+        <canvas
+          ref={canvasRef}
+          style={{ width: "100%", height: "100%", display: "block", objectFit: "contain" }}
+        />
+        {/* Viewport indicator */}
         <div
-          className="relative cursor-crosshair w-full"
-          style={{ height: MINIMAP_H }}
-          onClick={handleMinimapClick}
-        >
-          <canvas
-            ref={canvasRef}
-            style={{ width: MINIMAP_W, height: MINIMAP_H, display: "block" }}
-          />
-          {/* Viewport indicator */}
-          <div
-            className="absolute border-2 border-accent/80 bg-accent/10 pointer-events-none rounded-sm"
-            style={{
-              left: viewport.x,
-              top: viewport.y,
-              width: Math.max(viewport.w, 8),
-              height: Math.max(viewport.h, 8),
-            }}
-          />
-        </div>
+          className="absolute border-2 border-accent/80 bg-accent/10 pointer-events-none rounded-sm"
+          style={{
+            left: viewport.x,
+            top: viewport.y,
+            width: Math.max(viewport.w, 8),
+            height: Math.max(viewport.h, 8),
+          }}
+        />
       </div>
     );
   }
