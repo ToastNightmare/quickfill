@@ -6,7 +6,7 @@ import { UploadZone } from "@/components/UploadZone";
 import { MobileFiller } from "@/components/MobileFiller";
 import { Toolbar } from "@/components/Toolbar";
 import { PdfViewer } from "@/components/PdfViewer";
-import { ContextBar } from "@/components/ContextBar";
+import { ContextPanel } from "@/components/ContextPanel";
 import { SignatureModal } from "@/components/SignatureModal";
 import type { PdfViewerHandle } from "@/components/PdfViewer";
 import { useHistory } from "@/lib/use-history";
@@ -856,24 +856,6 @@ export default function EditorPage() {
           </div>
         </div>
 
-      {/* Context bar — tool active or field selected */}
-      <ContextBar
-        activeTool={activeTool}
-        selectedField={selectedField}
-        onToolCancel={() => setActiveTool(null)}
-        onFieldUpdate={handleFieldUpdate}
-        onFieldDelete={handleFieldDelete}
-        onFieldDeselect={() => setSelectedFieldId(null)}
-        onStampChange={(stamp) => {
-          if (selectedField) {
-            handleFieldUpdate(selectedField.id, {
-              stamp,
-              checked: stamp !== "none",
-            } as Partial<EditorField>);
-          }
-        }}
-      />
-
       {/* Sidebar + Canvas row */}
       <div className="flex flex-1 min-h-0">
         <div className="flex-shrink-0 h-full overflow-y-auto hidden sm:flex">
@@ -899,7 +881,7 @@ export default function EditorPage() {
           />
         </div>
 
-        <div ref={viewerContainerRef} className="flex-1 h-full overflow-auto relative">
+        <div ref={viewerContainerRef} className="flex-1 h-full overflow-auto relative min-w-0">
           <PdfViewer
             ref={pdfViewerRef}
             pdfBytes={pdfBytes}
@@ -921,9 +903,29 @@ export default function EditorPage() {
             onSignatureFieldPlaced={handleSignatureFieldPlaced}
           />
         </div>
+
+        {/* Right context panel */}
+        <ContextPanel
+          activeTool={activeTool}
+          selectedField={selectedField}
+          onToolCancel={() => setActiveTool(null)}
+          onFieldUpdate={handleFieldUpdate}
+          onFieldDelete={handleFieldDelete}
+          onFieldDeselect={() => setSelectedFieldId(null)}
+          onStampChange={(stamp) => {
+            if (selectedField) {
+              handleFieldUpdate(selectedField.id, {
+                stamp,
+                checked: stamp !== "none",
+              } as Partial<EditorField>);
+            }
+          }}
+          onAutoFill={handleAutoFillFromProfile}
+          onDetectFields={handleDetectFields}
+          isDetecting={isDetecting}
+        />
+
       </div>
-
-
 
       {/* Floating bottom action bar */}
       {pdfBytes && totalPages > 0 && (

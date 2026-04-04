@@ -166,35 +166,7 @@ export function Toolbar({
           </button>
         ))}
 
-        <div className="my-1 h-px bg-border mx-1" />
 
-        {/* AI Tools */}
-        <p className="px-2 pb-1 text-[10px] font-semibold uppercase tracking-widest text-text-muted hidden sm:block">
-          AI Tools
-        </p>
-        <button
-          onClick={onDetectFields}
-          disabled={isDetecting}
-          title="Auto-detect form fields"
-          className="flex h-8 items-center gap-3 rounded-lg px-2 text-sm font-medium text-text-muted hover:bg-accent/10 hover:text-accent transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          {isDetecting ? (
-            <div className="h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-accent border-t-transparent" />
-          ) : (
-            <Sparkles className="h-4 w-4 shrink-0" />
-          )}
-          <span className="hidden sm:inline">
-            {isDetecting ? "Detecting..." : "Auto-detect"}
-          </span>
-        </button>
-        <button
-          onClick={onAutoFill}
-          title="Auto-fill from saved profile"
-          className="flex h-8 items-center gap-3 rounded-lg px-2 text-sm font-medium text-text-muted hover:bg-green-50 hover:text-green-700 transition-colors"
-        >
-          <UserCheck className="h-4 w-4 shrink-0" />
-          <span className="hidden sm:inline">Auto-fill Profile</span>
-        </button>
 
         {/* Font Size (conditional — only shows when a field is selected) */}
         {showFontSize && (
