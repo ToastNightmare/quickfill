@@ -217,13 +217,15 @@ async function drawFieldOnPage(
       });
     }
   } else if (field.type === "checkbox" && field.checked) {
+    const stamp = (field as { stamp?: string }).stamp ?? "tick";
+    const mark = stamp === "cross" ? "\u2715" : "\u2713";
     const size = Math.min(field.width, field.height) / scale;
-    page.drawText("\u2713", {
-      x: pdfX + 2,
-      y: pdfY + 2,
-      size: size * 0.8,
+    page.drawText(mark, {
+      x: pdfX + (pdfW - size * 0.6) / 2,
+      y: pdfY + (pdfH - size * 0.8) / 2,
+      size: size * 0.85,
       font,
-      color: rgb(0, 0, 0),
+      color: rgb(0.07, 0.09, 0.15),
     });
   }
 }

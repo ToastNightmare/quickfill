@@ -18,9 +18,12 @@ export interface TextField extends FieldBase {
   fontSize: number;
 }
 
+export type CheckboxStamp = "tick" | "cross" | "none";
+
 export interface CheckboxField extends FieldBase {
   type: "checkbox";
   checked: boolean;
+  stamp?: CheckboxStamp; // "tick" | "cross" | "none" (default "tick")
 }
 
 export interface SignatureField extends FieldBase {

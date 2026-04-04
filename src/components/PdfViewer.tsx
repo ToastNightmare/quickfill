@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, useCallback, useImperativeHandle, forwardRef } from "react";
 import { Stage, Layer, Rect, Text, Group, Transformer, Image as KonvaImage } from "react-konva";
 import type Konva from "konva";
-import type { EditorField, ToolType, SignatureField } from "@/lib/types";
+import type { EditorField, ToolType, SignatureField, CheckboxStamp } from "@/lib/types";
 import { detectSnapBox, detectAllBoxes, snapCredibilityScore, floodFillCell } from "@/lib/snap-detect";
 import type { SnapResult } from "@/lib/snap-detect";
 
@@ -375,7 +375,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
 
       const defaults = {
         text: { w: 200, h: 28 },
-        checkbox: { w: 24, h: 24 },
+        checkbox: { w: 20, h: 20 },
         signature: { w: 200, h: 40 },
         date: { w: 160, h: 28 },
       };
@@ -432,6 +432,20 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
           fieldY = foundSnap.y / zoomFactor;
           fieldW = foundSnap.width / zoomFactor;
           fieldH = foundSnap.height / zoomFactor;
+          // For checkboxes: honour small snap targets (they're real checkbox boxes)
+          // but enforce a readable minimum so the stamp is visible
+          if (activeTool === "checkbox") {
+            const MIN = 14;
+            if (fieldW < MIN || fieldH < MIN) {
+              // Centre a minimum-size field on the snap target
+              const newW = Math.max(fieldW, MIN);
+              const newH = Math.max(fieldH, MIN);
+              fieldX -= (newW - fieldW) / 2;
+              fieldY -= (newH - fieldH) / 2;
+              fieldW = newW;
+              fieldH = newH;
+            }
+          }
           snapped = true;
         }
       }
@@ -448,7 +462,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
           field = { ...base, type: "text", width: fieldW, height: fieldH, value: "", fontSize: inferredFontSize ?? 14 };
           break;
         case "checkbox":
-          field = { ...base, type: "checkbox", width: fieldW, height: fieldH, checked: false };
+          field = { ...base, type: "checkbox", width: fieldW, height: fieldH, checked: true, stamp: "tick" };
           break;
         case "signature":
           field = { ...base, type: "signature", width: fieldW, height: fieldH, value: "", fontSize: inferredFontSize ?? 16 };
@@ -589,7 +603,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
             field = { ...base, type: "text", width: fieldW, height: fieldH, value: "", fontSize: inferredFontSize };
             break;
           case "checkbox":
-            field = { ...base, type: "checkbox", width: fieldW, height: fieldH, checked: false };
+            field = { ...base, type: "checkbox", width: fieldW, height: fieldH, checked: true, stamp: "tick" };
             break;
           case "signature":
             field = { ...base, type: "signature", width: fieldW, height: fieldH, value: "", fontSize: inferredFontSize };
@@ -658,47 +672,52 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
         />
 
         {/* Strong snap preview overlay */}
-        {activeTool && snapPreview && (
-          <div
-            className="snap-preview-highlight"
-            style={{
-              position: "absolute",
-              left: snapPreview.x * zoomFactor,
-              top: snapPreview.y * zoomFactor,
-              width: snapPreview.width * zoomFactor,
-              height: snapPreview.height * zoomFactor,
-              border: "2.5px solid #3b82f6",
-              borderRadius: 4,
-              backgroundColor: "rgba(59, 130, 246, 0.12)",
-              boxShadow: "0 0 0 1px rgba(59, 130, 246, 0.25), inset 0 0 0 1px rgba(59, 130, 246, 0.08)",
-              pointerEvents: "none",
-              zIndex: 10,
-              opacity: snapPreviewOpacity,
-              transition: "opacity 150ms ease-out, left 80ms ease-out, top 80ms ease-out, width 80ms ease-out, height 80ms ease-out",
-            }}
-          >
-            {/* Snap label */}
+        {activeTool && snapPreview && (() => {
+          const snapW = snapPreview.width * zoomFactor;
+          const snapH = snapPreview.height * zoomFactor;
+          const isTiny = snapW < 28 || snapH < 28;
+          return (
             <div
+              className="snap-preview-highlight"
               style={{
                 position: "absolute",
-                top: -22,
-                left: 0,
-                fontSize: 10,
-                fontWeight: 600,
-                color: "#3b82f6",
-                backgroundColor: "rgba(255, 255, 255, 0.95)",
-                padding: "1px 6px",
+                left: snapPreview.x * zoomFactor,
+                top: snapPreview.y * zoomFactor,
+                width: Math.max(snapW, 20),
+                height: Math.max(snapH, 20),
+                border: `2px solid ${isTiny ? "rgba(59,130,246,0.5)" : "#3b82f6"}`,
                 borderRadius: 3,
-                border: "1px solid rgba(59, 130, 246, 0.3)",
-                lineHeight: "16px",
-                whiteSpace: "nowrap",
-                letterSpacing: "0.02em",
+                backgroundColor: "rgba(59, 130, 246, 0.10)",
+                pointerEvents: "none",
+                zIndex: 10,
+                opacity: snapPreviewOpacity,
+                transition: "opacity 150ms ease-out, left 80ms ease-out, top 80ms ease-out, width 80ms ease-out, height 80ms ease-out",
               }}
             >
-              Snap here
+              {/* Only show label on non-tiny targets */}
+              {!isTiny && (
+                <div
+                  style={{
+                    position: "absolute",
+                    top: -22,
+                    left: 0,
+                    fontSize: 10,
+                    fontWeight: 600,
+                    color: "#3b82f6",
+                    backgroundColor: "rgba(255,255,255,0.95)",
+                    padding: "1px 6px",
+                    borderRadius: 3,
+                    border: "1px solid rgba(59,130,246,0.3)",
+                    lineHeight: "16px",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  Snap here
+                </div>
+              )}
             </div>
-          </div>
-        )}
+          );
+        })()}
 
         <Stage
           width={dimensions.width}
@@ -767,7 +786,12 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
                 onDoubleClick={() => setEditingFieldId(field.id)}
                 onValueChange={(value) => {
                   if (field.type === "checkbox") {
-                    onFieldUpdate(field.id, { checked: value } as Partial<EditorField>);
+                    // value is a CheckboxStamp when cycling
+                    const stamp = value as CheckboxStamp;
+                    onFieldUpdate(field.id, {
+                      stamp,
+                      checked: stamp !== "none",
+                    } as Partial<EditorField>);
                   } else {
                     onFieldUpdate(field.id, { value } as Partial<EditorField>);
                   }
@@ -931,7 +955,7 @@ function FieldShape({
   onTransformStart?: () => void;
   onTransformEnd: (w: number, h: number, x: number, y: number) => void;
   onDoubleClick: () => void;
-  onValueChange: (value: string | boolean) => void;
+  onValueChange: (value: string | boolean | CheckboxStamp) => void;
   setSelectedRef: (node: Konva.Node | null) => void;
 }) {
   const groupRef = useRef<Konva.Group>(null);
@@ -985,11 +1009,11 @@ function FieldShape({
         onMouseLeave={() => onMouseLeave?.()}
         onClick={(e) => {
           e.cancelBubble = true;
-          if (isSelected) {
-            onValueChange(!field.checked);
-          } else {
-            onSelect();
-          }
+          // Single click cycles: none → tick → cross → none
+          const current: CheckboxStamp = (field as { stamp?: CheckboxStamp }).stamp ?? (field.checked ? "tick" : "none");
+          const next: CheckboxStamp = current === "none" ? "tick" : current === "tick" ? "cross" : "none";
+          onValueChange(next);
+          if (!isSelected) onSelect();
         }}
         onDragStart={() => {
           setDragOpacity(0.7);
@@ -1013,26 +1037,36 @@ function FieldShape({
           );
         }}
       >
-        <Rect
-          width={field.width}
-          height={field.height}
-          fill={field.checked ? "rgba(59, 130, 246, 0.08)" : "white"}
-          stroke={isHighlighted ? "#2563eb" : isSelected ? "#3b82f6" : isHovered ? "rgba(59, 130, 246, 0.6)" : "#d1d5db"}
-          strokeWidth={isHighlighted ? 2.5 : isSelected ? 2 : isHovered ? 1.5 : 1}
-          cornerRadius={4}
-        />
-        {field.checked && (
-          <Text
-            text={"\u2713"}
-            fontSize={field.height * 0.75}
-            fill="#3b82f6"
+        {/* Selection/hover indicator — subtle dashed border, only on interact */}
+        {(isSelected || isHovered || isHighlighted) && (
+          <Rect
             width={field.width}
             height={field.height}
-            align="center"
-            verticalAlign="middle"
-            fontStyle="bold"
+            fill="transparent"
+            stroke={isHighlighted ? "#2563eb" : isSelected ? "#3b82f6" : "rgba(59,130,246,0.4)"}
+            strokeWidth={isHighlighted ? 2 : isSelected ? 1.5 : 1}
+            cornerRadius={2}
+            dash={isSelected ? undefined : [3, 2]}
           />
         )}
+        {/* Stamp — bold black tick or cross, like pen on paper */}
+        {(() => {
+          const stamp: CheckboxStamp = (field as { stamp?: CheckboxStamp }).stamp ?? (field.checked ? "tick" : "none");
+          if (stamp === "none") return null;
+          const size = Math.min(field.width, field.height) * 0.88;
+          return (
+            <Text
+              text={stamp === "tick" ? "✓" : "✕"}
+              fontSize={size}
+              fill="#111827"
+              fontStyle="bold"
+              width={field.width}
+              height={field.height}
+              align="center"
+              verticalAlign="middle"
+            />
+          );
+        })()}
       </Group>
     );
   }
