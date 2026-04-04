@@ -58,9 +58,14 @@ export function UploadZone({ onFileLoad }: UploadZoneProps) {
           )}
         </div>
         <p className="mt-4 text-lg font-semibold text-text">
-          {isDragActive ? "Drop your PDF here" : "Drag & drop your PDF here"}
+          {isDragActive ? "Drop your PDF here" : (
+            <>
+              <span className="hidden sm:inline">Drag &amp; drop your PDF here</span>
+              <span className="sm:hidden">Tap to browse your PDF</span>
+            </>
+          )}
         </p>
-        <p className="mt-1 text-sm text-text-muted">or click to browse</p>
+        <p className="mt-1 text-sm text-text-muted hidden sm:block">or click to browse</p>
         <p className="mt-4 text-xs text-text-muted">PDF files only, up to 50MB</p>
         {sizeError && (
           <p className="mt-3 text-sm font-medium text-red-500">

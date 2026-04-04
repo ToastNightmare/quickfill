@@ -28,6 +28,8 @@ import type { EditorField, ToolType } from "@/lib/types";
 const ZOOM_LEVELS = [50, 75, 100, 125, 150, 175, 200];
 const SNAP_MIN = 125;
 const SNAP_MAX = 175;
+// On mobile we allow zooming below SNAP_MIN so the full page fits the screen
+const isMobileDevice = () => typeof window !== "undefined" && window.innerWidth < 640;
 
 // Profile field matching keywords
 const PROFILE_MATCHERS: { key: string; keywords: string[] }[] = [
@@ -196,7 +198,8 @@ export default function EditorPage() {
   }, []);
 
   const handleZoomOut = useCallback(() => {
-    setZoom((prev) => [...ZOOM_LEVELS].reverse().find((z) => z < prev && z >= SNAP_MIN) ?? prev);
+    const mobile = isMobileDevice();
+    setZoom((prev) => [...ZOOM_LEVELS].reverse().find((z) => z < prev && (mobile || z >= SNAP_MIN)) ?? prev);
   }, []);
 
   const handleFileLoad = useCallback(
@@ -724,7 +727,7 @@ export default function EditorPage() {
   }
 
   return (
-    <div className="flex flex-col h-[calc(100vh-64px)]">
+    <div className="flex flex-col h-[calc(100svh-64px)]">
       {/* Loading overlay */}
       {isLoading && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-surface/80">
@@ -768,7 +771,7 @@ export default function EditorPage() {
           <div className="flex items-center gap-1">
             <button
               onClick={handleZoomOut}
-              disabled={zoom <= SNAP_MIN}
+              disabled={zoom <= 50}
               title="Zoom Out"
               className="flex h-7 w-7 items-center justify-center rounded-md text-text-muted hover:bg-surface-alt transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
             >
@@ -797,14 +800,14 @@ export default function EditorPage() {
             <button
               onClick={() => setZoom(100)}
               title="Fit to Page"
-              className="ml-1 rounded-md px-2 py-1 text-xs font-medium text-text-muted hover:bg-surface-alt hover:text-text transition-colors"
+              className="ml-1 hidden sm:block rounded-md px-2 py-1 text-xs font-medium text-text-muted hover:bg-surface-alt hover:text-text transition-colors"
             >
               Fit
             </button>
             <button
               onClick={() => setZoom(150)}
               title="Best zoom for snap detection (150%)"
-              className={`rounded-md px-2 py-1 text-xs font-medium transition-colors ${zoom >= 125 && zoom <= 175 ? "text-green-600 bg-green-50 hover:bg-green-100" : "text-text-muted hover:bg-surface-alt hover:text-text"}`}
+              className={`hidden sm:block rounded-md px-2 py-1 text-xs font-medium transition-colors ${zoom >= 125 && zoom <= 175 ? "text-green-600 bg-green-50 hover:bg-green-100" : "text-text-muted hover:bg-surface-alt hover:text-text"}`}
             >
               Snap
             </button>

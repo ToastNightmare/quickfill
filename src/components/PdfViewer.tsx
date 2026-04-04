@@ -628,6 +628,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
       ref={containerRef}
       className="relative flex-1 overflow-auto bg-[#f0f0f0] p-4"
       onTouchEnd={handleTouchEnd}
+      style={{ touchAction: activeTool ? "none" : "pan-x pan-y" }}
     >
       {loading && (
         <div className="absolute inset-0 z-10 flex items-center justify-center bg-surface/80">
@@ -817,7 +818,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
                   top: editField.y * zoomFactor,
                   width: editField.width * zoomFactor,
                   height: editField.height * zoomFactor,
-                  fontSize: ((editField as { fontSize?: number }).fontSize ?? 14) * zoomFactor,
+                  fontSize: Math.max(16, ((editField as { fontSize?: number }).fontSize ?? 14) * zoomFactor),
                   fontFamily: editField.type === "signature" ? "cursive" : "Arial, sans-serif",
                   color: "#1a1a2e",
                   cursor: "text",

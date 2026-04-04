@@ -1,13 +1,13 @@
 "use client";
 
-import { X, Minus, Plus, Lock, Unlock } from "lucide-react";
+import { X, Minus, Plus, Lock, Unlock, Trash2 } from "lucide-react";
 import type { EditorField } from "@/lib/types";
 
 const TYPE_LABELS: Record<string, string> = {
-  text: "T Text",
-  checkbox: "\u2610 Checkbox",
-  signature: "\u270D Signature",
-  date: "\uD83D\uDCC5 Date",
+  text: "Text Field",
+  checkbox: "Checkbox",
+  signature: "Signature",
+  date: "Date",
 };
 
 interface FieldInspectorProps {
@@ -23,9 +23,92 @@ export function FieldInspector({ field, onUpdate, onDelete, onDeselect, position
   const fontSize = showFontSize ? (field as { fontSize?: number }).fontSize ?? 14 : null;
   const isSnapped = field.snapped ?? false;
 
-  return (
+  // ── Mobile: bottom sheet ────────────────────────────────────────────────────
+  const mobileSheet = (
+    <div className="sm:hidden fixed inset-x-0 bottom-0 z-50 pb-safe">
+      {/* Scrim */}
+      <div
+        className="fixed inset-0 bg-black/30"
+        onClick={onDeselect}
+      />
+      {/* Sheet */}
+      <div className="relative rounded-t-2xl border-t border-border bg-surface px-4 pt-3 pb-8 shadow-2xl">
+        {/* Drag handle */}
+        <div className="mx-auto mb-4 h-1 w-10 rounded-full bg-border" />
+
+        {/* Header row */}
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-2">
+            <span className="text-base font-semibold text-text">
+              {TYPE_LABELS[field.type] ?? field.type}
+            </span>
+            {isSnapped && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-600">
+                <Lock className="h-3 w-3" />
+                Snapped
+              </span>
+            )}
+          </div>
+          <button
+            onClick={onDeselect}
+            className="flex h-9 w-9 items-center justify-center rounded-full bg-surface-alt text-text-muted hover:text-text transition-colors"
+            aria-label="Close"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        {/* Detach snapped */}
+        {isSnapped && (
+          <button
+            onClick={() => onUpdate(field.id, { snapped: false, snapBounds: undefined } as Partial<EditorField>)}
+            className="mb-3 flex w-full items-center justify-center gap-2 rounded-xl border border-border py-3 text-sm font-medium text-text-muted hover:bg-surface-alt transition-colors"
+          >
+            <Unlock className="h-4 w-4" />
+            Detach from box
+          </button>
+        )}
+
+        {/* Font size */}
+        {showFontSize && fontSize !== null && (
+          <div className="mb-3">
+            <p className="mb-2 text-xs font-semibold uppercase tracking-widest text-text-muted">Font Size</p>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => onUpdate(field.id, { fontSize: Math.max(8, fontSize - 2) } as Partial<EditorField>)}
+                className="flex h-11 w-11 items-center justify-center rounded-xl border border-border text-text-muted hover:bg-surface-alt transition-colors"
+              >
+                <Minus className="h-4 w-4" />
+              </button>
+              <div className="flex flex-1 items-center justify-center rounded-xl border border-border bg-surface-alt py-2.5 text-sm font-semibold text-text">
+                {fontSize}px
+              </div>
+              <button
+                onClick={() => onUpdate(field.id, { fontSize: Math.min(72, fontSize + 2) } as Partial<EditorField>)}
+                className="flex h-11 w-11 items-center justify-center rounded-xl border border-border text-text-muted hover:bg-surface-alt transition-colors"
+              >
+                <Plus className="h-4 w-4" />
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Delete */}
+        <button
+          onClick={() => { onDelete(field.id); onDeselect(); }}
+          className="flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-red-50 text-sm font-semibold text-red-600 hover:bg-red-100 transition-colors"
+        >
+          <Trash2 className="h-4 w-4" />
+          Delete Field
+        </button>
+      </div>
+    </div>
+  );
+
+  // ── Desktop: floating tooltip (unchanged) ───────────────────────────────────
+  const desktopTooltip = (
     <div
-      className="fixed z-50 w-44"
+      className="hidden sm:block fixed z-50 w-44"
       style={{ top: position.y, left: position.x }}
     >
       <div className="rounded-lg border border-border bg-surface p-3 shadow-lg">
@@ -62,7 +145,7 @@ export function FieldInspector({ field, onUpdate, onDelete, onDeselect, position
           </button>
         )}
 
-        {/* Row 3: Font size stepper (always shown for text fields, snapped or not) */}
+        {/* Row 3: Font size stepper */}
         {showFontSize && fontSize !== null && (
           <div className="mt-2 flex items-center gap-1.5">
             <button
@@ -114,5 +197,12 @@ export function FieldInspector({ field, onUpdate, onDelete, onDeselect, position
         />
       </div>
     </div>
+  );
+
+  return (
+    <>
+      {mobileSheet}
+      {desktopTooltip}
+    </>
   );
 }
