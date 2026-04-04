@@ -93,13 +93,16 @@ export function SignatureModal({
       {/* Modal panel - bottom sheet on mobile, centered on desktop */}
       <div
         className="relative z-10 w-full sm:w-auto sm:max-w-lg rounded-t-2xl sm:rounded-2xl bg-surface shadow-2xl animate-fade-in"
+        style={{ isolation: "isolate" }}
         onMouseDown={(e) => e.stopPropagation()}
+        onMouseMove={(e) => e.stopPropagation()}
+        onMouseUp={(e) => e.stopPropagation()}
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
         <div className="flex items-center justify-between border-b border-border px-5 py-4">
           <h2 className="text-lg font-semibold text-text">
-            {mode === "view" ? "Your Signature" : "Draw Your Signature"}
+            {mode === "view" ? "Your Signature" : "Sign here"}
           </h2>
           <button
             onClick={onClose}
@@ -175,32 +178,28 @@ export function SignatureModal({
               </div>
 
               {/* Actions */}
-              <div className="flex w-full flex-col gap-2 sm:flex-row">
+              <div className="flex w-full gap-2">
                 <button
                   onClick={handleSave}
                   disabled={!hasContent || saving}
-                  className="flex h-11 flex-1 items-center justify-center gap-2 rounded-xl bg-accent text-sm font-semibold text-white hover:bg-accent-hover transition-colors disabled:opacity-50"
+                  className="flex h-11 flex-1 items-center justify-center gap-2 rounded-xl bg-accent text-sm font-semibold text-white hover:bg-accent-hover transition-colors disabled:opacity-40"
                 >
-                  {saving
-                    ? "Saving..."
-                    : useMode
-                    ? "Save & Use"
-                    : "Save Signature"}
+                  {saving ? "Saving..." : useMode ? "Save & Use" : "Save Signature"}
                 </button>
                 <button
                   onClick={clear}
-                  disabled={!hasContent}
-                  className="flex h-11 items-center justify-center gap-2 rounded-xl border border-border px-4 text-sm font-medium text-text-muted hover:bg-surface-alt transition-colors disabled:opacity-30"
+                  title="Clear and redraw"
+                  className="flex h-11 w-11 items-center justify-center rounded-xl border border-border text-text-muted hover:bg-red-50 hover:text-red-500 hover:border-red-200 transition-colors"
                 >
                   <RotateCcw className="h-4 w-4" />
-                  Clear
                 </button>
                 {existingSignature && (
                   <button
                     onClick={() => setMode("view")}
-                    className="flex h-11 items-center justify-center gap-2 rounded-xl border border-border px-4 text-sm font-medium text-text-muted hover:bg-surface-alt transition-colors"
+                    className="flex h-11 w-11 items-center justify-center rounded-xl border border-border text-text-muted hover:bg-surface-alt transition-colors"
+                    title="Cancel"
                   >
-                    Cancel
+                    <X className="h-4 w-4" />
                   </button>
                 )}
               </div>

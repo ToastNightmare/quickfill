@@ -225,6 +225,10 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
       setCursorStyle("cell");
       return;
     }
+    if (activeTool === "signature") {
+      setCursorStyle("copy");
+      return;
+    }
     if (activeTool) {
       setCursorStyle("crosshair");
       return;
@@ -249,7 +253,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
 
       updateCursor(stage, pos);
 
-      if (!activeTool || activeTool === "checkbox" || !canvasRef.current) {
+      if (!activeTool || activeTool === "checkbox" || activeTool === "signature" || !canvasRef.current) {
         if (snapPreview) setSnapPreview(null);
         return;
       }
@@ -378,16 +382,16 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
       let snapped = false;
 
       const defaults = {
-        text: { w: 200, h: 28 },
-        checkbox: { w: 20, h: 20 },
-        signature: { w: 200, h: 40 },
-        date: { w: 160, h: 28 },
+        text:      { w: 200, h: 28 },
+        checkbox:  { w: 20,  h: 20 },
+        signature: { w: 220, h: 70 },
+        date:      { w: 160, h: 28 },
       };
       fieldW = defaults[activeTool].w;
       fieldH = defaults[activeTool].h;
 
-      // Checkboxes never snap — just place centred on click point
-      if (activeTool !== "checkbox") {
+      // Checkboxes and signatures never snap — place at click point
+      if (activeTool !== "checkbox" && activeTool !== "signature") {
         // Snap-first: always try snap detection first
         if (snapPreview) {
           fieldX = snapPreview.x;
@@ -737,14 +741,11 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
                   onFieldSelect(field.id);
                   onToolSelect(null);
                   selectedShapeRef.current = null;
-                  if (!dragStartedRef.current) {
-                    if (field.type === "signature") {
-                      // Signature fields open modal, never text input
-                      onSignatureFieldPlaced?.(field.id);
-                    } else {
-                      setEditingFieldId(field.id);
-                    }
+                  if (!dragStartedRef.current && field.type !== "signature") {
+                    setEditingFieldId(field.id);
                   }
+                  // Signature fields: clicking selects only.
+                  // Sign Now / Re-sign is triggered from the right panel.
                 }}
                 onMouseEnter={() => {
                   setHoveredFieldId(field.id);

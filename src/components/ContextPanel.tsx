@@ -130,17 +130,21 @@ export function ContextPanel({
             <Section label="Signature">
               {isSigned ? (
                 <>
-                  {/* Preview */}
-                  <div className="mb-3 flex items-center justify-center rounded-xl border-2 border-dashed border-green-200 bg-green-50 p-3 min-h-[72px]">
+                  {/* Preview — generous height, white bg */}
+                  <div className="mb-3 flex items-center justify-center rounded-xl border border-green-200 bg-white p-3 min-h-[96px] shadow-inner">
                     <img
                       src={sigField.signatureDataUrl}
                       alt="Signature"
-                      className="max-h-14 max-w-full object-contain"
+                      className="max-h-20 max-w-full object-contain"
                     />
+                  </div>
+                  <div className="flex items-center gap-1.5 mb-1">
+                    <div className="h-2 w-2 rounded-full bg-green-500 shrink-0" />
+                    <p className="text-xs text-green-700 font-medium">Signed</p>
                   </div>
                   <button
                     onClick={() => onSignatureRequest(selectedField.id)}
-                    className="flex w-full items-center justify-center gap-2 rounded-xl border border-border py-2.5 text-sm font-medium text-text-muted hover:bg-surface-alt transition-colors"
+                    className="mt-2 flex w-full items-center justify-center gap-2 rounded-xl border border-border py-2.5 text-sm font-medium text-text-muted hover:bg-surface-alt transition-colors"
                   >
                     <PenTool className="h-4 w-4" />
                     Re-sign
@@ -148,10 +152,11 @@ export function ContextPanel({
                 </>
               ) : (
                 <>
-                  <div className="mb-3 flex items-center justify-center rounded-xl border-2 border-dashed border-border bg-surface-alt p-4 min-h-[72px]">
+                  <div className="mb-3 flex items-center justify-center rounded-xl border-2 border-dashed border-border bg-surface-alt p-4 min-h-[96px]">
                     <div className="text-center">
-                      <PenTool className="h-6 w-6 text-text-muted mx-auto mb-1" />
-                      <p className="text-xs text-text-muted">Not signed yet</p>
+                      <PenTool className="h-6 w-6 text-text-muted mx-auto mb-1.5" />
+                      <p className="text-xs font-medium text-text-muted">Not signed yet</p>
+                      <p className="text-[10px] text-text-muted/60 mt-0.5">Click below to sign</p>
                     </div>
                   </div>
                   <button

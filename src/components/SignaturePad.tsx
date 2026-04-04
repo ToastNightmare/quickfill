@@ -170,16 +170,30 @@ export function useSignaturePad({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [width, height]);
 
-  // ── Clear ──────────────────────────────────────────────────────────────────
+  // ── Clear — full context reset so drawing works immediately after ──────────
   const clear = useCallback(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-    const dpr = window.devicePixelRatio || 1;
-    ctx.clearRect(0, 0, canvas.width / dpr, canvas.height / dpr);
+
+    // Reset drawing state refs first
+    isDrawingRef.current  = false;
+    lastPointRef.current  = null;
     hasContentRef.current = false;
     setHasContent(false);
+
+    // Full canvas reset — reassigning width clears all pixels AND resets context state
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width  = Math.round(canvas.offsetWidth  * dpr);
+    canvas.height = Math.round(canvas.offsetHeight * dpr);
+
+    // Reinitialise context properties
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    ctx.scale(dpr, dpr);
+    ctx.lineCap     = "round";
+    ctx.lineJoin    = "round";
+    ctx.strokeStyle = "#1a1a2e";
+    ctx.lineWidth   = 2.5;
   }, []);
 
   // ── Export ─────────────────────────────────────────────────────────────────
