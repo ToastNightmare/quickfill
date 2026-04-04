@@ -152,7 +152,6 @@ export function ContextPanel({
 
         <Divider />
 
-        {/* Actions */}
         <Section>
           <button
             onClick={() => { onFieldDelete(selectedField.id); onFieldDeselect(); }}
@@ -160,12 +159,6 @@ export function ContextPanel({
           >
             <Trash2 className="h-4 w-4" />
             Delete Field
-          </button>
-          <button
-            onClick={onFieldDeselect}
-            className="mt-2 flex w-full items-center justify-center gap-2 rounded-xl border border-border py-2.5 text-sm font-medium text-text-muted hover:bg-surface-alt transition-colors"
-          >
-            Deselect
           </button>
         </Section>
       </Panel>

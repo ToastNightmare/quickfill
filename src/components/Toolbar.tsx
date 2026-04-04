@@ -17,7 +17,7 @@ import type { ToolType, EditorField } from "@/lib/types";
 import { Minimap } from "@/components/Minimap";
 import type { RefObject } from "react";
 
-const FONT_SIZES = [8, 10, 11, 12, 14, 16, 18, 24, 36];
+
 
 interface ToolbarProps {
   activeTool: ToolType | null;
@@ -168,27 +168,7 @@ export function Toolbar({
 
 
 
-        {/* Font Size (conditional — only shows when a field is selected) */}
-        {showFontSize && (
-          <>
-            <div className="my-1 h-px bg-border mx-1" />
-            <p className="px-2 pb-1 text-[10px] font-semibold uppercase tracking-widest text-text-muted hidden sm:block">
-              Font Size
-            </p>
-            <select
-              value={currentFontSize ?? 14}
-              onChange={(e) => onFontSizeChange(Number(e.target.value))}
-              className="h-8 w-full rounded-lg border border-border bg-surface px-2 text-sm text-text outline-none focus:border-accent"
-              title="Font Size"
-            >
-              {FONT_SIZES.map((s) => (
-                <option key={s} value={s}>
-                  {s}px
-                </option>
-              ))}
-            </select>
-          </>
-        )}
+
 
         <div className="my-1 h-px bg-border mx-1" />
 

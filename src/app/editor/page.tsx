@@ -927,8 +927,8 @@ export default function EditorPage() {
 
       </div>
 
-      {/* Floating bottom action bar */}
-      {pdfBytes && totalPages > 0 && (
+      {/* Floating bottom page nav — only on multi-page docs */}
+      {pdfBytes && totalPages > 1 && (
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 hidden sm:flex items-center gap-2 rounded-full bg-navy shadow-xl border border-white/10 px-4 py-2">
           <span className="text-xs text-white/70 font-medium">{currentPage + 1} / {totalPages}</span>
           <div className="w-px h-4 bg-white/20" />
@@ -937,15 +937,6 @@ export default function EditorPage() {
           </button>
           <button onClick={() => setCurrentPage(p => Math.min(totalPages - 1, p + 1))} disabled={currentPage >= totalPages - 1} className="text-white/70 hover:text-white disabled:opacity-30 transition-colors">
             <ChevronRight className="h-4 w-4" />
-          </button>
-          <div className="w-px h-4 bg-white/20" />
-          <button
-            onClick={handleDownload}
-            disabled={isDownloading}
-            className="flex items-center gap-1.5 rounded-full bg-accent px-3 py-1 text-xs font-semibold text-white hover:bg-accent-hover disabled:opacity-50 transition-colors"
-          >
-            <Download className="h-3.5 w-3.5" />
-            {isDownloading ? "Saving..." : "Download"}
           </button>
         </div>
       )}
