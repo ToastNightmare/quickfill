@@ -111,28 +111,12 @@ export async function fillPdf(
         await drawFieldOnPage(pdfDoc, field, pageScales, font, signatureFont);
       }
     }
-    // Sanitize ALL existing AcroForm text field values before flatten
-    // — the original PDF may have newlines/control chars baked in
-    try {
-      for (const f of form.getFields()) {
-        if (f.constructor.name === "PDFTextField") {
-          try {
-            const tf = form.getTextField(f.getName());
-            const existing = tf.getText() ?? "";
-            const sanitized = existing.replace(/[\x00-\x09\x0b-\x1f\x7f]/g, " ").replace(/\n/g, " ");
-            if (sanitized !== existing) tf.setText(sanitized);
-          } catch { /* skip unreadable fields */ }
-        }
-      }
-    } catch { /* skip if form iteration fails */ }
-
-    // Use updateFieldAppearances: false as primary — avoids re-encoding text
-    // through WinAnsi which crashes on newlines and special chars in existing values
-    try {
-      form.flatten({ updateFieldAppearances: false });
-    } catch {
-      /* best effort — leave form interactive if flatten is impossible */
-    }
+    // NOTE: form.flatten() is intentionally skipped.
+    // pdf-lib re-encodes all field appearance streams through WinAnsi during flatten,
+    // which crashes on any field containing newlines or non-Latin characters.
+    // Skipping flatten leaves the form interactive (fields remain editable after download)
+    // which is acceptable — values are set and the PDF downloads cleanly.
+    // True flattening requires a server-side renderer (future improvement).
   } else {
     for (const field of editorFields) {
       await drawFieldOnPage(pdfDoc, field, pageScales, font, signatureFont);
