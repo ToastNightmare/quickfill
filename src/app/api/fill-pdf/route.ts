@@ -7,13 +7,24 @@ import path from "path";
 import type { EditorField } from "@/lib/types";
 import { APP_CONFIG } from "@/lib/config";
 
-// Load fonts once at module level
-const notoSansBytes = fs.readFileSync(
-  path.join(process.cwd(), "public/fonts/NotoSans-Regular.ttf")
-);
-const notoSansItalicBytes = fs.readFileSync(
-  path.join(process.cwd(), "public/fonts/NotoSans-Italic.ttf")
-);
+// Lazy-load fonts inside the request — module-level fs.readFileSync can fail
+// on Vercel serverless where process.cwd() may not be available at init time
+let _notoSansBytes: Buffer | null = null;
+let _notoSansItalicBytes: Buffer | null = null;
+
+function loadFonts(): { regular: Buffer; italic: Buffer } {
+  if (!_notoSansBytes) {
+    _notoSansBytes = fs.readFileSync(
+      path.join(process.cwd(), "public/fonts/NotoSans-Regular.ttf")
+    );
+  }
+  if (!_notoSansItalicBytes) {
+    _notoSansItalicBytes = fs.readFileSync(
+      path.join(process.cwd(), "public/fonts/NotoSans-Italic.ttf")
+    );
+  }
+  return { regular: _notoSansBytes, italic: _notoSansItalicBytes };
+}
 
 /** Decode a base64 data URL to raw bytes */
 function dataUrlToBytes(dataUrl: string): Uint8Array {
@@ -62,7 +73,8 @@ export async function POST(request: NextRequest) {
     // Register fontkit so pdf-lib can embed custom TTF fonts
     pdfDoc.registerFontkit(fontkit);
 
-    // Embed Unicode fonts
+    // Load and embed Unicode fonts (lazy — safe for Vercel serverless)
+    const { regular: notoSansBytes, italic: notoSansItalicBytes } = loadFonts();
     const font = await pdfDoc.embedFont(notoSansBytes);
     const signatureFont = await pdfDoc.embedFont(notoSansItalicBytes);
 
