@@ -201,7 +201,8 @@ async function drawFieldOnPage(
     } catch {
       // Fall back to text if image embedding fails
       if (field.value) {
-        page.drawText(field.value, {
+        const safeValue = field.value.replace(/[\x00-\x1f\x7f]/g, " ");
+        page.drawText(safeValue, {
           x: pdfX + 2,
           y: pdfY + 4,
           size: (field.fontSize ?? 16) / scale,

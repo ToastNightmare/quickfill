@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { PDFDocument, rgb, StandardFonts } from "pdf-lib";
+import { PDFDocument, PDFName, rgb, StandardFonts } from "pdf-lib";
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const fontkit = require("@pdf-lib/fontkit") as typeof import("@pdf-lib/fontkit");
 import fs from "fs";
@@ -165,18 +165,11 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      // Remove AcroForm entirely so fields aren't editable
-      try {
-        form.getFields().forEach((f) => {
-          try {
-            form.removeField(f);
-          } catch {
-            // some fields may resist removal
-          }
-        });
-      } catch {
-        // If removal fails, that's okay — content is drawn directly
-      }
+      // Remove AcroForm dictionary entirely from the PDF catalog.
+      // This prevents pdf-lib from calling updateFieldAppearances() during save(),
+      // which would re-encode existing field values through WinAnsi and crash on
+      // newlines (0x0a) or non-Latin characters.
+      pdfDoc.catalog.delete(PDFName.of("AcroForm"));
     } else {
       // Non-AcroForm: draw all fields using editor coordinates
       for (const field of editorFields) {
@@ -285,7 +278,8 @@ async function drawSignatureImage(
     page.drawImage(img, { x: drawX, y: drawY, width: drawW, height: drawH });
   } catch {
     if (fallbackText) {
-      page.drawText(sanitize(fallbackText), {
+      const safeFallback = sanitize(fallbackText).replace(/\n/g, " ");
+      page.drawText(safeFallback, {
         x: pdfX + 2,
         y: pdfY + 4,
         size: fontSize,
