@@ -508,7 +508,7 @@ export default function EditorPage() {
 
       const addWatermark = !isPro;
       const result = await fillPdf(pdfBytes, fields, pageScales, hasAcroForm, addWatermark);
-      const blob = new Blob([result.buffer as ArrayBuffer], { type: "application/pdf" });
+      const blob = new Blob([result as Uint8Array<ArrayBuffer>], { type: "application/pdf" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
@@ -539,8 +539,9 @@ export default function EditorPage() {
         showToast("Download includes QuickFill watermark. Upgrade to Pro to remove it.", 5000);
       }
     } catch (err) {
-      console.error("Download failed:", err);
-      showToast("Failed to generate PDF. Please try again.");
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error("Download failed:", msg, err);
+      showToast(`Failed to generate PDF: ${msg}`);
     } finally {
       setIsDownloading(false);
     }

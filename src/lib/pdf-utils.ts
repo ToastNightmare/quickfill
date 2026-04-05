@@ -171,9 +171,11 @@ async function drawFieldOnPage(
   if (field.type === "signature" && field.signatureDataUrl) {
     // Embed signature as PNG image
     try {
-      const pngBytes = dataUrlToBytes(field.signatureDataUrl);
-      if (pngBytes.length === 0) throw new Error("Empty signature data");
-      const pngImage = await pdfDoc.embedPng(pngBytes);
+      const imgBytes = dataUrlToBytes(field.signatureDataUrl);
+      if (imgBytes.length === 0) throw new Error("Empty signature data");
+      const isJpeg = field.signatureDataUrl.startsWith("data:image/jpeg") || field.signatureDataUrl.startsWith("data:image/jpg");
+      const imgImage = isJpeg ? await pdfDoc.embedJpg(imgBytes) : await pdfDoc.embedPng(imgBytes);
+      const pngImage = imgImage;
       const imgDims = pngImage.scale(1);
       // Fit image within field bounds while maintaining aspect ratio
       const imgAspect = imgDims.width / imgDims.height;
