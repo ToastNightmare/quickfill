@@ -208,8 +208,20 @@ export function MobileFiller() {
         return { id: f.id, type: "text" as const, x: f.x, y: f.y, width: f.width, height: f.height, page: f.page, value: f.value, fontSize: 12 };
       });
 
-      const result = await fillPdf(pdfBytes, editorFields, new Map(), hasAcroForm, !isPro);
-      const blob = new Blob([result.buffer as ArrayBuffer], { type: "application/pdf" });
+      // Use server-side fill API (same as desktop) — avoids WinAnsi browser crash
+      const fd = new FormData();
+      fd.append("pdf", new Blob([pdfBytes], { type: "application/pdf" }), "input.pdf");
+      fd.append("fields", JSON.stringify(editorFields));
+      fd.append("pageScales", JSON.stringify([]));
+      fd.append("hasAcroForm", String(hasAcroForm));
+      fd.append("addWatermark", String(!isPro));
+      const fillRes = await fetch("/api/fill-pdf", { method: "POST", body: fd });
+      if (!fillRes.ok) {
+        const errBody = await fillRes.json().catch(() => ({ error: "Server error" }));
+        throw new Error(errBody.error || `Server error ${fillRes.status}`);
+      }
+      const resultBuf = await fillRes.arrayBuffer();
+      const blob = new Blob([resultBuf], { type: "application/pdf" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
