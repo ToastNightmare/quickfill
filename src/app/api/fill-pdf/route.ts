@@ -112,8 +112,9 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      // Step 3: Flatten — works cleanly because all values are now WinAnsi-safe
-      form.flatten();
+      // Step 3: Flatten without regenerating appearance streams through WinAnsi.
+      // updateFieldAppearances:false uses the existing baked-in appearances — no encoding.
+      form.flatten({ updateFieldAppearances: false });
     } else {
       // Non-AcroForm: draw all fields using editor coordinates
       for (const field of editorFields) {
