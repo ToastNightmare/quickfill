@@ -221,14 +221,21 @@ async function drawFieldOnPage(
     }
   } else if (field.type === "checkbox" && field.checked) {
     const stamp = (field as { stamp?: string }).stamp ?? "tick";
-    const mark = stamp === "cross" ? "\u2715" : "\u2713";
-    const size = Math.min(field.width, field.height) / scale;
-    page.drawText(mark, {
-      x: pdfX + (pdfW - size * 0.6) / 2,
-      y: pdfY + (pdfH - size * 0.8) / 2,
-      size: size * 0.85,
-      font,
-      color: rgb(0.07, 0.09, 0.15),
-    });
+    const cx = pdfX + pdfW / 2;
+    const cy = pdfY + pdfH / 2;
+    const r = Math.min(pdfW, pdfH) * 0.35;
+    const lw = Math.max(1, r * 0.18);
+    const dark = rgb(0.07, 0.09, 0.15);
+
+    if (stamp === "tick") {
+      // Checkmark: two lines forming a tick — bottom-left pivot, up-right arm
+      page.drawLine({ start: { x: cx - r * 0.55, y: cy - r * 0.05 }, end: { x: cx - r * 0.1, y: cy - r * 0.5 }, thickness: lw, color: dark });
+      page.drawLine({ start: { x: cx - r * 0.1, y: cy - r * 0.5 }, end: { x: cx + r * 0.6, y: cy + r * 0.5 }, thickness: lw, color: dark });
+    } else if (stamp === "cross") {
+      // X: two diagonal lines
+      page.drawLine({ start: { x: cx - r * 0.6, y: cy - r * 0.6 }, end: { x: cx + r * 0.6, y: cy + r * 0.6 }, thickness: lw, color: dark });
+      page.drawLine({ start: { x: cx + r * 0.6, y: cy - r * 0.6 }, end: { x: cx - r * 0.6, y: cy + r * 0.6 }, thickness: lw, color: dark });
+    }
+    // stamp === "none": leave blank (unchecked visual)
   }
 }
