@@ -111,10 +111,24 @@ export async function fillPdf(
         await drawFieldOnPage(pdfDoc, field, pageScales, font, signatureFont);
       }
     }
+    // Sanitize ALL existing AcroForm text field values before flatten
+    // — the original PDF may have newlines/control chars baked in
+    try {
+      for (const f of form.getFields()) {
+        if (f.constructor.name === "PDFTextField") {
+          try {
+            const tf = form.getTextField(f.getName());
+            const existing = tf.getText() ?? "";
+            const sanitized = existing.replace(/[\x00-\x09\x0b-\x1f\x7f]/g, " ").replace(/\n/g, " ");
+            if (sanitized !== existing) tf.setText(sanitized);
+          } catch { /* skip unreadable fields */ }
+        }
+      }
+    } catch { /* skip if form iteration fails */ }
+
     try {
       form.flatten();
     } catch {
-      // Flatten failed globally — try field-by-field so one bad field doesn't block the rest
       try {
         form.flatten({ updateFieldAppearances: false });
       } catch {
