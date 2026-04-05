@@ -64,8 +64,10 @@ export async function POST(request: NextRequest) {
     if (hasAcroForm) {
       // For AcroForm PDFs: read widget positions, then draw directly onto pages.
       // We bypass AcroForm entirely — no setText, no flatten.
-      const form = pdfDoc.getForm();
-      const acroFields = form.getFields();
+      // SAFETY: Wrap in try-catch to handle PDFs with malformed or problematic AcroForm
+      try {
+        const form = pdfDoc.getForm();
+        const acroFields = form.getFields();
 
       // Build a map of field name -> widget info (position, page)
       const widgetMap = new Map<
@@ -160,11 +162,24 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      // Remove AcroForm dictionary entirely from the PDF catalog.
-      // This prevents pdf-lib from calling updateFieldAppearances() during save(),
-      // which would re-encode existing field values through WinAnsi and crash on
-      // newlines (0x0a) or non-Latin characters.
-      pdfDoc.catalog.delete(PDFName.of("AcroForm"));
+        // Remove AcroForm dictionary entirely from the PDF catalog.
+        // This prevents pdf-lib from calling updateFieldAppearances() during save(),
+        // which would re-encode existing field values through WinAnsi and crash on
+        // newlines (0x0a) or non-Latin characters.
+        pdfDoc.catalog.delete(PDFName.of("AcroForm"));
+      } catch {
+        // If AcroForm processing fails (e.g., malformed fields with newlines),
+        // fall back to drawing all fields as non-AcroForm fields.
+        // Always delete the AcroForm dictionary to prevent WinAnsi errors during save.
+        try {
+          pdfDoc.catalog.delete(PDFName.of("AcroForm"));
+        } catch {
+          // Ignore if deletion fails
+        }
+        for (const field of editorFields) {
+          await drawFieldOnPage(pdfDoc, field, pageScales, font, signatureFont);
+        }
+      }
     } else {
       // Non-AcroForm: draw all fields using editor coordinates
       for (const field of editorFields) {

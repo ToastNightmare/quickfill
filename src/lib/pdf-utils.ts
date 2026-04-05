@@ -1,6 +1,13 @@
-import { PDFDocument, rgb, StandardFonts } from "pdf-lib";
+import { PDFDocument, PDFName, rgb, StandardFonts } from "pdf-lib";
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const fontkit = require("@pdf-lib/fontkit") as typeof import("@pdf-lib/fontkit");
 import type { EditorField } from "./types";
 import { APP_CONFIG } from "./config";
+import { NOTO_SANS_REGULAR_B64, NOTO_SANS_ITALIC_B64 } from "./fonts";
+
+// Decode base64 fonts — bundled directly in code, no fs dependency
+const notoSansBytes = Buffer.from(NOTO_SANS_REGULAR_B64, "base64");
+const notoSansItalicBytes = Buffer.from(NOTO_SANS_ITALIC_B64, "base64");
 
 /**
  * Load a PDF and detect AcroForm fields with their positions.
@@ -86,37 +93,48 @@ export async function fillPdf(
   const pdfDoc = await PDFDocument.load(originalPdfBytes, {
     ignoreEncryption: true,
   });
-  const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
-  const signatureFont = await pdfDoc.embedFont(StandardFonts.TimesRomanItalic);
+
+  // Register fontkit and embed Unicode fonts (NotoSans)
+  pdfDoc.registerFontkit(fontkit);
+  const font = await pdfDoc.embedFont(notoSansBytes);
+  const signatureFont = await pdfDoc.embedFont(notoSansItalicBytes);
+  const watermarkFont = await pdfDoc.embedFont(StandardFonts.Helvetica);
 
   if (hasAcroForm) {
-    const form = pdfDoc.getForm();
-    for (const field of editorFields) {
-      try {
-        if (field.type === "signature" && field.signatureDataUrl) {
-          // Always draw signature images directly (not via AcroForm)
+    try {
+      const form = pdfDoc.getForm();
+      for (const field of editorFields) {
+        try {
+          if (field.type === "signature" && field.signatureDataUrl) {
+            // Always draw signature images directly (not via AcroForm)
+            await drawFieldOnPage(pdfDoc, field, pageScales, font, signatureFont);
+          } else if (field.type === "text" || field.type === "date" || field.type === "signature") {
+            const tf = form.getTextField(field.id);
+            // Sanitize: replace newlines + control chars — WinAnsi can't encode them
+            const safeValue = (field.value ?? "").replace(/[\x00-\x09\x0b-\x1f\x7f]/g, " ").replace(/\n/g, " ");
+            tf.setText(safeValue);
+          } else if (field.type === "checkbox") {
+            const cb = form.getCheckBox(field.id);
+            if (field.checked) cb.check();
+            else cb.uncheck();
+          }
+        } catch {
+          // Field doesn't exist in AcroForm  -  draw it directly
           await drawFieldOnPage(pdfDoc, field, pageScales, font, signatureFont);
-        } else if (field.type === "text" || field.type === "date" || field.type === "signature") {
-          const tf = form.getTextField(field.id);
-          // Sanitize: replace newlines + control chars — WinAnsi can't encode them
-          const safeValue = (field.value ?? "").replace(/[\x00-\x09\x0b-\x1f\x7f]/g, " ").replace(/\n/g, " ");
-          tf.setText(safeValue);
-        } else if (field.type === "checkbox") {
-          const cb = form.getCheckBox(field.id);
-          if (field.checked) cb.check();
-          else cb.uncheck();
         }
-      } catch {
-        // Field doesn't exist in AcroForm  -  draw it directly
+      }
+    } catch {
+      // If AcroForm processing fails, draw all fields as non-AcroForm
+      for (const field of editorFields) {
         await drawFieldOnPage(pdfDoc, field, pageScales, font, signatureFont);
       }
     }
-    // NOTE: form.flatten() is intentionally skipped.
-    // pdf-lib re-encodes all field appearance streams through WinAnsi during flatten,
-    // which crashes on any field containing newlines or non-Latin characters.
-    // Skipping flatten leaves the form interactive (fields remain editable after download)
-    // which is acceptable — values are set and the PDF downloads cleanly.
-    // True flattening requires a server-side renderer (future improvement).
+    // Remove AcroForm to prevent WinAnsi encoding errors during save
+    try {
+      pdfDoc.catalog.delete(PDFName.of("AcroForm"));
+    } catch {
+      // Ignore if deletion fails
+    }
   } else {
     for (const field of editorFields) {
       await drawFieldOnPage(pdfDoc, field, pageScales, font, signatureFont);
@@ -129,12 +147,12 @@ export async function fillPdf(
     for (const page of pages) {
       const { width } = page.getSize();
       const text = `Filled with QuickFill - ${APP_CONFIG.domain}`;
-      const textWidth = font.widthOfTextAtSize(text, 8);
+      const textWidth = watermarkFont.widthOfTextAtSize(text, 8);
       page.drawText(text, {
         x: width - textWidth - 12,
         y: 10,
         size: 8,
-        font,
+        font: watermarkFont,
         color: rgb(0.6, 0.6, 0.6),
       });
     }
