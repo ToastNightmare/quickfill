@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { PDFDocument, rgb, StandardFonts } from "pdf-lib";
+import fontkit from "@pdf-lib/fontkit";
 import fs from "fs";
 import path from "path";
 import type { EditorField } from "@/lib/types";
@@ -56,6 +57,9 @@ export async function POST(request: NextRequest) {
     const pdfDoc = await PDFDocument.load(pdfBytes, {
       ignoreEncryption: true,
     });
+
+    // Register fontkit so pdf-lib can embed custom TTF fonts
+    pdfDoc.registerFontkit(fontkit);
 
     // Embed Unicode fonts
     const font = await pdfDoc.embedFont(notoSansBytes);
