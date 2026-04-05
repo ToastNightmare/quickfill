@@ -6,7 +6,7 @@ import {
   ChevronLeft, CheckSquare, Square, RotateCcw,
   Loader2, PenTool,
 } from "lucide-react";
-import { detectAcroFormFields, fillPdf } from "@/lib/pdf-utils";
+import { detectAcroFormFields } from "@/lib/pdf-utils";
 import { SignatureModal } from "@/components/SignatureModal";
 
 // ── Profile matcher ─────────────────────────────────────────────────────────

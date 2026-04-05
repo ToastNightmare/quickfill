@@ -1,13 +1,11 @@
-import { PDFDocument, PDFName, rgb, StandardFonts } from "pdf-lib";
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const fontkit = require("@pdf-lib/fontkit") as typeof import("@pdf-lib/fontkit");
+import { PDFDocument, rgb, StandardFonts } from "pdf-lib";
 import type { EditorField } from "./types";
 import { APP_CONFIG } from "./config";
-import { NOTO_SANS_REGULAR_B64, NOTO_SANS_ITALIC_B64 } from "./fonts";
 
-// Decode base64 fonts — bundled directly in code, no fs dependency
-const notoSansBytes = Buffer.from(NOTO_SANS_REGULAR_B64, "base64");
-const notoSansItalicBytes = Buffer.from(NOTO_SANS_ITALIC_B64, "base64");
+/** Replace control characters (including newlines) with a space — keeps text WinAnsi-safe */
+function sanitize(text: string): string {
+  return text.replace(/[\x00-\x09\x0b-\x1f\x7f\n\r]/g, " ");
+}
 
 /**
  * Load a PDF and detect AcroForm fields with their positions.
@@ -94,54 +92,58 @@ export async function fillPdf(
     ignoreEncryption: true,
   });
 
-  // Register fontkit and embed Unicode fonts (NotoSans)
-  pdfDoc.registerFontkit(fontkit);
-  const font = await pdfDoc.embedFont(notoSansBytes);
-  const signatureFont = await pdfDoc.embedFont(notoSansItalicBytes);
+  const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+  const signatureFont = await pdfDoc.embedFont(StandardFonts.HelveticaOblique);
   const watermarkFont = await pdfDoc.embedFont(StandardFonts.Helvetica);
 
   if (hasAcroForm) {
-    try {
-      const form = pdfDoc.getForm();
-      for (const field of editorFields) {
+    const form = pdfDoc.getForm();
+
+    // Sanitize ALL existing field values so WinAnsi never sees control chars
+    for (const af of form.getFields()) {
+      if (af.constructor.name === "PDFTextField") {
         try {
-          if (field.type === "signature" && field.signatureDataUrl) {
-            // Always draw signature images directly (not via AcroForm)
-            await drawFieldOnPage(pdfDoc, field, pageScales, font, signatureFont);
-          } else if (field.type === "text" || field.type === "date" || field.type === "signature") {
+          const tf = form.getTextField(af.getName());
+          const existing = tf.getText() ?? "";
+          if (existing) tf.setText(sanitize(existing));
+        } catch { /* skip */ }
+      }
+    }
+
+    // Set user-filled values (also sanitized)
+    for (const field of editorFields) {
+      try {
+        if (field.type === "signature" && field.signatureDataUrl) {
+          await drawFieldOnPage(pdfDoc, field, pageScales, font, signatureFont);
+        } else if (field.type === "text" || field.type === "date" || field.type === "signature") {
+          try {
             const tf = form.getTextField(field.id);
-            // Sanitize: replace newlines + control chars — WinAnsi can't encode them
-            const safeValue = (field.value ?? "").replace(/[\x00-\x09\x0b-\x1f\x7f]/g, " ").replace(/\n/g, " ");
-            tf.setText(safeValue);
-          } else if (field.type === "checkbox") {
+            tf.setText(sanitize(field.value ?? ""));
+          } catch {
+            await drawFieldOnPage(pdfDoc, field, pageScales, font, signatureFont);
+          }
+        } else if (field.type === "checkbox") {
+          try {
             const cb = form.getCheckBox(field.id);
             if (field.checked) cb.check();
             else cb.uncheck();
+          } catch {
+            await drawFieldOnPage(pdfDoc, field, pageScales, font, signatureFont);
           }
-        } catch {
-          // Field doesn't exist in AcroForm  -  draw it directly
-          await drawFieldOnPage(pdfDoc, field, pageScales, font, signatureFont);
         }
-      }
-    } catch {
-      // If AcroForm processing fails, draw all fields as non-AcroForm
-      for (const field of editorFields) {
+      } catch {
         await drawFieldOnPage(pdfDoc, field, pageScales, font, signatureFont);
       }
     }
-    // Remove AcroForm to prevent WinAnsi encoding errors during save
-    try {
-      pdfDoc.catalog.delete(PDFName.of("AcroForm"));
-    } catch {
-      // Ignore if deletion fails
-    }
+
+    // Flatten — works because all values are now WinAnsi-safe
+    form.flatten();
   } else {
     for (const field of editorFields) {
       await drawFieldOnPage(pdfDoc, field, pageScales, font, signatureFont);
     }
   }
 
-  // Add watermark for free-tier users
   if (addWatermark) {
     const pages = pdfDoc.getPages();
     for (const page of pages) {
@@ -190,15 +192,12 @@ async function drawFieldOnPage(
   const pdfH = field.height / scale;
 
   if (field.type === "signature" && field.signatureDataUrl) {
-    // Embed signature as PNG image
     try {
       const imgBytes = dataUrlToBytes(field.signatureDataUrl);
       if (imgBytes.length === 0) throw new Error("Empty signature data");
       const isJpeg = field.signatureDataUrl.startsWith("data:image/jpeg") || field.signatureDataUrl.startsWith("data:image/jpg");
-      const imgImage = isJpeg ? await pdfDoc.embedJpg(imgBytes) : await pdfDoc.embedPng(imgBytes);
-      const pngImage = imgImage;
-      const imgDims = pngImage.scale(1);
-      // Fit image within field bounds while maintaining aspect ratio
+      const img = isJpeg ? await pdfDoc.embedJpg(imgBytes) : await pdfDoc.embedPng(imgBytes);
+      const imgDims = img.scale(1);
       const imgAspect = imgDims.width / imgDims.height;
       const fieldAspect = pdfW / pdfH;
       let drawW = pdfW - 4;
@@ -210,17 +209,10 @@ async function drawFieldOnPage(
       }
       const drawX = pdfX + (pdfW - drawW) / 2;
       const drawY = pdfY + (pdfH - drawH) / 2;
-      page.drawImage(pngImage, {
-        x: drawX,
-        y: drawY,
-        width: drawW,
-        height: drawH,
-      });
+      page.drawImage(img, { x: drawX, y: drawY, width: drawW, height: drawH });
     } catch {
-      // Fall back to text if image embedding fails
       if (field.value) {
-        const safeValue = field.value.replace(/[\x00-\x1f\x7f]/g, " ");
-        page.drawText(safeValue, {
+        page.drawText(sanitize(field.value), {
           x: pdfX + 2,
           y: pdfY + 4,
           size: (field.fontSize ?? 16) / scale,
@@ -233,22 +225,12 @@ async function drawFieldOnPage(
     if (field.value) {
       const fontSize = (field.type === "signature" ? 16 : field.fontSize ?? 14) / scale;
       const activeFont = field.type === "signature" ? signatureFont : font;
-      // Split on newlines and draw each line — pdf-lib can't handle \n in drawText
-      const lines = field.value.replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n");
-      const lineHeight = fontSize * 1.2;
-      // Draw from top of field downward
-      const startY = pdfY + pdfH - fontSize - 2;
-      lines.forEach((line, i) => {
-        // Strip any remaining control characters
-        const safeLine = line.replace(/[\x00-\x09\x0b-\x1f\x7f]/g, "");
-        if (!safeLine) return;
-        page.drawText(safeLine, {
-          x: pdfX + 2,
-          y: startY - i * lineHeight,
-          size: fontSize,
-          font: activeFont,
-          color: rgb(0, 0, 0),
-        });
+      page.drawText(sanitize(field.value), {
+        x: pdfX + 2,
+        y: pdfY + pdfH - fontSize - 2,
+        size: fontSize,
+        font: activeFont,
+        color: rgb(0, 0, 0),
       });
     }
   } else if (field.type === "checkbox" && field.checked) {
@@ -260,14 +242,11 @@ async function drawFieldOnPage(
     const dark = rgb(0.07, 0.09, 0.15);
 
     if (stamp === "tick") {
-      // Checkmark: two lines forming a tick — bottom-left pivot, up-right arm
       page.drawLine({ start: { x: cx - r * 0.55, y: cy - r * 0.05 }, end: { x: cx - r * 0.1, y: cy - r * 0.5 }, thickness: lw, color: dark });
       page.drawLine({ start: { x: cx - r * 0.1, y: cy - r * 0.5 }, end: { x: cx + r * 0.6, y: cy + r * 0.5 }, thickness: lw, color: dark });
     } else if (stamp === "cross") {
-      // X: two diagonal lines
       page.drawLine({ start: { x: cx - r * 0.6, y: cy - r * 0.6 }, end: { x: cx + r * 0.6, y: cy + r * 0.6 }, thickness: lw, color: dark });
       page.drawLine({ start: { x: cx + r * 0.6, y: cy - r * 0.6 }, end: { x: cx - r * 0.6, y: cy + r * 0.6 }, thickness: lw, color: dark });
     }
-    // stamp === "none": leave blank (unchecked visual)
   }
 }

@@ -1,16 +1,14 @@
 export const runtime = "nodejs";
 
 import { NextRequest, NextResponse } from "next/server";
-import { PDFDocument, PDFName, rgb, StandardFonts } from "pdf-lib";
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const fontkit = require("@pdf-lib/fontkit") as typeof import("@pdf-lib/fontkit");
+import { PDFDocument, rgb, StandardFonts } from "pdf-lib";
 import type { EditorField } from "@/lib/types";
 import { APP_CONFIG } from "@/lib/config";
-import { NOTO_SANS_REGULAR_B64, NOTO_SANS_ITALIC_B64 } from "@/lib/fonts";
 
-// Decode base64 fonts once — bundled directly in code, no fs dependency
-const notoSansBytes = Buffer.from(NOTO_SANS_REGULAR_B64, "base64");
-const notoSansItalicBytes = Buffer.from(NOTO_SANS_ITALIC_B64, "base64");
+/** Replace control characters (including newlines) with a space — keeps text WinAnsi-safe */
+function sanitize(text: string): string {
+  return text.replace(/[\x00-\x09\x0b-\x1f\x7f\n\r]/g, " ");
+}
 
 /** Decode a base64 data URL to raw bytes */
 function dataUrlToBytes(dataUrl: string): Uint8Array {
@@ -18,11 +16,6 @@ function dataUrlToBytes(dataUrl: string): Uint8Array {
   if (!base64) return new Uint8Array(0);
   const binary = Buffer.from(base64, "base64");
   return new Uint8Array(binary);
-}
-
-/** Strip control characters except newline */
-function sanitize(text: string): string {
-  return text.replace(/[\x00-\x09\x0b-\x1f\x7f]/g, "");
 }
 
 export async function POST(request: NextRequest) {
@@ -56,141 +49,71 @@ export async function POST(request: NextRequest) {
       ignoreEncryption: true,
     });
 
-    // Register fontkit so pdf-lib can embed custom TTF fonts
-    pdfDoc.registerFontkit(fontkit);
-
-    // Embed Unicode fonts (bundled as base64 — no fs dependency)
-    const font = await pdfDoc.embedFont(notoSansBytes);
-    const signatureFont = await pdfDoc.embedFont(notoSansItalicBytes);
+    const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+    const signatureFont = await pdfDoc.embedFont(StandardFonts.HelveticaOblique);
 
     if (hasAcroForm) {
-      // For AcroForm PDFs: read widget positions, then draw directly onto pages.
-      // We bypass AcroForm entirely — no setText, no flatten.
-      // SAFETY: Wrap in try-catch to handle PDFs with malformed or problematic AcroForm
-      try {
-        const form = pdfDoc.getForm();
-        const acroFields = form.getFields();
+      const form = pdfDoc.getForm();
+      const acroFields = form.getFields();
 
-      // Build a map of field name -> widget info (position, page)
-      const widgetMap = new Map<
-        string,
-        { x: number; y: number; width: number; height: number; pageIndex: number }
-      >();
-
+      // Step 1: Sanitize ALL existing field values so WinAnsi never sees control chars
       for (const af of acroFields) {
-        const widgets = af.acroField.getWidgets();
-        for (const widget of widgets) {
-          const rect = widget.getRectangle();
-          const pageRef = widget.P();
-          let pageIndex = 0;
-          if (pageRef) {
-            const pages = pdfDoc.getPages();
-            for (let i = 0; i < pages.length; i++) {
-              if (pages[i].ref === pageRef) {
-                pageIndex = i;
-                break;
-              }
-            }
-          }
-          widgetMap.set(af.getName(), {
-            x: rect.x,
-            y: rect.y,
-            width: rect.width,
-            height: rect.height,
-            pageIndex,
-          });
-        }
-      }
-
-      for (const field of editorFields) {
-        const widget = widgetMap.get(field.id);
-
-        if (widget) {
-          // This is an AcroForm field — draw content at the widget position
-          const page = pdfDoc.getPages()[widget.pageIndex];
-          if (!page) continue;
-
-          if (field.type === "signature" && field.signatureDataUrl) {
-            await drawSignatureImage(
-              pdfDoc,
-              page,
-              field.signatureDataUrl,
-              widget.x,
-              widget.y,
-              widget.width,
-              widget.height,
-              field.value,
-              signatureFont,
-              14
-            );
-          } else if (
-            field.type === "text" ||
-            field.type === "date" ||
-            field.type === "signature"
-          ) {
-            if (field.value) {
-              const fontSize = 10; // sensible default for AcroForm fields
-              const activeFont =
-                field.type === "signature" ? signatureFont : font;
-              drawMultilineText(
-                page,
-                sanitize(field.value),
-                widget.x + 2,
-                widget.y + widget.height - fontSize - 2,
-                fontSize,
-                activeFont
-              );
-            }
-          } else if (field.type === "checkbox" && field.checked) {
-            const stamp = (field as { stamp?: string }).stamp ?? "tick";
-            drawCheckmark(
-              page,
-              widget.x,
-              widget.y,
-              widget.width,
-              widget.height,
-              stamp
-            );
-          }
-        } else {
-          // Not an AcroForm field — draw using editor coordinates
-          await drawFieldOnPage(
-            pdfDoc,
-            field,
-            pageScales,
-            font,
-            signatureFont
-          );
-        }
-      }
-
-        // Remove AcroForm dictionary entirely from the PDF catalog.
-        // This prevents pdf-lib from calling updateFieldAppearances() during save(),
-        // which would re-encode existing field values through WinAnsi and crash on
-        // newlines (0x0a) or non-Latin characters.
-        pdfDoc.catalog.delete(PDFName.of("AcroForm"));
-
-        // Also strip widget annotations from every page — pdf-lib renders these
-        // through WinAnsi during save even after the catalog AcroForm is deleted.
-        for (const page of pdfDoc.getPages()) {
+        const fieldType = af.constructor.name;
+        if (fieldType === "PDFTextField") {
           try {
-            page.node.delete(PDFName.of("Annots"));
-          } catch { /* ignore */ }
-        }
-      } catch {
-        // If AcroForm processing fails (e.g., malformed fields with newlines),
-        // fall back to drawing all fields as non-AcroForm fields.
-        // Always delete the AcroForm dictionary and page annotations to prevent WinAnsi errors.
-        try {
-          pdfDoc.catalog.delete(PDFName.of("AcroForm"));
-          for (const page of pdfDoc.getPages()) {
-            try { page.node.delete(PDFName.of("Annots")); } catch { /* ignore */ }
+            const tf = form.getTextField(af.getName());
+            const existing = tf.getText() ?? "";
+            if (existing) {
+              tf.setText(sanitize(existing));
+            }
+          } catch {
+            /* skip non-text fields */
           }
-        } catch { /* ignore */ }
-        for (const field of editorFields) {
+        }
+      }
+
+      // Step 2: Set user-filled values (also sanitized)
+      for (const field of editorFields) {
+        try {
+          if (field.type === "signature" && field.signatureDataUrl) {
+            // Draw signature images directly on the page
+            const widget = findWidget(pdfDoc, form, field.id);
+            if (widget) {
+              const page = pdfDoc.getPages()[widget.pageIndex];
+              if (page) {
+                await drawSignatureImage(
+                  pdfDoc, page, field.signatureDataUrl,
+                  widget.x, widget.y, widget.width, widget.height,
+                  field.value, signatureFont, 14
+                );
+              }
+            } else {
+              await drawFieldOnPage(pdfDoc, field, pageScales, font, signatureFont);
+            }
+          } else if (field.type === "text" || field.type === "date" || field.type === "signature") {
+            try {
+              const tf = form.getTextField(field.id);
+              tf.setText(sanitize(field.value ?? ""));
+            } catch {
+              // Field doesn't exist in AcroForm — draw it directly
+              await drawFieldOnPage(pdfDoc, field, pageScales, font, signatureFont);
+            }
+          } else if (field.type === "checkbox") {
+            try {
+              const cb = form.getCheckBox(field.id);
+              if (field.checked) cb.check();
+              else cb.uncheck();
+            } catch {
+              await drawFieldOnPage(pdfDoc, field, pageScales, font, signatureFont);
+            }
+          }
+        } catch {
           await drawFieldOnPage(pdfDoc, field, pageScales, font, signatureFont);
         }
       }
+
+      // Step 3: Flatten — works cleanly because all values are now WinAnsi-safe
+      form.flatten();
     } else {
       // Non-AcroForm: draw all fields using editor coordinates
       for (const field of editorFields) {
@@ -198,7 +121,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Watermark (Helvetica is fine for ASCII watermark text)
+    // Watermark
     if (addWatermark) {
       const watermarkFont = await pdfDoc.embedFont(StandardFonts.Helvetica);
       const pages = pdfDoc.getPages();
@@ -232,10 +155,37 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// ─── Drawing helpers ────────────────────────────────────────────────
+// ─── Helpers ────────────────────────────────────────────────────────────────
 
 type PDFPage = ReturnType<PDFDocument["getPages"]>[number];
 type PDFFont = Awaited<ReturnType<PDFDocument["embedFont"]>>;
+type PDFForm = ReturnType<PDFDocument["getForm"]>;
+
+function findWidget(
+  pdfDoc: PDFDocument,
+  form: PDFForm,
+  fieldName: string
+): { x: number; y: number; width: number; height: number; pageIndex: number } | null {
+  try {
+    const af = form.getFields().find((f) => f.getName() === fieldName);
+    if (!af) return null;
+    const widgets = af.acroField.getWidgets();
+    if (widgets.length === 0) return null;
+    const widget = widgets[0];
+    const rect = widget.getRectangle();
+    const pageRef = widget.P();
+    let pageIndex = 0;
+    if (pageRef) {
+      const pages = pdfDoc.getPages();
+      for (let i = 0; i < pages.length; i++) {
+        if (pages[i].ref === pageRef) { pageIndex = i; break; }
+      }
+    }
+    return { x: rect.x, y: rect.y, width: rect.width, height: rect.height, pageIndex };
+  } catch {
+    return null;
+  }
+}
 
 function drawMultilineText(
   page: PDFPage,
@@ -245,21 +195,14 @@ function drawMultilineText(
   fontSize: number,
   activeFont: PDFFont
 ) {
-  const lines = text
-    .replace(/\r\n/g, "\n")
-    .replace(/\r/g, "\n")
-    .split("\n");
-  const lineHeight = fontSize * 1.2;
-  lines.forEach((line, i) => {
-    const safeLine = sanitize(line);
-    if (!safeLine) return;
-    page.drawText(safeLine, {
-      x,
-      y: startY - i * lineHeight,
-      size: fontSize,
-      font: activeFont,
-      color: rgb(0, 0, 0),
-    });
+  const safeLine = sanitize(text);
+  if (!safeLine) return;
+  page.drawText(safeLine, {
+    x,
+    y: startY,
+    size: fontSize,
+    font: activeFont,
+    color: rgb(0, 0, 0),
   });
 }
 
@@ -299,8 +242,7 @@ async function drawSignatureImage(
     page.drawImage(img, { x: drawX, y: drawY, width: drawW, height: drawH });
   } catch {
     if (fallbackText) {
-      const safeFallback = sanitize(fallbackText).replace(/\n/g, " ");
-      page.drawText(safeFallback, {
+      page.drawText(sanitize(fallbackText), {
         x: pdfX + 2,
         y: pdfY + 4,
         size: fontSize,
@@ -372,16 +314,9 @@ async function drawFieldOnPage(
 
   if (field.type === "signature" && field.signatureDataUrl) {
     await drawSignatureImage(
-      pdfDoc,
-      page,
-      field.signatureDataUrl,
-      pdfX,
-      pdfY,
-      pdfW,
-      pdfH,
-      field.value,
-      signatureFont,
-      (field.fontSize ?? 16) / scale
+      pdfDoc, page, field.signatureDataUrl,
+      pdfX, pdfY, pdfW, pdfH,
+      field.value, signatureFont, (field.fontSize ?? 16) / scale
     );
   } else if (
     field.type === "text" ||
@@ -394,7 +329,7 @@ async function drawFieldOnPage(
       const activeFont = field.type === "signature" ? signatureFont : font;
       drawMultilineText(
         page,
-        sanitize(field.value),
+        field.value,
         pdfX + 2,
         pdfY + pdfH - fontSize - 2,
         fontSize,
