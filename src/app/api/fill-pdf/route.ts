@@ -2,29 +2,13 @@ import { NextRequest, NextResponse } from "next/server";
 import { PDFDocument, PDFName, rgb, StandardFonts } from "pdf-lib";
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const fontkit = require("@pdf-lib/fontkit") as typeof import("@pdf-lib/fontkit");
-import fs from "fs";
-import path from "path";
 import type { EditorField } from "@/lib/types";
 import { APP_CONFIG } from "@/lib/config";
+import { NOTO_SANS_REGULAR_B64, NOTO_SANS_ITALIC_B64 } from "@/lib/fonts";
 
-// Lazy-load fonts inside the request — module-level fs.readFileSync can fail
-// on Vercel serverless where process.cwd() may not be available at init time
-let _notoSansBytes: Buffer | null = null;
-let _notoSansItalicBytes: Buffer | null = null;
-
-function loadFonts(): { regular: Buffer; italic: Buffer } {
-  if (!_notoSansBytes) {
-    _notoSansBytes = fs.readFileSync(
-      path.join(process.cwd(), "public/fonts/NotoSans-Regular.ttf")
-    );
-  }
-  if (!_notoSansItalicBytes) {
-    _notoSansItalicBytes = fs.readFileSync(
-      path.join(process.cwd(), "public/fonts/NotoSans-Italic.ttf")
-    );
-  }
-  return { regular: _notoSansBytes, italic: _notoSansItalicBytes };
-}
+// Decode base64 fonts once — bundled directly in code, no fs dependency
+const notoSansBytes = Buffer.from(NOTO_SANS_REGULAR_B64, "base64");
+const notoSansItalicBytes = Buffer.from(NOTO_SANS_ITALIC_B64, "base64");
 
 /** Decode a base64 data URL to raw bytes */
 function dataUrlToBytes(dataUrl: string): Uint8Array {
@@ -73,8 +57,7 @@ export async function POST(request: NextRequest) {
     // Register fontkit so pdf-lib can embed custom TTF fonts
     pdfDoc.registerFontkit(fontkit);
 
-    // Load and embed Unicode fonts (lazy — safe for Vercel serverless)
-    const { regular: notoSansBytes, italic: notoSansItalicBytes } = loadFonts();
+    // Embed Unicode fonts (bundled as base64 — no fs dependency)
     const font = await pdfDoc.embedFont(notoSansBytes);
     const signatureFont = await pdfDoc.embedFont(notoSansItalicBytes);
 
