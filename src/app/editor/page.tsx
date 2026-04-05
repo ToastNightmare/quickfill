@@ -10,7 +10,7 @@ import { ContextPanel } from "@/components/ContextPanel";
 import { SignatureModal } from "@/components/SignatureModal";
 import type { PdfViewerHandle } from "@/components/PdfViewer";
 import { useHistory } from "@/lib/use-history";
-import { detectAcroFormFields, fillPdf } from "@/lib/pdf-utils";
+import { detectAcroFormFields } from "@/lib/pdf-utils";
 import {
   savePdfToIndexedDB,
   loadPdfFromIndexedDB,
@@ -507,8 +507,23 @@ export default function EditorPage() {
       }
 
       const addWatermark = !isPro;
-      const result = await fillPdf(pdfBytes, fields, pageScales, hasAcroForm, addWatermark);
-      const blob = new Blob([result as Uint8Array<ArrayBuffer>], { type: "application/pdf" });
+
+      // Build FormData and send to server-side fill API
+      const fd = new FormData();
+      fd.append("pdf", new Blob([pdfBytes], { type: "application/pdf" }), "input.pdf");
+      fd.append("fields", JSON.stringify(fields));
+      fd.append("pageScales", JSON.stringify(Array.from(pageScales.entries())));
+      fd.append("hasAcroForm", String(hasAcroForm));
+      fd.append("addWatermark", String(addWatermark));
+
+      const fillRes = await fetch("/api/fill-pdf", { method: "POST", body: fd });
+      if (!fillRes.ok) {
+        const errBody = await fillRes.json().catch(() => ({ error: "Server error" }));
+        throw new Error(errBody.error || `Server responded ${fillRes.status}`);
+      }
+      const resultBuf = await fillRes.arrayBuffer();
+
+      const blob = new Blob([resultBuf], { type: "application/pdf" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
