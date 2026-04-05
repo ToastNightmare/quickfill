@@ -107,7 +107,7 @@ export async function POST(request: NextRequest) {
       for (const page of pages) {
         const { width } = page.getSize();
         // .trim() guards against Vercel env vars with trailing newlines
-        const text = `Filled with QuickFill — upgrade to Pro to remove this watermark`;
+        const text = `Filled with QuickFill — upgrade to Pro at https://getquickfill.com`;
         const textWidth = watermarkFont.widthOfTextAtSize(text, 8);
         page.drawText(text, { x: width - textWidth - 12, y: 10, size: 8, font: watermarkFont, color: rgb(0.6, 0.6, 0.6) });
       }
