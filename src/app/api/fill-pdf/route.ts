@@ -24,11 +24,7 @@ function dataUrlToBytes(dataUrl: string): Uint8Array {
 }
 
 export async function POST(request: NextRequest) {
-  const rid = Math.random().toString(36).slice(2, 8).toUpperCase();
-  const log = (...args: unknown[]) => console.log(`[fill-pdf:${rid}]`, ...args);
-
   try {
-    log("ENTRY");
     const formData = await request.formData();
 
     const pdfFile = formData.get("pdf") as File | null;
@@ -43,80 +39,48 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Missing fields or pageScales" }, { status: 400 });
     }
 
-    log("hasAcroForm:", hasAcroForm, "pdfSize:", pdfFile.size);
-
     const editorFields: EditorField[] = JSON.parse(fieldsJson);
     const pageScaleEntries: [number, number][] = JSON.parse(pageScalesJson);
     const pageScales = new Map(pageScaleEntries);
 
     const pdfBytes = await pdfFile.arrayBuffer();
-
-    log("PHASE: PDF load");
     const pdfDoc = await PDFDocument.load(pdfBytes, { ignoreEncryption: true });
-    log("PDF loaded, pages:", pdfDoc.getPageCount());
-
-    log("PHASE: embed fonts");
     const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
     const signatureFont = await pdfDoc.embedFont(StandardFonts.HelveticaOblique);
-    log("fonts embedded");
 
     if (hasAcroForm) {
       const form = pdfDoc.getForm();
-      const acroFields = form.getFields();
-      log("PHASE: field enumeration, count:", acroFields.length);
 
-      // Step 1: Sanitize ALL existing field values
-      for (const af of acroFields) {
-        const fieldType = af.constructor.name;
-        const name = af.getName();
-        if (fieldType === "PDFTextField") {
+      // Sanitize all existing AcroForm text field values — prevents WinAnsi crash on flatten
+      for (const af of form.getFields()) {
+        if (af.constructor.name === "PDFTextField") {
           try {
-            const tf = form.getTextField(name);
+            const tf = form.getTextField(af.getName());
             const raw = tf.getText() ?? "";
-            const safe = sanitize(raw);
-            const hadBad = hasNonWinAnsi(raw);
-            log(`FIELD existing | name="${name}" rawLen=${raw.length} safeLen=${safe.length} hadBadChars=${hadBad} rawHex=${Buffer.from(raw).toString("hex").slice(0, 40)}`);
-            if (raw) tf.setText(safe);
-            log(`FIELD setText done | name="${name}"`);
-          } catch (e) {
-            log(`FIELD existing FAILED | name="${name}" err=${e instanceof Error ? e.message : e}`);
-          }
-        } else {
-          log(`FIELD skip non-text | name="${name}" type=${fieldType}`);
+            if (raw) tf.setText(sanitize(raw));
+          } catch { /* skip unreadable fields */ }
         }
       }
 
-      // Step 2: Set user-filled values
-      log("PHASE: user field values, count:", editorFields.length);
+      // Set user-filled values
       for (const field of editorFields) {
         try {
           if (field.type === "signature" && field.signatureDataUrl) {
-            log(`USER FIELD signature | id="${field.id}"`);
             const widget = findWidget(pdfDoc, form, field.id);
             if (widget) {
               const page = pdfDoc.getPages()[widget.pageIndex];
-              if (page) {
-                await drawSignatureImage(pdfDoc, page, field.signatureDataUrl,
-                  widget.x, widget.y, widget.width, widget.height,
-                  field.value, signatureFont, 14);
-              }
+              if (page) await drawSignatureImage(pdfDoc, page, field.signatureDataUrl,
+                widget.x, widget.y, widget.width, widget.height, field.value, signatureFont, 14);
             } else {
               await drawFieldOnPage(pdfDoc, field, pageScales, font, signatureFont);
             }
           } else if (field.type === "text" || field.type === "date" || field.type === "signature") {
-            const raw = field.value ?? "";
-            const safe = sanitize(raw);
-            log(`USER FIELD text | id="${field.id}" rawLen=${raw.length} safeLen=${safe.length} hadBadChars=${hasNonWinAnsi(raw)}`);
             try {
-              const tf = form.getTextField(field.id);
-              tf.setText(safe);
-              log(`USER FIELD setText done | id="${field.id}"`);
+              form.getTextField(field.id).setText(sanitize(field.value ?? ""));
             } catch {
-              log(`USER FIELD not in AcroForm, drawing directly | id="${field.id}"`);
               await drawFieldOnPage(pdfDoc, field, pageScales, font, signatureFont);
             }
           } else if (field.type === "checkbox") {
-            log(`USER FIELD checkbox | id="${field.id}" checked=${field.checked}`);
             try {
               const cb = form.getCheckBox(field.id);
               if (field.checked) cb.check(); else cb.uncheck();
@@ -124,56 +88,39 @@ export async function POST(request: NextRequest) {
               await drawFieldOnPage(pdfDoc, field, pageScales, font, signatureFont);
             }
           }
-        } catch (e) {
-          log(`USER FIELD error | id="${field.id}" err=${e instanceof Error ? e.message : e}`);
+        } catch {
           await drawFieldOnPage(pdfDoc, field, pageScales, font, signatureFont);
         }
       }
 
-      log("PHASE: before flatten");
-      try {
-        form.flatten({ updateFieldAppearances: false });
-        log("PHASE: flatten done");
-      } catch (e) {
-        log("PHASE: flatten THREW:", e instanceof Error ? e.message : e);
-        throw e;
-      }
+      // Flatten without regenerating appearances — avoids WinAnsi re-encoding of existing values
+      form.flatten({ updateFieldAppearances: false });
     } else {
-      log("PHASE: non-AcroForm draw");
       for (const field of editorFields) {
         await drawFieldOnPage(pdfDoc, field, pageScales, font, signatureFont);
       }
     }
 
     if (addWatermark) {
-      log("PHASE: watermark");
       const watermarkFont = await pdfDoc.embedFont(StandardFonts.Helvetica);
       const pages = pdfDoc.getPages();
       for (const page of pages) {
         const { width } = page.getSize();
+        // .trim() guards against Vercel env vars with trailing newlines
         const text = `Filled with QuickFill - ${APP_CONFIG.domain.trim()}`;
         const textWidth = watermarkFont.widthOfTextAtSize(text, 8);
         page.drawText(text, { x: width - textWidth - 12, y: 10, size: 8, font: watermarkFont, color: rgb(0.6, 0.6, 0.6) });
       }
     }
 
-    log("PHASE: before save");
-    let resultBytes: Uint8Array;
-    try {
-      resultBytes = await pdfDoc.save();
-      log("PHASE: save done, size:", resultBytes.length);
-    } catch (e) {
-      log("PHASE: save THREW:", e instanceof Error ? e.message : e);
-      throw e;
-    }
-
+    const resultBytes = await pdfDoc.save();
     return new NextResponse(Buffer.from(resultBytes), {
       status: 200,
       headers: { "Content-Type": "application/pdf", "Content-Disposition": "inline" },
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    log("ERROR:", message);
+    console.error("fill-pdf error:", message);
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
