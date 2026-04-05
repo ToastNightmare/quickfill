@@ -82,7 +82,7 @@ function DashboardContent() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold sm:text-3xl">
-            Welcome back, {user?.firstName ?? "there"}
+            Welcome back{user?.firstName ? `, ${user.firstName}` : ""}
           </h1>
           <p className="mt-1 text-text-muted">Manage your usage and fill history.</p>
         </div>
@@ -122,6 +122,11 @@ function DashboardContent() {
                   <>{usage.used} of {usage.limit} free fills used</>
                 )}
               </p>
+              {!isPaid && (
+                <p className="mt-1 text-xs text-text-muted">
+                  Resets {new Date(new Date().getFullYear(), new Date().getMonth() + 1, 1).toLocaleDateString("en-AU", { month: "long", day: "numeric" })}
+                </p>
+              )}
               {!isPaid && (
                 <>
                   <div className="mt-3 h-2 rounded-full bg-surface-alt overflow-hidden">

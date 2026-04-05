@@ -120,19 +120,18 @@ export default function ProfilePage() {
 
       <h1 className="text-2xl font-bold sm:text-3xl">Auto-fill Profile</h1>
       <p className="mt-2 text-text-muted">
-        Save your details here. When you click &quot;Auto-fill from Profile&quot; in the editor,
-        we&apos;ll match these to PDF form fields automatically.
+        Fill this in once &mdash; QuickFill uses it to auto-fill any form instantly.
       </p>
 
       <form onSubmit={handleSave} className="mt-8 space-y-6">
         <div className="rounded-xl border border-border bg-surface p-6 shadow-sm">
           <h2 className="text-sm font-semibold text-text-muted uppercase tracking-widest">Personal Details</h2>
           <div className="mt-4 grid gap-4 sm:grid-cols-2">
-            <Field label="Full Name" value={profile.fullName} onChange={(v) => setProfile({ ...profile, fullName: v })} />
-            <Field label="Email" type="email" value={profile.email} onChange={(v) => setProfile({ ...profile, email: v })} />
-            <Field label="Phone" type="tel" value={profile.phone} onChange={(v) => setProfile({ ...profile, phone: v })} />
-            <Field label="ABN" value={profile.abn} onChange={(v) => setProfile({ ...profile, abn: v })} placeholder="Optional" />
-            <Field label="Organisation / Business Name" value={profile.organisation ?? ""} onChange={(v) => setProfile({ ...profile, organisation: v })} placeholder="Optional" />
+            <Field label="Full Name" value={profile.fullName} onChange={(v) => setProfile({ ...profile, fullName: v })} placeholder="e.g. Jane Smith" />
+            <Field label="Email" type="email" value={profile.email} onChange={(v) => setProfile({ ...profile, email: v })} placeholder="e.g. jane@example.com" />
+            <Field label="Phone" type="tel" value={profile.phone} onChange={(v) => setProfile({ ...profile, phone: v })} placeholder="e.g. 0412 345 678" />
+            <Field label="ABN" value={profile.abn} onChange={(v) => setProfile({ ...profile, abn: v })} placeholder="e.g. 51 824 753 556 (optional)" />
+            <Field label="Organisation / Business Name" value={profile.organisation ?? ""} onChange={(v) => setProfile({ ...profile, organisation: v })} placeholder="e.g. Smith Bookkeeping (optional)" />
           </div>
         </div>
 
@@ -140,14 +139,14 @@ export default function ProfilePage() {
           <h2 className="text-sm font-semibold text-text-muted uppercase tracking-widest">Address</h2>
           <div className="mt-4 grid gap-4 sm:grid-cols-2">
             <div className="sm:col-span-2">
-              <Field label="Address Line 1" value={profile.addressLine1 || profile.street} onChange={(v) => setProfile({ ...profile, addressLine1: v, street: v })} />
+              <Field label="Address Line 1" value={profile.addressLine1 || profile.street} onChange={(v) => setProfile({ ...profile, addressLine1: v, street: v })} placeholder="e.g. 42 Wallaby Way" />
             </div>
             <div className="sm:col-span-2">
-              <Field label="Address Line 2" value={profile.addressLine2} onChange={(v) => setProfile({ ...profile, addressLine2: v })} placeholder="Optional" />
+              <Field label="Address Line 2" value={profile.addressLine2} onChange={(v) => setProfile({ ...profile, addressLine2: v })} placeholder="e.g. Unit 3 (optional)" />
             </div>
-            <Field label="City / Suburb" value={profile.city} onChange={(v) => setProfile({ ...profile, city: v })} />
-            <Field label="State / Territory" value={profile.state} onChange={(v) => setProfile({ ...profile, state: v })} />
-            <Field label="Postcode" value={profile.postcode} onChange={(v) => setProfile({ ...profile, postcode: v })} />
+            <Field label="City / Suburb" value={profile.city} onChange={(v) => setProfile({ ...profile, city: v })} placeholder="e.g. Sydney" />
+            <Field label="State / Territory" value={profile.state} onChange={(v) => setProfile({ ...profile, state: v })} placeholder="e.g. NSW" />
+            <Field label="Postcode" value={profile.postcode} onChange={(v) => setProfile({ ...profile, postcode: v })} placeholder="e.g. 2000" />
             <Field label="Country" value={profile.country} onChange={(v) => setProfile({ ...profile, country: v })} placeholder="e.g. Australia" />
           </div>
         </div>

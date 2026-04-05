@@ -308,26 +308,7 @@ const verticals = [
   },
 ];
 
-const testimonials = [
-  {
-    name: "Sarah M.",
-    role: "Bookkeeper, Perth WA",
-    text: "I fill ATO BAS forms for 12 clients every quarter. QuickFill cut my processing time in half. No more printing, scanning, or installing software.",
-    initials: "SM",
-  },
-  {
-    name: "James T.",
-    role: "Property Manager, Brisbane",
-    text: "Rental applications, tenancy agreements, condition reports — all done in the browser. My team uses it every day. The auto-fill profile feature is a game changer.",
-    initials: "JT",
-  },
-  {
-    name: "Linda K.",
-    role: "Sole Trader, Melbourne",
-    text: "I was dreading my tax return forms. Uploaded the PDF, filled it in minutes, downloaded it. Done. Wish I found this years ago.",
-    initials: "LK",
-  },
-];
+const testimonials: { name: string; role: string; text: string; initials: string }[] = [];
 
 export default function Home() {
   const { isLoaded, isSignedIn } = useAuth();
@@ -432,7 +413,7 @@ export default function Home() {
               href="/editor"
               className="flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-accent px-6 text-base font-semibold text-white shadow-lg shadow-accent/25 hover:bg-accent-hover transition-colors sm:w-auto"
             >
-              Try Free &mdash; No Sign Up
+              {isSignedIn ? "Open Editor" : "Try Free \u2014 No Sign Up"}
               <ArrowRight className="h-4 w-4" />
             </Link>
             <a
@@ -459,7 +440,7 @@ export default function Home() {
             {features.map((feature) => (
               <div
                 key={feature.title}
-                className="rounded-xl border border-border bg-surface p-6 shadow-sm hover:shadow-md transition-shadow"
+                className="min-h-[220px] rounded-xl border border-border bg-surface p-6 shadow-sm hover:shadow-md transition-shadow"
               >
                 <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-accent/10">
                   <feature.icon className="h-6 w-6 text-accent" />
@@ -487,7 +468,7 @@ export default function Home() {
             {verticals.map((v) => (
               <div
                 key={v.title}
-                className="rounded-xl border border-border bg-surface p-6"
+                className="min-h-[180px] rounded-xl border border-border bg-surface p-6"
               >
                 <div className="text-3xl">{v.emoji}</div>
                 <h3 className="mt-3 text-lg font-bold">{v.title}</h3>
@@ -502,31 +483,11 @@ export default function Home() {
 
       {/* Testimonials */}
       <section className="bg-surface px-4 py-20 sm:px-6 lg:px-8">
-        <div className="mx-auto max-w-6xl">
-          <h2 className="text-center text-3xl font-bold tracking-tight sm:text-4xl">
+        <div className="mx-auto max-w-6xl text-center">
+          <h2 className="text-3xl font-bold tracking-tight sm:text-4xl">
             Trusted by professionals across Australia
           </h2>
-          <div className="mt-12 grid gap-8 sm:grid-cols-2 lg:grid-cols-3">
-            {testimonials.map((t) => (
-              <div
-                key={t.name}
-                className="rounded-xl border border-border bg-surface p-6 shadow-sm"
-              >
-                <p className="text-sm leading-relaxed text-text-muted">
-                  &ldquo;{t.text}&rdquo;
-                </p>
-                <div className="mt-5 flex items-center gap-3">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-accent/10 text-sm font-bold text-accent">
-                    {t.initials}
-                  </div>
-                  <div>
-                    <p className="text-sm font-semibold">{t.name}</p>
-                    <p className="text-xs text-text-muted">{t.role}</p>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
+          <p className="mt-4 text-text-muted">Reviews coming soon.</p>
         </div>
       </section>
 
@@ -697,7 +658,7 @@ export default function Home() {
               <button
                 onClick={() => handleUpgrade("business")}
                 disabled={!!upgradingPlan}
-                className="mt-8 flex h-11 w-full items-center justify-center gap-2 rounded-lg border-2 border-accent text-sm font-semibold text-accent hover:bg-accent hover:text-white transition-colors disabled:opacity-70"
+                className="mt-8 flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-slate-700 text-sm font-semibold text-white hover:bg-slate-800 transition-colors disabled:opacity-70"
               >
                 {upgradingPlan === "business" ? (
                   <><div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" /> Loading...</>

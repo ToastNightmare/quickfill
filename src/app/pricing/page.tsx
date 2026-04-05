@@ -157,7 +157,7 @@ export default function PricingPage() {
               <p className="mt-2 text-xs font-medium text-gray-400">Best for: Agencies, teams, and organisations</p>
               <button
                 onClick={() => handleUpgrade("business")}
-                className="mt-8 flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-white text-sm font-semibold text-navy hover:bg-gray-100 transition-colors"
+                className="mt-8 flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-slate-700 text-sm font-semibold text-white hover:bg-slate-800 transition-colors"
               >
                 Get Business
               </button>
