@@ -167,15 +167,24 @@ export async function POST(request: NextRequest) {
         // which would re-encode existing field values through WinAnsi and crash on
         // newlines (0x0a) or non-Latin characters.
         pdfDoc.catalog.delete(PDFName.of("AcroForm"));
+
+        // Also strip widget annotations from every page — pdf-lib renders these
+        // through WinAnsi during save even after the catalog AcroForm is deleted.
+        for (const page of pdfDoc.getPages()) {
+          try {
+            page.node.delete(PDFName.of("Annots"));
+          } catch { /* ignore */ }
+        }
       } catch {
         // If AcroForm processing fails (e.g., malformed fields with newlines),
         // fall back to drawing all fields as non-AcroForm fields.
-        // Always delete the AcroForm dictionary to prevent WinAnsi errors during save.
+        // Always delete the AcroForm dictionary and page annotations to prevent WinAnsi errors.
         try {
           pdfDoc.catalog.delete(PDFName.of("AcroForm"));
-        } catch {
-          // Ignore if deletion fails
-        }
+          for (const page of pdfDoc.getPages()) {
+            try { page.node.delete(PDFName.of("Annots")); } catch { /* ignore */ }
+          }
+        } catch { /* ignore */ }
         for (const field of editorFields) {
           await drawFieldOnPage(pdfDoc, field, pageScales, font, signatureFont);
         }
