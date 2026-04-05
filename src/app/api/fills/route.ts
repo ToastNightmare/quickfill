@@ -31,13 +31,29 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const body = (await req.json()) as FillEntry;
+  const body = await req.json();
+
+  // Validate required fields
+  if (!body || typeof body !== "object" || !body.filename || !body.filledAt) {
+    return NextResponse.json(
+      { error: "Missing required fields: filename, filledAt" },
+      { status: 400 }
+    );
+  }
+
+  const fillEntry: FillEntry = {
+    filename: String(body.filename),
+    filledAt: String(body.filledAt),
+    fieldCount: Number(body.fieldCount) || 0,
+    pageCount: Number(body.pageCount) || 1,
+  };
+
   const key = `fills:${userId}`;
   const sub = await getRedis().get<string>(`sub:${userId}`);
   // max index to keep: business=unlimited(999), pro=29(30 items), free=9(10 items)
   const maxIndex = sub === "business" ? 999 : sub === "pro" ? 29 : 9;
 
-  await getRedis().lpush(key, body);
+  await getRedis().lpush(key, fillEntry);
   await getRedis().ltrim(key, 0, maxIndex);
 
   return NextResponse.json({ ok: true });

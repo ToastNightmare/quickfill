@@ -33,8 +33,15 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const body = (await req.json()) as UserProfile;
-  await getRedis().set(`profile:${userId}`, body);
+  const body = await req.json();
+
+  // Validate required fields
+  if (!body || typeof body !== "object") {
+    return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
+  }
+
+  const profile = body as UserProfile;
+  await getRedis().set(`profile:${userId}`, profile);
 
   return NextResponse.json({ ok: true });
 }

@@ -56,6 +56,36 @@ function matchProfileKey(fieldId: string): string | null {
   return null;
 }
 
+// Poll the canvas for visible content (after PDF render) and update minimap
+function pollCanvasForContent(
+  pdfViewerRef: React.RefObject<PdfViewerHandle | null>,
+  onContent: (canvas: HTMLCanvasElement) => void,
+  maxAttempts = 20,
+  delayMs = 150,
+  initialDelayMs = 400
+): void {
+  let attempts = 0;
+  const poll = () => {
+    const canvas = pdfViewerRef.current?.getCanvas();
+    if (canvas) {
+      try {
+        const ctx = canvas.getContext("2d");
+        const sample = ctx?.getImageData(canvas.width / 2, canvas.height / 2, 1, 1);
+        if (sample && sample.data[3] > 0) {
+          onContent(canvas);
+          return;
+        }
+      } catch {
+        // Silent
+      }
+    }
+    if (attempts++ < maxAttempts) {
+      setTimeout(poll, delayMs);
+    }
+  };
+  setTimeout(poll, initialDelayMs);
+}
+
 export default function EditorPage() {
   const [pdfBytes, setPdfBytes] = useState<ArrayBuffer | null>(null);
   const [fileName, setFileName] = useState<string>("");
@@ -131,7 +161,7 @@ export default function EditorPage() {
       }
       setShowRestoredBanner(true);
       setTimeout(() => setShowRestoredBanner(false), 3000);
-      let ra = 0; const rp = () => { const c = pdfViewerRef.current?.getCanvas(); if (c) { try { const x = c.getContext("2d")?.getImageData(c.width/2,c.height/2,1,1); if (x && x.data[3]>0) { setMinimapCanvas(c); return; } } catch{} } if (ra++<20) setTimeout(rp,150); }; setTimeout(rp,400);
+      pollCanvasForContent(pdfViewerRef, setMinimapCanvas);
 
       // Detect AcroForm for progress tracking
       try {
@@ -154,7 +184,7 @@ export default function EditorPage() {
   useEffect(() => {
     if (pdfBytes) {
       savePageToLocalStorage(currentPage);
-      let pa = 0; const pp = () => { const c = pdfViewerRef.current?.getCanvas(); if (c) { try { const x = c.getContext("2d")?.getImageData(c.width/2,c.height/2,1,1); if (x && x.data[3]>0) { setMinimapCanvas(c); return; } } catch{} } if (pa++<20) setTimeout(pp,150); }; setTimeout(pp,400);
+      pollCanvasForContent(pdfViewerRef, setMinimapCanvas);
     }
   }, [currentPage, pdfBytes]);
 

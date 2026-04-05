@@ -60,8 +60,7 @@ export function SignatureModal({
     if (mode === "draw") {
       setTimeout(() => clear(), 30);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mode]);
+  }, [mode, clear]);
 
   const handleSave = useCallback(async () => {
     const dataUrl = toDataURL();

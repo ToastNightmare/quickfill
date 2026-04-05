@@ -2,6 +2,20 @@ import OpenAI from "openai";
 import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 
+// Lazy singleton OpenAI client — only instantiated at request time
+let _openaiClient: OpenAI | null = null;
+
+function getOpenAIClient(): OpenAI {
+  if (!_openaiClient) {
+    const apiKey = process.env.OPENAI_API_KEY;
+    if (!apiKey) {
+      throw new Error("OPENAI_API_KEY not configured");
+    }
+    _openaiClient = new OpenAI({ apiKey });
+  }
+  return _openaiClient;
+}
+
 export async function POST(req: Request) {
   const { userId } = await auth();
   if (!userId) {
@@ -9,14 +23,6 @@ export async function POST(req: Request) {
   }
 
   try {
-    const apiKey = process.env.OPENAI_API_KEY;
-    if (!apiKey) {
-      return NextResponse.json(
-        { fields: [], error: "AI detection not configured" },
-        { status: 200 },
-      );
-    }
-
     const { imageBase64, pageWidth, pageHeight } = await req.json();
 
     if (!imageBase64 || !pageWidth || !pageHeight) {
@@ -26,7 +32,7 @@ export async function POST(req: Request) {
       );
     }
 
-    const openai = new OpenAI({ apiKey });
+    const openai = getOpenAIClient();
 
     const response = await openai.chat.completions.create({
       model: "gpt-4o",
@@ -88,7 +94,7 @@ export async function POST(req: Request) {
     console.error("Detect fields error:", err);
     return NextResponse.json(
       { fields: [], error: "AI detection failed" },
-      { status: 200 },
+      { status: 500 },
     );
   }
 }

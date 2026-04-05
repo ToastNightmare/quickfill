@@ -50,16 +50,24 @@ export async function POST(request: NextRequest) {
 
     const pdfBytes = await pdfFile.arrayBuffer();
 
+    console.log("[fill-pdf] notoSansBytes length:", notoSansBytes.length);
+    console.log("[fill-pdf] notoSansItalicBytes length:", notoSansItalicBytes.length);
+    console.log("[fill-pdf] fontkit keys:", Object.keys(fontkit));
+    console.log("[fill-pdf] hasAcroForm:", hasAcroForm);
+
     const pdfDoc = await PDFDocument.load(pdfBytes, {
       ignoreEncryption: true,
     });
 
     // Register fontkit so pdf-lib can embed custom TTF fonts
     pdfDoc.registerFontkit(fontkit);
+    console.log("[fill-pdf] fontkit registered");
 
     // Embed Unicode fonts (bundled as base64 — no fs dependency)
     const font = await pdfDoc.embedFont(notoSansBytes);
+    console.log("[fill-pdf] font embedded:", font.name);
     const signatureFont = await pdfDoc.embedFont(notoSansItalicBytes);
+    console.log("[fill-pdf] signatureFont embedded:", signatureFont.name);
 
     if (hasAcroForm) {
       // For AcroForm PDFs: read widget positions, then draw directly onto pages.
