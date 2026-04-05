@@ -1,3 +1,5 @@
+export const runtime = "nodejs";
+
 import { NextRequest, NextResponse } from "next/server";
 import { PDFDocument, PDFName, rgb, StandardFonts } from "pdf-lib";
 // eslint-disable-next-line @typescript-eslint/no-require-imports
