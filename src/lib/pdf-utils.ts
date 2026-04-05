@@ -126,14 +126,12 @@ export async function fillPdf(
       }
     } catch { /* skip if form iteration fails */ }
 
+    // Use updateFieldAppearances: false as primary — avoids re-encoding text
+    // through WinAnsi which crashes on newlines and special chars in existing values
     try {
-      form.flatten();
+      form.flatten({ updateFieldAppearances: false });
     } catch {
-      try {
-        form.flatten({ updateFieldAppearances: false });
-      } catch {
-        /* best effort — leave form interactive if flatten is impossible */
-      }
+      /* best effort — leave form interactive if flatten is impossible */
     }
   } else {
     for (const field of editorFields) {
