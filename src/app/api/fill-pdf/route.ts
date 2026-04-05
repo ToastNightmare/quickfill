@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { PDFDocument, rgb, StandardFonts } from "pdf-lib";
-import * as fontkit from "@pdf-lib/fontkit";
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const fontkit = require("@pdf-lib/fontkit") as typeof import("@pdf-lib/fontkit");
 import fs from "fs";
 import path from "path";
 import type { EditorField } from "@/lib/types";
