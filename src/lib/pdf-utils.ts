@@ -98,7 +98,9 @@ export async function fillPdf(
           await drawFieldOnPage(pdfDoc, field, pageScales, font, signatureFont);
         } else if (field.type === "text" || field.type === "date" || field.type === "signature") {
           const tf = form.getTextField(field.id);
-          tf.setText(field.value);
+          // Sanitize: replace newlines + control chars — WinAnsi can't encode them
+          const safeValue = (field.value ?? "").replace(/[\x00-\x09\x0b-\x1f\x7f]/g, " ").replace(/\n/g, " ");
+          tf.setText(safeValue);
         } else if (field.type === "checkbox") {
           const cb = form.getCheckBox(field.id);
           if (field.checked) cb.check();
@@ -112,7 +114,12 @@ export async function fillPdf(
     try {
       form.flatten();
     } catch {
-      /* some forms can't be flattened */
+      // Flatten failed globally — try field-by-field so one bad field doesn't block the rest
+      try {
+        form.flatten({ updateFieldAppearances: false });
+      } catch {
+        /* best effort — leave form interactive if flatten is impossible */
+      }
     }
   } else {
     for (const field of editorFields) {
