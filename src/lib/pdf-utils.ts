@@ -211,12 +211,22 @@ async function drawFieldOnPage(
     if (field.value) {
       const fontSize = (field.type === "signature" ? 16 : field.fontSize ?? 14) / scale;
       const activeFont = field.type === "signature" ? signatureFont : font;
-      page.drawText(field.value, {
-        x: pdfX + 2,
-        y: pdfY + 4,
-        size: fontSize,
-        font: activeFont,
-        color: rgb(0, 0, 0),
+      // Split on newlines and draw each line — pdf-lib can't handle \n in drawText
+      const lines = field.value.replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n");
+      const lineHeight = fontSize * 1.2;
+      // Draw from top of field downward
+      const startY = pdfY + pdfH - fontSize - 2;
+      lines.forEach((line, i) => {
+        // Strip any remaining control characters
+        const safeLine = line.replace(/[\x00-\x09\x0b-\x1f\x7f]/g, "");
+        if (!safeLine) return;
+        page.drawText(safeLine, {
+          x: pdfX + 2,
+          y: startY - i * lineHeight,
+          size: fontSize,
+          font: activeFont,
+          color: rgb(0, 0, 0),
+        });
       });
     }
   } else if (field.type === "checkbox" && field.checked) {
