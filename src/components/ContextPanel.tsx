@@ -45,37 +45,7 @@ export function ContextPanel({
   isDetecting,
 }: ContextPanelProps) {
 
-  // ── Field selected takes priority over tool active ─────────────────────────
-  // ── Tool active (only when no field selected) ─────────────────────────────
-  if (activeTool && !selectedField) {
-    const { icon: Icon, label, hint, color } = TOOL_META[activeTool];
-    return (
-      <Panel>
-        <Section>
-          <div className={`flex h-10 w-10 items-center justify-center rounded-xl bg-surface-alt ${color}`}>
-            <Icon className="h-5 w-5" />
-          </div>
-          <div className="mt-3">
-            <p className="text-sm font-bold text-text">{label} active</p>
-            <p className="mt-1.5 text-xs text-text-muted leading-relaxed">{hint}</p>
-          </div>
-        </Section>
-
-        <Divider />
-
-        <Section>
-          <button
-            onClick={onToolCancel}
-            className="flex w-full items-center justify-center gap-2 rounded-xl border border-border py-2.5 text-sm font-medium text-text-muted hover:bg-surface-alt hover:text-text transition-colors"
-          >
-            Cancel
-          </button>
-        </Section>
-      </Panel>
-    );
-  }
-
-  // ── Field selected ─────────────────────────────────────────────────────────
+  // ── Field selected ALWAYS takes priority (even if activeTool hasn't cleared yet)
   if (selectedField) {
     const fieldType = selectedField.type;
 
@@ -217,6 +187,35 @@ export function ContextPanel({
     );
   }
 
+  // ── Tool active (only when no field is selected) ─────────────────────────
+  if (activeTool) {
+    const { icon: Icon, label, hint, color } = TOOL_META[activeTool];
+    return (
+      <Panel>
+        <Section>
+          <div className={`flex h-10 w-10 items-center justify-center rounded-xl bg-surface-alt ${color}`}>
+            <Icon className="h-5 w-5" />
+          </div>
+          <div className="mt-3">
+            <p className="text-sm font-bold text-text">{label} active</p>
+            <p className="mt-1.5 text-xs text-text-muted leading-relaxed">{hint}</p>
+          </div>
+        </Section>
+
+        <Divider />
+
+        <Section>
+          <button
+            onClick={onToolCancel}
+            className="flex w-full items-center justify-center gap-2 rounded-xl border border-border py-2.5 text-sm font-medium text-text-muted hover:bg-surface-alt hover:text-text transition-colors"
+          >
+            Cancel
+          </button>
+        </Section>
+      </Panel>
+    );
+  }
+
   // ── Idle state ─────────────────────────────────────────────────────────────
   return (
     <Panel>
@@ -260,7 +259,7 @@ export function ContextPanel({
 
 function Panel({ children }: { children: React.ReactNode }) {
   return (
-    <div className="flex flex-col w-64 flex-shrink-0 h-full border-l border-border bg-surface overflow-y-auto hidden sm:flex">
+    <div className="hidden sm:flex flex-col w-64 flex-shrink-0 h-full border-l border-border bg-surface overflow-y-auto">
       {children}
     </div>
   );

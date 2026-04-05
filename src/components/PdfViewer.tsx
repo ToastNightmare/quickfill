@@ -482,7 +482,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
 
       return true;
     },
-    [activeTool, currentPage, onFieldAdd, onFieldSelect, zoomFactor, snapPreview, onSignatureFieldPlaced]
+    [activeTool, currentPage, onFieldAdd, onFieldSelect, onToolSelect, zoomFactor, snapPreview, onSignatureFieldPlaced]
   );
 
   const handleStageClick = useCallback(
@@ -533,93 +533,24 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
     [activeTool, currentPage, fields, onFieldSelect, onToolSelect, createFieldAtPoint]
   );
 
-  // Touch handler for mobile tap-to-place
+  // Touch handler for mobile tap-to-place — delegates to createFieldAtPoint
+  // so behaviour (including non-snap fallback) matches desktop clicks.
   const handleTouchEnd = useCallback(
     (e: React.TouchEvent<HTMLDivElement>) => {
       if (!activeTool || !canvasRef.current) return;
-
-      // Only handle single-finger taps
       if (e.changedTouches.length !== 1) return;
 
       const touch = e.changedTouches[0];
-      const canvasEl = canvasRef.current;
-      const rect = canvasEl.getBoundingClientRect();
-
+      const rect = canvasRef.current.getBoundingClientRect();
       const touchX = touch.clientX - rect.left;
       const touchY = touch.clientY - rect.top;
 
-      // Bounds check
       if (touchX < 0 || touchY < 0 || touchX > rect.width || touchY > rect.height) return;
 
-      // Try pre-computed boxes first, then per-click detection
-      let snap: SnapResult | null = null;
-      const preBoxes = precomputedBoxesRef.current;
-      if (preBoxes.length > 0) {
-        let bestArea = Infinity;
-        for (const box of preBoxes) {
-          if (
-            touchX >= box.x - 5 &&
-            touchX <= box.x + box.width + 5 &&
-            touchY >= box.y - 5 &&
-            touchY <= box.y + box.height + 5
-          ) {
-            const area = box.width * box.height;
-            if (area < bestArea) {
-              bestArea = area;
-              snap = box;
-            }
-          }
-        }
-      }
-      if (!snap) {
-        snap = detectSnapBox(canvasEl, touchX, touchY);
-      }
-
-      if (snap) {
-        e.preventDefault();
-
-        const id = genId();
-        const fieldX = snap.x / zoomFactor;
-        const fieldY = snap.y / zoomFactor;
-        const fieldW = snap.width / zoomFactor;
-        const fieldH = snap.height / zoomFactor;
-        const inferredFontSize = inferFontSize(fieldH);
-
-        const snapBounds = { x: fieldX, y: fieldY, width: fieldW, height: fieldH };
-        const base = { id, x: fieldX, y: fieldY, page: currentPage, snapped: true, snapBounds };
-
-        let field: EditorField;
-        switch (activeTool) {
-          case "text":
-            field = { ...base, type: "text", width: fieldW, height: fieldH, value: "", fontSize: inferredFontSize };
-            break;
-          case "checkbox":
-            field = { ...base, type: "checkbox", width: fieldW, height: fieldH, checked: true, stamp: "tick" };
-            break;
-          case "signature":
-            field = { ...base, type: "signature", width: fieldW, height: fieldH, value: "", fontSize: inferredFontSize };
-            break;
-          case "date":
-            field = { ...base, type: "date", width: fieldW, height: fieldH, value: new Date().toLocaleDateString("en-AU"), fontSize: inferredFontSize };
-            break;
-        }
-
-        onFieldAdd(field);
-        onFieldSelect(id);
-        onToolSelect(null);
-
-        // For signature fields, trigger signature placement flow
-        if (activeTool === "signature") {
-          onSignatureFieldPlaced?.(id);
-        } else if (activeTool !== "checkbox") {
-          setEditingFieldId(id);
-        }
-
-        setSnappedFieldId(id);
-        setTimeout(() => setSnappedFieldId(null), 600);
-      }
+      e.preventDefault();
+      createFieldAtPoint(touchX, touchY, true);
     },
-    [activeTool, currentPage, onFieldAdd, onFieldSelect, zoomFactor, onSignatureFieldPlaced]
+    [activeTool, createFieldAtPoint]
   );
 
   const pageFields = fields.filter((f) => f.page === currentPage);

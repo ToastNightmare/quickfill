@@ -82,13 +82,15 @@ export function loadFieldsFromLocalStorage(): EditorField[] {
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
     const valid = parsed.filter(
-      (f) =>
+      (f: Record<string, unknown>) =>
         f &&
         typeof f === "object" &&
         typeof f.id === "string" &&
         typeof f.type === "string" &&
         typeof f.x === "number" &&
-        typeof f.y === "number"
+        typeof f.y === "number" &&
+        typeof f.width === "number" &&
+        typeof f.height === "number"
     );
     return valid as EditorField[];
   } catch (err) {
@@ -147,8 +149,8 @@ export function loadZoomFromLocalStorage(): number {
   }
 }
 
-export function clearEditorState(): void {
-  clearPdfFromIndexedDB();
+export async function clearEditorState(): Promise<void> {
+  await clearPdfFromIndexedDB();
   try {
     localStorage.removeItem(FIELDS_KEY);
     localStorage.removeItem(PAGE_KEY);

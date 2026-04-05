@@ -1,69 +1,87 @@
-import { useState, useCallback } from "react";
+import { useReducer, useCallback } from "react";
 import type { EditorField } from "./types";
 
 const MAX_HISTORY = 50;
 
+interface HistoryState {
+  past: EditorField[][];
+  present: EditorField[];
+  future: EditorField[][];
+}
+
+type HistoryAction =
+  | { type: "SET"; updater: EditorField[] | ((prev: EditorField[]) => EditorField[]) }
+  | { type: "UNDO" }
+  | { type: "REDO" }
+  | { type: "RESET"; fields: EditorField[] };
+
+function reducer(state: HistoryState, action: HistoryAction): HistoryState {
+  switch (action.type) {
+    case "SET": {
+      const next =
+        typeof action.updater === "function"
+          ? action.updater(state.present)
+          : action.updater;
+      const newPast = [...state.past, state.present];
+      return {
+        past: newPast.length > MAX_HISTORY ? newPast.slice(newPast.length - MAX_HISTORY) : newPast,
+        present: next,
+        future: [],
+      };
+    }
+    case "UNDO": {
+      if (state.past.length === 0) return state;
+      const newPast = [...state.past];
+      const previous = newPast.pop()!;
+      return {
+        past: newPast,
+        present: previous,
+        future: [...state.future, state.present],
+      };
+    }
+    case "REDO": {
+      if (state.future.length === 0) return state;
+      const newFuture = [...state.future];
+      const next = newFuture.pop()!;
+      return {
+        past: [...state.past, state.present],
+        present: next,
+        future: newFuture,
+      };
+    }
+    case "RESET":
+      return { past: [], present: action.fields, future: [] };
+  }
+}
+
 export function useHistory(initial: EditorField[] = []) {
-  const [past, setPast] = useState<EditorField[][]>([]);
-  const [present, setPresent] = useState<EditorField[]>(initial);
-  const [future, setFuture] = useState<EditorField[][]>([]);
+  const [state, dispatch] = useReducer(reducer, {
+    past: [],
+    present: initial,
+    future: [],
+  });
 
   const set = useCallback(
-    (newFields: EditorField[] | ((prev: EditorField[]) => EditorField[])) => {
-      setPresent((prev) => {
-        const next =
-          typeof newFields === "function" ? newFields(prev) : newFields;
-        setPast((p) => {
-          const updated = [...p, prev];
-          // Cap history to MAX_HISTORY states to prevent memory bloat
-          return updated.length > MAX_HISTORY ? updated.slice(updated.length - MAX_HISTORY) : updated;
-        });
-        setFuture([]);
-        return next;
-      });
+    (updater: EditorField[] | ((prev: EditorField[]) => EditorField[])) => {
+      dispatch({ type: "SET", updater });
     },
     []
   );
 
-  const undo = useCallback(() => {
-    setPast((p) => {
-      if (p.length === 0) return p;
-      const newPast = [...p];
-      const previous = newPast.pop()!;
-      setPresent((current) => {
-        setFuture((f) => [...f, current]);
-        return previous;
-      });
-      return newPast;
-    });
-  }, []);
-
-  const redo = useCallback(() => {
-    setFuture((f) => {
-      if (f.length === 0) return f;
-      const newFuture = [...f];
-      const next = newFuture.pop()!;
-      setPresent((current) => {
-        setPast((p) => [...p, current]);
-        return next;
-      });
-      return newFuture;
-    });
-  }, []);
-
-  const reset = useCallback((fields: EditorField[] = []) => {
-    setPast([]);
-    setFuture([]);
-    setPresent(fields);
-  }, []);
+  const undo = useCallback(() => dispatch({ type: "UNDO" }), []);
+  const redo = useCallback(() => dispatch({ type: "REDO" }), []);
+  const reset = useCallback(
+    (fields: EditorField[] = []) => dispatch({ type: "RESET", fields }),
+    []
+  );
 
   return {
-    fields: present,
+    fields: state.present,
     set,
     undo,
     redo,
     reset,
-    canUndo: past.length > 0,
-    canRedo: future.length > 0,
+    canUndo: state.past.length > 0,
+    canRedo: state.future.length > 0,
   };
 }
