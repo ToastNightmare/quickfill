@@ -191,23 +191,29 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
     return () => observer.disconnect();
   }, []);
 
-  // Transformer attachment — defer one frame so FieldShape's setSelectedRef
-  // effect has time to run and populate selectedShapeRef before we attach.
+  // Transformer attachment.
+  // Step 1: immediately clear the transformer and the ref when selection changes.
+  // Step 2: after one frame (so FieldShape useEffects have run and populated the ref),
+  //         attach the new node. This prevents old nodes from bleeding into new selections.
   useEffect(() => {
     const tr = transformerRef.current;
     if (!tr) return;
 
-    const attach = () => {
-      // Always clear first so the transformer never accumulates old nodes
-      tr.nodes([]);
-      if (selectedFieldId && selectedShapeRef.current) {
-        tr.nodes([selectedShapeRef.current]);
-      }
-      tr.getLayer()?.batchDraw();
-    };
+    // Immediately detach — no stale node ever lingers
+    tr.nodes([]);
+    tr.getLayer()?.batchDraw();
+    selectedShapeRef.current = null;
 
-    // Use requestAnimationFrame so Konva node refs are settled first
-    const raf = requestAnimationFrame(attach);
+    if (!selectedFieldId) return;
+
+    // Wait one frame for FieldShape's setSelectedRef effect to run
+    const raf = requestAnimationFrame(() => {
+      if (!transformerRef.current) return;
+      if (selectedShapeRef.current) {
+        transformerRef.current.nodes([selectedShapeRef.current]);
+        transformerRef.current.getLayer()?.batchDraw();
+      }
+    });
     return () => cancelAnimationFrame(raf);
   }, [selectedFieldId]);
 
@@ -735,12 +741,12 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
                   }
                 }}
                 setSelectedRef={(node) => {
+                  // Only update the ref — never touch the Transformer directly here.
+                  // The Transformer attachment is handled exclusively by the
+                  // useEffect below, which clears first then attaches, preventing
+                  // multiple fields from bonding into one selection box.
                   if (field.id === selectedFieldId) {
                     selectedShapeRef.current = node;
-                    if (transformerRef.current && node) {
-                      transformerRef.current.nodes([node]);
-                      transformerRef.current.getLayer()?.batchDraw();
-                    }
                   }
                 }}
               />
