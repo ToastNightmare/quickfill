@@ -14,7 +14,7 @@ const TOOL_META: Record<ToolType, { icon: typeof Type; label: string; hint: stri
   text:      { icon: Type,        label: "Text Field",  hint: "Click anywhere on the PDF to place a text field. It will snap to form boxes automatically.",      color: "text-blue-500" },
   checkbox:  { icon: CheckSquare, label: "Checkbox",    hint: "Click anywhere on the PDF to stamp a tick or cross. Click again to cycle or clear.",              color: "text-violet-500" },
   signature: { icon: PenTool,     label: "Signature",   hint: "Click the PDF to place a signature field. You can draw or reuse a saved signature.",              color: "text-pink-500" },
-  date:      { icon: Calendar,    label: "Date",        hint: "Click the PDF to place a date field. Today's date is pre-filled — edit it after placing.",        color: "text-amber-500" },
+  date:      { icon: Calendar,    label: "Date",        hint: "Click the PDF to place a date field. Today's date is pre-filled, edit it after placing.",        color: "text-amber-500" },
 };
 
 interface ContextPanelProps {
@@ -100,7 +100,7 @@ export function ContextPanel({
             <Section label="Signature">
               {isSigned ? (
                 <>
-                  {/* Preview — generous height, white bg */}
+                  {/* Preview, generous height, white bg */}
                   <div className="mb-3 flex items-center justify-center rounded-xl border border-green-200 bg-white p-3 min-h-[96px] shadow-inner">
                     <img
                       src={sigField.signatureDataUrl}
@@ -142,7 +142,7 @@ export function ContextPanel({
           );
         })()}
 
-        {/* Font size controls — text and date only */}
+        {/* Font size controls, text and date only */}
         {(fieldType === "text" || fieldType === "date") && (() => {
           const fontSize = (selectedField as { fontSize?: number }).fontSize ?? 14;
           const prevSize = FONT_SIZES.slice().reverse().find((s) => s < fontSize);

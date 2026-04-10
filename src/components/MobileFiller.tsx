@@ -129,7 +129,7 @@ export function MobileFiller() {
       const res = await fetch("/api/profile");
       if (!res.ok) { showToast("Sign in and save your profile first"); return; }
       const profile = await res.json();
-      if (!profile?.fullName) { showToast("No profile saved — go to Profile to set one up"); return; }
+      if (!profile?.fullName) { showToast("No profile saved, go to Profile to set one up"); return; }
 
       let matched = 0;
       setFields((prev) => prev.map((f) => {
@@ -191,7 +191,7 @@ export function MobileFiller() {
         const usage = await usageRes.json();
         isPro = usage.isPro;
         if (!isPro && usage.used >= usage.limit) {
-          showToast("Free limit reached — upgrade to Pro for unlimited fills", 5000);
+          showToast("Free limit reached, upgrade to Pro for unlimited fills", 5000);
           setIsDownloading(false);
           return;
         }
@@ -208,7 +208,7 @@ export function MobileFiller() {
         return { id: f.id, type: "text" as const, x: f.x, y: f.y, width: f.width, height: f.height, page: f.page, value: f.value, fontSize: 12 };
       });
 
-      // Use server-side fill API (same as desktop) — avoids WinAnsi browser crash
+      // Use server-side fill API (same as desktop), avoids WinAnsi browser crash
       const fd = new FormData();
       fd.append("pdf", new Blob([pdfBytes], { type: "application/pdf" }), "input.pdf");
       fd.append("fields", JSON.stringify(editorFields));
@@ -238,10 +238,10 @@ export function MobileFiller() {
         });
       } catch { /* non-critical */ }
 
-      if (!isPro) showToast("Downloaded with QuickFill watermark — upgrade Pro to remove it", 5000);
+      if (!isPro) showToast("Downloaded with QuickFill watermark, upgrade Pro to remove it", 5000);
       else setStep("done");
     } catch {
-      showToast("Download failed — please try again");
+      showToast("Download failed, please try again");
     } finally {
       setIsDownloading(false);
     }
@@ -270,7 +270,7 @@ export function MobileFiller() {
         </div>
         <h1 className="text-2xl font-bold text-text mb-2 text-center">Fill a PDF</h1>
         <p className="text-text-muted text-sm text-center mb-8 max-w-xs leading-relaxed">
-          Upload any PDF form. We'll detect fillable fields automatically — just type and download.
+          Upload any PDF form. We'll detect fillable fields automatically, just type and download.
         </p>
 
         <input ref={fileInputRef} type="file" accept="application/pdf" className="hidden" onChange={handleFilePick} />

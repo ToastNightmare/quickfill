@@ -1,12 +1,10 @@
 import Link from "next/link";
-import { FileText, ArrowLeft } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 
 export default function NotFound() {
   return (
     <div className="flex min-h-[70vh] flex-col items-center justify-center px-4 text-center">
-      <div className="flex h-20 w-20 items-center justify-center rounded-full bg-accent/10">
-        <FileText className="h-10 w-10 text-accent" />
-      </div>
+      <img src="/logo-mark.png" alt="QuickFill" className="h-20 w-20 opacity-80" />
       <h1 className="mt-6 text-4xl font-extrabold">404</h1>
       <p className="mt-3 text-lg font-semibold">Page not found</p>
       <p className="mt-2 max-w-sm text-sm text-text-muted">
@@ -24,7 +22,7 @@ export default function NotFound() {
           href="/editor"
           className="flex h-11 items-center justify-center rounded-xl border border-border px-6 text-sm font-semibold hover:bg-surface-alt transition-colors"
         >
-          Open Editor
+          Fill a PDF
         </Link>
       </div>
     </div>

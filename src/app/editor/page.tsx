@@ -451,28 +451,26 @@ export default function EditorPage() {
     }
   }, [setFields, showToast]);
 
-  // Called by PdfViewer after a signature field is placed
+  // Called by PdfViewer after a signature field is placed.
+  // Receives the full field object directly to avoid stale-closure issues.
   const handleSignatureFieldPlaced = useCallback(
-    (fieldId: string) => {
+    (field: EditorField) => {
       if (savedSignature) {
         // Auto-apply saved signature to the field
         setFields((prev) =>
           prev.map((f) =>
-            f.id === fieldId && f.type === "signature"
+            f.id === field.id && f.type === "signature"
               ? { ...f, signatureDataUrl: savedSignature, value: "Signed" } as EditorField
               : f
           )
         );
       } else {
         // No saved signature - open modal to draw one
-        const field = fields.find((f) => f.id === fieldId);
-        if (field) {
-          setPendingSignatureField(field);
-          setSignatureModalOpen(true);
-        }
+        setPendingSignatureField(field);
+        setSignatureModalOpen(true);
       }
     },
-    [savedSignature, setFields, fields]
+    [savedSignature, setFields]
   );
 
   const handleSignatureModalSave = useCallback(
@@ -738,11 +736,11 @@ export default function EditorPage() {
   if (!pdfBytes) {
     return (
       <>
-        {/* Mobile — dedicated filler flow */}
+        {/* Mobile, dedicated filler flow */}
         <div className="sm:hidden">
           <MobileFiller />
         </div>
-        {/* Desktop — full editor upload */}
+        {/* Desktop, full editor upload */}
         <div className="hidden sm:flex sm:flex-col sm:flex-1">
           {isLoading && (
             <div className="fixed inset-0 z-[100] flex items-center justify-center bg-surface/80">
@@ -757,7 +755,7 @@ export default function EditorPage() {
               <Sparkles className="mt-0.5 h-5 w-5 shrink-0 text-accent" />
               <div className="flex-1 text-sm">
                 <span className="font-semibold text-accent">Welcome to QuickFill!</span>
-                <span className="ml-1 text-text-muted">Upload any PDF form to get started — it takes less than 60 seconds.</span>
+                <span className="ml-1 text-text-muted">Upload any PDF form to get started, it takes less than 60 seconds.</span>
               </div>
               <button onClick={dismissWelcome} className="shrink-0 text-text-muted hover:text-text transition-colors">
                 <X className="h-4 w-4" />
@@ -772,11 +770,11 @@ export default function EditorPage() {
 
   return (
     <>
-    {/* Mobile — filler flow (replaces canvas editor entirely) */}
+    {/* Mobile, filler flow (replaces canvas editor entirely) */}
     <div className="sm:hidden">
       <MobileFiller />
     </div>
-    {/* Desktop — full canvas editor */}
+    {/* Desktop, full canvas editor */}
     <div className="hidden sm:flex sm:flex-col h-[calc(100svh-64px)]">
       {/* Loading overlay */}
       {isLoading && (
@@ -984,7 +982,7 @@ export default function EditorPage() {
 
       </div>
 
-      {/* Floating bottom page nav — only on multi-page docs */}
+      {/* Floating bottom page nav, only on multi-page docs */}
       {pdfBytes && totalPages > 1 && (
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 hidden sm:flex items-center gap-2 rounded-full bg-navy shadow-xl border border-white/10 px-4 py-2">
           <span className="text-xs text-white/70 font-medium">{currentPage + 1} / {totalPages}</span>
@@ -1017,18 +1015,22 @@ export default function EditorPage() {
         mobile
       />
 
-      {/* Signature modal for editor */}
-      <SignatureModal
-        open={signatureModalOpen}
-        onClose={() => {
-          setSignatureModalOpen(false);
-          setPendingSignatureField(null);
-        }}
-        onSave={handleSignatureModalSave}
-        existingSignature={savedSignature}
-        useMode
-        onUseExisting={handleSignatureModalUseExisting}
-      />
+      {/* Signature modal for editor — key forces full remount on each open so
+          the canvas re-initialises and drawing event listeners re-attach correctly */}
+      {signatureModalOpen && (
+        <SignatureModal
+          key={pendingSignatureField?.id ?? "sig-modal"}
+          open={signatureModalOpen}
+          onClose={() => {
+            setSignatureModalOpen(false);
+            setPendingSignatureField(null);
+          }}
+          onSave={handleSignatureModalSave}
+          existingSignature={savedSignature}
+          useMode
+          onUseExisting={handleSignatureModalUseExisting}
+        />
+      )}
 
       {/* Clear all confirmation */}
       {showClearConfirm && (
@@ -1071,7 +1073,7 @@ export default function EditorPage() {
                   href="/pricing"
                   className="flex h-11 w-full items-center justify-center rounded-xl bg-accent text-sm font-semibold text-white hover:bg-accent-hover transition-colors"
                 >
-                  Upgrade to Pro — $12/month
+                  Upgrade to Pro, $12/month
                 </a>
                 <button
                   onClick={() => setShowUpgradeModal(false)}

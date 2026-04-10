@@ -1,20 +1,37 @@
 "use client";
 
-import { Check, X, Sparkles } from "lucide-react";
-import { useState } from "react";
+import { Check, X, Sparkles, Loader2 } from "lucide-react";
+import { useState, useEffect } from "react";
 import { useAuth } from "@clerk/nextjs";
 
-const features = [
-  { name: "Documents per month", free: "3", pro: "Unlimited", business: "Unlimited" },
-  { name: "No watermark on downloads", free: false, pro: true, business: true },
-  { name: "Profile auto-fill", free: true, pro: true, business: true },
-  { name: "AcroForm auto-detection", free: true, pro: true, business: true },
-  { name: "All field types", free: true, pro: true, business: true },
-  { name: "Fill history", free: "Last 10", pro: "Last 30", business: "Unlimited" },
-  { name: "Priority support", free: false, pro: true, business: true },
-  { name: "Dedicated account support", free: false, pro: false, business: true },
-  { name: "Team profiles", free: false, pro: false, business: "Coming soon" },
-  { name: "API access", free: false, pro: false, business: "Coming soon" },
+const proFeatures = [
+  "Unlimited documents",
+  "All field types",
+  "AcroForm detection",
+  "No watermarks",
+  "Auto-fill from profile",
+  "Unlimited fill history",
+  "Priority support",
+];
+
+const freeFeatures = [
+  { label: "3 documents per month", included: true },
+  { label: "All field types", included: true },
+  { label: "AcroForm detection", included: true },
+  { label: "Instant PDF download", included: true },
+  { label: "Unlimited documents", included: false },
+  { label: "No watermarks", included: false },
+  { label: "Auto-fill from profile", included: false },
+];
+
+const tableFeatures = [
+  { name: "Documents per month", free: "3", pro: "Unlimited" },
+  { name: "No watermark on downloads", free: false, pro: true },
+  { name: "Profile auto-fill", free: true, pro: true },
+  { name: "AcroForm auto-detection", free: true, pro: true },
+  { name: "All field types", free: true, pro: true },
+  { name: "Fill history", free: "Last 10", pro: "Unlimited" },
+  { name: "Priority support", free: false, pro: true },
 ];
 
 const faqs = [
@@ -24,7 +41,7 @@ const faqs = [
   },
   {
     q: "What happens when I hit my free limit?",
-    a: "You'll be prompted to upgrade to Pro or Business. Your filled documents are never lost  -  upgrade any time to continue.",
+    a: "You'll be prompted to upgrade to Pro. Your filled documents are never lost, upgrade any time to continue.",
   },
   {
     q: "Can I cancel my subscription?",
@@ -32,32 +49,53 @@ const faqs = [
   },
   {
     q: "What PDF forms does QuickFill support?",
-    a: "QuickFill works with any PDF  -  tax forms, government applications, contracts, and more. It automatically detects AcroForm fields and supports manual field placement for flat PDFs.",
+    a: "QuickFill works with any PDF, tax forms, government applications, contracts, and more. It automatically detects AcroForm fields and supports manual field placement for flat PDFs.",
   },
   {
     q: "Is my data secure?",
     a: "Your PDFs are processed entirely in your browser. We never upload or store your documents on our servers.",
   },
   {
-    q: "What's the difference between Pro and Business?",
-    a: "Pro gives you unlimited fills with no watermark  -  perfect for individuals and sole traders. Business adds unlimited fill history, dedicated support, and team features like shared profiles and API access  -  built for agencies and bookkeeping firms.",
+    q: "What does Pro include?",
+    a: "Pro gives you unlimited fills, no watermark, full fill history, and priority support, perfect for sole traders, bookkeepers, and anyone who regularly fills forms.",
+  },
+  {
+    q: "Is the annual plan cheaper?",
+    a: "Yes, the annual plan works out to $8.33/month (billed $100/year), saving you over $44 compared to monthly billing. That's more than 3 months free.",
   },
 ];
 
 export default function PricingPage() {
   const { isSignedIn } = useAuth();
-  const handleUpgrade = async (plan: "pro" | "business") => {
-    const res = await fetch("/api/stripe/checkout", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ plan }),
-    });
-    const data = await res.json();
-    if (data.error) {
-      alert(data.error);
-      return;
+  const [annual, setAnnual] = useState(true);
+  const [upgrading, setUpgrading] = useState(false);
+  const [tier, setTier] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (isSignedIn) {
+      fetch("/api/usage")
+        .then((r) => r.json())
+        .then((data) => setTier(data.tier ?? "free"))
+        .catch(() => setTier("free"));
     }
-    if (data.url) window.location.href = data.url;
+  }, [isSignedIn]);
+
+  const isPro = tier === "pro" || tier === "business";
+
+  const handleUpgrade = async () => {
+    setUpgrading(true);
+    try {
+      const res = await fetch("/api/stripe/checkout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ plan: "pro", annual }),
+      });
+      const data = await res.json();
+      if (data.error) { alert(data.error); return; }
+      if (data.url) window.location.href = data.url;
+    } finally {
+      setUpgrading(false);
+    }
   };
 
   return (
@@ -71,20 +109,8 @@ export default function PricingPage() {
             name: "QuickFill Pro",
             description: "Unlimited PDF form filling with priority support.",
             offers: [
-              {
-                "@type": "Offer",
-                price: "12.00",
-                priceCurrency: "AUD",
-                availability: "https://schema.org/InStock",
-                name: "Pro",
-              },
-              {
-                "@type": "Offer",
-                price: "29.00",
-                priceCurrency: "AUD",
-                availability: "https://schema.org/InStock",
-                name: "Business",
-              },
+              { "@type": "Offer", price: "12.00", priceCurrency: "AUD", availability: "https://schema.org/InStock", name: "Pro Monthly" },
+              { "@type": "Offer", price: "100.00", priceCurrency: "AUD", availability: "https://schema.org/InStock", name: "Pro Annual" },
             ],
           }),
         }}
@@ -92,124 +118,259 @@ export default function PricingPage() {
 
       <div className="flex flex-col">
         {/* Header */}
-        <section className="bg-navy px-4 py-20 sm:px-6 sm:py-28 lg:px-8">
+        <section className="bg-navy px-4 py-12 sm:px-6 sm:py-16 lg:px-8">
           <div className="mx-auto max-w-3xl text-center">
             <h1 className="text-3xl font-extrabold tracking-tight text-white sm:text-4xl lg:text-5xl">
               Simple, transparent pricing
             </h1>
-            <p className="mx-auto mt-6 max-w-xl text-lg text-gray-300">
+            <p className="mx-auto mt-4 max-w-xl text-lg text-gray-300">
               Start free. Upgrade when you need more.
             </p>
-
-            {/* Annual toggle removed — monthly only for now */}
+            <div className="mt-6 flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-sm text-gray-400">
+              <span>✓ No credit card required</span>
+              <span>✓ Cancel any time</span>
+              <span>✓ Instant access</span>
+            </div>
           </div>
         </section>
 
         {/* Plans */}
-        <section className="bg-surface px-4 py-20 sm:px-6 lg:px-8">
-          <div className="mx-auto grid max-w-5xl gap-8 sm:grid-cols-2 lg:grid-cols-3">
-            {/* Free */}
-            <div className="rounded-xl border border-border bg-surface p-8">
-              <h2 className="text-lg font-semibold">Free</h2>
-              <div className="mt-4 flex items-baseline gap-1">
-                <span className="text-4xl font-extrabold">$0</span>
-                <span className="text-text-muted">/month</span>
+        <section className="bg-surface px-4 py-12 sm:px-6 lg:px-8 overflow-visible">
+          <div className="mx-auto max-w-3xl">
+
+            {/* Cards row, Free + fanned Pro */}
+            <div className="grid gap-4 sm:grid-cols-2 sm:items-stretch pt-8">
+
+              {/* Free */}
+              <div className="flex flex-col rounded-xl border border-border bg-surface p-8">
+                <h2 className="text-lg font-semibold">Free</h2>
+                <div className="mt-4">
+                  <div className="flex items-end gap-2">
+                    <span className="text-4xl font-extrabold leading-none">$0</span>
+                    <span className="text-text-muted text-sm leading-none pb-0.5">/month</span>
+                  </div>
+                  <div className="mt-2 h-7" />
+                </div>
+                <p className="mt-4 text-sm text-text-muted">Perfect for occasional use.</p>
+                <ul className="mt-6 space-y-3">
+                  {freeFeatures.map((item) => (
+                    <li key={item.label} className={`flex items-start gap-2 text-sm ${!item.included ? "opacity-40" : ""}`}>
+                      {item.included
+                        ? <Check className="mt-0.5 h-4 w-4 shrink-0 text-accent" />
+                        : <X className="mt-0.5 h-4 w-4 shrink-0 text-text-muted" />}
+                      <span className={!item.included ? "line-through" : ""}>{item.label}</span>
+                    </li>
+                  ))}
+                </ul>
+                <div className="mt-auto pt-8">
+                  {tier === null && isSignedIn ? (
+                    <div className="flex h-11 items-center justify-center">
+                      <Loader2 className="h-4 w-4 animate-spin text-text-muted" />
+                    </div>
+                  ) : !isSignedIn ? (
+                    <a href="/sign-up" className="flex h-11 items-center justify-center rounded-xl border-2 border-accent text-sm font-semibold text-accent hover:bg-accent/10 transition-colors">
+                      Get Started Free
+                    </a>
+                  ) : !isPro ? (
+                    <div className="flex h-11 items-center justify-center rounded-xl bg-slate-100 text-sm font-semibold text-slate-500 cursor-default">
+                      ✓ Current Plan
+                    </div>
+                  ) : (
+                    <a href="/editor" className="flex h-11 items-center justify-center rounded-xl border-2 border-accent text-sm font-semibold text-accent hover:bg-accent/10 transition-colors">
+                      Open Editor
+                    </a>
+                  )}
+                </div>
               </div>
-              <p className="mt-4 text-sm text-text-muted">Perfect for occasional use.</p>
-              <p className="mt-2 text-xs font-medium text-text-muted">Best for: Occasional form filling</p>
-              <a
-                href={isSignedIn ? "/editor" : "/sign-up"}
-                className="mt-8 flex h-11 items-center justify-center rounded-xl border border-border text-sm font-semibold hover:bg-surface-alt transition-colors"
-              >
-                Get Started Free
-              </a>
+
+              {/* Pro, two cards, animated swap on click */}
+              <style>{`
+                @keyframes cardFloat {
+                  0%   { transform: rotate(5deg) translateX(88px) translateY(8px); }
+                  50%  { transform: rotate(6.5deg) translateX(91px) translateY(4px); }
+                  100% { transform: rotate(5deg) translateX(88px) translateY(8px); }
+                }
+                .card-float-monthly { animation: cardFloat 3s ease-in-out infinite; }
+                .card-float-annual  { animation: cardFloat 3s ease-in-out infinite; }
+              `}</style>
+              <div className="relative" style={{ overflow: "visible" }}>
+
+                {/* Monthly card */}
+                <div
+                  className={`absolute inset-0 rounded-xl bg-[#1e3a6e] border border-white/15 cursor-pointer select-none ${annual ? "card-float-monthly" : ""}`}
+                  style={{
+                    zIndex: annual ? 1 : 2,
+                    transform: annual ? undefined : "rotate(0deg) translateX(0px) translateY(0px)",
+                    transformOrigin: "bottom center",
+                    boxShadow: annual ? "0 8px 32px rgba(0,0,0,0.4)" : "0 20px 60px rgba(0,0,0,0.5)",
+                    opacity: annual ? 0.88 : 1,
+                    transition: annual ? "opacity 0.35s ease, box-shadow 0.35s ease" : "transform 0.45s cubic-bezier(0.34,1.56,0.64,1), opacity 0.35s ease, box-shadow 0.35s ease",
+                  }}
+                  onClick={() => annual && setAnnual(false)}
+                >
+
+                  {/* Full content, always visible */}
+                  <div className="absolute inset-0 flex flex-col p-8">
+                    <div className="absolute -top-3 left-6 rounded-full bg-accent px-3 py-0.5 text-xs font-semibold text-white">Most Popular</div>
+                    <div className="flex items-center justify-between">
+                      <h2 className="text-lg font-semibold text-white">Pro</h2>
+                      <span className="text-sm font-extrabold text-blue-300 uppercase tracking-widest">Monthly</span>
+                    </div>
+                    <div className="mt-4">
+                      <div className="flex items-end gap-2">
+                        <span className="text-4xl font-extrabold text-white leading-none">$12</span>
+                        <span className="text-gray-400 text-xs leading-none pb-0.5">/month</span>
+                      </div>
+                      <div className="mt-2 h-7 flex items-center">
+                        <button onClick={() => setAnnual(true)} className="text-xs text-accent font-semibold hover:underline">
+                          💡 Switch to annual and save $44
+                        </button>
+                      </div>
+                    </div>
+                    <p className="mt-4 text-sm text-gray-300">No limits, no watermarks, fill as many PDFs as you need.</p>
+                    <ul className="mt-6 space-y-3">
+                      {proFeatures.map((item) => (
+                        <li key={item} className="flex items-start gap-2 text-sm text-gray-200">
+                          <Check className="mt-0.5 h-4 w-4 shrink-0 text-accent" />
+                          {item}
+                        </li>
+                      ))}
+                    </ul>
+                    <div className="mt-auto pt-8">
+                      {isPro ? (
+                        <div className="flex h-11 w-full items-center justify-center rounded-xl bg-white/10 text-sm font-semibold text-white cursor-default">✓ Current Plan</div>
+                      ) : (
+                        <button onClick={handleUpgrade} disabled={upgrading}
+                          className="flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-accent text-sm font-semibold text-white hover:bg-accent-hover transition-all shadow-lg shadow-accent/40 hover:shadow-accent/60 disabled:opacity-70">
+                          {upgrading ? <><Loader2 className="h-4 w-4 animate-spin" /> Loading...</> : <><Sparkles className="h-4 w-4" /> Upgrade to Pro, $12/month</>}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Annual card */}
+                <div
+                  className={`absolute inset-0 rounded-xl bg-navy cursor-pointer select-none ${!annual ? "card-float-annual" : ""}`}
+                  style={{
+                    zIndex: annual ? 2 : 1,
+                    transform: annual ? "rotate(0deg) translateX(0px) translateY(0px)" : undefined,
+                    transformOrigin: "bottom center",
+                    boxShadow: annual ? "0 20px 60px rgba(0,0,0,0.5)" : "0 8px 32px rgba(0,0,0,0.4)",
+                    opacity: annual ? 1 : 0.88,
+                    transition: !annual ? "opacity 0.35s ease, box-shadow 0.35s ease" : "transform 0.45s cubic-bezier(0.34,1.56,0.64,1), opacity 0.35s ease, box-shadow 0.35s ease",
+                  }}
+                  onClick={() => !annual && setAnnual(true)}
+                >
+
+
+                  {/* Annual card full content, always visible */}
+                  <div className="absolute inset-0 flex flex-col p-8">
+                    <div className="absolute inset-0 rounded-xl overflow-hidden pointer-events-none">
+                      <div className="absolute -top-10 -right-10 h-40 w-40 rounded-full bg-accent/20 blur-2xl" />
+                    </div>
+                    <div className="absolute -top-3 left-6 rounded-full bg-accent px-3 py-0.5 text-xs font-semibold text-white z-10">
+                      Best Value
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <h2 className="text-lg font-semibold text-white">Pro</h2>
+                      <span className="text-sm font-extrabold text-accent uppercase tracking-widest">Annual</span>
+                    </div>
+                    <div className="mt-4">
+                      <div className="flex items-end gap-2">
+                        <span className="text-4xl font-extrabold text-white leading-none">$8.33</span>
+                        <div className="flex flex-col items-start pb-0.5">
+                          <span className="text-xs font-semibold text-gray-500 line-through leading-none">$12/mo</span>
+                          <span className="text-gray-400 text-xs leading-none mt-0.5">/month</span>
+                        </div>
+                      </div>
+                      <div className="mt-2 h-7 flex items-center">
+                        <div className="inline-flex items-center rounded-full bg-green-500/15 border border-green-500/25 px-3 py-1">
+                          <span className="text-xs font-semibold text-green-400">🎉 You save $44/year, billed $100</span>
+                        </div>
+                      </div>
+                    </div>
+                    <p className="mt-4 text-sm text-gray-300">No limits, no watermarks, fill as many PDFs as you need.</p>
+                    <ul className="mt-6 space-y-3">
+                      {proFeatures.map((item) => (
+                        <li key={item} className="flex items-start gap-2 text-sm text-gray-200">
+                          <Check className="mt-0.5 h-4 w-4 shrink-0 text-accent" />
+                          {item}
+                        </li>
+                      ))}
+                    </ul>
+                    <div className="mt-auto pt-8">
+                      {isPro ? (
+                        <div className="flex h-11 w-full items-center justify-center rounded-xl bg-white/10 text-sm font-semibold text-white cursor-default">✓ Current Plan</div>
+                      ) : (
+                        <button onClick={handleUpgrade} disabled={upgrading}
+                          className="flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-accent text-sm font-semibold text-white hover:bg-accent-hover transition-all shadow-lg shadow-accent/40 hover:shadow-accent/60 disabled:opacity-70">
+                          {upgrading ? <><Loader2 className="h-4 w-4 animate-spin" /> Loading...</> : <><Sparkles className="h-4 w-4" /> Get Pro, $100/year</>}
+                        </button>
+                      )}
+
+                    </div>
+                  </div>
+                </div>
+
+                {/* Invisible spacer so the parent has natural height */}
+                <div className="invisible flex flex-col rounded-xl bg-navy p-8">
+                  <h2 className="text-lg font-semibold">Pro</h2>
+                  <div className="mt-4">
+                    <div className="flex items-end gap-2">
+                      <span className="text-4xl font-extrabold leading-none">$8.33</span>
+                      <span className="text-xs leading-none pb-0.5">/month</span>
+                    </div>
+                    <div className="mt-2 h-7" />
+                  </div>
+                  <p className="mt-4 text-sm">Unlimited fills, no watermark, priority support.</p>
+                  <ul className="mt-6 space-y-3">
+                    {proFeatures.map((item) => (
+                      <li key={item} className="flex items-start gap-2 text-sm">
+                        <Check className="mt-0.5 h-4 w-4 shrink-0" />
+                        {item}
+                      </li>
+                    ))}
+                  </ul>
+                  <div className="mt-auto pt-8">
+                    <div className="h-11 w-full" />
+                    <p className="mt-3 text-xs">placeholder</p>
+                  </div>
+                </div>
+              </div>
             </div>
 
-            {/* Pro */}
-            <div className="relative rounded-xl border-2 border-accent bg-surface p-8 shadow-lg shadow-accent/10">
-              <div className="absolute -top-3 left-6 rounded-full bg-accent px-3 py-0.5 text-xs font-semibold text-white">
-                Most Popular
-              </div>
-              <h2 className="text-lg font-semibold">Pro</h2>
-              <div className="mt-4 flex items-baseline gap-1">
-                <span className="text-4xl font-extrabold">$12</span>
-                <span className="text-text-muted">/month</span>
-              </div>
-              <p className="mt-4 text-sm text-text-muted">Unlimited fills, no watermark, priority support.</p>
-              <p className="mt-2 text-xs font-medium text-text-muted">Best for: Sole traders, bookkeepers, individuals</p>
-              <button
-                onClick={() => handleUpgrade("pro")}
-                className="mt-8 flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-accent text-sm font-semibold text-white hover:bg-accent-hover transition-colors"
-              >
-                <Sparkles className="h-4 w-4" />
-                Upgrade to Pro
-              </button>
-            </div>
-
-            {/* Business */}
-            <div className="rounded-xl border border-border bg-navy p-8">
-              <h2 className="text-lg font-semibold text-white">Business</h2>
-              <div className="mt-4 flex items-baseline gap-1">
-                <span className="text-4xl font-extrabold text-white">$29</span>
-                <span className="text-gray-400">/month</span>
-              </div>
-              <p className="mt-4 text-sm text-gray-300">Built for agencies &amp; bookkeepers.</p>
-              <p className="mt-2 text-xs font-medium text-gray-400">Best for: Agencies, teams, and organisations</p>
-              <button
-                onClick={() => handleUpgrade("business")}
-                className="mt-8 flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-slate-700 text-sm font-semibold text-white hover:bg-slate-800 transition-colors"
-              >
-                Get Business
-              </button>
-            </div>
-          </div>
-
-          {/* Comparison table */}
-          <div className="mx-auto mt-16 max-w-5xl overflow-hidden rounded-xl border border-border">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="bg-surface-alt">
-                  <th className="px-6 py-4 text-left font-semibold">Feature</th>
-                  <th className="px-6 py-4 text-center font-semibold">Free</th>
-                  <th className="px-6 py-4 text-center font-semibold text-accent">Pro</th>
-                  <th className="px-6 py-4 text-center font-semibold">Business</th>
-                </tr>
-              </thead>
-              <tbody>
-                {features.map((f) => (
-                  <tr key={f.name} className="border-t border-border">
-                    <td className="px-6 py-4">{f.name}</td>
-                    <td className="px-6 py-4 text-center">
-                      {typeof f.free === "string" ? (
-                        f.free
-                      ) : f.free ? (
-                        <Check className="mx-auto h-4 w-4 text-accent" />
-                      ) : (
-                        <X className="mx-auto h-4 w-4 text-text-muted/40" />
-                      )}
-                    </td>
-                    <td className="px-6 py-4 text-center">
-                      {typeof f.pro === "string" ? (
-                        <span className="font-semibold text-accent">{f.pro}</span>
-                      ) : f.pro ? (
-                        <Check className="mx-auto h-4 w-4 text-accent" />
-                      ) : (
-                        <X className="mx-auto h-4 w-4 text-text-muted/40" />
-                      )}
-                    </td>
-                    <td className="px-6 py-4 text-center">
-                      {typeof f.business === "string" ? (
-                        <span className="font-semibold">{f.business}</span>
-                      ) : f.business ? (
-                        <Check className="mx-auto h-4 w-4 text-accent" />
-                      ) : (
-                        <X className="mx-auto h-4 w-4 text-text-muted/40" />
-                      )}
-                    </td>
+            {/* Comparison table */}
+            <div className="mt-20 overflow-hidden rounded-xl border border-border">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-surface-alt">
+                    <th className="px-6 py-4 text-left font-semibold">Feature</th>
+                    <th className="px-6 py-4 text-center font-semibold">Free</th>
+                    <th className="px-6 py-4 text-center font-semibold text-accent">Pro</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {tableFeatures.map((f) => (
+                    <tr key={f.name} className="border-t border-border">
+                      <td className="px-6 py-4">{f.name}</td>
+                      <td className="px-6 py-4 text-center">
+                        {typeof f.free === "string" ? f.free : f.free
+                          ? <Check className="mx-auto h-4 w-4 text-accent" />
+                          : <X className="mx-auto h-4 w-4 text-text-muted/40" />}
+                      </td>
+                      <td className="px-6 py-4 text-center">
+                        {typeof f.pro === "string"
+                          ? <span className="font-semibold text-accent">{f.pro}</span>
+                          : f.pro
+                          ? <Check className="mx-auto h-4 w-4 text-accent" />
+                          : <X className="mx-auto h-4 w-4 text-text-muted/40" />}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
         </section>
 
@@ -238,7 +399,6 @@ export default function PricingPage() {
 
 function FaqItem({ question, answer }: { question: string; answer: string }) {
   const [open, setOpen] = useState(false);
-
   return (
     <div className="rounded-xl border border-border bg-surface">
       <button
@@ -246,7 +406,7 @@ function FaqItem({ question, answer }: { question: string; answer: string }) {
         className="flex w-full items-center justify-between px-6 py-5 text-left"
       >
         <span className="font-semibold">{question}</span>
-        <span className="ml-4 shrink-0 text-text-muted">{open ? "\u2212" : "+"}</span>
+        <span className="ml-4 shrink-0 text-text-muted">{open ? "−" : "+"}</span>
       </button>
       {open && (
         <div className="border-t border-border px-6 py-4 text-sm leading-relaxed text-text-muted">

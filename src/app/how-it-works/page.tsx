@@ -21,13 +21,13 @@ const steps = [
     icon: MousePointerClick,
     title: "Step 2: Fill in the Fields",
     description:
-      "QuickFill automatically detects fillable AcroForm fields in your PDF. For flat PDFs, simply select a tool \u2014 text, checkbox, signature, or date \u2014 and click where you want to place it. Use Auto-fill from Profile to instantly populate common fields like your name, address, ABN, and contact details.",
+      "QuickFill automatically detects fillable AcroForm fields in your PDF. For flat PDFs, simply select a tool , text, checkbox, signature, or date , and click where you want to place it. Use Auto-fill from Profile to instantly populate common fields like your name, address, ABN, and contact details.",
   },
   {
     icon: Download,
     title: "Step 3: Download Your Completed PDF",
     description:
-      "Click the download button to get your filled PDF instantly. Your answers are embedded directly into the document \u2014 ready to print, email, or submit to the ATO, Medicare, your real estate agent, or any government agency.",
+      "Click the download button to get your filled PDF instantly. Your answers are embedded directly into the document , ready to print, email, or submit to the ATO, Medicare, your real estate agent, or any government agency.",
   },
 ];
 
@@ -61,8 +61,8 @@ export default function HowItWorksPage() {
               How to Fill a PDF Form Online
             </h1>
             <p className="mx-auto mt-6 max-w-2xl text-lg text-gray-300">
-              No software to install. No account required to try. Fill any PDF
-              form &mdash; ATO tax returns, Medicare, Centrelink, rental apps &mdash; in your browser in under a minute.
+              No software to install. Free account, no credit card required. Fill any PDF
+              form, ATO tax returns, Medicare, Centrelink, rental apps, in your browser in under a minute.
             </p>
           </div>
         </section>
@@ -93,21 +93,21 @@ export default function HowItWorksPage() {
               Ready to fill your first PDF?
             </h2>
             <p className="mt-4 text-text-muted">
-              It takes less than 60 seconds. Try it free &mdash; no sign up needed.
+              It takes less than 60 seconds. Try it free, no sign up needed.
             </p>
             <div className="mt-8 flex flex-col items-center gap-4 sm:flex-row sm:justify-center">
               <Link
                 href="/editor"
                 className="flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-accent px-6 text-base font-semibold text-white shadow-lg shadow-accent/25 hover:bg-accent-hover transition-colors sm:w-auto"
               >
-                Open Editor
+                Fill a PDF Free
                 <ArrowRight className="h-4 w-4" />
               </Link>
               <Link
                 href="/pricing"
                 className="flex h-12 w-full items-center justify-center rounded-xl border border-border px-6 text-base font-semibold hover:bg-surface transition-colors sm:w-auto"
               >
-                View Pricing
+                See Pricing
               </Link>
             </div>
           </div>

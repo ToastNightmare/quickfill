@@ -28,7 +28,7 @@ export default function PrivacyPage() {
         <section>
           <h2 className="text-lg font-semibold text-text">How we use it</h2>
           <p className="mt-2">
-            We use your data to operate the service &mdash; enforcing usage
+            We use your data to operate the service, enforcing usage
             limits, processing payments, and showing your fill history. We do
             not sell or rent your personal information to anyone.
           </p>
@@ -48,15 +48,15 @@ export default function PrivacyPage() {
           <h2 className="text-lg font-semibold text-text">Third parties</h2>
           <ul className="mt-2 list-disc space-y-1 pl-5">
             <li>
-              <strong>Clerk</strong> &mdash; authentication and account
+              <strong>Clerk</strong>, authentication and account
               management.
             </li>
             <li>
-              <strong>Stripe</strong> &mdash; payment processing. We never see
+              <strong>Stripe</strong>, payment processing. We never see
               or store your full card number.
             </li>
             <li>
-              <strong>Upstash</strong> &mdash; serverless data storage for usage
+              <strong>Upstash</strong>, serverless data storage for usage
               records.
             </li>
           </ul>
@@ -81,10 +81,10 @@ export default function PrivacyPage() {
           <p className="mt-2">
             If you have questions about this policy, email us at{" "}
             <a
-              href="mailto:support@quickfill.app"
+              href="mailto:hello@getquickfill.com"
               className="text-accent hover:underline"
             >
-              support@quickfill.app
+              hello@getquickfill.com
             </a>
             .
           </p>

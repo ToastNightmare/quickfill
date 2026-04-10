@@ -260,7 +260,7 @@ function DashboardContent() {
             <FileText className="h-5 w-5 text-accent" />
           </div>
           <div>
-            <p className="text-sm font-semibold">Open Editor</p>
+            <p className="text-sm font-semibold">Fill a PDF</p>
             <p className="text-xs text-text-muted">Upload and fill a new PDF form</p>
           </div>
         </Link>

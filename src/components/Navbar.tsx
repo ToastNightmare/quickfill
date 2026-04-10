@@ -14,66 +14,39 @@ export function Navbar() {
     <nav className="sticky top-0 z-50 border-b border-border bg-surface/95 backdrop-blur supports-[backdrop-filter]:bg-surface/80">
       <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
         <Link href="/" className="flex items-center">
-          <Logo variant="full" className="h-8" />
+          <Logo variant="full" className="h-9 w-auto" />
         </Link>
 
         {/* Desktop nav */}
         <div className="hidden items-center gap-6 md:flex">
-          <Link
-            href="/editor"
-            className="text-sm font-medium text-text-muted hover:text-text transition-colors"
-          >
-            Editor
+          <Link href="/how-it-works" className="text-sm font-medium text-text-muted hover:text-text transition-colors">
+            How It Works
           </Link>
-          <Link
-            href="/pricing"
-            className="text-sm font-medium text-text-muted hover:text-text transition-colors"
-          >
+          <Link href="/pricing" className="text-sm font-medium text-text-muted hover:text-text transition-colors">
             Pricing
           </Link>
-          <Link
-            href="/how-it-works"
-            className="text-sm font-medium text-text-muted hover:text-text transition-colors"
-          >
-            How It Works
+          <Link href="/editor" className="text-sm font-medium text-text-muted hover:text-text transition-colors">
+            Fill a PDF
           </Link>
 
           {!isSignedIn ? (
             <>
-              <Link
-                href="/sign-in"
-                className="text-sm font-medium text-text-muted hover:text-text transition-colors"
-              >
+              <Link href="/sign-in" className="text-sm font-medium text-text-muted hover:text-text transition-colors">
                 Sign In
               </Link>
-              <Link
-                href="/sign-up"
-                className="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-white hover:bg-accent-hover transition-colors"
-              >
-                Get Started
+              <Link href="/sign-up" className="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-white hover:bg-accent-hover transition-colors">
+                Try Free
               </Link>
             </>
           ) : (
             <>
-              <Link
-                href="/dashboard"
-                className="text-sm font-medium text-text-muted hover:text-text transition-colors"
-              >
+              <Link href="/dashboard" className="text-sm font-medium text-text-muted hover:text-text transition-colors">
                 Dashboard
               </Link>
-              <Link
-                href="/profile"
-                className="text-sm font-medium text-text-muted hover:text-text transition-colors"
-              >
+              <Link href="/profile" className="text-sm font-medium text-text-muted hover:text-text transition-colors">
                 Profile
               </Link>
-              <UserButton
-                appearance={{
-                  elements: {
-                    avatarBox: "h-9 w-9",
-                  },
-                }}
-              />
+              <UserButton appearance={{ elements: { avatarBox: "h-9 w-9" } }} />
             </>
           )}
         </div>
@@ -92,59 +65,31 @@ export function Navbar() {
       {menuOpen && (
         <div className="border-t border-border bg-surface px-4 pb-4 md:hidden">
           <div className="flex flex-col gap-2 pt-2">
-            <Link
-              href="/editor"
-              onClick={() => setMenuOpen(false)}
-              className="rounded-lg px-3 py-3 text-sm font-medium hover:bg-surface-alt transition-colors"
-            >
-              Editor
+            <Link href="/how-it-works" onClick={() => setMenuOpen(false)} className="rounded-lg px-3 py-3 text-sm font-medium hover:bg-surface-alt transition-colors">
+              How It Works
             </Link>
-            <Link
-              href="/pricing"
-              onClick={() => setMenuOpen(false)}
-              className="rounded-lg px-3 py-3 text-sm font-medium hover:bg-surface-alt transition-colors"
-            >
+            <Link href="/pricing" onClick={() => setMenuOpen(false)} className="rounded-lg px-3 py-3 text-sm font-medium hover:bg-surface-alt transition-colors">
               Pricing
             </Link>
-            <Link
-              href="/how-it-works"
-              onClick={() => setMenuOpen(false)}
-              className="rounded-lg px-3 py-3 text-sm font-medium hover:bg-surface-alt transition-colors"
-            >
-              How It Works
+            <Link href="/editor" onClick={() => setMenuOpen(false)} className="rounded-lg px-3 py-3 text-sm font-medium hover:bg-surface-alt transition-colors">
+              Fill a PDF
             </Link>
 
             {!isSignedIn ? (
               <>
-                <Link
-                  href="/sign-in"
-                  onClick={() => setMenuOpen(false)}
-                  className="rounded-lg px-3 py-3 text-sm font-medium hover:bg-surface-alt transition-colors"
-                >
+                <Link href="/sign-in" onClick={() => setMenuOpen(false)} className="rounded-lg px-3 py-3 text-sm font-medium hover:bg-surface-alt transition-colors">
                   Sign In
                 </Link>
-                <Link
-                  href="/sign-up"
-                  onClick={() => setMenuOpen(false)}
-                  className="mt-1 rounded-lg bg-accent px-3 py-3 text-center text-sm font-semibold text-white hover:bg-accent-hover transition-colors"
-                >
-                  Get Started
+                <Link href="/sign-up" onClick={() => setMenuOpen(false)} className="mt-1 rounded-lg bg-accent px-3 py-3 text-center text-sm font-semibold text-white hover:bg-accent-hover transition-colors">
+                  Try Free
                 </Link>
               </>
             ) : (
               <>
-                <Link
-                  href="/dashboard"
-                  onClick={() => setMenuOpen(false)}
-                  className="rounded-lg px-3 py-3 text-sm font-medium hover:bg-surface-alt transition-colors"
-                >
+                <Link href="/dashboard" onClick={() => setMenuOpen(false)} className="rounded-lg px-3 py-3 text-sm font-medium hover:bg-surface-alt transition-colors">
                   Dashboard
                 </Link>
-                <Link
-                  href="/profile"
-                  onClick={() => setMenuOpen(false)}
-                  className="rounded-lg px-3 py-3 text-sm font-medium hover:bg-surface-alt transition-colors"
-                >
+                <Link href="/profile" onClick={() => setMenuOpen(false)} className="rounded-lg px-3 py-3 text-sm font-medium hover:bg-surface-alt transition-colors">
                   Profile
                 </Link>
               </>

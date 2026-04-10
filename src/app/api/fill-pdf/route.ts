@@ -51,7 +51,7 @@ export async function POST(request: NextRequest) {
     if (hasAcroForm) {
       const form = pdfDoc.getForm();
 
-      // Sanitize all existing AcroForm text field values — prevents WinAnsi crash on flatten
+      // Sanitize all existing AcroForm text field values, prevents WinAnsi crash on flatten
       for (const af of form.getFields()) {
         if (af.constructor.name === "PDFTextField") {
           try {
@@ -93,7 +93,7 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      // Flatten without regenerating appearances — avoids WinAnsi re-encoding of existing values
+      // Flatten without regenerating appearances, avoids WinAnsi re-encoding of existing values
       form.flatten({ updateFieldAppearances: false });
     } else {
       for (const field of editorFields) {
@@ -107,7 +107,7 @@ export async function POST(request: NextRequest) {
       for (const page of pages) {
         const { width } = page.getSize();
         // .trim() guards against Vercel env vars with trailing newlines
-        const text = `Filled with QuickFill — upgrade to Pro at https://getquickfill.com`;
+        const text = `Filled with QuickFill, upgrade to Pro at https://getquickfill.com`;
         const textWidth = watermarkFont.widthOfTextAtSize(text, 8);
         page.drawText(text, { x: width - textWidth - 12, y: 10, size: 8, font: watermarkFont, color: rgb(0.6, 0.6, 0.6) });
       }

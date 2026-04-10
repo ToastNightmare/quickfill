@@ -1,13 +1,20 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 180 40" width="180" height="40">
-  <!-- Icon mark -->
-  <rect x="2" y="2" width="36" height="36" rx="6" ry="6" fill="#1a1a2e"/>
-  <rect x="10" y="7" width="20" height="26" rx="2" ry="2" fill="#ffffff"/>
-  <rect x="14" y="13" width="12" height="2" rx="1" fill="#d0d5dd"/>
-  <rect x="14" y="18" width="10" height="2" rx="1" fill="#d0d5dd"/>
-  <rect x="14" y="23" width="8" height="2" rx="1" fill="#d0d5dd"/>
-  <path d="M22 8 L17 20 L21 20 L18 32 L28 17 L23 17 L26 8 Z" fill="#4f8ef7" opacity="0.9"/>
-  <!-- Wordmark -->
-  <text x="48" y="28" font-family="Inter, system-ui, -apple-system, sans-serif" font-weight="700" font-size="22" fill="#1a1a2e">
-    <tspan fill="#4f8ef7">Q</tspan>uickFill
-  </text>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 48" fill="none">
+  <defs>
+    <linearGradient id="bolt" x1="16" y1="2" x2="24" y2="46" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#60d8ff"/>
+      <stop offset="50%" stop-color="#2d8ef7"/>
+      <stop offset="100%" stop-color="#1a5fcf"/>
+    </linearGradient>
+    <linearGradient id="quick" x1="0" y1="8" x2="0" y2="40" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#60d8ff"/>
+      <stop offset="100%" stop-color="#2d8ef7"/>
+    </linearGradient>
+  </defs>
+  <!-- Icon box — same cap height as text -->
+  <rect x="1" y="1" width="46" height="46" rx="10" fill="white" stroke="#e2e8f0" stroke-width="1.5"/>
+  <!-- Lightning bolt centred in box -->
+  <polygon points="27,6 16,26 22,26 19,42 34,22 28,22" fill="url(#bolt)"/>
+  <!-- Wordmark — baseline aligned with icon centre -->
+  <text x="56" y="35" font-family="'Arial Rounded MT Bold','Arial Black','Arial',sans-serif" font-size="28" font-weight="800" fill="url(#quick)">Quick</text>
+  <text x="152" y="35" font-family="'Arial Rounded MT Bold','Arial Black','Arial',sans-serif" font-size="28" font-weight="800" fill="#1e2d4a">Fill</text>
 </svg>

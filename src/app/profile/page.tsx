@@ -120,7 +120,7 @@ export default function ProfilePage() {
 
       <h1 className="text-2xl font-bold sm:text-3xl">Auto-fill Profile</h1>
       <p className="mt-2 text-text-muted">
-        Fill this in once &mdash; QuickFill uses it to auto-fill any form instantly.
+        Fill this in once, QuickFill uses it to auto-fill any form instantly.
       </p>
 
       <form onSubmit={handleSave} className="mt-8 space-y-6">

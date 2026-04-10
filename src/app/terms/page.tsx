@@ -28,10 +28,7 @@ export default function TermsPage() {
             Free and paid plans
           </h2>
           <p className="mt-2">
-            Free accounts receive 3 document fills per month. Paid plans (Pro
-            and Business) unlock higher or unlimited usage as described on the
-            pricing page. We may adjust plan features or limits with reasonable
-            notice.
+            Free accounts receive 3 document fills per month. The Pro plan unlocks unlimited usage as described on the pricing page. We may adjust plan features or limits with reasonable notice.
           </p>
         </section>
 
@@ -41,7 +38,7 @@ export default function TermsPage() {
           </h2>
           <p className="mt-2">
             Paid subscriptions are billed monthly via Stripe. You can cancel at
-            any time from your dashboard &mdash; access continues until the end
+            any time from your dashboard, access continues until the end
             of the current billing period. Refund requests made within 7 days of
             a charge will be honoured. After 7 days, no refunds are issued.
           </p>
@@ -85,10 +82,10 @@ export default function TermsPage() {
           <p className="mt-2">
             Questions about these terms? Email us at{" "}
             <a
-              href="mailto:support@quickfill.app"
+              href="mailto:hello@getquickfill.com"
               className="text-accent hover:underline"
             >
-              support@quickfill.app
+              hello@getquickfill.com
             </a>
             .
           </p>

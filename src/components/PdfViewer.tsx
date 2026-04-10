@@ -30,7 +30,7 @@ interface PdfViewerProps {
   onTotalPagesChange: (total: number) => void;
   zoom: number;
   highlightFieldIds?: Set<string>;
-  onSignatureFieldPlaced?: (fieldId: string) => void;
+  onSignatureFieldPlaced?: (field: EditorField) => void;
 }
 
 let nextFieldId = 1;
@@ -191,17 +191,24 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
     return () => observer.disconnect();
   }, []);
 
-  // Transformer attachment
+  // Transformer attachment — defer one frame so FieldShape's setSelectedRef
+  // effect has time to run and populate selectedShapeRef before we attach.
   useEffect(() => {
     const tr = transformerRef.current;
     if (!tr) return;
 
-    if (selectedFieldId && selectedShapeRef.current) {
-      tr.nodes([selectedShapeRef.current]);
-    } else {
-      tr.nodes([]);
-    }
-    tr.getLayer()?.batchDraw();
+    const attach = () => {
+      if (selectedFieldId && selectedShapeRef.current) {
+        tr.nodes([selectedShapeRef.current]);
+      } else {
+        tr.nodes([]);
+      }
+      tr.getLayer()?.batchDraw();
+    };
+
+    // Use requestAnimationFrame so Konva node refs are settled first
+    const raf = requestAnimationFrame(attach);
+    return () => cancelAnimationFrame(raf);
   }, [selectedFieldId]);
 
 
@@ -258,7 +265,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
         return;
       }
 
-      // Throttle snap detection to ~20fps — reduces jitter on fast mouse movement
+      // Throttle snap detection to ~20fps, reduces jitter on fast mouse movement
       if (snapPreviewTimer.current) return;
       snapPreviewTimer.current = setTimeout(() => {
         snapPreviewTimer.current = null;
@@ -313,7 +320,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
             width: snap.width / zoomFactor,
             height: snap.height / zoomFactor,
           };
-          // Only update if snap changed significantly (>8px) — prevents flicker
+          // Only update if snap changed significantly (>8px), prevents flicker
           setSnapPreview(prev => {
             if (!prev) return newPreview;
             const dx = Math.abs(newPreview.x - prev.x);
@@ -390,7 +397,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
       fieldW = defaults[activeTool].w;
       fieldH = defaults[activeTool].h;
 
-      // Checkboxes and signatures never snap — place at click point
+      // Checkboxes and signatures never snap, place at click point
       if (activeTool !== "checkbox" && activeTool !== "signature") {
         // Snap-first: always try snap detection first
         if (snapPreview) {
@@ -468,7 +475,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
 
       // For signature fields, trigger signature placement flow
       if (activeTool === "signature") {
-        onSignatureFieldPlaced?.(id);
+        onSignatureFieldPlaced?.(field);
       } else if (activeTool !== "checkbox") {
         // Immediately enter edit mode for text-like fields
         setEditingFieldId(id);
@@ -533,7 +540,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
     [activeTool, currentPage, fields, onFieldSelect, onToolSelect, createFieldAtPoint]
   );
 
-  // Touch handler for mobile tap-to-place — delegates to createFieldAtPoint
+  // Touch handler for mobile tap-to-place, delegates to createFieldAtPoint
   // so behaviour (including non-snap fallback) matches desktop clicks.
   const handleTouchEnd = useCallback(
     (e: React.TouchEvent<HTMLDivElement>) => {
@@ -757,7 +764,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
           (() => {
             const editField = pageFields.find((f) => f.id === editingFieldId);
             if (!editField || editField.type === "checkbox") return null;
-            // Signature fields never use text input — always use SignatureModal
+            // Signature fields never use text input, always use SignatureModal
             if (editField.type === "signature") return null;
             const isEditSnapped = editField.snapped ?? false;
 
@@ -781,7 +788,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
                   paddingTop: 0,
                   paddingBottom: 0,
                   boxSizing: "border-box",
-                  // Fully transparent — no background at all
+                  // Fully transparent, no background at all
                   backgroundColor: "rgba(0,0,0,0)",
                   background: "none",
                   WebkitAppearance: "none",
@@ -971,7 +978,7 @@ function FieldShape({
           );
         }}
       >
-        {/* Drag shadow — "lifted" feel without hiding the stamp */}
+        {/* Drag shadow, "lifted" feel without hiding the stamp */}
         {dragOpacity < 1 && (
           <Rect
             width={field.width}
@@ -982,7 +989,7 @@ function FieldShape({
             shadowOffsetY={3}
           />
         )}
-        {/* Selection/hover indicator — subtle dashed border, only on interact */}
+        {/* Selection/hover indicator, subtle dashed border, only on interact */}
         {(isSelected || isHovered || isHighlighted) && (
           <Rect
             width={field.width}
@@ -994,7 +1001,7 @@ function FieldShape({
             dash={isSelected ? undefined : [3, 2]}
           />
         )}
-        {/* Stamp — bold black tick or cross, like pen on paper */}
+        {/* Stamp, bold black tick or cross, like pen on paper */}
         {(() => {
           const stamp: CheckboxStamp = (field as { stamp?: CheckboxStamp }).stamp ?? (field.checked ? "tick" : "none");
           if (stamp === "none") return null;
@@ -1102,7 +1109,7 @@ function FieldShape({
           height={field.height - 4}
         />
       ) : field.type === "signature" ? (
-        /* Unsigned — pen icon + "Click to sign" */
+        /* Unsigned, pen icon + "Click to sign" */
         <Text
           text="✎  Click to sign"
           fontSize={Math.min(13, field.height * 0.38)}

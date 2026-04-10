@@ -2,7 +2,7 @@ import { PDFDocument, rgb, StandardFonts } from "pdf-lib";
 import type { EditorField } from "./types";
 import { APP_CONFIG } from "./config";
 
-/** Replace control characters (including newlines) with a space — keeps text WinAnsi-safe */
+/** Replace control characters (including newlines) with a space, keeps text WinAnsi-safe */
 function sanitize(text: string): string {
   return text.replace(/[\x00-\x09\x0b-\x1f\x7f\n\r]/g, " ");
 }
@@ -136,7 +136,7 @@ export async function fillPdf(
       }
     }
 
-    // Flatten — works because all values are now WinAnsi-safe
+    // Flatten, works because all values are now WinAnsi-safe
     form.flatten();
   } else {
     for (const field of editorFields) {

@@ -10,27 +10,24 @@ export async function POST(req: NextRequest) {
 
   const user = await currentUser();
   const email = user?.emailAddresses?.[0]?.emailAddress;
-
   const origin = req.headers.get("origin") ?? "http://localhost:3000";
 
   let plan = "pro";
+  let annual = false;
   try {
     const body = await req.json();
-    if (body.plan === "business" || body.plan === "pro") {
-      plan = body.plan;
-    }
+    if (body.plan === "pro") plan = "pro";
+    if (body.annual === true) annual = true;
   } catch {
-    // No body or invalid JSON  -  default to pro
+    // No body or invalid JSON — default to pro monthly
   }
 
   let priceId: string;
-  if (plan === "business") {
-    priceId = process.env.STRIPE_BUSINESS_PRICE_ID ?? "";
+  if (annual) {
+    priceId = process.env.STRIPE_PRO_ANNUAL_PRICE_ID ?? "";
     if (!priceId) {
-      return NextResponse.json(
-        { error: "Business plan not yet available" },
-        { status: 400 }
-      );
+      // Fall back to monthly if annual price not configured yet
+      priceId = process.env.STRIPE_PRO_PRICE_ID!;
     }
   } else {
     priceId = process.env.STRIPE_PRO_PRICE_ID!;
@@ -39,19 +36,11 @@ export async function POST(req: NextRequest) {
   const session = await getStripe().checkout.sessions.create({
     mode: "subscription",
     payment_method_types: ["card"],
-    line_items: [
-      {
-        price: priceId,
-        quantity: 1,
-      },
-    ],
+    line_items: [{ price: priceId, quantity: 1 }],
     customer_email: email ?? undefined,
     success_url: `${origin}/dashboard?upgraded=true`,
     cancel_url: `${origin}/pricing`,
-    metadata: {
-      userId,
-      plan,
-    },
+    metadata: { userId, plan, billing: annual ? "annual" : "monthly" },
   });
 
   return NextResponse.json({ url: session.url });

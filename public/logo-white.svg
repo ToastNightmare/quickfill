@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 48" fill="none">
+  <defs>
+    <linearGradient id="bolt2" x1="16" y1="2" x2="24" y2="46" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#60d8ff"/>
+      <stop offset="50%" stop-color="#2d8ef7"/>
+      <stop offset="100%" stop-color="#1a5fcf"/>
+    </linearGradient>
+    <linearGradient id="quick2" x1="0" y1="8" x2="0" y2="40" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#60d8ff"/>
+      <stop offset="100%" stop-color="#2d8ef7"/>
+    </linearGradient>
+  </defs>
+  <!-- Icon box -->
+  <rect x="1" y="1" width="46" height="46" rx="10" fill="white"/>
+  <!-- Lightning bolt -->
+  <polygon points="27,6 16,26 22,26 19,42 34,22 28,22" fill="url(#bolt2)"/>
+  <!-- Wordmark -->
+  <text x="56" y="35" font-family="'Arial Rounded MT Bold','Arial Black','Arial',sans-serif" font-size="28" font-weight="800" fill="url(#quick2)">Quick</text>
+  <text x="152" y="35" font-family="'Arial Rounded MT Bold','Arial Black','Arial',sans-serif" font-size="28" font-weight="800" fill="white">Fill</text>
+</svg>

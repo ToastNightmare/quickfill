@@ -11,12 +11,12 @@ export function MobileGate({ children }: MobileGateProps) {
   const [dismissed, setDismissed] = useState(false);
 
   // Only gate on small screens
-  // We use a CSS-driven approach — no JS window.innerWidth so it works on SSR
+  // We use a CSS-driven approach, no JS window.innerWidth so it works on SSR
   if (dismissed) return <>{children}</>;
 
   return (
     <>
-      {/* Mobile gate — shown only on small screens */}
+      {/* Mobile gate, shown only on small screens */}
       <div className="sm:hidden flex flex-col items-center justify-center min-h-[calc(100svh-64px)] px-6 text-center">
         <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-amber-50 mb-6">
           <Monitor className="h-8 w-8 text-amber-500" />
@@ -26,7 +26,7 @@ export function MobileGate({ children }: MobileGateProps) {
           Desktop works best
         </h1>
         <p className="text-text-muted text-base leading-relaxed mb-8 max-w-sm">
-          QuickFill's PDF editor is built for mouse and keyboard. On mobile the experience is limited — open it on your laptop or desktop for the full thing.
+          QuickFill's PDF editor is built for mouse and keyboard. On mobile the experience is limited, open it on your laptop or desktop for the full thing.
         </p>
 
         {/* QR / open on desktop prompt */}
@@ -51,7 +51,7 @@ export function MobileGate({ children }: MobileGateProps) {
         </button>
       </div>
 
-      {/* Desktop — always render children */}
+      {/* Desktop, always render children */}
       <div className="hidden sm:flex sm:flex-col sm:flex-1">
         {children}
       </div>

@@ -8,11 +8,13 @@ import {
   Download,
   ArrowRight,
   Check,
+  X,
   FileText,
   User,
   Clock,
   LayoutDashboard,
   CreditCard,
+  Sparkles,
   Loader2,
 } from "lucide-react";
 import { useAuth } from "@clerk/nextjs";
@@ -210,40 +212,15 @@ function LoggedInHome() {
       <footer className="border-t border-border bg-navy px-4 py-12 sm:px-6 lg:px-8">
         <div className="mx-auto flex max-w-6xl flex-col items-center gap-6 sm:flex-row sm:justify-between">
           <div className="flex items-center gap-2 font-bold text-white">
-            <FileText className="h-5 w-5 text-accent" />
-            QuickFill
+            <img src="/logo-white.png" alt="QuickFill" className="h-10 w-auto max-w-[200px]" />
           </div>
           <div className="flex gap-6">
-            <Link
-              href="/editor"
-              className="text-sm text-gray-400 hover:text-white transition-colors"
-            >
-              Editor
-            </Link>
-            <Link
-              href="/pricing"
-              className="text-sm text-gray-400 hover:text-white transition-colors"
-            >
-              Pricing
-            </Link>
-            <Link
-              href="/how-it-works"
-              className="text-sm text-gray-400 hover:text-white transition-colors"
-            >
-              How It Works
-            </Link>
-            <Link
-              href="/privacy"
-              className="text-sm text-gray-400 hover:text-white transition-colors"
-            >
-              Privacy
-            </Link>
-            <Link
-              href="/terms"
-              className="text-sm text-gray-400 hover:text-white transition-colors"
-            >
-              Terms
-            </Link>
+            <Link href="/editor" className="text-sm text-gray-400 hover:text-white transition-colors">Fill a PDF</Link>
+            <Link href="/pricing" className="text-sm text-gray-400 hover:text-white transition-colors">Pricing</Link>
+            <Link href="/how-it-works" className="text-sm text-gray-400 hover:text-white transition-colors">How It Works</Link>
+            <Link href="/sign-in" className="text-sm text-gray-400 hover:text-white transition-colors">Sign In</Link>
+            <Link href="/privacy" className="text-sm text-gray-400 hover:text-white transition-colors">Privacy</Link>
+            <Link href="/terms" className="text-sm text-gray-400 hover:text-white transition-colors">Terms</Link>
           </div>
           <p className="text-sm text-gray-500">
             &copy; {new Date().getFullYear()} QuickFill. All rights reserved.
@@ -259,7 +236,7 @@ const features = [
     icon: Upload,
     title: "Upload Any PDF",
     description:
-      "Drag and drop any PDF form \u2014 ATO tax returns, Medicare claims, rental applications, council forms, and more.",
+      "Drag and drop any PDF form , ATO tax returns, Medicare claims, rental applications, council forms, and more.",
   },
   {
     icon: ScanSearch,
@@ -271,13 +248,13 @@ const features = [
     icon: Download,
     title: "Download Instantly",
     description:
-      "Get your filled PDF in seconds. Fields are embedded directly into the document \u2014 ready to print, email, or submit.",
+      "Get your filled PDF in seconds. Fields are embedded directly into the document , ready to print, email, or submit.",
   },
 ];
 
 const steps = [
   { number: "1", title: "Upload", description: "Drop your PDF into the editor" },
-  { number: "2", title: "Fill", description: "Type, check, sign \u2014 right on the form" },
+  { number: "2", title: "Fill", description: "Type, check, sign , right on the form" },
   { number: "3", title: "Download", description: "Get your completed PDF instantly" },
 ];
 
@@ -292,7 +269,7 @@ const verticals = [
     emoji: "\ud83d\udccb",
     title: "Bookkeepers & Sole Traders",
     description:
-      "ATO BAS forms, tax declarations, and business registrations \u2014 done fast.",
+      "ATO BAS forms, tax declarations, and business registrations , done fast.",
   },
   {
     emoji: "\u26ea",
@@ -314,7 +291,7 @@ export default function Home() {
   const { isLoaded, isSignedIn } = useAuth();
   const [upgradingPlan, setUpgradingPlan] = useState<string | null>(null);
 
-  const handleUpgrade = async (plan: "pro" | "business") => {
+  const handleUpgrade = async (plan: "pro") => {
     setUpgradingPlan(plan);
     try {
       const res = await fetch("/api/stripe/checkout", {
@@ -359,7 +336,7 @@ export default function Home() {
             applicationCategory: "BusinessApplication",
             operatingSystem: "Any",
             description:
-              "Fill PDF forms online free. Upload any PDF \u2014 ATO tax forms, Medicare, Centrelink, rental applications, council forms \u2014 and fill it in seconds. Smart field detection and instant download.",
+              "Fill PDF forms online free. Upload any PDF , ATO tax forms, Medicare, Centrelink, rental applications, council forms , and fill it in seconds. Smart field detection and instant download.",
             offers: [
               {
                 "@type": "Offer",
@@ -375,13 +352,7 @@ export default function Home() {
                 name: "Pro Plan",
                 description: "Unlimited documents per month",
               },
-              {
-                "@type": "Offer",
-                price: "29",
-                priceCurrency: "AUD",
-                name: "Business Plan",
-                description: "Unlimited documents per month with team features",
-              },
+
             ],
             featureList: [
               "PDF form filling",
@@ -404,16 +375,16 @@ export default function Home() {
             <span className="text-accent">Done in seconds.</span>
           </h1>
           <p className="mx-auto mt-6 max-w-2xl text-lg text-gray-300 sm:text-xl">
-            The fastest way to fill out PDF forms online. Upload any form &mdash; ATO tax returns,
-            Medicare claims, Centrelink forms, rental applications, council permits &mdash; and
+            The fastest way to fill out PDF forms online. Upload any form, ATO tax returns,
+            Medicare claims, Centrelink forms, rental applications, council permits, and
             fill it with smart field detection and instant downloads. No software to install.
           </p>
           <div className="mt-10 flex flex-col items-center gap-4 sm:flex-row sm:justify-center">
             <Link
-              href="/editor"
+              href={isSignedIn ? "/editor" : "/sign-up"}
               className="flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-accent px-6 text-base font-semibold text-white shadow-lg shadow-accent/25 hover:bg-accent-hover transition-colors sm:w-auto"
             >
-              {isSignedIn ? "Open Editor" : "Try Free \u2014 No Sign Up"}
+              {isSignedIn ? "Fill a PDF" : "Get Started Free"}
               <ArrowRight className="h-4 w-4" />
             </Link>
             <a
@@ -434,7 +405,7 @@ export default function Home() {
           </h2>
           <p className="mx-auto mt-4 max-w-2xl text-center text-text-muted">
             No more printing, hand-writing, and scanning. Fill any PDF form
-            directly in your browser &mdash; Australian government forms, tax documents, and more.
+            directly in your browser, Australian government forms, tax documents, and more.
           </p>
           <div className="mt-16 grid gap-8 sm:grid-cols-2 lg:grid-cols-3">
             {features.map((feature) => (
@@ -481,13 +452,22 @@ export default function Home() {
         </div>
       </section>
 
-      {/* Testimonials */}
-      <section className="bg-surface px-4 py-20 sm:px-6 lg:px-8">
-        <div className="mx-auto max-w-6xl text-center">
-          <h2 className="text-3xl font-bold tracking-tight sm:text-4xl">
-            Trusted by professionals across Australia
-          </h2>
-          <p className="mt-4 text-text-muted">Reviews coming soon.</p>
+      {/* Trust signals */}
+      <section className="bg-surface px-4 py-16 sm:px-6 lg:px-8">
+        <div className="mx-auto max-w-4xl">
+          <div className="grid gap-6 sm:grid-cols-3">
+            {[
+              { emoji: "🔒", title: "Your files stay private", body: "PDFs are processed entirely in your browser. We never upload or store your documents on our servers." },
+              { emoji: "⚡", title: "Ready in under 60 seconds", body: "Upload, fill, and download. No software to install. Sign up free and get started in under 60 seconds." },
+              { emoji: "🇦🇺", title: "Built for Australia", body: "ATO, Medicare, Centrelink, council forms, QuickFill works with the forms Australians fill every day." },
+            ].map((t) => (
+              <div key={t.title} className="rounded-xl border border-border bg-surface-alt p-6">
+                <div className="text-3xl mb-3">{t.emoji}</div>
+                <h3 className="font-semibold text-base mb-1">{t.title}</h3>
+                <p className="text-sm text-text-muted leading-relaxed">{t.body}</p>
+              </div>
+            ))}
+          </div>
         </div>
       </section>
 
@@ -559,51 +539,72 @@ export default function Home() {
             Start free. Upgrade when you need more.
           </p>
 
-          <div className="mt-12 grid gap-8 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="mx-auto mt-12 grid max-w-2xl gap-8 sm:grid-cols-2 sm:items-stretch pt-5">
             {/* Free tier */}
-            <div className="rounded-xl border border-border bg-surface p-8">
+            <div className="flex flex-col rounded-xl border border-border bg-surface p-8">
               <h3 className="text-lg font-semibold">Free</h3>
-              <div className="mt-4 flex items-baseline gap-1">
-                <span className="text-4xl font-extrabold">$0</span>
-                <span className="text-text-muted">/month</span>
+              <div className="mt-4">
+                <div className="flex items-end gap-2">
+                  <span className="text-4xl font-extrabold leading-none">$0</span>
+                  <span className="text-text-muted text-sm leading-none pb-0.5">/month</span>
+                </div>
+                <div className="mt-2 h-7" />
               </div>
-              <p className="mt-4 text-sm text-text-muted">
-                Perfect for occasional use.
-              </p>
+              <p className="mt-4 text-sm text-text-muted">Perfect for occasional use.</p>
               <ul className="mt-6 space-y-3">
                 {[
-                  "3 documents per month",
-                  "All field types",
-                  "AcroForm detection",
-                  "Instant PDF download",
+                  { label: "3 documents per month", included: true },
+                  { label: "All field types", included: true },
+                  { label: "AcroForm detection", included: true },
+                  { label: "Instant PDF download", included: true },
+                  { label: "Unlimited documents", included: false },
+                  { label: "No watermarks", included: false },
+                  { label: "Auto-fill from profile", included: false },
                 ].map((item) => (
-                  <li key={item} className="flex items-start gap-2 text-sm">
-                    <Check className="mt-0.5 h-4 w-4 shrink-0 text-accent" />
-                    {item}
+                  <li key={item.label} className={`flex items-start gap-2 text-sm ${!item.included ? "opacity-40" : ""}`}>
+                    {item.included ? (
+                      <Check className="mt-0.5 h-4 w-4 shrink-0 text-accent" />
+                    ) : (
+                      <X className="mt-0.5 h-4 w-4 shrink-0 text-text-muted" />
+                    )}
+                    <span className={!item.included ? "line-through" : ""}>{item.label}</span>
                   </li>
                 ))}
               </ul>
-              <Link
-                href="/sign-up"
-                className="mt-8 flex h-11 items-center justify-center rounded-lg border border-border text-sm font-semibold hover:bg-surface-alt transition-colors"
-              >
-                Get Started Free
-              </Link>
+              <div className="mt-auto pt-8">
+                <Link
+                  href="/sign-up"
+                  className="flex h-11 items-center justify-center rounded-xl border-2 border-accent text-sm font-semibold text-accent hover:bg-accent/10 transition-colors"
+                >
+                  Get Started Free
+                </Link>
+              </div>
             </div>
 
             {/* Pro tier */}
-            <div className="relative rounded-xl border-2 border-accent bg-surface p-8 shadow-lg shadow-accent/10">
-              <div className="absolute -top-3 left-6 rounded-full bg-accent px-3 py-0.5 text-xs font-semibold text-white">
+            <div className="relative flex flex-col rounded-xl bg-navy p-8 shadow-xl shadow-navy/30">
+              <div className="absolute inset-0 rounded-xl overflow-hidden pointer-events-none">
+                <div className="absolute -top-10 -right-10 h-40 w-40 rounded-full bg-accent/20 blur-2xl" />
+              </div>
+              <div className="absolute -top-3 left-6 rounded-full bg-accent px-3 py-0.5 text-xs font-semibold text-white z-10">
                 Most Popular
               </div>
-              <h3 className="text-lg font-semibold">Pro</h3>
-              <div className="mt-4 flex items-baseline gap-1">
-                <span className="text-4xl font-extrabold">$12</span>
-                <span className="text-text-muted">/month</span>
+              <h3 className="text-lg font-semibold text-white">Pro</h3>
+              <div className="mt-4">
+                <div className="flex items-end gap-2">
+                  <span className="text-4xl font-extrabold text-white leading-none">$8.33</span>
+                  <div className="flex flex-col items-start pb-0.5">
+                    <span className="text-xs font-semibold text-gray-500 line-through leading-none">$12/mo</span>
+                    <span className="text-gray-400 text-sm leading-none">/month</span>
+                  </div>
+                </div>
+                <div className="mt-2 h-7 flex items-center">
+                  <div className="inline-flex items-center rounded-full bg-green-500/15 border border-green-500/25 px-3 py-1">
+                    <span className="text-xs font-semibold text-green-400">🎉 2 months free, billed $100/year</span>
+                  </div>
+                </div>
               </div>
-              <p className="mt-4 text-sm text-text-muted">
-                For professionals who need volume.
-              </p>
+              <p className="mt-4 text-sm text-gray-300">Unlimited fills, no watermark, priority support.</p>
               <ul className="mt-6 space-y-3">
                 {[
                   "Unlimited documents",
@@ -611,59 +612,31 @@ export default function Home() {
                   "AcroForm detection",
                   "No watermarks",
                   "Auto-fill from profile",
-                  "Last 30 fills history",
-                  "Priority support",
-                ].map((item) => (
-                  <li key={item} className="flex items-start gap-2 text-sm">
-                    <Check className="mt-0.5 h-4 w-4 shrink-0 text-accent" />
-                    {item}
-                  </li>
-                ))}
-              </ul>
-              <button
-                onClick={() => handleUpgrade("pro")}
-                disabled={!!upgradingPlan}
-                className="mt-8 flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-accent text-sm font-semibold text-white hover:bg-accent-hover transition-colors disabled:opacity-70"
-              >
-                {upgradingPlan === "pro" ? (
-                  <><div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" /> Loading...</>
-                ) : "Start Pro — $12/month"}
-              </button>
-            </div>
-
-            {/* Business tier */}
-            <div className="rounded-xl border border-border bg-surface p-8">
-              <h3 className="text-lg font-semibold">Business</h3>
-              <div className="mt-4 flex items-baseline gap-1">
-                <span className="text-4xl font-extrabold">$29</span>
-                <span className="text-text-muted">/month</span>
-              </div>
-              <p className="mt-4 text-sm text-text-muted">
-                For teams and organisations.
-              </p>
-              <ul className="mt-6 space-y-3">
-                {[
-                  "Unlimited documents",
                   "Unlimited fill history",
                   "Priority support",
-                  "Team profiles (coming soon)",
-                  "No watermarks",
                 ].map((item) => (
-                  <li key={item} className="flex items-start gap-2 text-sm">
+                  <li key={item} className="flex items-start gap-2 text-sm text-gray-200">
                     <Check className="mt-0.5 h-4 w-4 shrink-0 text-accent" />
                     {item}
                   </li>
                 ))}
               </ul>
-              <button
-                onClick={() => handleUpgrade("business")}
-                disabled={!!upgradingPlan}
-                className="mt-8 flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-slate-700 text-sm font-semibold text-white hover:bg-slate-800 transition-colors disabled:opacity-70"
-              >
-                {upgradingPlan === "business" ? (
-                  <><div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" /> Loading...</>
-                ) : "Get Business — $29/month"}
-              </button>
+              <div className="mt-auto pt-8">
+                <button
+                  onClick={() => handleUpgrade("pro")}
+                  disabled={!!upgradingPlan}
+                  className="flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-accent text-sm font-semibold text-white hover:bg-accent-hover transition-all shadow-lg shadow-accent/40 hover:shadow-accent/60 disabled:opacity-70"
+                >
+                  {upgradingPlan === "pro" ? (
+                    <><div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" /> Loading...</>
+                  ) : (
+                    <><Sparkles className="h-4 w-4" /> Get Pro, $100/year</>
+                  )}
+                </button>
+                <p className="mt-3 text-center text-xs text-gray-500">
+                  Or <Link href="/pricing" className="text-accent hover:underline">pay $12/month</Link> · <Link href="/pricing" className="text-accent hover:underline">See full pricing</Link>
+                </p>
+              </div>
             </div>
           </div>
         </div>
@@ -673,40 +646,15 @@ export default function Home() {
       <footer className="border-t border-border bg-navy px-4 py-12 sm:px-6 lg:px-8">
         <div className="mx-auto flex max-w-6xl flex-col items-center gap-6 sm:flex-row sm:justify-between">
           <div className="flex items-center gap-2 font-bold text-white">
-            <FileText className="h-5 w-5 text-accent" />
-            QuickFill
+            <img src="/logo-white.png" alt="QuickFill" className="h-10 w-auto max-w-[200px]" />
           </div>
           <div className="flex gap-6">
-            <Link
-              href="/editor"
-              className="text-sm text-gray-400 hover:text-white transition-colors"
-            >
-              Editor
-            </Link>
-            <Link
-              href="/pricing"
-              className="text-sm text-gray-400 hover:text-white transition-colors"
-            >
-              Pricing
-            </Link>
-            <Link
-              href="/how-it-works"
-              className="text-sm text-gray-400 hover:text-white transition-colors"
-            >
-              How It Works
-            </Link>
-            <Link
-              href="/privacy"
-              className="text-sm text-gray-400 hover:text-white transition-colors"
-            >
-              Privacy
-            </Link>
-            <Link
-              href="/terms"
-              className="text-sm text-gray-400 hover:text-white transition-colors"
-            >
-              Terms
-            </Link>
+            <Link href="/editor" className="text-sm text-gray-400 hover:text-white transition-colors">Fill a PDF</Link>
+            <Link href="/pricing" className="text-sm text-gray-400 hover:text-white transition-colors">Pricing</Link>
+            <Link href="/how-it-works" className="text-sm text-gray-400 hover:text-white transition-colors">How It Works</Link>
+            <Link href="/sign-in" className="text-sm text-gray-400 hover:text-white transition-colors">Sign In</Link>
+            <Link href="/privacy" className="text-sm text-gray-400 hover:text-white transition-colors">Privacy</Link>
+            <Link href="/terms" className="text-sm text-gray-400 hover:text-white transition-colors">Terms</Link>
           </div>
           <p className="text-sm text-gray-500">
             &copy; {new Date().getFullYear()} QuickFill. All rights reserved.

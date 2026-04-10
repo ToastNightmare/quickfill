@@ -50,13 +50,13 @@ export function UploadZone({ onFileLoad }: UploadZoneProps) {
         }`}
       >
         <input {...getInputProps()} />
-        <div className="flex h-16 w-16 items-center justify-center rounded-full bg-accent/10">
-          {isDragActive ? (
-            <FileText className="h-8 w-8 text-accent" />
-          ) : (
+        {isDragActive ? (
+          <div className="flex h-16 w-16 items-center justify-center rounded-full bg-accent/10">
             <Upload className="h-8 w-8 text-accent" />
-          )}
-        </div>
+          </div>
+        ) : (
+          <img src="/logo-mark.png" alt="QuickFill" className="h-16 w-16 opacity-80" />
+        )}
         <p className="mt-4 text-lg font-semibold text-text">
           {isDragActive ? "Drop your PDF here" : (
             <>
