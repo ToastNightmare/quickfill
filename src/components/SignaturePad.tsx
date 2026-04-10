@@ -198,10 +198,14 @@ export function useSignaturePad({
   const onTouchMove  = useCallback((e: TouchEvent)  => { e.preventDefault(); if (e.touches.length === 1) continueStroke(getPoint(e.touches[0])); },                     [continueStroke, getPoint]);
   const onTouchEnd   = useCallback((e: TouchEvent)  => { e.preventDefault(); endStroke(); },                                      [endStroke]);
 
-  // ── Attach events ──────────────────────────────────────────────────────────
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
+  // ── Attach events via callback ref ─────────────────────────────────────────
+  // Using a callback ref ensures events attach every time the canvas DOM element
+  // mounts, even if width/height have not changed between re-opens.
+  const cleanupRef = useRef<(() => void) | null>(null);
+
+  const attachEvents = useCallback((canvas: HTMLCanvasElement) => {
+    // Detach previous listeners if any (safety net)
+    cleanupRef.current?.();
 
     canvas.addEventListener("mousedown",  onMouseDown);
     canvas.addEventListener("mousemove",  onMouseMove);
@@ -211,7 +215,7 @@ export function useSignaturePad({
     canvas.addEventListener("touchmove",  onTouchMove,  { passive: false });
     canvas.addEventListener("touchend",   onTouchEnd,   { passive: false });
 
-    return () => {
+    cleanupRef.current = () => {
       canvas.removeEventListener("mousedown",  onMouseDown);
       canvas.removeEventListener("mousemove",  onMouseMove);
       canvas.removeEventListener("mouseup",    onMouseUp);
@@ -220,8 +224,12 @@ export function useSignaturePad({
       canvas.removeEventListener("touchmove",  onTouchMove);
       canvas.removeEventListener("touchend",   onTouchEnd);
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [width, height]);
+  }, [onMouseDown, onMouseMove, onMouseUp, onTouchStart, onTouchMove, onTouchEnd]);
+
+  const canvasCallbackRef = useCallback((el: HTMLCanvasElement | null) => {
+    canvasRef.current = el;
+    if (el) attachEvents(el);
+  }, [attachEvents]);
 
   // ── Clear ──────────────────────────────────────────────────────────────────
   const clear = useCallback(() => {
@@ -289,7 +297,7 @@ export function useSignaturePad({
 
   const canvasElement = (
     <canvas
-      ref={canvasRef}
+      ref={canvasCallbackRef}
       style={{
         width,
         height,

@@ -198,10 +198,10 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
     if (!tr) return;
 
     const attach = () => {
+      // Always clear first so the transformer never accumulates old nodes
+      tr.nodes([]);
       if (selectedFieldId && selectedShapeRef.current) {
         tr.nodes([selectedShapeRef.current]);
-      } else {
-        tr.nodes([]);
       }
       tr.getLayer()?.batchDraw();
     };
@@ -469,6 +469,8 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
       }
 
       onFieldAdd(field);
+      // Clear stale ref so Transformer does not span the previous field
+      selectedShapeRef.current = null;
       onFieldSelect(id);
       // Deactivate tool after placing so panel switches to field controls
       onToolSelect(null);
@@ -1101,13 +1103,23 @@ function FieldShape({
         cornerRadius={isSnapped ? 3 : 4}
       />
       {hasSignatureImage && sigImage ? (
-        <KonvaImage
-          image={sigImage}
-          x={2}
-          y={2}
-          width={field.width - 4}
-          height={field.height - 4}
-        />
+        (() => {
+          const pad = 4;
+          const maxW = field.width - pad;
+          const maxH = field.height - pad;
+          const scale = Math.min(maxW / sigImage.naturalWidth, maxH / sigImage.naturalHeight);
+          const drawW = sigImage.naturalWidth * scale;
+          const drawH = sigImage.naturalHeight * scale;
+          return (
+            <KonvaImage
+              image={sigImage}
+              x={(field.width - drawW) / 2}
+              y={(field.height - drawH) / 2}
+              width={drawW}
+              height={drawH}
+            />
+          );
+        })()
       ) : field.type === "signature" ? (
         /* Unsigned, pen icon + "Click to sign" */
         <Text
