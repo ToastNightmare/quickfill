@@ -192,30 +192,27 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
   }, []);
 
   // Transformer attachment.
-  // Step 1: immediately clear the transformer and the ref when selection changes.
-  // Step 2: after one frame (so FieldShape useEffects have run and populated the ref),
-  //         attach the new node. This prevents old nodes from bleeding into new selections.
+  // Always clear immediately when selection changes.
+  // Re-attach is handled directly in attachTransformer() which is called
+  // from onSelect at click time — when we have the node reference in hand.
   useEffect(() => {
     const tr = transformerRef.current;
     if (!tr) return;
-
-    // Immediately detach — no stale node ever lingers
     tr.nodes([]);
     tr.getLayer()?.batchDraw();
-    selectedShapeRef.current = null;
-
-    if (!selectedFieldId) return;
-
-    // Wait one frame for FieldShape's setSelectedRef effect to run
-    const raf = requestAnimationFrame(() => {
-      if (!transformerRef.current) return;
-      if (selectedShapeRef.current) {
-        transformerRef.current.nodes([selectedShapeRef.current]);
-        transformerRef.current.getLayer()?.batchDraw();
-      }
-    });
-    return () => cancelAnimationFrame(raf);
+    if (!selectedFieldId) {
+      selectedShapeRef.current = null;
+    }
   }, [selectedFieldId]);
+
+  // Called directly when a field is clicked or placed — attaches transformer immediately.
+  const attachTransformer = useCallback((node: Konva.Node | null) => {
+    selectedShapeRef.current = node;
+    const tr = transformerRef.current;
+    if (!tr) return;
+    tr.nodes(node ? [node] : []);
+    tr.getLayer()?.batchDraw();
+  }, []);
 
 
   // Animate snap preview opacity
@@ -683,10 +680,11 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
                 isEditing={field.id === editingFieldId}
                 isHighlighted={field.id === snappedFieldId || (highlightFieldIds?.has(field.id) ?? false)}
                 isHovered={field.id === hoveredFieldId}
-                onSelect={() => {
+                onSelect={(node?: Konva.Node) => {
                   onFieldSelect(field.id);
                   onToolSelect(null);
-                  selectedShapeRef.current = null;
+                  // Attach transformer immediately using the node from FieldShape
+                  attachTransformer(node ?? null);
                   if (!dragStartedRef.current && field.type !== "signature") {
                     setEditingFieldId(field.id);
                   }
@@ -741,12 +739,8 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
                   }
                 }}
                 setSelectedRef={(node) => {
-                  // Only update the ref — never touch the Transformer directly here.
-                  // The Transformer attachment is handled exclusively by the
-                  // useEffect below, which clears first then attaches, preventing
-                  // multiple fields from bonding into one selection box.
                   if (field.id === selectedFieldId) {
-                    selectedShapeRef.current = node;
+                    attachTransformer(node);
                   }
                 }}
               />
@@ -890,7 +884,7 @@ function FieldShape({
   isEditing: boolean;
   isHighlighted: boolean;
   isHovered: boolean;
-  onSelect: () => void;
+  onSelect: (node?: Konva.Node) => void;
   onMouseEnter?: () => void;
   onMouseLeave?: () => void;
   onDragStart?: () => void;
@@ -962,7 +956,7 @@ function FieldShape({
           }
           const next: CheckboxStamp = current === "none" ? "tick" : "cross";
           onValueChange(next);
-          if (!isSelected) onSelect();
+          if (!isSelected) onSelect(groupRef.current ?? undefined);
         }}
         onDragStart={() => {
           setDragOpacity(0.85);
@@ -1060,7 +1054,7 @@ function FieldShape({
       onMouseLeave={() => onMouseLeave?.()}
       onClick={(e) => {
         e.cancelBubble = true;
-        onSelect();
+        onSelect(groupRef.current ?? undefined);
       }}
       onDblClick={(e) => {
         e.cancelBubble = true;
