@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, useCallback, useImperativeHandle, forwardRef, useReducer } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, useCallback, useImperativeHandle, forwardRef } from "react";
 import { Stage, Layer, Rect, Text, Group, Transformer, Image as KonvaImage } from "react-konva";
 import type Konva from "konva";
 import type { EditorField, ToolType, SignatureField, CheckboxStamp } from "@/lib/types";
@@ -815,20 +815,7 @@ function useLoadedImage(src: string | undefined): HTMLImageElement | null {
   return image;
 }
 
-// ─── FieldShape ──────────────────────────────────────────────────────────────
-// ARCHITECTURE NOTE — DO NOT REVERT:
-// Each FieldShape renders its own Transformer when selected (isSelected=true).
-// This is intentional and must never be changed to a shared Transformer pattern.
-//
-// A shared Transformer was tried many times and always failed — it bonds across
-// multiple fields because React's render cycle and Konva's internal node state
-// fight each other. Shared Transformer + fieldNodeMapRef + useLayoutEffect +
-// requestAnimationFrame retries all failed.
-//
-// The correct pattern: per-field Transformer inside a Fragment, mounted only
-// when isSelected. Konva attaches it to the sibling Group automatically.
-// Zero shared state, zero timing issues, zero registry needed.
-// ─────────────────────────────────────────────────────────────────────────────
+// Individual field component
 function FieldShape({
   field,
   isSelected,
@@ -863,7 +850,17 @@ function FieldShape({
   onDelete: () => void;
 }) {
   const groupRef = useRef<Konva.Group>(null);
-  const [, forceUpdate] = useReducer(x => x + 1, 0);
+  const transformerRef = useRef<Konva.Transformer>(null);
+
+  // Imperatively attach Transformer to this field's Group after mount.
+  // The nodes prop alone is not reliably reactive in react-konva.
+  useEffect(() => {
+    const tr = transformerRef.current;
+    const group = groupRef.current;
+    if (!tr || !group) return;
+    tr.nodes([group]);
+    tr.getLayer()?.batchDraw();
+  }, [isSelected]);
 
   const [dragOpacity, setDragOpacity] = useState(1);
 
@@ -894,18 +891,11 @@ function FieldShape({
     return "transparent";
   };
 
-  // Ref callback to force re-render after group mounts so Transformer gets the node
-  const groupRefCallback = useCallback((node: Konva.Group | null) => {
-    groupRef.current = node;
-    if (node) forceUpdate();
-  }, []);
-
   if (field.type === "checkbox") {
     return (
       <>
         <Group
-          id={field.id}
-          ref={groupRefCallback}
+          ref={groupRef}
           x={field.x}
         y={field.y}
         width={field.width}
@@ -993,8 +983,7 @@ function FieldShape({
         </Group>
         {isSelected && (
           <Transformer
-            key={`tr-${field.id}`}
-            nodes={groupRef.current ? [groupRef.current] : []}
+            ref={transformerRef}
             rotateEnabled={false}
             borderStroke="#3b82f6"
             anchorStroke="#3b82f6"
@@ -1030,8 +1019,7 @@ function FieldShape({
   return (
     <>
       <Group
-        id={field.id}
-        ref={groupRefCallback}
+        ref={groupRef}
         x={field.x}
       y={field.y}
       width={field.width}
@@ -1139,8 +1127,7 @@ function FieldShape({
       </Group>
       {isSelected && (
         <Transformer
-          key={`tr-${field.id}`}
-          nodes={groupRef.current ? [groupRef.current] : []}
+          ref={transformerRef}
           rotateEnabled={false}
           borderStroke="#3b82f6"
           anchorStroke="#3b82f6"
