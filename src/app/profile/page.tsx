@@ -19,7 +19,20 @@ interface ProfileData {
   abn: string;
   street: string;
   organisation: string;
-  [key: string]: string;
+  // Australian-specific fields
+  dateOfBirth?: string;
+  gender?: string;
+  tfn?: string;
+  medicareNumber?: string;
+  medicareExpiry?: string;
+  driversLicence?: string;
+  passportNumber?: string;
+  employer?: string;
+  jobTitle?: string;
+  bankBsb?: string;
+  bankAccount?: string;
+  bankName?: string;
+  [key: string]: string | undefined;
 }
 
 const emptyProfile: ProfileData = {
@@ -35,6 +48,18 @@ const emptyProfile: ProfileData = {
   abn: "",
   street: "",
   organisation: "",
+  dateOfBirth: "",
+  gender: "",
+  tfn: "",
+  medicareNumber: "",
+  medicareExpiry: "",
+  driversLicence: "",
+  passportNumber: "",
+  employer: "",
+  jobTitle: "",
+  bankBsb: "",
+  bankAccount: "",
+  bankName: "",
 };
 
 export default function ProfilePage() {
@@ -132,6 +157,39 @@ export default function ProfilePage() {
             <Field label="Phone" type="tel" value={profile.phone} onChange={(v) => setProfile({ ...profile, phone: v })} placeholder="e.g. 0412 345 678" />
             <Field label="ABN" value={profile.abn} onChange={(v) => setProfile({ ...profile, abn: v })} placeholder="e.g. 51 824 753 556 (optional)" />
             <Field label="Organisation / Business Name" value={profile.organisation ?? ""} onChange={(v) => setProfile({ ...profile, organisation: v })} placeholder="e.g. Smith Bookkeeping (optional)" />
+          </div>
+        </div>
+
+        <div className="rounded-xl border border-border bg-surface p-6 shadow-sm">
+          <h2 className="text-sm font-semibold text-text-muted uppercase tracking-widest">Australian Identifiers</h2>
+          <div className="mt-4 grid gap-4 sm:grid-cols-2">
+            <Field label="Date of Birth" value={profile.dateOfBirth ?? ""} onChange={(v) => setProfile({ ...profile, dateOfBirth: v })} placeholder="DD/MM/YYYY" />
+            <Field label="Gender" value={profile.gender ?? ""} onChange={(v) => setProfile({ ...profile, gender: v })} placeholder="e.g. Male / Female / Non-binary" />
+            <Field label="Tax File Number / TFN" value={profile.tfn ?? ""} onChange={(v) => setProfile({ ...profile, tfn: v })} placeholder="e.g. 123 456 789" />
+            <Field label="Medicare Number" value={profile.medicareNumber ?? ""} onChange={(v) => setProfile({ ...profile, medicareNumber: v })} placeholder="e.g. 1234 56789 1" />
+            <Field label="Medicare Expiry" value={profile.medicareExpiry ?? ""} onChange={(v) => setProfile({ ...profile, medicareExpiry: v })} placeholder="MM/YYYY" />
+            <Field label="Driver Licence Number" value={profile.driversLicence ?? ""} onChange={(v) => setProfile({ ...profile, driversLicence: v })} placeholder="Optional" />
+            <Field label="Passport Number" value={profile.passportNumber ?? ""} onChange={(v) => setProfile({ ...profile, passportNumber: v })} placeholder="Optional" />
+          </div>
+        </div>
+
+        <div className="rounded-xl border border-border bg-surface p-6 shadow-sm">
+          <h2 className="text-sm font-semibold text-text-muted uppercase tracking-widest">Employment</h2>
+          <div className="mt-4 grid gap-4 sm:grid-cols-2">
+            <Field label="Employer / Business Name" value={profile.employer ?? ""} onChange={(v) => setProfile({ ...profile, employer: v })} placeholder="e.g. Acme Corporation" />
+            <Field label="Job Title" value={profile.jobTitle ?? ""} onChange={(v) => setProfile({ ...profile, jobTitle: v })} placeholder="e.g. Software Engineer" />
+          </div>
+        </div>
+
+        <div className="rounded-xl border border-border bg-surface p-6 shadow-sm">
+          <h2 className="text-sm font-semibold text-text-muted uppercase tracking-widest">Bank Details</h2>
+          <p className="mt-1 text-xs text-text-muted">Stored securely. Used only for forms that ask for banking details.</p>
+          <div className="mt-4 grid gap-4 sm:grid-cols-2">
+            <Field label="Bank Name" value={profile.bankName ?? ""} onChange={(v) => setProfile({ ...profile, bankName: v })} placeholder="e.g. Commonwealth Bank" />
+            <Field label="BSB" value={profile.bankBsb ?? ""} onChange={(v) => setProfile({ ...profile, bankBsb: v })} placeholder="e.g. 062-000" />
+            <div className="sm:col-span-2">
+              <Field label="Account Number" value={profile.bankAccount ?? ""} onChange={(v) => setProfile({ ...profile, bankAccount: v })} placeholder="e.g. 123456789" />
+            </div>
           </div>
         </div>
 

@@ -15,6 +15,19 @@ export interface UserProfile {
   country?: string;
   abn: string;
   organisation?: string;
+  // Australian-specific fields
+  dateOfBirth?: string;
+  gender?: string;
+  tfn?: string;
+  medicareNumber?: string;
+  medicareExpiry?: string;
+  driversLicence?: string;
+  passportNumber?: string;
+  employer?: string;
+  jobTitle?: string;
+  bankBsb?: string;
+  bankAccount?: string;
+  bankName?: string;
 }
 
 export async function GET() {

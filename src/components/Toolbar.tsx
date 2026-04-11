@@ -12,6 +12,7 @@ import {
   Sparkles,
   UserCheck,
   Map,
+  Save,
 } from "lucide-react";
 import type { ToolType, EditorField } from "@/lib/types";
 import { Minimap } from "@/components/Minimap";
@@ -26,6 +27,7 @@ interface ToolbarProps {
   onRedo: () => void;
   onClear: () => void;
   onDownload: () => void;
+  onSaveProgress?: () => void;
   canUndo: boolean;
   canRedo: boolean;
   isDownloading: boolean;
@@ -56,6 +58,7 @@ export function Toolbar({
   onRedo,
   onClear,
   onDownload,
+  onSaveProgress,
   canUndo,
   canRedo,
   isDownloading,
@@ -123,6 +126,19 @@ export function Toolbar({
           <UserCheck className="h-4 w-4" />
           Auto-fill
         </button>
+        {onSaveProgress && (
+          <>
+            <div className="w-px h-6 bg-border shrink-0" />
+            <button
+              onClick={onSaveProgress}
+              title="Save Progress"
+              className="flex shrink-0 items-center gap-1.5 rounded-full px-3 py-2.5 text-xs font-medium text-text-muted hover:bg-surface-alt hover:text-text transition-colors"
+            >
+              <Save className="h-4 w-4" />
+              Save
+            </button>
+          </>
+        )}
         <div className="w-px h-6 bg-border shrink-0" />
         <button
           onClick={onDownload}
@@ -210,6 +226,18 @@ export function Toolbar({
         </button>
 
         <div className="my-1 h-px bg-border mx-1" />
+
+        {/* Save Progress */}
+        {onSaveProgress && (
+          <button
+            onClick={onSaveProgress}
+            title="Save Progress"
+            className="flex h-8 items-center gap-3 rounded-lg px-2 text-sm font-medium text-text-muted hover:bg-surface-alt hover:text-text transition-colors"
+          >
+            <Save className="h-4 w-4 shrink-0" />
+            <span className="hidden sm:inline">Save Progress</span>
+          </button>
+        )}
 
         {/* Download */}
         <button

@@ -44,6 +44,18 @@ const PROFILE_MATCHERS: { key: string; keywords: string[] }[] = [
   { key: "postcode", keywords: ["postcode", "post code", "zip", "postal", "post"] },
   { key: "abn", keywords: ["abn", "business number"] },
   { key: "organisation", keywords: ["organisation", "organization", "company", "employer"] },
+  { key: "dateOfBirth", keywords: ["date of birth", "dob", "birth date", "born"] },
+  { key: "gender", keywords: ["gender", "sex", "m/f"] },
+  { key: "tfn", keywords: ["tfn", "tax file number", "tax file", "file number"] },
+  { key: "medicareNumber", keywords: ["medicare", "medicare number", "medicare card"] },
+  { key: "medicareExpiry", keywords: ["medicare expiry", "medicare exp", "card expiry"] },
+  { key: "driversLicence", keywords: ["driver", "licence", "license", "drivers licence"] },
+  { key: "passportNumber", keywords: ["passport", "passport number"] },
+  { key: "employer", keywords: ["employer", "employer name", "company name", "business name"] },
+  { key: "jobTitle", keywords: ["job title", "occupation", "position", "role"] },
+  { key: "bankBsb", keywords: ["bsb", "bank state branch"] },
+  { key: "bankAccount", keywords: ["account number", "bank account"] },
+  { key: "bankName", keywords: ["bank name", "financial institution", "bank"] },
 ];
 
 function matchProfileKey(fieldId: string): string | null {
@@ -109,8 +121,10 @@ export default function EditorPage() {
   const [showWelcome, setShowWelcome] = useState(false);
   const [minimapCanvas, setMinimapCanvas] = useState<HTMLCanvasElement | null>(null);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
+  const [savingProgress, setSavingProgress] = useState(false);
   const { fields, set: setFields, undo, redo, reset, canUndo, canRedo } = useHistory();
   const restoredRef = useRef(false);
+  const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
 
   const pdfViewerRef = useRef<PdfViewerHandle>(null);
@@ -127,6 +141,32 @@ export default function EditorPage() {
       })
       .catch(() => {});
   }, []);
+
+  // Load saved session when PDF is loaded
+  useEffect(() => {
+    if (!pdfBytes || !fileName) return;
+
+    const loadSession = async () => {
+      try {
+        const res = await fetch(`/api/session?filename=${encodeURIComponent(fileName)}`);
+        if (res.ok) {
+          const session = await res.json();
+          if (session && session.fields && session.fields.length > 0) {
+            reset(session.fields);
+            if (typeof session.currentPage === "number") {
+              setCurrentPage(session.currentPage);
+            }
+            setShowRestoredBanner(true);
+            setTimeout(() => setShowRestoredBanner(false), 3000);
+          }
+        }
+      } catch {
+        // Silent - session load is non-critical
+      }
+    };
+
+    loadSession();
+  }, [pdfBytes, fileName, reset]);
 
   // Show welcome banner for first-time users
   useEffect(() => {
@@ -192,6 +232,39 @@ export default function EditorPage() {
   useEffect(() => {
     saveZoomToLocalStorage(zoom);
   }, [zoom]);
+
+  // Auto-save session when fields change (debounced 3 seconds)
+  useEffect(() => {
+    if (!pdfBytes || !fileName) return;
+
+    // Clear any pending save
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current);
+    }
+
+    // Debounce save by 3 seconds
+    saveTimeoutRef.current = setTimeout(async () => {
+      try {
+        await fetch("/api/session", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            filename: fileName,
+            fields,
+            currentPage,
+          }),
+        });
+      } catch {
+        // Silent - auto-save is non-critical
+      }
+    }, 3000);
+
+    return () => {
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
+      }
+    };
+  }, [fields, currentPage, pdfBytes, fileName]);
 
   const selectedField = useMemo(() => {
     if (!selectedFieldId) return null;
@@ -413,6 +486,29 @@ export default function EditorPage() {
     setTimeout(() => setToast(null), duration);
   }, []);
 
+  const handleSaveProgress = useCallback(async () => {
+    if (!fileName) return;
+    setSavingProgress(true);
+    try {
+      const res = await fetch("/api/session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          filename: fileName,
+          fields,
+          currentPage,
+        }),
+      });
+      if (res.ok) {
+        showToast("Progress saved");
+      }
+    } catch {
+      showToast("Failed to save progress");
+    } finally {
+      setSavingProgress(false);
+    }
+  }, [fileName, fields, currentPage, showToast]);
+
   const handleAutoFillFromProfile = useCallback(async () => {
     try {
       const res = await fetch("/api/profile");
@@ -578,6 +674,15 @@ export default function EditorPage() {
 
       if (addWatermark) {
         showToast("Download includes QuickFill watermark. Upgrade to Pro to remove it.", 5000);
+      }
+
+      // Clear saved session after successful download
+      try {
+        await fetch(`/api/session?filename=${encodeURIComponent(fileName)}`, {
+          method: "DELETE",
+        });
+      } catch {
+        // Silent - clearing session is non-critical
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -912,6 +1017,7 @@ export default function EditorPage() {
             onRedo={redo}
             onClear={handleClear}
             onDownload={handleDownload}
+            onSaveProgress={handleSaveProgress}
             canUndo={canUndo}
             canRedo={canRedo}
             isDownloading={isDownloading}
@@ -1002,6 +1108,7 @@ export default function EditorPage() {
         onRedo={redo}
         onClear={handleClear}
         onDownload={handleDownload}
+        onSaveProgress={handleSaveProgress}
         canUndo={canUndo}
         canRedo={canRedo}
         isDownloading={isDownloading}
