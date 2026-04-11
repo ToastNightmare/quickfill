@@ -2,9 +2,9 @@
 
 import { useUser } from "@clerk/nextjs";
 import { Suspense, useEffect, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { FileText, Sparkles, ExternalLink, Lock, Clock, User } from "lucide-react";
+import { FileText, Sparkles, ExternalLink, Lock, Clock, User, RotateCcw } from "lucide-react";
 
 interface UsageData {
   used: number;
@@ -37,6 +37,8 @@ function DashboardContent() {
   const [usageError, setUsageError] = useState(false);
   const [fills, setFills] = useState<FillEntry[]>([]);
   const [billingError, setBillingError] = useState<string | null>(null);
+  const [savedSessions, setSavedSessions] = useState<Set<string>>(new Set());
+  const router = useRouter();
 
   useEffect(() => {
     fetch("/api/usage")
@@ -50,6 +52,21 @@ function DashboardContent() {
       })
       .catch(() => {});
   }, []);
+
+  useEffect(() => {
+    if (fills.length === 0) return;
+    // Fetch session statuses for all fills
+    const promises = fills.map((fill) =>
+      fetch(`/api/session?filename=${encodeURIComponent(fill.filename)}`)
+        .then((r) => r.json())
+        .then((data) => (data && data.session ? fill.filename : null))
+        .catch(() => null)
+    );
+    Promise.all(promises).then((results) => {
+      const sessionSet = new Set(results.filter((r): r is string => r !== null));
+      setSavedSessions(sessionSet);
+    });
+  }, [fills]);
 
   const handleUpgrade = async () => {
     const res = await fetch("/api/stripe/checkout", { method: "POST" });
@@ -200,14 +217,28 @@ function DashboardContent() {
                 <div key={i} className="flex items-center gap-3 rounded-lg border border-border p-3">
                   <FileText className="h-5 w-5 shrink-0 text-accent" />
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-medium">{fill.filename}</p>
+                    <div className="flex items-center gap-2">
+                      <p className="truncate text-sm font-medium">{fill.filename}</p>
+                      {savedSessions.has(fill.filename) && (
+                        <span className="rounded-full bg-accent/10 px-2 py-0.5 text-xs font-medium text-accent">Resume</span>
+                      )}
+                    </div>
                     <p className="text-xs text-text-muted">
                       {fill.fieldCount} fields &middot; {fill.pageCount} page{fill.pageCount !== 1 ? "s" : ""}
                     </p>
                   </div>
-                  <div className="flex items-center gap-1 text-xs text-text-muted whitespace-nowrap">
-                    <Clock className="h-3 w-3" />
-                    {new Date(fill.filledAt).toLocaleDateString()}
+                  <div className="flex items-center gap-2 text-xs text-text-muted whitespace-nowrap">
+                    <div className="flex items-center gap-1">
+                      <Clock className="h-3 w-3" />
+                      {new Date(fill.filledAt).toLocaleDateString()}
+                    </div>
+                    <button
+                      onClick={() => router.push(`/editor?refill=${encodeURIComponent(fill.filename)}`)}
+                      className="flex items-center gap-1 rounded-lg border border-border px-2.5 py-1 text-xs font-medium hover:bg-surface-alt transition-colors whitespace-nowrap"
+                    >
+                      <RotateCcw className="h-3 w-3" />
+                      Re-fill
+                    </button>
                   </div>
                 </div>
               ))}

@@ -3,8 +3,9 @@
 import { useUser } from "@clerk/nextjs";
 import { useEffect, useState, useCallback, FormEvent } from "react";
 import Link from "next/link";
-import { Save, ArrowLeft, PenTool } from "lucide-react";
+import { Save, ArrowLeft, PenTool, Search, CheckCircle2, XCircle, Loader2 } from "lucide-react";
 import { SignatureModal } from "@/components/SignatureModal";
+import { useRouter } from "next/navigation";
 
 interface ProfileData {
   fullName: string;
@@ -70,6 +71,8 @@ export default function ProfilePage() {
   const [loading, setLoading] = useState(true);
   const [signatureDataUrl, setSignatureDataUrl] = useState<string | null>(null);
   const [signatureModalOpen, setSignatureModalOpen] = useState(false);
+  const [abnLookupLoading, setAbnLookupLoading] = useState(false);
+  const [abnLookupResult, setAbnLookupResult] = useState<{ success: boolean; businessName?: string; error?: string } | null>(null);
 
   useEffect(() => {
     Promise.all([
@@ -106,6 +109,33 @@ export default function ProfilePage() {
       setSignatureModalOpen(false);
     }
   }, []);
+
+  const handleAbnLookup = async () => {
+    const cleanAbn = profile.abn.replace(/\s/g, "");
+    if (cleanAbn.length !== 11 || !/^\d{11}$/.test(cleanAbn)) {
+      setAbnLookupResult({ success: false, error: "Invalid ABN format" });
+      return;
+    }
+
+    setAbnLookupLoading(true);
+    setAbnLookupResult(null);
+
+    try {
+      const response = await fetch(`https://api.abr.business.gov.au/abn/v3/json?abn=${cleanAbn}&guid=00000000-0000-0000-0000-000000000000`);
+      const data = await response.json();
+
+      if (data && data.entityName) {
+        setProfile((prev) => ({ ...prev, organisation: data.entityName }));
+        setAbnLookupResult({ success: true, businessName: data.entityName });
+      } else {
+        setAbnLookupResult({ success: false, error: "ABN not found" });
+      }
+    } catch {
+      setAbnLookupResult({ success: false, error: "Lookup failed" });
+    } finally {
+      setAbnLookupLoading(false);
+    }
+  };
 
   const handleSave = async (e: FormEvent) => {
     e.preventDefault();
@@ -155,7 +185,48 @@ export default function ProfilePage() {
             <Field label="Full Name" value={profile.fullName} onChange={(v) => setProfile({ ...profile, fullName: v })} placeholder="e.g. Jane Smith" />
             <Field label="Email" type="email" value={profile.email} onChange={(v) => setProfile({ ...profile, email: v })} placeholder="e.g. jane@example.com" />
             <Field label="Phone" type="tel" value={profile.phone} onChange={(v) => setProfile({ ...profile, phone: v })} placeholder="e.g. 0412 345 678" />
-            <Field label="ABN" value={profile.abn} onChange={(v) => setProfile({ ...profile, abn: v })} placeholder="e.g. 51 824 753 556 (optional)" />
+            <Field
+              label="ABN"
+              value={profile.abn}
+              onChange={(v) => { setProfile({ ...profile, abn: v }); setAbnLookupResult(null); }}
+              placeholder="e.g. 51 824 753 556 (optional)"
+              validationHint={{
+                validator: (v) => {
+                  const clean = v.replace(/\s/g, "");
+                  return clean.length === 11 && /^\d{11}$/.test(clean);
+                },
+                hint: "11 digits required",
+              }}
+              rightElement={
+                <button
+                  type="button"
+                  onClick={handleAbnLookup}
+                  disabled={abnLookupLoading}
+                  className="border border-border rounded-lg px-3 h-11 text-sm font-medium hover:bg-surface-alt transition-colors disabled:opacity-50 flex items-center gap-1"
+                >
+                  {abnLookupLoading ? (
+                    <><Loader2 className="h-4 w-4 animate-spin" /> Lookup</>
+                  ) : (
+                    <><Search className="h-4 w-4" /> Lookup</>
+                  )}
+                </button>
+              }
+            />
+            {abnLookupResult && (
+              <div className="sm:col-span-2">
+                {abnLookupResult.success ? (
+                  <div className="flex items-center gap-2 text-green-600 text-sm">
+                    <CheckCircle2 className="h-4 w-4" />
+                    <span>Found: {abnLookupResult.businessName}</span>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2 text-red-600 text-sm">
+                    <XCircle className="h-4 w-4" />
+                    <span>{abnLookupResult.error}</span>
+                  </div>
+                )}
+              </div>
+            )}
             <Field label="Organisation / Business Name" value={profile.organisation ?? ""} onChange={(v) => setProfile({ ...profile, organisation: v })} placeholder="e.g. Smith Bookkeeping (optional)" />
           </div>
         </div>
@@ -165,8 +236,32 @@ export default function ProfilePage() {
           <div className="mt-4 grid gap-4 sm:grid-cols-2">
             <Field label="Date of Birth" value={profile.dateOfBirth ?? ""} onChange={(v) => setProfile({ ...profile, dateOfBirth: v })} placeholder="DD/MM/YYYY" />
             <Field label="Gender" value={profile.gender ?? ""} onChange={(v) => setProfile({ ...profile, gender: v })} placeholder="e.g. Male / Female / Non-binary" />
-            <Field label="Tax File Number / TFN" value={profile.tfn ?? ""} onChange={(v) => setProfile({ ...profile, tfn: v })} placeholder="e.g. 123 456 789" />
-            <Field label="Medicare Number" value={profile.medicareNumber ?? ""} onChange={(v) => setProfile({ ...profile, medicareNumber: v })} placeholder="e.g. 1234 56789 1" />
+            <Field
+              label="Tax File Number / TFN"
+              value={profile.tfn ?? ""}
+              onChange={(v) => setProfile({ ...profile, tfn: v })}
+              placeholder="e.g. 123 456 789"
+              validationHint={{
+                validator: (v) => {
+                  const clean = v.replace(/\s/g, "");
+                  return (clean.length === 8 || clean.length === 9) && /^\d+$/.test(clean);
+                },
+                hint: "8-9 digits",
+              }}
+            />
+            <Field
+              label="Medicare Number"
+              value={profile.medicareNumber ?? ""}
+              onChange={(v) => setProfile({ ...profile, medicareNumber: v })}
+              placeholder="e.g. 1234 56789 1"
+              validationHint={{
+                validator: (v) => {
+                  const clean = v.replace(/\s/g, "");
+                  return clean.length === 11 && /^\d{10}[0-9]$/.test(clean);
+                },
+                hint: "10 digits + IRN",
+              }}
+            />
             <Field label="Medicare Expiry" value={profile.medicareExpiry ?? ""} onChange={(v) => setProfile({ ...profile, medicareExpiry: v })} placeholder="MM/YYYY" />
             <Field label="Driver Licence Number" value={profile.driversLicence ?? ""} onChange={(v) => setProfile({ ...profile, driversLicence: v })} placeholder="Optional" />
             <Field label="Passport Number" value={profile.passportNumber ?? ""} onChange={(v) => setProfile({ ...profile, passportNumber: v })} placeholder="Optional" />
@@ -281,29 +376,48 @@ export default function ProfilePage() {
   );
 }
 
+function ValidationHint({ value, validator, hint }: { value: string; validator: (v: string) => boolean; hint: string }) {
+  const clean = value.replace(/\s/g, "");
+  if (!clean) return null;
+  const valid = validator(clean);
+  return (
+    <span className={`text-xs mt-0.5 ${valid ? "text-green-600" : "text-text-muted"}`}>
+      {valid ? <span className="flex items-center gap-1"><CheckCircle2 className="h-3 w-3" /> Valid</span> : hint}
+    </span>
+  );
+}
+
 function Field({
   label,
   value,
   onChange,
   type = "text",
   placeholder,
+  validationHint,
+  rightElement,
 }: {
   label: string;
   value: string;
   onChange: (v: string) => void;
   type?: string;
   placeholder?: string;
+  validationHint?: { validator: (v: string) => boolean; hint: string };
+  rightElement?: React.ReactNode;
 }) {
   return (
     <label className="flex flex-col gap-1.5">
       <span className="text-sm font-medium text-text-muted">{label}</span>
-      <input
-        type={type}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder={placeholder}
-        className="h-11 rounded-lg border border-border bg-surface px-3 text-sm outline-none focus:border-accent focus:ring-1 focus:ring-accent transition-colors"
-      />
+      <div className="flex gap-2">
+        <input
+          type={type}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder={placeholder}
+          className="h-11 flex-1 rounded-lg border border-border bg-surface px-3 text-sm outline-none focus:border-accent focus:ring-1 focus:ring-accent transition-colors"
+        />
+        {rightElement}
+      </div>
+      {validationHint && <ValidationHint value={value} validator={validationHint.validator} hint={validationHint.hint} />}
     </label>
   );
 }
