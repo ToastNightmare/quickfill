@@ -13,7 +13,7 @@ interface UseSignaturePadOptions {
 function catmullRomPath(
   ctx: CanvasRenderingContext2D,
   pts: { x: number; y: number }[],
-  tension = 0.4
+  tension = 0.5
 ) {
   if (pts.length < 2) return;
 
@@ -84,7 +84,7 @@ export function useSignaturePad({
     ctx.scale(dpr, dpr);
     ctx.lineCap              = "round";
     ctx.lineJoin             = "round";
-    ctx.strokeStyle          = "#1a1a2e";
+    ctx.strokeStyle          = "#0d0d1a";
     ctx.lineWidth            = 2.0;
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = "high";
@@ -119,7 +119,7 @@ export function useSignaturePad({
     // Reset stroke style
     ctx.lineCap     = "round";
     ctx.lineJoin    = "round";
-    ctx.strokeStyle = "#1a1a2e";
+    ctx.strokeStyle = "#0d0d1a";
 
     // Draw completed strokes
     for (const stroke of strokesRef.current) {
@@ -129,11 +129,20 @@ export function useSignaturePad({
       catmullRomPath(ctx, pts);
     }
 
-    // Draw current stroke in progress
+    // Draw current stroke in progress — pressure simulation via avg speed
     const current = currentRef.current;
     if (current.length >= 2) {
       const pts = simplifyPoints(current, 1.0);
-      ctx.lineWidth = 2.0;
+      // Calculate average segment length to simulate pen pressure
+      let totalDist = 0;
+      for (let i = 1; i < pts.length; i++) {
+        const dx = pts[i].x - pts[i - 1].x;
+        const dy = pts[i].y - pts[i - 1].y;
+        totalDist += Math.sqrt(dx * dx + dy * dy);
+      }
+      const avgSpeed = totalDist / Math.max(1, pts.length - 1);
+      const pressureWidth = Math.max(0.8, Math.min(2.8, 2.8 - avgSpeed * 0.04));
+      ctx.lineWidth = pressureWidth;
       catmullRomPath(ctx, pts);
     }
   }, []);
@@ -157,7 +166,7 @@ export function useSignaturePad({
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext("2d")!;
-    ctx.fillStyle = "#1a1a2e";
+    ctx.fillStyle = "#0d0d1a";
     ctx.beginPath();
     ctx.arc(pt.x, pt.y, 1.0, 0, Math.PI * 2);
     ctx.fill();
@@ -246,7 +255,7 @@ export function useSignaturePad({
 
     ctx.lineCap     = "round";
     ctx.lineJoin    = "round";
-    ctx.strokeStyle = "#1a1a2e";
+    ctx.strokeStyle = "#0d0d1a";
     ctx.lineWidth   = 2.0;
 
     strokesRef.current    = [];
@@ -287,13 +296,26 @@ export function useSignaturePad({
 
     const trimW = maxX - minX + 1;
     const trimH = maxY - minY + 1;
-    const trimmed = ctx.getImageData(minX, minY, trimW, trimH);
-
+    // HiDPI 3x export — redraw all strokes onto a 3x canvas for crisp output
+    const scale = 3;
     const out = document.createElement("canvas");
-    out.width  = trimW;
-    out.height = trimH;
+    out.width  = trimW * scale;
+    out.height = trimH * scale;
     const outCtx = out.getContext("2d")!;
-    outCtx.putImageData(trimmed, 0, 0);
+    outCtx.imageSmoothingEnabled = true;
+    outCtx.imageSmoothingQuality = "high";
+    // Translate so the trimmed region is centred, then scale up
+    outCtx.translate(-minX * scale, -minY * scale);
+    outCtx.scale(scale, scale);
+    outCtx.lineCap   = "round";
+    outCtx.lineJoin  = "round";
+    outCtx.strokeStyle = "#0d0d1a";
+    outCtx.lineWidth = 2.0;
+    for (const stroke of strokesRef.current) {
+      const pts = simplifyPoints(stroke, 1.5);
+      if (pts.length < 2) continue;
+      catmullRomPath(outCtx, pts);
+    }
     return out.toDataURL("image/png");
   }, []);
 
