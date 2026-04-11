@@ -86,6 +86,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
   const [snapPreviewOpacity, setSnapPreviewOpacity] = useState(0);
   const precomputedBoxesRef = useRef<SnapResult[]>([]);
   const transformerRef = useRef<Konva.Transformer>(null);
+  const stageRef = useRef<Konva.Stage>(null);
   const dragStartedRef = useRef(false);
   const mouseDownPos = useRef<{x: number, y: number} | null>(null);
   const isDragMove = useRef(false);
@@ -197,28 +198,31 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
   useLayoutEffect(() => {
     const tr = transformerRef.current;
     if (!tr) return;
+    // Always clear first — one node only, always
+    tr.nodes([]);
+    tr.getLayer()?.batchDraw();
 
-    const applyTransformer = () => {
-      if (!transformerRef.current) return;
-      transformerRef.current.nodes([]);
-      if (selectedFieldId) {
-        const node = fieldNodeMapRef.current.get(selectedFieldId) ?? null;
-        if (node) {
-          transformerRef.current.nodes([node]);
-        } else {
-          // Node not yet registered (new field mid-mount) — retry next frame
-          requestAnimationFrame(() => {
-            if (!transformerRef.current) return;
-            const retryNode = fieldNodeMapRef.current.get(selectedFieldId) ?? null;
-            transformerRef.current.nodes(retryNode ? [retryNode] : []);
-            transformerRef.current.getLayer()?.batchDraw();
-          });
-        }
-      }
-      transformerRef.current.getLayer()?.batchDraw();
-    };
+    if (!selectedFieldId) return;
 
-    applyTransformer();
+    // Try map first (immediate)
+    const mapNode = fieldNodeMapRef.current.get(selectedFieldId) ?? null;
+    if (mapNode) {
+      tr.nodes([mapNode]);
+      tr.getLayer()?.batchDraw();
+      return;
+    }
+
+    // Node not in map yet (new field still mounting) — find via stage after paint
+    const capturedId = selectedFieldId;
+    requestAnimationFrame(() => {
+      const tr2 = transformerRef.current;
+      if (!tr2) return;
+      // Only apply if selectedFieldId hasn't changed since we scheduled this
+      const node = fieldNodeMapRef.current.get(capturedId) ?? null;
+      tr2.nodes([]);
+      if (node) tr2.nodes([node]);
+      tr2.getLayer()?.batchDraw();
+    });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedFieldId]);
 
@@ -661,6 +665,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
         })()}
 
         <Stage
+          ref={stageRef}
           width={dimensions.width}
           height={dimensions.height}
           scaleX={zoomFactor}
