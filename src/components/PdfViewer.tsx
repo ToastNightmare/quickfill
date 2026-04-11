@@ -86,13 +86,11 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
   const [snapPreviewOpacity, setSnapPreviewOpacity] = useState(0);
   const precomputedBoxesRef = useRef<SnapResult[]>([]);
   const transformerRef = useRef<Konva.Transformer>(null);
-  // Registry of all mounted field nodes — used by the single Transformer manager
-  const fieldNodeMapRef = useRef<Map<string, Konva.Node>>(new Map());
   const dragStartedRef = useRef(false);
   const mouseDownPos = useRef<{x: number, y: number} | null>(null);
   const isDragMove = useRef(false);
   const snapPreviewTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
+  const fieldNodeMapRef = useRef<Map<string, Konva.Node>>(new Map());
 
   useImperativeHandle(ref, () => ({
     getCanvasDataURL: () => canvasRef.current?.toDataURL("image/png") ?? null,
@@ -194,20 +192,20 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
 
   // SINGLE authoritative Transformer manager.
   // useLayoutEffect fires synchronously after DOM mutations, before paint.
-  // This eliminates the race condition where useEffect fired after child effects
-  // had already registered nodes, causing the Transformer to span multiple fields.
+  // Depends on both selectedFieldId AND fields so it re-syncs after new fields
+  // mount and register their nodes via callback refs.
   useLayoutEffect(() => {
     const tr = transformerRef.current;
     if (!tr) return;
-    tr.nodes([]);
     if (selectedFieldId) {
       const node = fieldNodeMapRef.current.get(selectedFieldId) ?? null;
-      if (node) {
-        tr.nodes([node]);
-      }
+      // Always set to exactly one node (or empty) — never append
+      tr.nodes(node ? [node] : []);
+    } else {
+      tr.nodes([]);
     }
     tr.getLayer()?.batchDraw();
-  }, [selectedFieldId]);
+  }, [selectedFieldId, fields]);
 
 
   // Animate snap preview opacity
