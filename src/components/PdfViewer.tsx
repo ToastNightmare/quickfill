@@ -875,7 +875,7 @@ function FieldShape({
   isEditing: boolean;
   isHighlighted: boolean;
   isHovered: boolean;
-  onSelect: (node?: Konva.Node) => void;
+  onSelect: () => void;
   onMouseEnter?: () => void;
   onMouseLeave?: () => void;
   onDragStart?: () => void;
@@ -888,6 +888,8 @@ function FieldShape({
   setSelectedRef: (node: Konva.Node | null) => void;
 }) {
   const groupRef = useRef<Konva.Group>(null);
+  const setSelectedRefRef = useRef(setSelectedRef);
+  setSelectedRefRef.current = setSelectedRef;
 
   // Register this node in the parent's fieldNodeMap whenever it mounts or updates.
   // Deregister on unmount.
@@ -896,8 +898,9 @@ function FieldShape({
   // the Transformer's useLayoutEffect reads the registry.
   const groupCallbackRef = useCallback((node: Konva.Group | null) => {
     groupRef.current = node;
-    setSelectedRef(node);
-  }, [setSelectedRef]);
+    setSelectedRefRef.current(node);
+// eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // empty deps - only fires on mount/unmount, not every render
 
   const [dragOpacity, setDragOpacity] = useState(1);
 
@@ -951,7 +954,7 @@ function FieldShape({
           }
           const next: CheckboxStamp = current === "none" ? "tick" : "cross";
           onValueChange(next);
-          if (!isSelected) onSelect(groupRef.current ?? undefined);
+          if (!isSelected) onSelect();
         }}
         onDragStart={() => {
           setDragOpacity(0.85);
@@ -1049,7 +1052,7 @@ function FieldShape({
       onMouseLeave={() => onMouseLeave?.()}
       onClick={(e) => {
         e.cancelBubble = true;
-        onSelect(groupRef.current ?? undefined);
+        onSelect();
       }}
       onDblClick={(e) => {
         e.cancelBubble = true;
