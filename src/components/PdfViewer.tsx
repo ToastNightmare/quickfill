@@ -197,13 +197,20 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
   useLayoutEffect(() => {
     const tr = transformerRef.current;
     if (!tr) return;
+    
+    // CRITICAL: Must fully clear Transformer internal state before setting new node.
+    // Konva Transformer accumulates nodes internally; calling nodes() alone doesn't
+    // clear the internal selection state. Must detach first, then set empty, then set new.
+    tr.detach();
+    tr.nodes([]);
+    
     if (selectedFieldId) {
       const node = fieldNodeMapRef.current.get(selectedFieldId) ?? null;
-      // Always set to exactly one node (or empty) — never append
-      tr.nodes(node ? [node] : []);
-    } else {
-      tr.nodes([]);
+      if (node) {
+        tr.nodes([node]);
+      }
     }
+    
     tr.getLayer()?.batchDraw();
   }, [selectedFieldId, fields]);
 
