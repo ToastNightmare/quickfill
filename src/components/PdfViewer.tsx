@@ -192,17 +192,17 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
   }, []);
 
   // Transformer attachment.
-  // Always clear immediately when selection changes.
-  // Re-attach is handled directly in attachTransformer() which is called
-  // from onSelect at click time — when we have the node reference in hand.
+  // Only clear when selection is removed entirely (null).
+  // When switching between fields, attachTransformer() called at click time handles it.
+  // Child effects run before parent effects in React, so clearing here on every
+  // selectedFieldId change would wipe the node the child just attached.
   useEffect(() => {
+    if (selectedFieldId) return; // attachTransformer handles this case already
     const tr = transformerRef.current;
     if (!tr) return;
     tr.nodes([]);
     tr.getLayer()?.batchDraw();
-    if (!selectedFieldId) {
-      selectedShapeRef.current = null;
-    }
+    selectedShapeRef.current = null;
   }, [selectedFieldId]);
 
   // Called directly when a field is clicked or placed — attaches transformer immediately.
@@ -898,11 +898,12 @@ function FieldShape({
 }) {
   const groupRef = useRef<Konva.Group>(null);
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (isSelected && groupRef.current) {
       setSelectedRef(groupRef.current);
     }
-  }, [isSelected, setSelectedRef]);
+  }, [isSelected]);
 
   const [dragOpacity, setDragOpacity] = useState(1);
 
