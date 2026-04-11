@@ -85,13 +85,10 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
   const [cursorStyle, setCursorStyle] = useState("default");
   const [snapPreviewOpacity, setSnapPreviewOpacity] = useState(0);
   const precomputedBoxesRef = useRef<SnapResult[]>([]);
-  const transformerRef = useRef<Konva.Transformer>(null);
-  const stageRef = useRef<Konva.Stage>(null);
   const dragStartedRef = useRef(false);
   const mouseDownPos = useRef<{x: number, y: number} | null>(null);
   const isDragMove = useRef(false);
   const snapPreviewTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const fieldNodeMapRef = useRef<Map<string, Konva.Node>>(new Map());
 
   useImperativeHandle(ref, () => ({
     getCanvasDataURL: () => canvasRef.current?.toDataURL("image/png") ?? null,
@@ -191,40 +188,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
     return () => observer.disconnect();
   }, []);
 
-  // SINGLE authoritative Transformer manager.
-  // useLayoutEffect fires synchronously after DOM mutations, before paint.
-  // Depends on both selectedFieldId AND fields so it re-syncs after new fields
-  // mount and register their nodes via callback refs.
-  useLayoutEffect(() => {
-    const tr = transformerRef.current;
-    if (!tr) return;
-    // Always clear first — one node only, always
-    tr.nodes([]);
-    tr.getLayer()?.batchDraw();
 
-    if (!selectedFieldId) return;
-
-    // Try map first (immediate)
-    const mapNode = fieldNodeMapRef.current.get(selectedFieldId) ?? null;
-    if (mapNode) {
-      tr.nodes([mapNode]);
-      tr.getLayer()?.batchDraw();
-      return;
-    }
-
-    // Node not in map yet (new field still mounting) — find via stage after paint
-    const capturedId = selectedFieldId;
-    requestAnimationFrame(() => {
-      const tr2 = transformerRef.current;
-      if (!tr2) return;
-      // Only apply if selectedFieldId hasn't changed since we scheduled this
-      const node = fieldNodeMapRef.current.get(capturedId) ?? null;
-      tr2.nodes([]);
-      if (node) tr2.nodes([node]);
-      tr2.getLayer()?.batchDraw();
-    });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedFieldId]);
 
 
   // Animate snap preview opacity
@@ -665,7 +629,6 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
         })()}
 
         <Stage
-          ref={stageRef}
           width={dimensions.width}
           height={dimensions.height}
           scaleX={zoomFactor}
@@ -747,28 +710,9 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
                     onFieldUpdate(field.id, { value } as Partial<EditorField>);
                   }
                 }}
-                setSelectedRef={(node) => {
-                  if (node) {
-                    fieldNodeMapRef.current.set(field.id, node);
-                  } else {
-                    fieldNodeMapRef.current.delete(field.id);
-                  }
-                }}
+
               />
             ))}
-            <Transformer
-              ref={transformerRef}
-              rotateEnabled={false}
-              borderStroke="#3b82f6"
-              anchorStroke="#3b82f6"
-              anchorFill="#fff"
-              anchorSize={selectedFieldIsSnapped ? 6 : 8}
-              enabledAnchors={selectedFieldIsSnapped ? [] : undefined}
-              boundBoxFunc={(oldBox, newBox) => {
-                if (newBox.width < 20 || newBox.height < 16) return oldBox;
-                return newBox;
-              }}
-            />
           </Layer>
         </Stage>
 
@@ -888,7 +832,6 @@ function FieldShape({
   onDoubleClick,
   onValueChange,
   onDelete,
-  setSelectedRef,
 }: {
   field: EditorField;
   isSelected: boolean;
@@ -905,22 +848,8 @@ function FieldShape({
   onDoubleClick: () => void;
   onValueChange: (value: string | boolean | CheckboxStamp) => void;
   onDelete: () => void;
-  setSelectedRef: (node: Konva.Node | null) => void;
 }) {
   const groupRef = useRef<Konva.Group>(null);
-  const setSelectedRefRef = useRef(setSelectedRef);
-  setSelectedRefRef.current = setSelectedRef;
-
-  // Register this node in the parent's fieldNodeMap whenever it mounts or updates.
-  // Deregister on unmount.
-  // Callback ref — registers into parent's fieldNodeMap immediately on mount,
-  // before any effects fire. This ensures the node is always available when
-  // the Transformer's useLayoutEffect reads the registry.
-  const groupCallbackRef = useCallback((node: Konva.Group | null) => {
-    groupRef.current = node;
-    setSelectedRefRef.current(node);
-// eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // empty deps - only fires on mount/unmount, not every render
 
   const [dragOpacity, setDragOpacity] = useState(1);
 
@@ -953,9 +882,10 @@ function FieldShape({
 
   if (field.type === "checkbox") {
     return (
-      <Group
-        ref={groupCallbackRef}
-        x={field.x}
+      <>
+        <Group
+          ref={groupRef}
+          x={field.x}
         y={field.y}
         width={field.width}
         height={field.height}
@@ -1039,7 +969,23 @@ function FieldShape({
             />
           );
         })()}
-      </Group>
+        </Group>
+        {isSelected && (
+          <Transformer
+            nodes={groupRef.current ? [groupRef.current] : []}
+            rotateEnabled={false}
+            borderStroke="#3b82f6"
+            anchorStroke="#3b82f6"
+            anchorFill="#fff"
+            anchorSize={isSnapped ? 6 : 8}
+            enabledAnchors={isSnapped ? [] : undefined}
+            boundBoxFunc={(oldBox, newBox) => {
+              if (newBox.width < 16 || newBox.height < 16) return oldBox;
+              return newBox;
+            }}
+          />
+        )}
+      </>
     );
   }
 
@@ -1060,9 +1006,10 @@ function FieldShape({
   const isEmpty = !field.value && !hasSignatureImage;
 
   return (
-    <Group
-      ref={groupCallbackRef}
-      x={field.x}
+    <>
+      <Group
+        ref={groupRef}
+        x={field.x}
       y={field.y}
       width={field.width}
       height={field.height}
@@ -1166,6 +1113,22 @@ function FieldShape({
           />
         )
       )}
-    </Group>
+      </Group>
+      {isSelected && (
+        <Transformer
+          nodes={groupRef.current ? [groupRef.current] : []}
+          rotateEnabled={false}
+          borderStroke="#3b82f6"
+          anchorStroke="#3b82f6"
+          anchorFill="#fff"
+          anchorSize={isSnapped ? 6 : 8}
+          enabledAnchors={isSnapped ? [] : undefined}
+          boundBoxFunc={(oldBox, newBox) => {
+            if (newBox.width < 20 || newBox.height < 16) return oldBox;
+            return newBox;
+          }}
+        />
+      )}
+    </>
   );
 }
