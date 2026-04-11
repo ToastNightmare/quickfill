@@ -904,6 +904,7 @@ function FieldShape({
     return (
       <>
         <Group
+          id={field.id}
           ref={groupRefCallback}
           x={field.x}
         y={field.y}
@@ -992,6 +993,7 @@ function FieldShape({
         </Group>
         {isSelected && (
           <Transformer
+            key={`tr-${field.id}`}
             nodes={groupRef.current ? [groupRef.current] : []}
             rotateEnabled={false}
             borderStroke="#3b82f6"
@@ -1028,6 +1030,7 @@ function FieldShape({
   return (
     <>
       <Group
+        id={field.id}
         ref={groupRefCallback}
         x={field.x}
       y={field.y}
@@ -1136,6 +1139,7 @@ function FieldShape({
       </Group>
       {isSelected && (
         <Transformer
+          key={`tr-${field.id}`}
           nodes={groupRef.current ? [groupRef.current] : []}
           rotateEnabled={false}
           borderStroke="#3b82f6"
