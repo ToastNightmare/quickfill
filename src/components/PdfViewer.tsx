@@ -850,14 +850,25 @@ function FieldShape({
   onDelete: () => void;
 }) {
   const groupRef = useRef<Konva.Group>(null);
+  const localTrRef = useRef<Konva.Transformer | null>(null);
 
   // Callback ref to attach Transformer synchronously on mount — no useEffect race
   const attachTransformer = useCallback((tr: Konva.Transformer | null) => {
+    localTrRef.current = tr;
     if (tr && groupRef.current) {
       tr.nodes([groupRef.current]);
       tr.getLayer()?.batchDraw();
     }
   }, []);
+
+  // Re-enforce correct node whenever isSelected changes — prevents field merging
+  useEffect(() => {
+    const tr = localTrRef.current;
+    const group = groupRef.current;
+    if (!tr || !group) return;
+    tr.nodes([group]);
+    tr.getLayer()?.batchDraw();
+  }, [isSelected]);
 
   const [dragOpacity, setDragOpacity] = useState(1);
 
@@ -892,6 +903,7 @@ function FieldShape({
     return (
       <>
         <Group
+          id={field.id}
           ref={groupRef}
           x={field.x}
         y={field.y}
@@ -981,6 +993,7 @@ function FieldShape({
         {isSelected && (
           <Transformer
             ref={attachTransformer}
+            listening={false}
             rotateEnabled={false}
             borderStroke="#3b82f6"
             anchorStroke="#3b82f6"
@@ -1016,6 +1029,7 @@ function FieldShape({
   return (
     <>
       <Group
+        id={field.id}
         ref={groupRef}
         x={field.x}
       y={field.y}
@@ -1125,6 +1139,7 @@ function FieldShape({
       {isSelected && (
         <Transformer
           ref={attachTransformer}
+          listening={false}
           rotateEnabled={false}
           borderStroke="#3b82f6"
           anchorStroke="#3b82f6"
