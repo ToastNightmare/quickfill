@@ -234,21 +234,21 @@ function LoggedInHome() {
 const features = [
   {
     icon: Upload,
-    title: "Upload Any PDF",
+    title: "Upload Any Australian Form",
     description:
-      "Drag and drop any PDF form , ATO tax returns, Medicare claims, rental applications, council forms, and more.",
+      "ATO tax returns, Medicare claims, Centrelink forms, rental applications, council permits — QuickFill handles them all.",
   },
   {
-    icon: ScanSearch,
-    title: "Smart Field Detection",
+    icon: User,
+    title: "Auto-fill from Your Profile",
     description:
-      "Automatically detects fillable AcroForm fields. For flat PDFs, place fields exactly where you need them.",
+      "Save your name, address, TFN, Medicare number, ABN and more. QuickFill fills matching fields instantly across any form.",
   },
   {
     icon: Download,
-    title: "Download Instantly",
+    title: "Download in Seconds",
     description:
-      "Get your filled PDF in seconds. Fields are embedded directly into the document , ready to print, email, or submit.",
+      "Your completed PDF is ready instantly. Print it, email it, or submit it — no software required.",
   },
 ];
 
@@ -371,13 +371,10 @@ export default function Home() {
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_#4f8ef720_0%,_transparent_60%)]" />
         <div className="relative mx-auto max-w-4xl text-center">
           <h1 className="text-4xl font-extrabold tracking-tight text-white sm:text-5xl lg:text-6xl">
-            Fill PDF Forms Online Free.{" "}
-            <span className="text-accent">Done in seconds.</span>
+            The PDF Form Filler Built for Australia.
           </h1>
           <p className="mx-auto mt-6 max-w-2xl text-lg text-gray-300 sm:text-xl">
-            The fastest way to fill out PDF forms online. Upload any form, ATO tax returns,
-            Medicare claims, Centrelink forms, rental applications, council permits, and
-            fill it with smart field detection and instant downloads. No software to install.
+            Fill ATO forms, Medicare claims, rental applications and more. Auto-fill with your Australian profile — TFN, Medicare, ABN and address pre-loaded. Done in seconds.
           </p>
           <div className="mt-10 flex flex-col items-center gap-4 sm:flex-row sm:justify-center">
             <Link
@@ -420,6 +417,63 @@ export default function Home() {
                 <p className="mt-2 text-sm leading-relaxed text-text-muted">
                   {feature.description}
                 </p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Australian Features */}
+      <section className="bg-surface-alt px-4 py-20 sm:px-6 lg:px-8">
+        <div className="mx-auto max-w-4xl">
+          <div className="text-center">
+            <span className="inline-flex items-center gap-2 rounded-full bg-accent/10 px-4 py-1.5 text-sm font-semibold text-accent">
+              🇦🇺 Built for Australian forms
+            </span>
+            <h2 className="mt-4 text-3xl font-bold tracking-tight sm:text-4xl">
+              Features made for Australia
+            </h2>
+            <p className="mx-auto mt-4 max-w-2xl text-text-muted">
+              No other PDF filler understands Australian forms like QuickFill. From TFN validation to ABN lookup, we handle the details that matter.
+            </p>
+          </div>
+          <div className="mt-12 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+            {[
+              {
+                emoji: "🔍",
+                title: "ABN Lookup",
+                description: "Type your ABN and we instantly verify it against the Australian Business Register and auto-fill your business name.",
+              },
+              {
+                emoji: "🪪",
+                title: "TFN & Medicare Validation",
+                description: "Real-time format validation for Tax File Numbers and Medicare cards so you never submit an error again.",
+              },
+              {
+                emoji: "📋",
+                title: "Australian Profile Auto-fill",
+                description: "Save your TFN, Medicare number, ABN, address, and driver licence once. QuickFill fills matching fields across any form.",
+              },
+              {
+                emoji: "💾",
+                title: "Save & Resume",
+                description: "Start filling a form, close the tab, come back later. Your progress is automatically saved for 30 days.",
+              },
+              {
+                emoji: "🔄",
+                title: "Re-fill Previous Forms",
+                description: "Filled this form before? One click to re-fill it with the same details — great for monthly BAS and invoices.",
+              },
+              {
+                emoji: "🔒",
+                title: "Private by Design",
+                description: "Your PDFs are processed in your browser. We never upload or store your documents on our servers.",
+              },
+            ].map((f) => (
+              <div key={f.title} className="rounded-xl border border-border bg-surface p-6 shadow-sm">
+                <div className="text-3xl mb-3">{f.emoji}</div>
+                <h3 className="font-semibold text-base mb-1">{f.title}</h3>
+                <p className="text-sm text-text-muted leading-relaxed">{f.description}</p>
               </div>
             ))}
           </div>
@@ -612,6 +666,8 @@ export default function Home() {
                   "AcroForm detection",
                   "No watermarks",
                   "Auto-fill from profile",
+                  "Save & resume progress",
+                  "Re-fill from history",
                   "Unlimited fill history",
                   "Priority support",
                 ].map((item) => (
