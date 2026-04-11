@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useRef, useState, useCallback, useImperativeHandle, forwardRef } from "react";
+import { useEffect, useRef, useState, useCallback, useImperativeHandle, forwardRef } from "react";
 import { Stage, Layer, Rect, Text, Group, Transformer, Image as KonvaImage } from "react-konva";
 import type Konva from "konva";
 import type { EditorField, ToolType, SignatureField, CheckboxStamp } from "@/lib/types";
@@ -815,7 +815,20 @@ function useLoadedImage(src: string | undefined): HTMLImageElement | null {
   return image;
 }
 
-// Individual field component
+// ─── FieldShape ──────────────────────────────────────────────────────────────
+// ARCHITECTURE NOTE — DO NOT REVERT:
+// Each FieldShape renders its own Transformer when selected (isSelected=true).
+// This is intentional and must never be changed to a shared Transformer pattern.
+//
+// A shared Transformer was tried many times and always failed — it bonds across
+// multiple fields because React's render cycle and Konva's internal node state
+// fight each other. Shared Transformer + fieldNodeMapRef + useLayoutEffect +
+// requestAnimationFrame retries all failed.
+//
+// The correct pattern: per-field Transformer inside a Fragment, mounted only
+// when isSelected. Konva attaches it to the sibling Group automatically.
+// Zero shared state, zero timing issues, zero registry needed.
+// ─────────────────────────────────────────────────────────────────────────────
 function FieldShape({
   field,
   isSelected,
