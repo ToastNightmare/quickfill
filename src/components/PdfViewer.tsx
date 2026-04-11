@@ -86,7 +86,8 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
   const [snapPreviewOpacity, setSnapPreviewOpacity] = useState(0);
   const precomputedBoxesRef = useRef<SnapResult[]>([]);
   const transformerRef = useRef<Konva.Transformer>(null);
-  const selectedShapeRef = useRef<Konva.Node | null>(null);
+  // Registry of all mounted field nodes — used by the single Transformer manager
+  const fieldNodeMapRef = useRef<Map<string, Konva.Node>>(new Map());
   const dragStartedRef = useRef(false);
   const mouseDownPos = useRef<{x: number, y: number} | null>(null);
   const isDragMove = useRef(false);
@@ -191,27 +192,25 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
     return () => observer.disconnect();
   }, []);
 
-  // Transformer attachment.
-  // Only clear when selection is removed entirely (null).
-  // When switching between fields, attachTransformer() called at click time handles it.
-  // Child effects run before parent effects in React, so clearing here on every
-  // selectedFieldId change would wipe the node the child just attached.
+  // SINGLE authoritative Transformer manager.
+  // Runs after every render. Looks up the node for selectedFieldId in the registry
+  // and sets tr.nodes() exactly once. Nothing else should call tr.nodes().
   useEffect(() => {
-    if (selectedFieldId) return; // attachTransformer handles this case already
     const tr = transformerRef.current;
     if (!tr) return;
-    tr.nodes([]);
-    tr.getLayer()?.batchDraw();
-    selectedShapeRef.current = null;
-  }, [selectedFieldId]);
-
-  // Called directly when a field is clicked or placed — attaches transformer immediately.
-  const attachTransformer = useCallback((node: Konva.Node | null) => {
-    selectedShapeRef.current = node;
-    const tr = transformerRef.current;
-    if (!tr) return;
+    if (!selectedFieldId) {
+      tr.nodes([]);
+      tr.getLayer()?.batchDraw();
+      return;
+    }
+    const node = fieldNodeMapRef.current.get(selectedFieldId) ?? null;
     tr.nodes(node ? [node] : []);
     tr.getLayer()?.batchDraw();
+  });
+
+  // No-op stub kept for call-site compatibility — node registration via setSelectedRef is the real path.
+  const attachTransformer = useCallback((_node: Konva.Node | null) => {
+    // Intentionally empty — Transformer is managed by the effect above.
   }, []);
 
 
@@ -472,8 +471,6 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
       }
 
       onFieldAdd(field);
-      // Clear stale ref so Transformer does not span the previous field
-      selectedShapeRef.current = null;
       onFieldSelect(id);
       // Deactivate tool after placing so panel switches to field controls
       onToolSelect(null);
@@ -739,8 +736,10 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
                   }
                 }}
                 setSelectedRef={(node) => {
-                  if (field.id === selectedFieldId) {
-                    attachTransformer(node);
+                  if (node) {
+                    fieldNodeMapRef.current.set(field.id, node);
+                  } else {
+                    fieldNodeMapRef.current.delete(field.id);
                   }
                 }}
               />
@@ -898,12 +897,18 @@ function FieldShape({
 }) {
   const groupRef = useRef<Konva.Group>(null);
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+  // Register this node in the parent's fieldNodeMap whenever it mounts or updates.
+  // Deregister on unmount.
   useEffect(() => {
-    if (isSelected && groupRef.current) {
+    if (groupRef.current) {
       setSelectedRef(groupRef.current);
     }
-  }, [isSelected]);
+    return () => {
+      setSelectedRef(null);
+    };
+  // setSelectedRef is stable (inline arrow in parent map, same field.id scope)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const [dragOpacity, setDragOpacity] = useState(1);
 
