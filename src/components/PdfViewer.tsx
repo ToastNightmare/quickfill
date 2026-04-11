@@ -197,22 +197,30 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
   useLayoutEffect(() => {
     const tr = transformerRef.current;
     if (!tr) return;
-    
-    // CRITICAL: Must fully clear Transformer internal state before setting new node.
-    // Konva Transformer accumulates nodes internally; calling nodes() alone doesn't
-    // clear the internal selection state. Must detach first, then set empty, then set new.
-    tr.detach();
-    tr.nodes([]);
-    
-    if (selectedFieldId) {
-      const node = fieldNodeMapRef.current.get(selectedFieldId) ?? null;
-      if (node) {
-        tr.nodes([node]);
+
+    const applyTransformer = () => {
+      if (!transformerRef.current) return;
+      transformerRef.current.nodes([]);
+      if (selectedFieldId) {
+        const node = fieldNodeMapRef.current.get(selectedFieldId) ?? null;
+        if (node) {
+          transformerRef.current.nodes([node]);
+        } else {
+          // Node not yet registered (new field mid-mount) — retry next frame
+          requestAnimationFrame(() => {
+            if (!transformerRef.current) return;
+            const retryNode = fieldNodeMapRef.current.get(selectedFieldId) ?? null;
+            transformerRef.current.nodes(retryNode ? [retryNode] : []);
+            transformerRef.current.getLayer()?.batchDraw();
+          });
+        }
       }
-    }
-    
-    tr.getLayer()?.batchDraw();
-  }, [selectedFieldId, fields]);
+      transformerRef.current.getLayer()?.batchDraw();
+    };
+
+    applyTransformer();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedFieldId]);
 
 
   // Animate snap preview opacity
