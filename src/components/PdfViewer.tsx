@@ -850,17 +850,14 @@ function FieldShape({
   onDelete: () => void;
 }) {
   const groupRef = useRef<Konva.Group>(null);
-  const transformerRef = useRef<Konva.Transformer>(null);
 
-  // Imperatively attach Transformer to this field's Group after mount.
-  // The nodes prop alone is not reliably reactive in react-konva.
-  useEffect(() => {
-    const tr = transformerRef.current;
-    const group = groupRef.current;
-    if (!tr || !group) return;
-    tr.nodes([group]);
-    tr.getLayer()?.batchDraw();
-  }, [isSelected]);
+  // Callback ref to attach Transformer synchronously on mount — no useEffect race
+  const attachTransformer = useCallback((tr: Konva.Transformer | null) => {
+    if (tr && groupRef.current) {
+      tr.nodes([groupRef.current]);
+      tr.getLayer()?.batchDraw();
+    }
+  }, []);
 
   const [dragOpacity, setDragOpacity] = useState(1);
 
@@ -983,7 +980,7 @@ function FieldShape({
         </Group>
         {isSelected && (
           <Transformer
-            ref={transformerRef}
+            ref={attachTransformer}
             rotateEnabled={false}
             borderStroke="#3b82f6"
             anchorStroke="#3b82f6"
@@ -1127,7 +1124,7 @@ function FieldShape({
       </Group>
       {isSelected && (
         <Transformer
-          ref={transformerRef}
+          ref={attachTransformer}
           rotateEnabled={false}
           borderStroke="#3b82f6"
           anchorStroke="#3b82f6"
