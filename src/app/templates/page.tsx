@@ -38,6 +38,41 @@ const templates = [
     emoji: "✅",
     category: "General",
   },
+  {
+    file: "ndis-service-agreement.pdf",
+    title: "NDIS Service Agreement",
+    description: "Standard NDIS service agreement between participant and provider. Includes support details, hours, rates, and signatures.",
+    emoji: "♿",
+    category: "NDIS",
+  },
+  {
+    file: "employment-separation.pdf",
+    title: "Employment Separation Certificate",
+    description: "Required by Services Australia when an employee leaves a job. Needed for Centrelink claims.",
+    emoji: "📋",
+    category: "Employment",
+  },
+  {
+    file: "bank-account-change.pdf",
+    title: "Bank Account Change Request",
+    description: "Update your bank account details with an employer, super fund, or government agency.",
+    emoji: "🏦",
+    category: "Finance",
+  },
+  {
+    file: "insurance-claim.pdf",
+    title: "Insurance Claim Form",
+    description: "General insurance claim form for home, car, or personal property claims. Works with most Australian insurers.",
+    emoji: "🛡️",
+    category: "Insurance",
+  },
+  {
+    file: "medical-consent.pdf",
+    title: "Medical Consent Form",
+    description: "Patient consent form for medical procedures and treatments. Includes Medicare and emergency contact fields.",
+    emoji: "🏥",
+    category: "Healthcare",
+  },
 ];
 
 export default function TemplatesPage() {

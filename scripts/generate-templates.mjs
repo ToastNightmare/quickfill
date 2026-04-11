@@ -152,6 +152,106 @@ async function main() {
   writeFileSync(join(outDir, 'consent-form.pdf'), consentBytes);
   console.log('Created: consent-form.pdf');
 
+  // Form 6: NDIS Service Agreement
+  const ndisBytes = await createForm('NDIS Service Agreement', [
+    { label: 'Participant Name', full: true, id: 'participant_name' },
+    { label: 'Participant NDIS Number', half: true, id: 'ndis_number' },
+    { label: 'Date of Birth', half: true, id: 'date_of_birth' },
+    { label: 'Support Coordinator Name', full: true, id: 'support_coordinator' },
+    { label: 'Provider Name', full: true, id: 'provider_name' },
+    { label: 'Provider ABN', half: true, id: 'provider_abn' },
+    { label: 'Agreement Start Date', half: true, id: 'start_date' },
+    { label: 'Agreement End Date', half: true, id: 'end_date' },
+    { label: 'Support Category', full: true, id: 'support_category' },
+    { label: 'Support Description', full: true, id: 'support_description' },
+    { label: 'Weekly Hours', half: true, id: 'weekly_hours' },
+    { label: 'Hourly Rate', half: true, id: 'hourly_rate' },
+    { label: 'Total Weekly Cost', half: true, id: 'total_weekly_cost' },
+    { label: 'Participant Signature', half: true, id: 'participant_signature' },
+    { label: 'Date', half: true, id: 'participant_date' },
+    { label: 'Provider Signature', half: true, id: 'provider_signature' },
+    { label: 'Provider Date', half: true, id: 'provider_date' },
+  ]);
+  writeFileSync(join(outDir, 'ndis-service-agreement.pdf'), ndisBytes);
+  console.log('Created: ndis-service-agreement.pdf');
+
+  // Form 7: Employment Separation Certificate
+  const separationBytes = await createForm('Employment Separation Certificate', [
+    { label: 'Employee Full Name', full: true, id: 'employee_name' },
+    { label: 'TFN', half: true, id: 'tfn' },
+    { label: 'Date of Birth', half: true, id: 'date_of_birth' },
+    { label: 'Employer Business Name', full: true, id: 'employer_name' },
+    { label: 'Employer ABN', half: true, id: 'employer_abn' },
+    { label: 'Employment Start Date', half: true, id: 'employment_start' },
+    { label: 'Last Day of Work', half: true, id: 'last_day' },
+    { label: 'Reason for Leaving', full: true, id: 'reason_leaving' },
+    { label: 'Final Pay Amount', half: true, id: 'final_pay' },
+    { label: 'Leave Entitlements Paid', half: true, id: 'leave_paid' },
+    { label: 'Employer Signature', full: true, id: 'employer_signature' },
+    { label: 'Date', half: true, id: 'date' },
+  ]);
+  writeFileSync(join(outDir, 'employment-separation.pdf'), separationBytes);
+  console.log('Created: employment-separation.pdf');
+
+  // Form 8: Bank Account Change Request
+  const bankBytes = await createForm('Bank Account Change Request', [
+    { label: 'Full Name', full: true, id: 'full_name' },
+    { label: 'Date of Birth', half: true, id: 'date_of_birth' },
+    { label: 'Phone', half: true, id: 'phone' },
+    { label: 'Email', full: true, id: 'email' },
+    { label: 'Account Holder Name', full: true, id: 'account_holder' },
+    { label: 'New Bank Name', full: true, id: 'bank_name' },
+    { label: 'New BSB', half: true, id: 'bsb' },
+    { label: 'New Account Number', half: true, id: 'account_number' },
+    { label: 'Effective Date', half: true, id: 'effective_date' },
+    { label: 'Reason for Change', full: true, id: 'reason_change' },
+    { label: 'Signature', half: true, id: 'signature' },
+    { label: 'Date', half: true, id: 'date' },
+  ]);
+  writeFileSync(join(outDir, 'bank-account-change.pdf'), bankBytes);
+  console.log('Created: bank-account-change.pdf');
+
+  // Form 9: Insurance Claim Form
+  const insuranceBytes = await createForm('Insurance Claim Form', [
+    { label: 'Policy Number', half: true, id: 'policy_number' },
+    { label: 'Claim Date', half: true, id: 'claim_date' },
+    { label: 'Insured Name', full: true, id: 'insured_name' },
+    { label: 'Date of Birth', half: true, id: 'date_of_birth' },
+    { label: 'Phone', half: true, id: 'phone' },
+    { label: 'Email', full: true, id: 'email' },
+    { label: 'Incident Date', half: true, id: 'incident_date' },
+    { label: 'Incident Location', full: true, id: 'incident_location' },
+    { label: 'Description of Incident', full: true, id: 'incident_description' },
+    { label: 'Estimated Loss Amount', half: true, id: 'loss_amount' },
+    { label: 'Police Report Number', half: true, id: 'police_report' },
+    { label: 'Witness Name', full: true, id: 'witness_name' },
+    { label: 'Witness Phone', half: true, id: 'witness_phone' },
+    { label: 'Signature', half: true, id: 'signature' },
+    { label: 'Date', half: true, id: 'date' },
+  ]);
+  writeFileSync(join(outDir, 'insurance-claim.pdf'), insuranceBytes);
+  console.log('Created: insurance-claim.pdf');
+
+  // Form 10: Medical Consent Form
+  const medicalBytes = await createForm('Medical Consent Form', [
+    { label: 'Patient Full Name', full: true, id: 'patient_name' },
+    { label: 'Date of Birth', half: true, id: 'date_of_birth' },
+    { label: 'Medicare Number', half: true, id: 'medicare_number' },
+    { label: 'Phone', full: true, id: 'phone' },
+    { label: 'Address', full: true, id: 'address' },
+    { label: 'GP Name', full: true, id: 'gp_name' },
+    { label: 'Procedure or Treatment', full: true, id: 'procedure' },
+    { label: 'I consent to the above treatment', full: true, id: 'consent_statement' },
+    { label: 'Emergency Contact Name', half: true, id: 'emergency_contact' },
+    { label: 'Emergency Contact Phone', half: true, id: 'emergency_phone' },
+    { label: 'Patient Signature', half: true, id: 'patient_signature' },
+    { label: 'Date', half: true, id: 'patient_date' },
+    { label: 'Guardian Signature (if applicable)', half: true, id: 'guardian_signature' },
+    { label: 'Guardian Date', half: true, id: 'guardian_date' },
+  ]);
+  writeFileSync(join(outDir, 'medical-consent.pdf'), medicalBytes);
+  console.log('Created: medical-consent.pdf');
+
   console.log('\nAll templates generated successfully!');
   console.log(`Output directory: ${outDir}`);
 }

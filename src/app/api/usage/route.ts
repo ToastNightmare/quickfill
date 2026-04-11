@@ -18,8 +18,17 @@ function usageKey(userId: string) {
 
 export async function GET() {
   const { userId } = await auth();
+  
+  // Guest mode: allow 1 fill without sign-up
   if (!userId) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const guestKey = "usage:guest";
+    const used = await getRedis().get<number>(guestKey);
+    return NextResponse.json({
+      used: used ?? 0,
+      limit: 1,
+      isPro: false,
+      tier: "guest",
+    });
   }
 
   const [used, sub] = await Promise.all([
@@ -41,8 +50,10 @@ export async function GET() {
 
 export async function POST() {
   const { userId } = await auth();
+  
+  // Guest mode: track usage in localStorage, return success
   if (!userId) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    return NextResponse.json({ used: 1, guest: true });
   }
 
   const key = usageKey(userId);
