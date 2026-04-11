@@ -121,14 +121,14 @@ export default function ProfilePage() {
     setAbnLookupResult(null);
 
     try {
-      const response = await fetch(`https://api.abr.business.gov.au/abn/v3/json?abn=${cleanAbn}&guid=00000000-0000-0000-0000-000000000000`);
+      const response = await fetch(`/api/abn?abn=${cleanAbn}`);
       const data = await response.json();
 
-      if (data && data.entityName) {
-        setProfile((prev) => ({ ...prev, organisation: data.entityName }));
-        setAbnLookupResult({ success: true, businessName: data.entityName });
+      if (data && data.AbnStatus === "Active" && data.EntityName) {
+        setProfile((prev) => ({ ...prev, organisation: data.EntityName }));
+        setAbnLookupResult({ success: true, businessName: data.EntityName });
       } else {
-        setAbnLookupResult({ success: false, error: "ABN not found" });
+        setAbnLookupResult({ success: false, error: "ABN not found or not active" });
       }
     } catch {
       setAbnLookupResult({ success: false, error: "Lookup failed" });
