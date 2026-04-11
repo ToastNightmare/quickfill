@@ -127,7 +127,6 @@ export default function EditorPage() {
   const restoredRef = useRef(false);
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-
   const pdfViewerRef = useRef<PdfViewerHandle>(null);
   const viewerContainerRef = useRef<HTMLDivElement>(null);
 
@@ -373,6 +372,21 @@ export default function EditorPage() {
     },
     [reset]
   );
+
+  // Load template from URL param
+  useEffect(() => {
+    if (pdfBytes) return;
+    const params = new URLSearchParams(window.location.search);
+    const templateParam = params.get("template");
+    if (!templateParam) return;
+    fetch(`/templates/${templateParam}`)
+      .then((r) => r.arrayBuffer())
+      .then(async (bytes) => {
+        const file = new File([bytes], templateParam, { type: "application/pdf" });
+        await handleFileLoad(file, bytes);
+      })
+      .catch(() => {});
+  }, [pdfBytes, handleFileLoad]);
 
   const handleFieldAdd = useCallback(
     (field: EditorField) => {

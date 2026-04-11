@@ -22,6 +22,9 @@ export function Navbar() {
           <Link href="/how-it-works" className="text-sm font-medium text-text-muted hover:text-text transition-colors">
             How It Works
           </Link>
+          <Link href="/templates" className="text-sm font-medium text-text-muted hover:text-text transition-colors">
+            Templates
+          </Link>
           <Link href="/pricing" className="text-sm font-medium text-text-muted hover:text-text transition-colors">
             Pricing
           </Link>
@@ -67,6 +70,9 @@ export function Navbar() {
           <div className="flex flex-col gap-2 pt-2">
             <Link href="/how-it-works" onClick={() => setMenuOpen(false)} className="rounded-lg px-3 py-3 text-sm font-medium hover:bg-surface-alt transition-colors">
               How It Works
+            </Link>
+            <Link href="/templates" onClick={() => setMenuOpen(false)} className="rounded-lg px-3 py-3 text-sm font-medium hover:bg-surface-alt transition-colors">
+              Templates
             </Link>
             <Link href="/pricing" onClick={() => setMenuOpen(false)} className="rounded-lg px-3 py-3 text-sm font-medium hover:bg-surface-alt transition-colors">
               Pricing
