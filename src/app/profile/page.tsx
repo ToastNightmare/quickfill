@@ -27,6 +27,7 @@ interface ProfileData {
   medicareNumber?: string;
   medicareExpiry?: string;
   driversLicence?: string;
+  driversLicenceExpiry?: string;
   passportNumber?: string;
   employer?: string;
   jobTitle?: string;
@@ -55,6 +56,7 @@ const emptyProfile: ProfileData = {
   medicareNumber: "",
   medicareExpiry: "",
   driversLicence: "",
+  driversLicenceExpiry: "",
   passportNumber: "",
   employer: "",
   jobTitle: "",
@@ -264,6 +266,7 @@ export default function ProfilePage() {
             />
             <Field label="Medicare Expiry" value={profile.medicareExpiry ?? ""} onChange={(v) => setProfile({ ...profile, medicareExpiry: v })} placeholder="MM/YYYY" />
             <Field label="Driver Licence Number" value={profile.driversLicence ?? ""} onChange={(v) => setProfile({ ...profile, driversLicence: v })} placeholder="Optional" />
+            <Field label="Driver Licence Expiry" value={profile.driversLicenceExpiry ?? ""} onChange={(v) => setProfile({ ...profile, driversLicenceExpiry: v })} placeholder="MM/YYYY" />
             <Field label="Passport Number" value={profile.passportNumber ?? ""} onChange={(v) => setProfile({ ...profile, passportNumber: v })} placeholder="Optional" />
           </div>
         </div>

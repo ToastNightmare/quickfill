@@ -22,6 +22,7 @@ export interface UserProfile {
   medicareNumber?: string;
   medicareExpiry?: string;
   driversLicence?: string;
+  driversLicenceExpiry?: string;
   passportNumber?: string;
   employer?: string;
   jobTitle?: string;

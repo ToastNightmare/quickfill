@@ -50,6 +50,7 @@ const PROFILE_MATCHERS: { key: string; keywords: string[] }[] = [
   { key: "medicareNumber", keywords: ["medicare", "medicare number", "medicare card"] },
   { key: "medicareExpiry", keywords: ["medicare expiry", "medicare exp", "card expiry"] },
   { key: "driversLicence", keywords: ["driver", "licence", "license", "drivers licence"] },
+  { key: "driversLicenceExpiry", keywords: ["licence expiry", "license expiry", "licence exp", "dl expiry", "dl exp"] },
   { key: "passportNumber", keywords: ["passport", "passport number"] },
   { key: "employer", keywords: ["employer", "employer name", "company name", "business name"] },
   { key: "jobTitle", keywords: ["job title", "occupation", "position", "role"] },
