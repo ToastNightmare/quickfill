@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, useCallback, useImperativeHandle, forwardRef } from "react";
+import { useEffect, useRef, useState, useCallback, useImperativeHandle, forwardRef, useReducer } from "react";
 import { Stage, Layer, Rect, Text, Group, Transformer, Image as KonvaImage } from "react-konva";
 import type Konva from "konva";
 import type { EditorField, ToolType, SignatureField, CheckboxStamp } from "@/lib/types";
@@ -863,6 +863,7 @@ function FieldShape({
   onDelete: () => void;
 }) {
   const groupRef = useRef<Konva.Group>(null);
+  const [, forceUpdate] = useReducer(x => x + 1, 0);
 
   const [dragOpacity, setDragOpacity] = useState(1);
 
@@ -893,11 +894,17 @@ function FieldShape({
     return "transparent";
   };
 
+  // Ref callback to force re-render after group mounts so Transformer gets the node
+  const groupRefCallback = useCallback((node: Konva.Group | null) => {
+    groupRef.current = node;
+    if (node) forceUpdate();
+  }, []);
+
   if (field.type === "checkbox") {
     return (
       <>
         <Group
-          ref={groupRef}
+          ref={groupRefCallback}
           x={field.x}
         y={field.y}
         width={field.width}
@@ -1021,7 +1028,7 @@ function FieldShape({
   return (
     <>
       <Group
-        ref={groupRef}
+        ref={groupRefCallback}
         x={field.x}
       y={field.y}
       width={field.width}
