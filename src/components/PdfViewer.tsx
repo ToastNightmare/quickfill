@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, useCallback, useImperativeHandle, forwardRef } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, useCallback, useImperativeHandle, forwardRef } from "react";
 import { Stage, Layer, Rect, Text, Group, Transformer, Image as KonvaImage } from "react-konva";
 import type Konva from "konva";
 import type { EditorField, ToolType, SignatureField, CheckboxStamp } from "@/lib/types";
@@ -193,25 +193,21 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
   }, []);
 
   // SINGLE authoritative Transformer manager.
-  // Runs after every render. Looks up the node for selectedFieldId in the registry
-  // and sets tr.nodes() exactly once. Nothing else should call tr.nodes().
-  useEffect(() => {
+  // useLayoutEffect fires synchronously after DOM mutations, before paint.
+  // This eliminates the race condition where useEffect fired after child effects
+  // had already registered nodes, causing the Transformer to span multiple fields.
+  useLayoutEffect(() => {
     const tr = transformerRef.current;
     if (!tr) return;
-    if (!selectedFieldId) {
-      tr.nodes([]);
-      tr.getLayer()?.batchDraw();
-      return;
+    tr.nodes([]);
+    if (selectedFieldId) {
+      const node = fieldNodeMapRef.current.get(selectedFieldId) ?? null;
+      if (node) {
+        tr.nodes([node]);
+      }
     }
-    const node = fieldNodeMapRef.current.get(selectedFieldId) ?? null;
-    tr.nodes(node ? [node] : []);
     tr.getLayer()?.batchDraw();
-  });
-
-  // No-op stub kept for call-site compatibility — node registration via setSelectedRef is the real path.
-  const attachTransformer = useCallback((_node: Konva.Node | null) => {
-    // Intentionally empty — Transformer is managed by the effect above.
-  }, []);
+  }, [selectedFieldId]);
 
 
   // Animate snap preview opacity
@@ -677,11 +673,9 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
                 isEditing={field.id === editingFieldId}
                 isHighlighted={field.id === snappedFieldId || (highlightFieldIds?.has(field.id) ?? false)}
                 isHovered={field.id === hoveredFieldId}
-                onSelect={(node?: Konva.Node) => {
+                onSelect={() => {
                   onFieldSelect(field.id);
                   onToolSelect(null);
-                  // Attach transformer immediately using the node from FieldShape
-                  attachTransformer(node ?? null);
                   if (!dragStartedRef.current && field.type !== "signature") {
                     setEditingFieldId(field.id);
                   }
@@ -899,16 +893,13 @@ function FieldShape({
 
   // Register this node in the parent's fieldNodeMap whenever it mounts or updates.
   // Deregister on unmount.
-  useEffect(() => {
-    if (groupRef.current) {
-      setSelectedRef(groupRef.current);
-    }
-    return () => {
-      setSelectedRef(null);
-    };
-  // setSelectedRef is stable (inline arrow in parent map, same field.id scope)
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  // Callback ref — registers into parent's fieldNodeMap immediately on mount,
+  // before any effects fire. This ensures the node is always available when
+  // the Transformer's useLayoutEffect reads the registry.
+  const groupCallbackRef = useCallback((node: Konva.Group | null) => {
+    groupRef.current = node;
+    setSelectedRef(node);
+  }, [setSelectedRef]);
 
   const [dragOpacity, setDragOpacity] = useState(1);
 
@@ -942,7 +933,7 @@ function FieldShape({
   if (field.type === "checkbox") {
     return (
       <Group
-        ref={groupRef}
+        ref={groupCallbackRef}
         x={field.x}
         y={field.y}
         width={field.width}
@@ -1049,7 +1040,7 @@ function FieldShape({
 
   return (
     <Group
-      ref={groupRef}
+      ref={groupCallbackRef}
       x={field.x}
       y={field.y}
       width={field.width}
