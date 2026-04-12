@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build --webpack",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "qa": "playwright test --reporter=list"
   },
   "dependencies": {
     "@clerk/nextjs": "^7.0.7",
@@ -28,6 +29,7 @@
     "svix": "^1.89.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.59.1",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",
