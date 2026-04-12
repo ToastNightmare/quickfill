@@ -248,6 +248,7 @@ export default function EditorPage() {
   }, [zoom]);
 
   // Welcome modal and tour logic for new users
+  // Only runs once on mount when pdfBytes is available
   useEffect(() => {
     if (!pdfBytes) return;
     
@@ -259,16 +260,18 @@ export default function EditorPage() {
       setShowWelcomeModal(true);
     } else if (!tourDone) {
       // Already welcomed but tour not done - show tour after a brief delay
-      setTimeout(() => setShowTour(true), 500);
+      const timer = setTimeout(() => setShowTour(true), 500);
+      return () => clearTimeout(timer);
     }
   }, [pdfBytes]);
 
   const handleWelcomeComplete = useCallback(() => {
     setShowWelcomeModal(false);
-    // Check if tour should start
+    // Check if tour should start (only if not already done)
     const tourDone = localStorage.getItem("quickfill_tour_done");
     if (!tourDone) {
-      setTimeout(() => setShowTour(true), 300);
+      const timer = setTimeout(() => setShowTour(true), 300);
+      return () => clearTimeout(timer);
     }
   }, []);
 

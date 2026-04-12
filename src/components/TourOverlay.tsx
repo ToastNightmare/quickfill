@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { HelpCircle, X } from "lucide-react";
 
 type Step = {
@@ -28,11 +28,26 @@ export function TourOverlay({ steps, onComplete, onSkip }: TourOverlayProps) {
   const [currentStep, setCurrentStep] = useState(0);
   const [spotlightRect, setSpotlightRect] = useState<SpotlightRect | null>(null);
   const [tooltipPosition, setTooltipPosition] = useState<"above" | "below">("below");
+  const hasDismissedRef = useRef(false);
+
+  const dismissTour = useCallback(() => {
+    if (hasDismissedRef.current) return;
+    hasDismissedRef.current = true;
+    localStorage.setItem("quickfill_tour_done", "true");
+    onSkip();
+    onComplete();
+  }, [onSkip, onComplete]);
 
   const updateSpotlight = useCallback(() => {
     const target = steps[currentStep].targetRef.current;
     if (target) {
       const rect = target.getBoundingClientRect();
+      
+      // Skip if element is not visible (zero-sized rect)
+      if (rect.width === 0 || rect.height === 0) {
+        return;
+      }
+      
       setSpotlightRect({
         top: rect.top,
         left: rect.left,
@@ -59,20 +74,28 @@ export function TourOverlay({ steps, onComplete, onSkip }: TourOverlayProps) {
     return () => window.removeEventListener("resize", handleResize);
   }, [updateSpotlight]);
 
+  // Escape key to dismiss
+  useEffect(() => {
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        dismissTour();
+      }
+    };
+
+    window.addEventListener("keydown", handleEscape);
+    return () => window.removeEventListener("keydown", handleEscape);
+  }, [dismissTour]);
+
   const handleNext = () => {
     if (currentStep < steps.length - 1) {
       setCurrentStep(currentStep + 1);
     } else {
-      localStorage.setItem("quickfill_tour_done", "true");
-      onSkip();
-      onComplete();
+      dismissTour();
     }
   };
 
   const handleSkip = () => {
-    localStorage.setItem("quickfill_tour_done", "true");
-    onSkip();
-    onComplete();
+    dismissTour();
   };
 
   const isLastStep = currentStep === steps.length - 1;

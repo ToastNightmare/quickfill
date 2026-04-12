@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useRef } from "react";
 import { Upload, PenLine, Download } from "lucide-react";
 
 interface WelcomeModalProps {
@@ -7,10 +8,26 @@ interface WelcomeModalProps {
 }
 
 export function WelcomeModal({ onComplete }: WelcomeModalProps) {
+  const hasDismissedRef = useRef(false);
+
   const handleComplete = () => {
+    if (hasDismissedRef.current) return;
+    hasDismissedRef.current = true;
     localStorage.setItem("quickfill_welcomed", "true");
     onComplete();
   };
+
+  // Escape key to dismiss
+  useEffect(() => {
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        handleComplete();
+      }
+    };
+
+    window.addEventListener("keydown", handleEscape);
+    return () => window.removeEventListener("keydown", handleEscape);
+  }, []);
 
   return (
     <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/50 backdrop-blur-sm">
