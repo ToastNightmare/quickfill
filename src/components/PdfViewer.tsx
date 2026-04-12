@@ -96,6 +96,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
   const snapPreviewTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const trRef = useRef<Konva.Transformer | null>(null);
   const nodeMapRef = useRef<Map<string, Konva.Group>>(new Map());
+  const pendingSelectRef = useRef<string | null>(null);
   
   // Drag-to-draw refs for Feature 1
   const dragStart = useRef<{x: number, y: number} | null>(null);
@@ -230,10 +231,10 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
   // Register/unregister node callbacks for FieldShape
   const registerNode = useCallback((id: string, node: Konva.Group) => {
     nodeMapRef.current.set(id, node);
-    // If this is the currently selected field, attach Transformer immediately
-    // This closes the race window between selectedFieldId being set and the node registering
+    // If this is the currently selected field or a pending select, attach Transformer immediately
     const tr = trRef.current;
-    if (tr && id === selectedFieldId) {
+    if (tr && (id === selectedFieldId || id === pendingSelectRef.current)) {
+      pendingSelectRef.current = null;
       tr.nodes([]); // explicit clear first
       tr.nodes([node]);
       tr.getLayer()?.batchDraw();
@@ -271,7 +272,9 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
             const newId = genId();
             const duplicate = { ...field, id: newId, x: field.x + 16, y: field.y + 16 };
             onFieldAdd(duplicate);
-            requestAnimationFrame(() => onFieldSelect(newId));
+            onToolSelect(null);
+            setCursorStyle("default");
+            pendingSelectRef.current = newId;
           }
         }
         return;
@@ -620,10 +623,9 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
           }
           
           onFieldAdd(field);
-          requestAnimationFrame(() => {
-            onFieldSelect(id);
-          });
           onToolSelect(null);
+          setCursorStyle("default");
+          pendingSelectRef.current = id;
           
           if (activeTool === "signature") {
             onSignatureFieldPlaced?.(field);
@@ -745,10 +747,9 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
             }
 
             onFieldAdd(field);
-            requestAnimationFrame(() => {
-              onFieldSelect(id);
-            });
             onToolSelect(null);
+            setCursorStyle("default");
+            pendingSelectRef.current = id;
 
             if (activeTool === "signature") {
               onSignatureFieldPlaced?.(field);
@@ -891,12 +892,10 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
       }
 
       onFieldAdd(field);
-      requestAnimationFrame(() => {
-        onFieldSelect(id);
-      });
-      // Deactivate tool after placing so panel switches to field controls
       onToolSelect(null);
-      setCursorStyle("default"); // reset cursor immediately on tool deactivation
+      setCursorStyle("default");
+      // Parent handles selection via handleFieldAdd, but we set pendingSelectRef for transformer sync
+      pendingSelectRef.current = id;
 
       // For signature fields, trigger signature placement flow
       if (activeTool === "signature") {
@@ -943,6 +942,10 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
             } else {
               onFieldSelect(null);
               setEditingFieldId(null);
+              if (trRef.current) {
+                trRef.current.nodes([]);
+                trRef.current.getLayer()?.batchDraw();
+              }
             }
             return;
           }
@@ -967,6 +970,10 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
                 if (matchedField.type === "whiteout") {
                   onFieldSelect(null);
                   onToolSelect(null);
+                  if (trRef.current) {
+                    trRef.current.nodes([]);
+                    trRef.current.getLayer()?.batchDraw();
+                  }
                 } else {
                   onFieldSelect(matchedField.id);
                   onToolSelect(null);
@@ -975,6 +982,13 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
               }
             }
             node = parent;
+          }
+        } else {
+          onFieldSelect(null);
+          setEditingFieldId(null);
+          if (trRef.current) {
+            trRef.current.nodes([]);
+            trRef.current.getLayer()?.batchDraw();
           }
         }
         return;
@@ -985,6 +999,10 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
       } else {
         onFieldSelect(null);
         setEditingFieldId(null);
+        if (trRef.current) {
+          trRef.current.nodes([]);
+          trRef.current.getLayer()?.batchDraw();
+        }
       }
     },
     [activeTool, currentPage, fields, onFieldSelect, onToolSelect, createFieldAtPoint]
@@ -1261,7 +1279,9 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
                     const newId = genId();
                     const duplicate = { ...field, id: newId, x: field.x + 16, y: field.y + 16 };
                     onFieldAdd(duplicate);
-                    requestAnimationFrame(() => onFieldSelect(newId));
+                    onToolSelect(null);
+                    setCursorStyle("default");
+                    pendingSelectRef.current = newId;
                   }
                   setContextMenu(null);
                 }}

@@ -446,7 +446,8 @@ export default function EditorPage() {
   const handleFieldAdd = useCallback(
     (field: EditorField) => {
       setFields((prev) => [...prev, field]);
-      // Deactivate tool - field selection is handled by PdfViewer's createFieldAtPoint
+      // Select the newly added field and deactivate tool
+      setSelectedFieldId(field.id);
       setActiveTool(null);
     },
     [setFields]
