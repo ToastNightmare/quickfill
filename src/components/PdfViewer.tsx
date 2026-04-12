@@ -274,6 +274,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
             onFieldAdd(duplicate);
             onToolSelect(null);
             setCursorStyle("default");
+            onFieldSelect(newId);
             pendingSelectRef.current = newId;
           }
         }
@@ -625,6 +626,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
           onFieldAdd(field);
           onToolSelect(null);
           setCursorStyle("default");
+          onFieldSelect(id);
           pendingSelectRef.current = id;
           
           if (activeTool === "signature") {
@@ -749,6 +751,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
             onFieldAdd(field);
             onToolSelect(null);
             setCursorStyle("default");
+            onFieldSelect(id);
             pendingSelectRef.current = id;
 
             if (activeTool === "signature") {
@@ -894,6 +897,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
       onFieldAdd(field);
       onToolSelect(null);
       setCursorStyle("default");
+      onFieldSelect(id);
       // Parent handles selection via handleFieldAdd, but we set pendingSelectRef for transformer sync
       pendingSelectRef.current = id;
 
@@ -1281,6 +1285,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
                     onFieldAdd(duplicate);
                     onToolSelect(null);
                     setCursorStyle("default");
+                    onFieldSelect(newId);
                     pendingSelectRef.current = newId;
                   }
                   setContextMenu(null);
