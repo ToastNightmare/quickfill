@@ -227,6 +227,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
     // This closes the race window between selectedFieldId being set and the node registering
     const tr = trRef.current;
     if (tr && id === selectedFieldId) {
+      tr.nodes([]); // explicit clear first
       tr.nodes([node]);
       tr.getLayer()?.batchDraw();
     }
@@ -311,6 +312,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
   useLayoutEffect(() => {
     const tr = trRef.current;
     if (!tr) return;
+    tr.nodes([]); // always clear first
     if (selectedFieldId) {
       // Never select whiteout fields - they are non-interactive
       const selectedField = fields.find(f => f.id === selectedFieldId);
@@ -321,11 +323,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
       const node = nodeMapRef.current.get(selectedFieldId);
       if (node) {
         tr.nodes([node]);
-      } else {
-        tr.nodes([]);
       }
-    } else {
-      tr.nodes([]);
     }
     tr.getLayer()?.batchDraw();
   }, [selectedFieldId, fields]);
