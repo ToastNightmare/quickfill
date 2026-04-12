@@ -15,6 +15,7 @@ import {
   Save,
   Eraser,
   Magnet,
+  HelpCircle,
 } from "lucide-react";
 import type { ToolType, EditorField } from "@/lib/types";
 import { Minimap } from "@/components/Minimap";
@@ -40,7 +41,13 @@ interface ToolbarProps {
   onAutoFill: () => void;
   snapEnabled: boolean;
   onSnapToggle: () => void;
+  onShowHelp?: () => void;
   mobile?: boolean;
+  // Tour refs
+  snapToggleRef?: React.RefObject<HTMLButtonElement | null>;
+  whiteoutToolRef?: React.RefObject<HTMLButtonElement | null>;
+  undoRedoRef?: React.RefObject<HTMLButtonElement | null>;
+  downloadButtonRef?: React.RefObject<HTMLButtonElement | null>;
   // Minimap props (desktop only)
   minimapCanvas?: HTMLCanvasElement | null;
   viewerRef?: RefObject<HTMLDivElement | null>;
@@ -48,12 +55,12 @@ interface ToolbarProps {
   onMinimapRefresh?: () => void;
 }
 
-const tools: { type: ToolType; icon: typeof Type; label: string }[] = [
-  { type: "text", icon: Type, label: "Text Field" },
-  { type: "checkbox", icon: CheckSquare, label: "Checkbox" },
-  { type: "signature", icon: PenTool, label: "Signature" },
-  { type: "date", icon: Calendar, label: "Date" },
-  { type: "whiteout", icon: Eraser, label: "Whiteout" },
+const tools: { type: ToolType; icon: typeof Type; label: string; title: string }[] = [
+  { type: "text", icon: Type, label: "Text Field", title: "Text field — click and drag to place" },
+  { type: "checkbox", icon: CheckSquare, label: "Checkbox", title: "Checkbox — click to place a tick or cross" },
+  { type: "signature", icon: PenTool, label: "Signature", title: "Signature field — draw or type your signature" },
+  { type: "date", icon: Calendar, label: "Date", title: "Date field — click and drag to place" },
+  { type: "whiteout", icon: Eraser, label: "Whiteout", title: "Whiteout — cover pre-printed text with background colour" },
 ];
 
 export function Toolbar({
@@ -74,7 +81,12 @@ export function Toolbar({
   onAutoFill,
   snapEnabled,
   onSnapToggle,
+  onShowHelp,
   mobile,
+  snapToggleRef,
+  whiteoutToolRef,
+  undoRedoRef,
+  downloadButtonRef,
   minimapCanvas,
   viewerRef,
   zoom,
@@ -89,11 +101,11 @@ export function Toolbar({
   if (mobile) {
     return (
       <div className="sm:hidden fixed bottom-0 left-0 right-0 z-40 flex items-center gap-2 overflow-x-auto border-t border-border bg-surface px-3 pt-2 pb-[max(env(safe-area-inset-bottom),8px)]">
-        {tools.map(({ type, icon: Icon, label }) => (
+        {tools.map(({ type, icon: Icon, label, title }) => (
           <button
             key={type}
             onClick={() => onToolSelect(activeTool === type ? null : type)}
-            title={label}
+            title={title}
             className={`flex shrink-0 items-center gap-1.5 rounded-full px-3 py-2.5 text-xs font-medium transition-colors ${
               activeTool === type
                 ? "bg-accent text-white shadow-sm"
@@ -106,8 +118,9 @@ export function Toolbar({
         ))}
         <div className="w-px h-6 bg-border shrink-0" />
         <button
+          ref={snapToggleRef}
           onClick={onSnapToggle}
-          title={snapEnabled ? "Snap ON - click to disable" : "Snap OFF - click to enable"}
+          title="Toggle snap detection for structured forms"
           className={`flex shrink-0 items-center gap-1.5 rounded-full px-3 py-2.5 text-xs font-semibold transition-colors border ${
             snapEnabled
               ? "bg-accent text-white border-accent"
@@ -118,10 +131,10 @@ export function Toolbar({
           Snap {snapEnabled ? "On" : "Off"}
         </button>
         <div className="w-px h-6 bg-border shrink-0" />
-        <button onClick={onUndo} disabled={!canUndo} title="Undo" className="shrink-0 rounded-full p-2.5 text-text-muted hover:bg-surface-alt disabled:opacity-30 transition-colors">
+        <button ref={undoRedoRef} onClick={onUndo} disabled={!canUndo} title="Undo (Ctrl+Z)" className="shrink-0 rounded-full p-2.5 text-text-muted hover:bg-surface-alt disabled:opacity-30 transition-colors">
           <Undo2 className="h-4 w-4" />
         </button>
-        <button onClick={onRedo} disabled={!canRedo} title="Redo" className="shrink-0 rounded-full p-2.5 text-text-muted hover:bg-surface-alt disabled:opacity-30 transition-colors">
+        <button onClick={onRedo} disabled={!canRedo} title="Redo (Ctrl+Shift+Z)" className="shrink-0 rounded-full p-2.5 text-text-muted hover:bg-surface-alt disabled:opacity-30 transition-colors">
           <Redo2 className="h-4 w-4" />
         </button>
         <div className="w-px h-6 bg-border shrink-0" />
@@ -161,6 +174,7 @@ export function Toolbar({
         )}
         <div className="w-px h-6 bg-border shrink-0" />
         <button
+          ref={downloadButtonRef}
           onClick={onDownload}
           disabled={isDownloading}
           title="Download PDF"
@@ -169,6 +183,18 @@ export function Toolbar({
           <Download className="h-3.5 w-3.5" />
           {isDownloading ? "Saving..." : "Download"}
         </button>
+        {onShowHelp && (
+          <>
+            <div className="w-px h-6 bg-border shrink-0" />
+            <button
+              onClick={onShowHelp}
+              title="Show tutorial"
+              className="shrink-0 rounded-full p-2.5 text-text-muted hover:bg-surface-alt transition-colors"
+            >
+              <HelpCircle className="h-4 w-4" />
+            </button>
+          </>
+        )}
       </div>
     );
   }
@@ -186,11 +212,11 @@ export function Toolbar({
         <p className="px-2 pt-1 pb-1 text-[10px] font-semibold uppercase tracking-widest text-text-muted hidden sm:block">
           Place Fields
         </p>
-        {tools.map(({ type, icon: Icon, label }) => (
+        {tools.map(({ type, icon: Icon, label, title }) => (
           <button
             key={type}
             onClick={() => onToolSelect(activeTool === type ? null : type)}
-            title={label}
+            title={title}
             className={`flex h-8 items-center gap-3 rounded-lg px-2 text-sm font-medium transition-colors ${
               activeTool === type
                 ? "bg-accent text-white shadow-sm"
@@ -204,8 +230,9 @@ export function Toolbar({
 
         {/* Snap Toggle */}
         <button
+          ref={snapToggleRef}
           onClick={onSnapToggle}
-          title={snapEnabled ? "Snap ON - click to disable" : "Snap OFF - click to enable"}
+          title="Toggle snap detection for structured forms"
           className={`flex h-8 items-center gap-3 rounded-lg px-2 text-sm font-semibold transition-colors border ${
             snapEnabled
               ? "bg-accent text-white border-accent"
@@ -216,6 +243,9 @@ export function Toolbar({
           <span className="hidden sm:inline">{snapEnabled ? "Snap On" : "Snap Off"}</span>
         </button>
 
+        {/* Whiteout tool ref for tour */}
+        <div ref={whiteoutToolRef as any} className="hidden">whiteout-tour-ref</div>
+
         <div className="my-1 h-px bg-border mx-1" />
 
         {/* Actions */}
@@ -223,6 +253,7 @@ export function Toolbar({
           Actions
         </p>
         <button
+          ref={undoRedoRef}
           onClick={onUndo}
           disabled={!canUndo}
           title="Undo (Ctrl+Z)"
@@ -248,7 +279,7 @@ export function Toolbar({
         </button>
         <button
           onClick={onClear}
-          title="Clear All"
+          title="Clear All fields"
           className="flex h-8 items-center gap-3 rounded-lg px-2 text-sm font-medium text-text-muted hover:bg-red-50 hover:text-red-600 transition-colors"
         >
           <Trash2 className="h-4 w-4 shrink-0" />
@@ -271,6 +302,7 @@ export function Toolbar({
 
         {/* Download */}
         <button
+          ref={downloadButtonRef}
           onClick={onDownload}
           disabled={isDownloading}
           title="Download filled PDF"
@@ -283,6 +315,19 @@ export function Toolbar({
         </button>
 
       </div>
+
+      {/* Help button at bottom */}
+      {onShowHelp && (
+        <div className="mt-auto p-2 border-t border-border">
+          <button
+            onClick={onShowHelp}
+            title="Show tutorial"
+            className="flex h-8 w-8 items-center justify-center rounded-full text-text-muted hover:bg-surface-alt hover:text-text transition-colors mx-auto"
+          >
+            <HelpCircle className="h-4 w-4" />
+          </button>
+        </div>
+      )}
 
       {/* ── Overview: flex-1, fills all remaining space ───────────────────── */}
       {showMinimap && (

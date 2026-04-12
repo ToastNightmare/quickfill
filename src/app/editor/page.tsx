@@ -1,13 +1,15 @@
 "use client";
 
 import { useState, useCallback, useEffect, useRef, useMemo } from "react";
-import { ChevronLeft, ChevronRight, Sparkles, X, RotateCcw, Minus, Plus, Download } from "lucide-react";
+import { ChevronLeft, ChevronRight, Sparkles, X, RotateCcw, Minus, Plus, Download, HelpCircle } from "lucide-react";
 import { UploadZone } from "@/components/UploadZone";
 import { MobileFiller } from "@/components/MobileFiller";
 import { Toolbar } from "@/components/Toolbar";
 import { PdfViewer } from "@/components/PdfViewer";
 import { ContextPanel } from "@/components/ContextPanel";
 import { SignatureModal } from "@/components/SignatureModal";
+import { WelcomeModal } from "@/components/WelcomeModal";
+import { TourOverlay, HelpButton } from "@/components/TourOverlay";
 import type { PdfViewerHandle } from "@/components/PdfViewer";
 import { useHistory } from "@/lib/use-history";
 import { detectAcroFormFields } from "@/lib/pdf-utils";
@@ -127,12 +129,20 @@ export default function EditorPage() {
   const [showClearConfirm, setShowClearConfirm] = useState(false);
   const [savingProgress, setSavingProgress] = useState(false);
   const [snapEnabled, setSnapEnabled] = useState(false); // OFF by default
+  const [showWelcomeModal, setShowWelcomeModal] = useState(false);
+  const [showTour, setShowTour] = useState(false);
   const { fields, set: setFields, undo, redo, reset, canUndo, canRedo } = useHistory();
   const restoredRef = useRef(false);
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const pdfViewerRef = useRef<PdfViewerHandle>(null);
   const viewerContainerRef = useRef<HTMLDivElement>(null);
+  const toolbarToolsRef = useRef<HTMLButtonElement | null>(null);
+  const canvasAreaRef = useRef<HTMLDivElement | null>(null);
+  const snapToggleRef = useRef<HTMLButtonElement | null>(null);
+  const whiteoutToolRef = useRef<HTMLButtonElement | null>(null);
+  const undoRedoRef = useRef<HTMLButtonElement | null>(null);
+  const downloadButtonRef = useRef<HTMLButtonElement | null>(null);
 
   // Load saved signature on mount
   useEffect(() => {
@@ -236,6 +246,41 @@ export default function EditorPage() {
   useEffect(() => {
     saveZoomToLocalStorage(zoom);
   }, [zoom]);
+
+  // Welcome modal and tour logic for new users
+  useEffect(() => {
+    if (!pdfBytes) return;
+    
+    const welcomed = localStorage.getItem("quickfill_welcomed");
+    const tourDone = localStorage.getItem("quickfill_tour_done");
+    
+    if (!welcomed) {
+      // First visit - show welcome modal
+      setShowWelcomeModal(true);
+    } else if (!tourDone) {
+      // Already welcomed but tour not done - show tour after a brief delay
+      setTimeout(() => setShowTour(true), 500);
+    }
+  }, [pdfBytes]);
+
+  const handleWelcomeComplete = useCallback(() => {
+    setShowWelcomeModal(false);
+    // Check if tour should start
+    const tourDone = localStorage.getItem("quickfill_tour_done");
+    if (!tourDone) {
+      setTimeout(() => setShowTour(true), 300);
+    }
+  }, []);
+
+  const handleTourComplete = useCallback(() => {
+    setShowTour(false);
+  }, []);
+
+  const handleShowHelp = useCallback(() => {
+    // Reset tour done flag and show tour
+    localStorage.removeItem("quickfill_tour_done");
+    setShowTour(true);
+  }, []);
 
   // Clear snap preview when snap is disabled
   useEffect(() => {
@@ -1064,7 +1109,7 @@ export default function EditorPage() {
 
       {/* Sidebar + Canvas row */}
       <div className="flex flex-1 min-h-0">
-        <div className="flex-shrink-0 h-full overflow-y-auto hidden sm:flex">
+        <div className="flex-shrink-0 h-full overflow-y-auto hidden sm:flex" ref={toolbarToolsRef as any}>
           <Toolbar
             activeTool={activeTool}
             onToolSelect={setActiveTool}
@@ -1083,6 +1128,11 @@ export default function EditorPage() {
             onAutoFill={handleAutoFillFromProfile}
             snapEnabled={snapEnabled}
             onSnapToggle={() => setSnapEnabled(v => !v)}
+            onShowHelp={handleShowHelp}
+            snapToggleRef={snapToggleRef}
+            whiteoutToolRef={whiteoutToolRef}
+            undoRedoRef={undoRedoRef}
+            downloadButtonRef={downloadButtonRef}
             minimapCanvas={minimapCanvas}
             viewerRef={viewerContainerRef}
             zoom={zoom}
@@ -1090,7 +1140,7 @@ export default function EditorPage() {
           />
         </div>
 
-        <div ref={viewerContainerRef} className="flex-1 h-full overflow-auto relative min-w-0">
+        <div ref={canvasAreaRef} className="flex-1 h-full overflow-auto relative min-w-0">
           <PdfViewer
             ref={pdfViewerRef}
             pdfBytes={pdfBytes}
@@ -1113,6 +1163,15 @@ export default function EditorPage() {
             onPageChange={handlePageChange}
             snapEnabled={snapEnabled}
           />
+          
+          {/* Empty canvas hint - shown when no fields and no tool active */}
+          {fields.length === 0 && !activeTool && (
+            <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+              <p className="text-sm text-text-muted italic animate-pulse mt-[40%] transform -translate-y-1/2">
+                ✦ Select a tool above, then click and drag to place a field
+              </p>
+            </div>
+          )}
         </div>
 
         {/* Right context panel */}
@@ -1178,6 +1237,11 @@ export default function EditorPage() {
         onAutoFill={handleAutoFillFromProfile}
         snapEnabled={snapEnabled}
         onSnapToggle={() => setSnapEnabled(v => !v)}
+        onShowHelp={handleShowHelp}
+        snapToggleRef={snapToggleRef}
+        whiteoutToolRef={whiteoutToolRef}
+        undoRedoRef={undoRedoRef}
+        downloadButtonRef={downloadButtonRef}
         mobile
       />
 
@@ -1270,6 +1334,51 @@ export default function EditorPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Welcome modal for first-time users */}
+      {showWelcomeModal && (
+        <WelcomeModal onComplete={handleWelcomeComplete} />
+      )}
+
+      {/* Tour overlay for coach marks */}
+      {showTour && pdfBytes && (
+        <TourOverlay
+          steps={[
+            {
+              title: "Pick a tool",
+              description: "Text, date, signature, checkbox, or whiteout",
+              targetRef: toolbarToolsRef,
+            },
+            {
+              title: "Canvas area",
+              description: "Click and drag on the PDF to draw your field exactly where you want it",
+              targetRef: canvasAreaRef,
+            },
+            {
+              title: "Snap toggle",
+              description: "Turn Snap on to auto-fit fields into detected form boxes",
+              targetRef: snapToggleRef,
+            },
+            {
+              title: "Whiteout tool",
+              description: "Use Whiteout to cover pre-printed text before placing your field",
+              targetRef: whiteoutToolRef,
+            },
+            {
+              title: "Undo/Redo",
+              description: "Undo any mistake with Ctrl+Z, then download when ready",
+              targetRef: undoRedoRef,
+            },
+            {
+              title: "Download button",
+              description: "Hit Download to save your completed PDF",
+              targetRef: downloadButtonRef,
+            },
+          ]}
+          onComplete={handleTourComplete}
+          onSkip={handleTourComplete}
+        />
       )}
     </div>
     </>
