@@ -371,17 +371,23 @@ export default function Home() {
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_#4f8ef720_0%,_transparent_60%)]" />
         <div className="relative mx-auto max-w-4xl text-center">
           <h1 className="text-4xl font-extrabold tracking-tight text-white sm:text-5xl lg:text-6xl">
-            The PDF Form Filler Built for Australia.
+            Stop printing locked PDFs forever
           </h1>
           <p className="mx-auto mt-6 max-w-2xl text-lg text-gray-300 sm:text-xl">
-            Fill ATO forms, Medicare claims, rental applications and more. Auto-fill with your Australian profile — TFN, Medicare, ABN and address pre-loaded. Done in seconds.
+            Fill Australian government and business forms online — no Adobe, no printing, no scanning. Works on any device.
           </p>
+          {/* Feature pills */}
+          <div className="mt-6 flex flex-wrap items-center justify-center gap-3 text-sm text-gray-300">
+            <span className="inline-flex items-center gap-1">✏️ Fill any PDF — no locked fields stopping you</span>
+            <span className="inline-flex items-center gap-1">💰 Half the price of Adobe Acrobat</span>
+            <span className="inline-flex items-center gap-1">🇦🇺 Built for Australian forms — TFN, Centrelink, rental apps, NDIS</span>
+          </div>
           <div className="mt-10 flex flex-col items-center gap-4 sm:flex-row sm:justify-center">
             <Link
               href={isSignedIn ? "/editor" : "/sign-up"}
               className="flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-accent px-6 text-base font-semibold text-white shadow-lg shadow-accent/25 hover:bg-accent-hover transition-colors sm:w-auto"
             >
-              {isSignedIn ? "Fill a PDF" : "Get Started Free"}
+              {isSignedIn ? "Fill a PDF" : "Start filling forms free"}
               <ArrowRight className="h-4 w-4" />
             </Link>
             <a
@@ -391,6 +397,10 @@ export default function Home() {
               See How It Works
             </a>
           </div>
+          {/* Social proof */}
+          <p className="mt-4 text-center text-xs text-gray-400">
+            Trusted by Australians filling TFN declarations, rental applications, Centrelink forms and NDIS paperwork
+          </p>
         </div>
       </section>
 
@@ -419,6 +429,66 @@ export default function Home() {
                 </p>
               </div>
             ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Competitor Comparison */}
+      <section className="bg-navy px-4 py-20 sm:px-6 lg:px-8">
+        <div className="mx-auto max-w-6xl">
+          <div className="text-center">
+            <h2 className="text-3xl font-bold tracking-tight sm:text-4xl text-white">
+              Why switch to QuickFill?
+            </h2>
+            <p className="mx-auto mt-4 max-w-2xl text-text-muted">
+              No more wrestling with broken PDF software.
+            </p>
+          </div>
+          <div className="mt-12 overflow-hidden rounded-xl border border-border bg-white shadow-lg">
+            <div className="overflow-x-auto">
+              <table className="min-w-full text-sm">
+                <thead className="bg-surface">
+                  <tr>
+                    <th className="px-6 py-4 text-left font-semibold text-gray-900">Feature</th>
+                    <th className="px-6 py-4 text-left font-semibold text-gray-900">Adobe Acrobat ($24/mo)</th>
+                    <th className="px-6 py-4 text-left font-semibold text-gray-900">DocuSign ($25/mo)</th>
+                    <th className="px-6 py-4 text-left font-semibold text-accent bg-accent/10">QuickFill ($12/mo)</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  <tr className="bg-white">
+                    <td className="px-6 py-4 font-medium text-gray-900">Fill PDFs online</td>
+                    <td className="px-6 py-4 text-red-500">❌ Desktop only</td>
+                    <td className="px-6 py-4 text-red-500">❌ Envelopes only</td>
+                    <td className="px-6 py-4 font-semibold text-green-600 bg-accent/5">✅ Yes</td>
+                  </tr>
+                  <tr className="bg-surface-alt">
+                    <td className="px-6 py-4 font-medium text-gray-900">Australian templates</td>
+                    <td className="px-6 py-4 text-red-500">❌ None</td>
+                    <td className="px-6 py-4 text-red-500">❌ None</td>
+                    <td className="px-6 py-4 font-semibold text-green-600 bg-accent/5">✅ 15+ built-in</td>
+                  </tr>
+                  <tr className="bg-white">
+                    <td className="px-6 py-4 font-medium text-gray-900">Works on locked fields</td>
+                    <td className="px-6 py-4 text-red-500">❌ No</td>
+                    <td className="px-6 py-4 text-red-500">❌ No</td>
+                    <td className="px-6 py-4 font-semibold text-green-600 bg-accent/5">✅ Yes</td>
+                  </tr>
+                  <tr className="bg-surface-alt">
+                    <td className="px-6 py-4 font-medium text-gray-900">No printing needed</td>
+                    <td className="px-6 py-4 text-red-500">❌ Exports only</td>
+                    <td className="px-6 py-4 text-gray-500">➖ N/A</td>
+                    <td className="px-6 py-4 font-semibold text-green-600 bg-accent/5">✅ Download instantly</td>
+                  </tr>
+                  <tr className="bg-white">
+                    <td className="px-6 py-4 font-medium text-gray-900">Price</td>
+                    <td className="px-6 py-4 text-gray-900">$24/mo</td>
+                    <td className="px-6 py-4 text-gray-900">$25/mo</td>
+                    <td className="px-6 py-4 font-semibold text-accent bg-accent/5">$12/mo</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
       </section>
@@ -579,6 +649,37 @@ export default function Home() {
                 {label}
               </span>
             ))}
+          </div>
+        </div>
+      </section>
+
+      {/* FAQ */}
+      <section className="bg-surface px-4 py-20 sm:px-6 lg:px-8">
+        <div className="mx-auto max-w-2xl">
+          <h2 className="text-center text-3xl font-bold tracking-tight sm:text-4xl">
+            Frequently asked questions
+          </h2>
+          <div className="mt-12 space-y-6">
+            <div className="rounded-xl border border-border bg-surface-alt p-6">
+              <h3 className="font-semibold text-base">Is it really free?</h3>
+              <p className="mt-2 text-sm text-text-muted">Yes! Get 3 free fills per month with no credit card required. Pro gives unlimited fills for $12/month.</p>
+            </div>
+            <div className="rounded-xl border border-border bg-surface-alt p-6">
+              <h3 className="font-semibold text-base">Is it secure?</h3>
+              <p className="mt-2 text-sm text-text-muted">Your data never leaves your browser. Forms are filled locally and downloaded directly to you. We never upload or store your documents.</p>
+            </div>
+            <div className="rounded-xl border border-border bg-surface-alt p-6">
+              <h3 className="font-semibold text-base">Does it work on my phone?</h3>
+              <p className="mt-2 text-sm text-text-muted">Yes. QuickFill works on iPhone, Android, iPad, or any device with a web browser.</p>
+            </div>
+            <div className="rounded-xl border border-border bg-surface-alt p-6">
+              <h3 className="font-semibold text-base">Can I use it for government forms?</h3>
+              <p className="mt-2 text-sm text-text-muted">Yes. QuickFill includes real Australian government forms — TFN declarations, Centrelink income forms, Medicare enrolment, NDIS service agreements, and more.</p>
+            </div>
+            <div className="rounded-xl border border-border bg-surface-alt p-6">
+              <h3 className="font-semibold text-base">What's the difference between free and Pro?</h3>
+              <p className="mt-2 text-sm text-text-muted">Free gives 3 fills per month. Pro ($12/month) gives unlimited fills and access to all Australian templates.</p>
+            </div>
           </div>
         </div>
       </section>
