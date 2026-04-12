@@ -91,6 +91,12 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
   const snapPreviewTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const trRef = useRef<Konva.Transformer | null>(null);
   const nodeMapRef = useRef<Map<string, Konva.Group>>(new Map());
+  
+  // Drag-to-draw refs for Feature 1
+  const dragStart = useRef<{x: number, y: number} | null>(null);
+  const dragCurrent = useRef<{x: number, y: number} | null>(null);
+  const isDragDrawing = useRef(false);
+  const [drawRect, setDrawRect] = useState<{x: number, y: number, w: number, h: number} | null>(null);
 
   useImperativeHandle(ref, () => ({
     getCanvasDataURL: () => canvasRef.current?.toDataURL("image/png") ?? null,
@@ -202,6 +208,62 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
     nodeMapRef.current.delete(id);
   }, []);
 
+  // Feature 2: Keyboard shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Only active when not editing
+      if (editingFieldId !== null) return;
+      
+      const selectedField = selectedFieldId ? fields.find(f => f.id === selectedFieldId && f.page === currentPage) : null;
+      
+      // Delete / Backspace - delete selected field
+      if (e.key === "Delete" || e.key === "Backspace") {
+        if (selectedFieldId) {
+          e.preventDefault();
+          onFieldDelete(selectedFieldId);
+          onFieldSelect(null);
+        }
+        return;
+      }
+      
+      // Escape - deactivate tool and deselect
+      if (e.key === "Escape") {
+        e.preventDefault();
+        onToolSelect(null);
+        onFieldSelect(null);
+        // Cancel any ongoing drag draw
+        if (isDragDrawing.current) {
+          isDragDrawing.current = false;
+          dragStart.current = null;
+          dragCurrent.current = null;
+          setDrawRect(null);
+        }
+        return;
+      }
+      
+      // Arrow keys - nudge selected field
+      if (selectedField && selectedFieldId && (e.key === "ArrowUp" || e.key === "ArrowDown" || e.key === "ArrowLeft" || e.key === "ArrowRight")) {
+        e.preventDefault();
+        const nudgeAmount = e.shiftKey ? 10 : 1;
+        let newX = selectedField.x;
+        let newY = selectedField.y;
+        
+        if (e.key === "ArrowUp") newY -= nudgeAmount;
+        if (e.key === "ArrowDown") newY += nudgeAmount;
+        if (e.key === "ArrowLeft") newX -= nudgeAmount;
+        if (e.key === "ArrowRight") newX += nudgeAmount;
+        
+        onFieldUpdate(selectedFieldId, { x: newX, y: newY });
+        return;
+      }
+    };
+    
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [editingFieldId, selectedFieldId, fields, currentPage, onFieldDelete, onFieldSelect, onToolSelect, onFieldUpdate]);
+
   // Drive the single global Transformer based on selectedFieldId
   useEffect(() => {
     const tr = trRef.current;
@@ -266,6 +328,17 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
       if (!pos) return;
 
       updateCursor(stage, pos);
+
+      // Feature 1: Update drag rectangle while dragging
+      if (isDragDrawing.current && dragStart.current && activeTool && e.target === stage) {
+        dragCurrent.current = pos;
+        const x = Math.min(dragStart.current.x, pos.x);
+        const y = Math.min(dragStart.current.y, pos.y);
+        const w = Math.abs(pos.x - dragStart.current.x);
+        const h = Math.abs(pos.y - dragStart.current.y);
+        setDrawRect({ x, y, w, h });
+        return; // Don't do snap preview while drawing
+      }
 
       if (!activeTool || activeTool === "checkbox" || activeTool === "signature" || !canvasRef.current) {
         if (snapPreview) setSnapPreview(null);
@@ -359,10 +432,17 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
       const pos = stage.getPointerPosition();
       if (pos) {
         mouseDownPos.current = { x: pos.x, y: pos.y };
+        // Feature 1: Record drag start if tool is active and clicking on empty canvas
+        if (activeTool && e.target === stage) {
+          dragStart.current = { x: pos.x, y: pos.y };
+          dragCurrent.current = { x: pos.x, y: pos.y };
+          isDragDrawing.current = true;
+          setDrawRect({ x: pos.x, y: pos.y, w: 0, h: 0 });
+        }
       }
       isDragMove.current = false;
     },
-    []
+    [activeTool]
   );
 
   const handleStageMouseUp = useCallback(
@@ -378,8 +458,176 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
           isDragMove.current = true;
         }
       }
+      
+      // Feature 1: Complete drag-to-draw if active
+      if (isDragDrawing.current && dragStart.current && pos) {
+        const dx = pos.x - dragStart.current.x;
+        const dy = pos.y - dragStart.current.y;
+        const absDx = Math.abs(dx);
+        const absDy = Math.abs(dy);
+        
+        // If drag distance > 10px in both axes, use drawn rectangle
+        if (absDx > 10 && absDy > 10 && activeTool && e.target === stage) {
+          const x = Math.min(dragStart.current.x, pos.x);
+          const y = Math.min(dragStart.current.y, pos.y);
+          const width = absDx / zoomFactor;
+          const height = absDy / zoomFactor;
+          
+          const id = genId();
+          const snapped = false; // No snap detection when user draws manually
+          
+          const defaults = {
+            text:      { w: 200, h: 28 },
+            checkbox:  { w: 20,  h: 20 },
+            signature: { w: 220, h: 70 },
+            date:      { w: 160, h: 28 },
+          };
+          
+          // Use drawn dimensions, but ensure minimum sizes
+          const fieldW = Math.max(width, 20);
+          const fieldH = Math.max(height, 20);
+          
+          const snapBounds = { x: x / zoomFactor, y: y / zoomFactor, width: fieldW, height: fieldH };
+          const base = { id, x: x / zoomFactor, y: y / zoomFactor, page: currentPage, snapped, snapBounds };
+          
+          let field: EditorField;
+          switch (activeTool) {
+            case "text":
+              field = { ...base, type: "text", width: fieldW, height: fieldH, value: "", fontSize: 14 };
+              break;
+            case "checkbox":
+              field = { ...base, type: "checkbox", width: fieldW, height: fieldH, checked: true, stamp: "tick" };
+              break;
+            case "signature":
+              field = { ...base, type: "signature", width: fieldW, height: fieldH, value: "", fontSize: 16 };
+              break;
+            case "date":
+              field = { ...base, type: "date", width: fieldW, height: fieldH, value: new Date().toLocaleDateString("en-AU"), fontSize: 14 };
+              break;
+          }
+          
+          onFieldAdd(field);
+          onFieldSelect(id);
+          onToolSelect(null);
+          
+          if (activeTool === "signature") {
+            onSignatureFieldPlaced?.(field);
+          } else if (activeTool !== "checkbox") {
+            setEditingFieldId(id);
+          }
+        } else if (absDx <= 10 || absDy <= 10) {
+          // Fall back to click-to-place behavior - inline the logic here to avoid circular dependency
+          const clickedOnEmpty = e.target === stage;
+          if (activeTool && clickedOnEmpty && pos) {
+            const id = genId();
+            let fieldX = pos.x / zoomFactor;
+            let fieldY = pos.y / zoomFactor;
+            let fieldW: number;
+            let fieldH: number;
+            let snapped = false;
+
+            const defaults = {
+              text:      { w: 200, h: 28 },
+              checkbox:  { w: 20,  h: 20 },
+              signature: { w: 220, h: 70 },
+              date:      { w: 160, h: 28 },
+            };
+            fieldW = defaults[activeTool].w;
+            fieldH = defaults[activeTool].h;
+
+            // Checkboxes and signatures never snap, place at click point
+            if (activeTool !== "checkbox" && activeTool !== "signature") {
+              if (snapPreview) {
+                fieldX = snapPreview.x;
+                fieldY = snapPreview.y;
+                fieldW = snapPreview.width;
+                fieldH = snapPreview.height;
+                snapped = true;
+              } else {
+                const preBoxes = precomputedBoxesRef.current;
+                let foundSnap: SnapResult | null = null;
+
+                if (preBoxes.length > 0) {
+                  const containing: SnapResult[] = [];
+                  for (const box of preBoxes) {
+                    if (
+                      pos.x >= box.x - 3 &&
+                      pos.x <= box.x + box.width + 3 &&
+                      pos.y >= box.y - 3 &&
+                      pos.y <= box.y + box.height + 3
+                    ) {
+                      containing.push(box);
+                    }
+                  }
+                  if (containing.length > 0) {
+                    containing.sort((a, b) => snapCredibilityScore(a) - snapCredibilityScore(b));
+                    const best = containing[0];
+                    const aspectRatio = best.width / Math.max(best.height, 1);
+                    if (aspectRatio <= 10) foundSnap = best;
+                  }
+                }
+
+                if (!foundSnap && canvasRef.current) {
+                  try {
+                    foundSnap = detectSnapBox(canvasRef.current, pos.x, pos.y);
+                  } catch { /* fall back to default */ }
+                }
+
+                if (foundSnap) {
+                  fieldX = foundSnap.x / zoomFactor;
+                  fieldY = foundSnap.y / zoomFactor;
+                  fieldW = foundSnap.width / zoomFactor;
+                  fieldH = foundSnap.height / zoomFactor;
+                  snapped = true;
+                }
+              }
+            }
+
+            const inferredFontSize = snapped ? inferFontSize(fieldH) : undefined;
+            const snapBounds = snapped ? { x: fieldX, y: fieldY, width: fieldW, height: fieldH } : undefined;
+            const base = { id, x: fieldX, y: fieldY, page: currentPage, snapped, snapBounds };
+
+            let field: EditorField;
+            switch (activeTool) {
+              case "text":
+                field = { ...base, type: "text", width: fieldW, height: fieldH, value: "", fontSize: inferredFontSize ?? 14 };
+                break;
+              case "checkbox":
+                field = { ...base, type: "checkbox", width: fieldW, height: fieldH, checked: true, stamp: "tick" };
+                break;
+              case "signature":
+                field = { ...base, type: "signature", width: fieldW, height: fieldH, value: "", fontSize: inferredFontSize ?? 16 };
+                break;
+              case "date":
+                field = { ...base, type: "date", width: fieldW, height: fieldH, value: new Date().toLocaleDateString("en-AU"), fontSize: inferredFontSize ?? 14 };
+                break;
+            }
+
+            onFieldAdd(field);
+            onFieldSelect(id);
+            onToolSelect(null);
+
+            if (activeTool === "signature") {
+              onSignatureFieldPlaced?.(field);
+            } else if (activeTool !== "checkbox") {
+              setEditingFieldId(id);
+            }
+
+            if (snapped) {
+              setSnappedFieldId(id);
+              setTimeout(() => setSnappedFieldId(null), 600);
+            }
+          }
+        }
+        
+        // Reset drag drawing state
+        isDragDrawing.current = false;
+        dragStart.current = null;
+        dragCurrent.current = null;
+        setDrawRect(null);
+      }
     },
-    []
+    [activeTool, currentPage, zoomFactor, onFieldAdd, onFieldSelect, onToolSelect, onSignatureFieldPlaced, snapPreview]
   );
 
   // Core field creation logic - shared by click and touch
@@ -656,6 +904,24 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
           );
         })()}
 
+        {/* Feature 1: Drag-to-draw rectangle overlay */}
+        {drawRect && (
+          <div
+            style={{
+              position: "absolute",
+              left: drawRect.x,
+              top: drawRect.y,
+              width: drawRect.w,
+              height: drawRect.h,
+              border: "2px dashed #3b82f6",
+              backgroundColor: "rgba(59,130,246,0.08)",
+              borderRadius: 3,
+              pointerEvents: "none",
+              zIndex: 15,
+            }}
+          />
+        )}
+
         {(() => {
           const selectedField = selectedFieldId ? pageFields.find(f => f.id === selectedFieldId) : null;
           const selectedFieldIsSnapped = selectedField?.snapped ?? false;
@@ -762,6 +1028,27 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
             />
           </Layer>
         </Stage>
+          );
+        })()}
+
+        {/* Feature 3: Snapped field lock indicator overlay */}
+        {selectedFieldId && (() => {
+          const selectedField = pageFields.find(f => f.id === selectedFieldId);
+          if (!selectedField || !selectedField.snapped) return null;
+          return (
+            <div
+              style={{
+                position: "absolute",
+                left: selectedField.x * zoomFactor + 2,
+                top: selectedField.y * zoomFactor + 2,
+                fontSize: 10,
+                opacity: 0.4,
+                pointerEvents: "none",
+                zIndex: 25,
+              }}
+            >
+              🔒
+            </div>
           );
         })()}
 
