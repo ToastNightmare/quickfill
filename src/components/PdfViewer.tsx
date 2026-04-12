@@ -96,7 +96,6 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
   const snapPreviewTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const trRef = useRef<Konva.Transformer | null>(null);
   const nodeMapRef = useRef<Map<string, Konva.Group>>(new Map());
-  const pendingSelectRef = useRef<string | null>(null);
   
   // Drag-to-draw refs for Feature 1
   const dragStart = useRef<{x: number, y: number} | null>(null);
@@ -231,11 +230,10 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
   // Register/unregister node callbacks for FieldShape
   const registerNode = useCallback((id: string, node: Konva.Group) => {
     nodeMapRef.current.set(id, node);
-    // If this is the currently selected field or a pending select, attach Transformer immediately
+    // If this newly mounted field is the selected one, attach Transformer immediately
     const tr = trRef.current;
-    if (tr && (id === selectedFieldId || id === pendingSelectRef.current)) {
-      pendingSelectRef.current = null;
-      tr.nodes([]); // explicit clear first
+    if (tr && id === selectedFieldId) {
+      tr.nodes([]);
       tr.nodes([node]);
       tr.getLayer()?.batchDraw();
     }
@@ -275,7 +273,6 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
             onToolSelect(null);
             setCursorStyle("default");
             onFieldSelect(newId);
-            pendingSelectRef.current = newId;
           }
         }
         return;
@@ -323,20 +320,26 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
   useLayoutEffect(() => {
     const tr = trRef.current;
     if (!tr) return;
-    tr.nodes([]); // always clear first
-    if (selectedFieldId) {
-      // Never select whiteout fields - they are non-interactive
-      const selectedField = fields.find(f => f.id === selectedFieldId);
-      if (selectedField && selectedField.type === "whiteout") {
-        tr.nodes([]);
-        return;
-      }
-      const node = nodeMapRef.current.get(selectedFieldId);
-      if (node) {
-        tr.nodes([node]);
-      }
+    if (!selectedFieldId) {
+      tr.nodes([]);
+      tr.getLayer()?.batchDraw();
+      return;
     }
-    tr.getLayer()?.batchDraw();
+    // Never attach Transformer to whiteout fields
+    const selectedField = fields.find(f => f.id === selectedFieldId);
+    if (selectedField?.type === 'whiteout') {
+      tr.nodes([]);
+      tr.getLayer()?.batchDraw();
+      return;
+    }
+    const node = nodeMapRef.current.get(selectedFieldId);
+    if (node) {
+      // Node is already mounted — attach now
+      tr.nodes([]);
+      tr.nodes([node]);
+      tr.getLayer()?.batchDraw();
+    }
+    // If node not found yet, do nothing — registerNode will attach when it mounts
   }, [selectedFieldId, fields]);
 
   // Animate snap preview opacity
@@ -627,7 +630,6 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
           onToolSelect(null);
           setCursorStyle("default");
           onFieldSelect(id);
-          pendingSelectRef.current = id;
           
           if (activeTool === "signature") {
             onSignatureFieldPlaced?.(field);
@@ -752,7 +754,6 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
             onToolSelect(null);
             setCursorStyle("default");
             onFieldSelect(id);
-            pendingSelectRef.current = id;
 
             if (activeTool === "signature") {
               onSignatureFieldPlaced?.(field);
@@ -898,8 +899,6 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
       onToolSelect(null);
       setCursorStyle("default");
       onFieldSelect(id);
-      // Parent handles selection via handleFieldAdd, but we set pendingSelectRef for transformer sync
-      pendingSelectRef.current = id;
 
       // For signature fields, trigger signature placement flow
       if (activeTool === "signature") {
@@ -1286,7 +1285,6 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
                     onToolSelect(null);
                     setCursorStyle("default");
                     onFieldSelect(newId);
-                    pendingSelectRef.current = newId;
                   }
                   setContextMenu(null);
                 }}
