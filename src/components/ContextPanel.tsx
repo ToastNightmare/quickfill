@@ -146,24 +146,6 @@ export function ContextPanel({
           );
         })()}
 
-        {/* Whiteout controls */}
-        {fieldType === "whiteout" && (() => {
-          return (
-            <Section label="Whiteout">
-              <div className="mb-3 flex items-center justify-center rounded-xl border-2 border-dashed border-border bg-surface-alt p-4 min-h-[96px]">
-                <div className="text-center">
-                  <Eraser className="h-6 w-6 text-text-muted mx-auto mb-1.5" />
-                  <p className="text-xs font-medium text-text-muted">Background cover</p>
-                  <p className="text-[10px] text-text-muted/60 mt-0.5">Drag to resize or move</p>
-                </div>
-              </div>
-              <p className="text-xs text-text-muted leading-relaxed">
-                This whiteout block will cover pre-printed text with the sampled background color when exported.
-              </p>
-            </Section>
-          );
-        })()}
-
         {/* Font size controls, text and date only */}
         {(fieldType === "text" || fieldType === "date") && (() => {
           const fontSize = (selectedField as { fontSize?: number }).fontSize ?? 14;

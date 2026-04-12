@@ -81,14 +81,14 @@ export function ContextBar({
       );
     }
 
-    // Whiteout doesn't have fontSize controls
+    // Whiteout is static - just show delete option
     if (fieldType === "whiteout") {
       return (
         <Bar>
           <Eraser className="h-4 w-4 text-accent shrink-0" />
           <span className="text-sm font-semibold text-text">Whiteout</span>
           <div className="w-px h-4 bg-border" />
-          <span className="text-xs text-text-muted">Drag to resize or move</span>
+          <span className="text-xs text-text-muted">Static block - use Undo if misplaced</span>
           <Spacer />
           <DeleteBtn onClick={() => { onFieldDelete(selectedField.id); onFieldDeselect(); }} />
           <CancelBtn onClick={onFieldDeselect} />

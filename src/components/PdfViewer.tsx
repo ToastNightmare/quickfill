@@ -1263,15 +1263,16 @@ function FieldShape({
 }) {
   const groupRef = useRef<Konva.Group>(null);
 
-  // Register/unregister this field's node with the global transformer
+  // Register/unregister this field's node with the global transformer (skip for whiteout - static)
   useEffect(() => {
+    if (field.type === "whiteout") return; // Whiteout is static, no transformer
     const node = groupRef.current;
     if (!node) return;
     registerNode(field.id, node);
     return () => {
       unregisterNode(field.id);
     };
-  }, [field.id, registerNode, unregisterNode]);
+  }, [field.id, field.type, registerNode, unregisterNode]);
 
   const [dragOpacity, setDragOpacity] = useState(1);
 
@@ -1397,58 +1398,18 @@ function FieldShape({
     );
   }
 
-  // Whiteout field - just a filled rectangle
+  // Whiteout field - static rectangle, no interaction after placement
   if (field.type === "whiteout") {
     const whiteoutField = field as WhiteoutField;
     return (
-      <Group
-        id={field.id}
-        ref={groupRef}
+      <Rect
         x={field.x}
         y={field.y}
         width={field.width}
         height={field.height}
-        opacity={dragOpacity}
-        draggable={true} // Whiteout is always draggable (not locked/snapped)
-        onMouseEnter={() => onMouseEnter?.()}
-        onMouseLeave={() => onMouseLeave?.()}
-        onClick={(e) => {
-          e.cancelBubble = true;
-          onSelect();
-        }}
-        onDragStart={() => {
-          setDragOpacity(0.85);
-          onDragStart?.();
-        }}
-        onDragEnd={(e) => {
-          setDragOpacity(1);
-          onDragEnd(e.target.x(), e.target.y());
-        }}
-        onTransformEnd={(e) => {
-          const node = e.target;
-          const scaleX = node.scaleX();
-          const scaleY = node.scaleY();
-          node.scaleX(1);
-          node.scaleY(1);
-          onTransformEnd(
-            Math.max(16, node.width() * scaleX),
-            Math.max(16, node.height() * scaleY),
-            node.x(),
-            node.y()
-          );
-        }}
-      >
-        {/* Filled rectangle with sampled background color */}
-        <Rect
-          width={field.width}
-          height={field.height}
-          fill={whiteoutField.fillColor}
-          stroke={isSelected ? "#3b82f6" : "transparent"}
-          strokeWidth={isSelected ? 1.5 : 0}
-          dash={isSelected ? [4, 3] : undefined}
-          cornerRadius={2}
-        />
-      </Group>
+        fill={whiteoutField.fillColor}
+        listening={false} // No pointer events - static, non-interactive
+      />
     );
   }
 
