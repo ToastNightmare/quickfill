@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { HelpCircle, X } from "lucide-react";
 
 type Step = {
@@ -15,31 +15,49 @@ interface TourOverlayProps {
   onSkip: () => void;
 }
 
+interface SpotlightRect {
+  top: number;
+  left: number;
+  width: number;
+  height: number;
+}
+
+const PADDING = 8;
+
 export function TourOverlay({ steps, onComplete, onSkip }: TourOverlayProps) {
   const [currentStep, setCurrentStep] = useState(0);
-  const [position, setPosition] = useState({ top: 0, left: 0, width: 0, height: 0 });
-  const [showSpotlight, setShowSpotlight] = useState(false);
-  const overlayRef = useRef<HTMLDivElement>(null);
+  const [spotlightRect, setSpotlightRect] = useState<SpotlightRect | null>(null);
+  const [tooltipPosition, setTooltipPosition] = useState<"above" | "below">("below");
+
+  const updateSpotlight = useCallback(() => {
+    const target = steps[currentStep].targetRef.current;
+    if (target) {
+      const rect = target.getBoundingClientRect();
+      setSpotlightRect({
+        top: rect.top,
+        left: rect.left,
+        width: rect.width,
+        height: rect.height,
+      });
+
+      // Determine tooltip position based on element position on screen
+      const screenMiddle = window.innerHeight / 2;
+      const elementCenter = rect.top + rect.height / 2;
+      setTooltipPosition(elementCenter < screenMiddle ? "below" : "above");
+    }
+  }, [currentStep, steps]);
 
   useEffect(() => {
-    const updatePosition = () => {
-      const target = steps[currentStep].targetRef.current;
-      if (target) {
-        const rect = target.getBoundingClientRect();
-        setPosition({
-          top: rect.top,
-          left: rect.left,
-          width: rect.width,
-          height: rect.height,
-        });
-        setShowSpotlight(true);
-      }
+    updateSpotlight();
+
+    // Re-measure on window resize
+    const handleResize = () => {
+      updateSpotlight();
     };
 
-    updatePosition();
-    const interval = setInterval(updatePosition, 100);
-    return () => clearInterval(interval);
-  }, [currentStep, steps]);
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, [updateSpotlight]);
 
   const handleNext = () => {
     if (currentStep < steps.length - 1) {
@@ -59,44 +77,146 @@ export function TourOverlay({ steps, onComplete, onSkip }: TourOverlayProps) {
 
   const isLastStep = currentStep === steps.length - 1;
 
+  if (!spotlightRect) {
+    return null;
+  }
+
+  const { top, left, width, height } = spotlightRect;
+
+  // Calculate the four overlay rectangles
+  const topOverlay = {
+    top: 0,
+    left: 0,
+    right: 0,
+    height: top - PADDING,
+  };
+
+  const bottomOverlay = {
+    top: top + height + PADDING,
+    left: 0,
+    right: 0,
+    bottom: 0,
+  };
+
+  const leftOverlay = {
+    top: top - PADDING,
+    left: 0,
+    width: left - PADDING,
+    height: height + PADDING * 2,
+  };
+
+  const rightOverlay = {
+    top: top - PADDING,
+    left: left + width + PADDING,
+    right: 0,
+    height: height + PADDING * 2,
+  };
+
+  // Tooltip position
+  const tooltipStyle =
+    tooltipPosition === "below"
+      ? {
+          top: top + height + PADDING + 12,
+          left: left + width / 2,
+        }
+      : {
+          bottom: window.innerHeight - (top - PADDING) + 12,
+          left: left + width / 2,
+        };
+
   return (
     <>
-      {/* Spotlight overlay */}
-      <div
-        ref={overlayRef}
-        className="fixed inset-0 z-[150] pointer-events-none"
-        style={{
-          background: showSpotlight
-            ? `radial-gradient(circle at ${position.left + position.width / 2}px ${position.top + position.height / 2}px, transparent 0px, transparent ${Math.max(position.width, position.height)}px, rgba(0, 0, 0, 0.55) ${Math.max(position.width, position.height)}px)`
-            : "rgba(0, 0, 0, 0.55)",
-        }}
-      >
-        {/* Spotlight cutout using box-shadow trick */}
-        {showSpotlight && (
+      {/* Four-part spotlight overlay */}
+      <div className="fixed inset-0 z-[9998] pointer-events-none">
+        {/* Top overlay */}
+        {topOverlay.height > 0 && (
           <div
-            className="absolute pointer-events-auto"
+            className="fixed left-0 right-0 bg-black/55"
             style={{
-              top: position.top,
-              left: position.left,
-              width: position.width,
-              height: position.height,
-              boxShadow: "0 0 0 9999px rgba(0, 0, 0, 0.55)",
-              borderRadius: "8px",
+              top: topOverlay.top,
+              height: topOverlay.height,
+            }}
+          />
+        )}
+
+        {/* Bottom overlay */}
+        {bottomOverlay.top < window.innerHeight && (
+          <div
+            className="fixed left-0 right-0 bg-black/55"
+            style={{
+              top: bottomOverlay.top,
+              height: window.innerHeight - bottomOverlay.top,
+            }}
+          />
+        )}
+
+        {/* Left overlay */}
+        {leftOverlay.width > 0 && (
+          <div
+            className="fixed top-0 bg-black/55"
+            style={{
+              top: leftOverlay.top,
+              left: leftOverlay.left,
+              width: leftOverlay.width,
+              height: leftOverlay.height,
+            }}
+          />
+        )}
+
+        {/* Right overlay */}
+        {rightOverlay.left < window.innerWidth && (
+          <div
+            className="fixed top-0 bg-black/55"
+            style={{
+              top: rightOverlay.top,
+              left: rightOverlay.left,
+              width: window.innerWidth - rightOverlay.left,
+              height: rightOverlay.height,
             }}
           />
         )}
       </div>
 
-      {/* Tooltip card */}
+      {/* Pulsing ring around target element */}
       <div
-        className="fixed z-[160] bg-white rounded-xl shadow-lg p-4 max-w-xs pointer-events-auto"
+        className="fixed z-[9999] pointer-events-none"
         style={{
-          top: position.top + position.height + 16,
-          left: position.left,
-          transform: "translateX(-50%)",
-          marginLeft: "50%",
+          top: top - PADDING,
+          left: left - PADDING,
+          width: width + PADDING * 2,
+          height: height + PADDING * 2,
         }}
       >
+        {/* Outer ring with ping animation */}
+        <div className="absolute inset-0 animate-ping rounded-lg">
+          <div className="w-full h-full rounded-lg border-2 border-blue-500 opacity-40" />
+        </div>
+        {/* Static ring */}
+        <div className="absolute inset-0 rounded-lg border-2 border-blue-500" />
+      </div>
+
+      {/* Tooltip card with directional arrow */}
+      <div
+        className={`fixed z-[10000] bg-white rounded-xl shadow-lg p-4 max-w-xs pointer-events-auto ${
+          tooltipPosition === "below" ? "transform -translate-x-1/2" : "transform -translate-x-1/2"
+        }`}
+        style={tooltipStyle}
+      >
+        {/* Directional arrow */}
+        <div
+          className={`absolute left-1/2 transform -translate-x-1/2 ${
+            tooltipPosition === "below" ? "-top-2" : "-bottom-2"
+          }`}
+        >
+          <div
+            className={`w-0 h-0 border-l-[8px] border-l-transparent border-r-[8px] border-r-transparent ${
+              tooltipPosition === "below"
+                ? "border-t-[8px] border-t-white"
+                : "border-b-[8px] border-b-white"
+            }`}
+          />
+        </div>
+
         <div className="flex items-start justify-between mb-3">
           <div>
             <h3 className="font-semibold text-gray-900 text-sm">{steps[currentStep].title}</h3>
