@@ -116,6 +116,13 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
     if (!selectedFieldId) setEditingFieldId(null);
   }, [selectedFieldId]);
 
+  // Reset cursor when tool is deactivated
+  useEffect(() => {
+    if (!activeTool) {
+      setCursorStyle("default");
+    }
+  }, [activeTool]);
+
   // Defensive guard: notify parent to clamp currentPage when totalPages changes
   useEffect(() => {
     if (_totalPages > 0 && currentPage >= _totalPages) {
@@ -889,6 +896,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
       });
       // Deactivate tool after placing so panel switches to field controls
       onToolSelect(null);
+      setCursorStyle("default"); // reset cursor immediately on tool deactivation
 
       // For signature fields, trigger signature placement flow
       if (activeTool === "signature") {
