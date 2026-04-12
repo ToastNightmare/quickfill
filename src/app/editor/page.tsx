@@ -126,6 +126,7 @@ export default function EditorPage() {
   const [minimapCanvas, setMinimapCanvas] = useState<HTMLCanvasElement | null>(null);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
   const [savingProgress, setSavingProgress] = useState(false);
+  const [snapEnabled, setSnapEnabled] = useState(false); // OFF by default
   const { fields, set: setFields, undo, redo, reset, canUndo, canRedo } = useHistory();
   const restoredRef = useRef(false);
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -235,6 +236,14 @@ export default function EditorPage() {
   useEffect(() => {
     saveZoomToLocalStorage(zoom);
   }, [zoom]);
+
+  // Clear snap preview when snap is disabled
+  useEffect(() => {
+    if (!snapEnabled) {
+      // Signal to PdfViewer to clear any snap preview by triggering a state update
+      // The PdfViewer will handle this via its own useEffect on snapEnabled
+    }
+  }, [snapEnabled]);
 
   // Auto-save session when fields change (debounced 3 seconds)
   useEffect(() => {
@@ -1072,6 +1081,8 @@ export default function EditorPage() {
             onDetectFields={handleDetectFields}
             isDetecting={isDetecting}
             onAutoFill={handleAutoFillFromProfile}
+            snapEnabled={snapEnabled}
+            onSnapToggle={() => setSnapEnabled(v => !v)}
             minimapCanvas={minimapCanvas}
             viewerRef={viewerContainerRef}
             zoom={zoom}
@@ -1100,6 +1111,7 @@ export default function EditorPage() {
             highlightFieldIds={highlightFieldIds}
             onSignatureFieldPlaced={handleSignatureFieldPlaced}
             onPageChange={handlePageChange}
+            snapEnabled={snapEnabled}
           />
         </div>
 
@@ -1164,6 +1176,8 @@ export default function EditorPage() {
         onDetectFields={handleDetectFields}
         isDetecting={isDetecting}
         onAutoFill={handleAutoFillFromProfile}
+        snapEnabled={snapEnabled}
+        onSnapToggle={() => setSnapEnabled(v => !v)}
         mobile
       />
 

@@ -14,6 +14,7 @@ import {
   Map,
   Save,
   Eraser,
+  Magnet,
 } from "lucide-react";
 import type { ToolType, EditorField } from "@/lib/types";
 import { Minimap } from "@/components/Minimap";
@@ -37,6 +38,8 @@ interface ToolbarProps {
   onDetectFields: () => void;
   isDetecting: boolean;
   onAutoFill: () => void;
+  snapEnabled: boolean;
+  onSnapToggle: () => void;
   mobile?: boolean;
   // Minimap props (desktop only)
   minimapCanvas?: HTMLCanvasElement | null;
@@ -69,6 +72,8 @@ export function Toolbar({
   onDetectFields,
   isDetecting,
   onAutoFill,
+  snapEnabled,
+  onSnapToggle,
   mobile,
   minimapCanvas,
   viewerRef,
@@ -99,6 +104,19 @@ export function Toolbar({
             {label}
           </button>
         ))}
+        <div className="w-px h-6 bg-border shrink-0" />
+        <button
+          onClick={onSnapToggle}
+          title={snapEnabled ? "Snap ON - click to disable" : "Snap OFF - click to enable"}
+          className={`flex shrink-0 items-center gap-1.5 rounded-full px-3 py-2.5 text-xs font-semibold transition-colors border ${
+            snapEnabled
+              ? "bg-accent text-white border-accent"
+              : "bg-surface text-text-muted border-border hover:border-accent hover:text-accent"
+          }`}
+        >
+          <Magnet className="h-3.5 w-3.5" />
+          Snap {snapEnabled ? "On" : "Off"}
+        </button>
         <div className="w-px h-6 bg-border shrink-0" />
         <button onClick={onUndo} disabled={!canUndo} title="Undo" className="shrink-0 rounded-full p-2.5 text-text-muted hover:bg-surface-alt disabled:opacity-30 transition-colors">
           <Undo2 className="h-4 w-4" />
@@ -184,9 +202,19 @@ export function Toolbar({
           </button>
         ))}
 
-
-
-
+        {/* Snap Toggle */}
+        <button
+          onClick={onSnapToggle}
+          title={snapEnabled ? "Snap ON - click to disable" : "Snap OFF - click to enable"}
+          className={`flex h-8 items-center gap-3 rounded-lg px-2 text-sm font-semibold transition-colors border ${
+            snapEnabled
+              ? "bg-accent text-white border-accent"
+              : "text-text-muted border-border hover:border-accent hover:text-accent"
+          }`}
+        >
+          <Magnet className="h-4 w-4 shrink-0" />
+          <span className="hidden sm:inline">{snapEnabled ? "Snap On" : "Snap Off"}</span>
+        </button>
 
         <div className="my-1 h-px bg-border mx-1" />
 

@@ -32,6 +32,7 @@ interface PdfViewerProps {
   highlightFieldIds?: Set<string>;
   onSignatureFieldPlaced?: (field: EditorField) => void;
   onPageChange?: (page: number) => void;
+  snapEnabled: boolean;
 }
 
 let nextFieldId = 1;
@@ -72,6 +73,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
   highlightFieldIds,
   onSignatureFieldPlaced,
   onPageChange,
+  snapEnabled,
 }, ref) {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -309,6 +311,13 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
     }
   }, [snapPreview]);
 
+  // Clear snap preview when snap is disabled
+  useEffect(() => {
+    if (!snapEnabled) {
+      setSnapPreview(null);
+    }
+  }, [snapEnabled]);
+
   // Update cursor based on context
   const updateCursor = useCallback((stage: Konva.Stage, pos: { x: number; y: number }) => {
     if (isDragging) {
@@ -359,6 +368,12 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
       }
 
       if (!activeTool || activeTool === "checkbox" || activeTool === "signature" || !canvasRef.current) {
+        if (snapPreview) setSnapPreview(null);
+        return;
+      }
+
+      // Skip snap detection entirely when snap is disabled
+      if (!snapEnabled) {
         if (snapPreview) setSnapPreview(null);
         return;
       }
@@ -435,7 +450,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
         setSnapPreview(null);
       }
     },
-    [activeTool, zoomFactor, updateCursor, snapPreview]
+    [activeTool, zoomFactor, updateCursor, snapPreview, snapEnabled]
   );
 
   const handleStageMouseLeave = useCallback(() => {
@@ -577,7 +592,8 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
             fieldH = defaults[activeTool].h;
 
             // Checkboxes and signatures never snap, place at click point
-            if (activeTool !== "checkbox" && activeTool !== "signature") {
+            // Also skip snap detection if snapEnabled is false
+            if (activeTool !== "checkbox" && activeTool !== "signature" && snapEnabled) {
               if (snapPreview) {
                 fieldX = snapPreview.x;
                 fieldY = snapPreview.y;
@@ -719,7 +735,8 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
       fieldH = defaults[activeTool].h;
 
       // Checkboxes and signatures never snap, place at click point
-      if (activeTool !== "checkbox" && activeTool !== "signature") {
+      // Also skip snap detection if snapEnabled is false
+      if (activeTool !== "checkbox" && activeTool !== "signature" && snapEnabled) {
         // Snap-first: always try snap detection first
         if (snapPreview) {
           fieldX = snapPreview.x;
@@ -832,7 +849,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
 
       return true;
     },
-    [activeTool, currentPage, onFieldAdd, onFieldSelect, onToolSelect, zoomFactor, snapPreview, onSignatureFieldPlaced]
+    [activeTool, currentPage, onFieldAdd, onFieldSelect, onToolSelect, zoomFactor, snapPreview, onSignatureFieldPlaced, snapEnabled]
   );
 
   const handleStageClick = useCallback(
