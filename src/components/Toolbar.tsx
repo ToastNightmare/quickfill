@@ -43,11 +43,6 @@ interface ToolbarProps {
   onSnapToggle: () => void;
   onShowHelp?: () => void;
   mobile?: boolean;
-  // Tour refs
-  snapToggleRef?: React.RefObject<HTMLButtonElement | null>;
-  whiteoutToolRef?: React.RefObject<HTMLButtonElement | null>;
-  undoRedoRef?: React.RefObject<HTMLButtonElement | null>;
-  downloadButtonRef?: React.RefObject<HTMLButtonElement | null>;
   // Minimap props (desktop only)
   minimapCanvas?: HTMLCanvasElement | null;
   viewerRef?: RefObject<HTMLDivElement | null>;
@@ -83,10 +78,6 @@ export function Toolbar({
   onSnapToggle,
   onShowHelp,
   mobile,
-  snapToggleRef,
-  whiteoutToolRef,
-  undoRedoRef,
-  downloadButtonRef,
   minimapCanvas,
   viewerRef,
   zoom,
@@ -118,7 +109,6 @@ export function Toolbar({
         ))}
         <div className="w-px h-6 bg-border shrink-0" />
         <button
-          ref={snapToggleRef}
           onClick={onSnapToggle}
           title="Toggle snap detection for structured forms"
           className={`flex shrink-0 items-center gap-1.5 rounded-full px-3 py-2.5 text-xs font-semibold transition-colors border ${
@@ -131,7 +121,7 @@ export function Toolbar({
           Snap {snapEnabled ? "On" : "Off"}
         </button>
         <div className="w-px h-6 bg-border shrink-0" />
-        <button ref={undoRedoRef} onClick={onUndo} disabled={!canUndo} title="Undo (Ctrl+Z)" className="shrink-0 rounded-full p-2.5 text-text-muted hover:bg-surface-alt disabled:opacity-30 transition-colors">
+        <button onClick={onUndo} disabled={!canUndo} title="Undo (Ctrl+Z)" className="shrink-0 rounded-full p-2.5 text-text-muted hover:bg-surface-alt disabled:opacity-30 transition-colors">
           <Undo2 className="h-4 w-4" />
         </button>
         <button onClick={onRedo} disabled={!canRedo} title="Redo (Ctrl+Shift+Z)" className="shrink-0 rounded-full p-2.5 text-text-muted hover:bg-surface-alt disabled:opacity-30 transition-colors">
@@ -174,7 +164,6 @@ export function Toolbar({
         )}
         <div className="w-px h-6 bg-border shrink-0" />
         <button
-          ref={downloadButtonRef}
           onClick={onDownload}
           disabled={isDownloading}
           title="Download PDF"
@@ -230,7 +219,6 @@ export function Toolbar({
 
         {/* Snap Toggle */}
         <button
-          ref={snapToggleRef}
           onClick={onSnapToggle}
           title="Toggle snap detection for structured forms"
           className={`flex h-8 items-center gap-3 rounded-lg px-2 text-sm font-semibold transition-colors border ${
@@ -243,9 +231,6 @@ export function Toolbar({
           <span className="hidden sm:inline">{snapEnabled ? "Snap On" : "Snap Off"}</span>
         </button>
 
-        {/* Whiteout tool ref for tour */}
-        <div ref={whiteoutToolRef as any} className="hidden">whiteout-tour-ref</div>
-
         <div className="my-1 h-px bg-border mx-1" />
 
         {/* Actions */}
@@ -253,7 +238,6 @@ export function Toolbar({
           Actions
         </p>
         <button
-          ref={undoRedoRef}
           onClick={onUndo}
           disabled={!canUndo}
           title="Undo (Ctrl+Z)"
@@ -302,7 +286,6 @@ export function Toolbar({
 
         {/* Download */}
         <button
-          ref={downloadButtonRef}
           onClick={onDownload}
           disabled={isDownloading}
           title="Download filled PDF"

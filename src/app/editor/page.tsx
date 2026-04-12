@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useCallback, useEffect, useRef, useMemo } from "react";
-import { ChevronLeft, ChevronRight, Sparkles, X, RotateCcw, Minus, Plus, Download, HelpCircle } from "lucide-react";
+import { ChevronLeft, ChevronRight, Sparkles, X, RotateCcw, Minus, Plus, Download } from "lucide-react";
 import { UploadZone } from "@/components/UploadZone";
 import { MobileFiller } from "@/components/MobileFiller";
 import { Toolbar } from "@/components/Toolbar";
@@ -9,7 +9,7 @@ import { PdfViewer } from "@/components/PdfViewer";
 import { ContextPanel } from "@/components/ContextPanel";
 import { SignatureModal } from "@/components/SignatureModal";
 import { WelcomeModal } from "@/components/WelcomeModal";
-import { TourOverlay, HelpButton } from "@/components/TourOverlay";
+import { TourModal } from "@/components/TourModal";
 import type { PdfViewerHandle } from "@/components/PdfViewer";
 import { useHistory } from "@/lib/use-history";
 import { detectAcroFormFields } from "@/lib/pdf-utils";
@@ -137,12 +137,6 @@ export default function EditorPage() {
 
   const pdfViewerRef = useRef<PdfViewerHandle>(null);
   const viewerContainerRef = useRef<HTMLDivElement>(null);
-  const toolbarToolsRef = useRef<HTMLButtonElement | null>(null);
-  const canvasAreaRef = useRef<HTMLDivElement | null>(null);
-  const snapToggleRef = useRef<HTMLButtonElement | null>(null);
-  const whiteoutToolRef = useRef<HTMLButtonElement | null>(null);
-  const undoRedoRef = useRef<HTMLButtonElement | null>(null);
-  const downloadButtonRef = useRef<HTMLButtonElement | null>(null);
 
   // Load saved signature on mount
   useEffect(() => {
@@ -1112,7 +1106,7 @@ export default function EditorPage() {
 
       {/* Sidebar + Canvas row */}
       <div className="flex flex-1 min-h-0">
-        <div className="flex-shrink-0 h-full overflow-y-auto hidden sm:flex" ref={toolbarToolsRef as any}>
+        <div className="flex-shrink-0 h-full overflow-y-auto hidden sm:flex">
           <Toolbar
             activeTool={activeTool}
             onToolSelect={setActiveTool}
@@ -1132,10 +1126,6 @@ export default function EditorPage() {
             snapEnabled={snapEnabled}
             onSnapToggle={() => setSnapEnabled(v => !v)}
             onShowHelp={handleShowHelp}
-            snapToggleRef={snapToggleRef}
-            whiteoutToolRef={whiteoutToolRef}
-            undoRedoRef={undoRedoRef}
-            downloadButtonRef={downloadButtonRef}
             minimapCanvas={minimapCanvas}
             viewerRef={viewerContainerRef}
             zoom={zoom}
@@ -1143,7 +1133,7 @@ export default function EditorPage() {
           />
         </div>
 
-        <div ref={canvasAreaRef} className="flex-1 h-full overflow-auto relative min-w-0">
+        <div className="flex-1 h-full overflow-auto relative min-w-0">
           <PdfViewer
             ref={pdfViewerRef}
             pdfBytes={pdfBytes}
@@ -1241,10 +1231,6 @@ export default function EditorPage() {
         snapEnabled={snapEnabled}
         onSnapToggle={() => setSnapEnabled(v => !v)}
         onShowHelp={handleShowHelp}
-        snapToggleRef={snapToggleRef}
-        whiteoutToolRef={whiteoutToolRef}
-        undoRedoRef={undoRedoRef}
-        downloadButtonRef={downloadButtonRef}
         mobile
       />
 
@@ -1344,44 +1330,9 @@ export default function EditorPage() {
         <WelcomeModal onComplete={handleWelcomeComplete} />
       )}
 
-      {/* Tour overlay for coach marks */}
-      {showTour && pdfBytes && (
-        <TourOverlay
-          steps={[
-            {
-              title: "Pick a tool",
-              description: "Text, date, signature, checkbox, or whiteout",
-              targetRef: toolbarToolsRef,
-            },
-            {
-              title: "Canvas area",
-              description: "Click and drag on the PDF to draw your field exactly where you want it",
-              targetRef: canvasAreaRef,
-            },
-            {
-              title: "Snap toggle",
-              description: "Turn Snap on to auto-fit fields into detected form boxes",
-              targetRef: snapToggleRef,
-            },
-            {
-              title: "Whiteout tool",
-              description: "Use Whiteout to cover pre-printed text before placing your field",
-              targetRef: whiteoutToolRef,
-            },
-            {
-              title: "Undo/Redo",
-              description: "Undo any mistake with Ctrl+Z, then download when ready",
-              targetRef: undoRedoRef,
-            },
-            {
-              title: "Download button",
-              description: "Hit Download to save your completed PDF",
-              targetRef: downloadButtonRef,
-            },
-          ]}
-          onComplete={handleTourComplete}
-          onSkip={handleTourComplete}
-        />
+      {/* Tour modal for guided walkthrough */}
+      {showTour && (
+        <TourModal isOpen={showTour} onClose={handleTourComplete} />
       )}
     </div>
     </>
