@@ -13,6 +13,7 @@ import {
   UserCheck,
   Map,
   Save,
+  Eraser,
 } from "lucide-react";
 import type { ToolType, EditorField } from "@/lib/types";
 import { Minimap } from "@/components/Minimap";
@@ -49,6 +50,7 @@ const tools: { type: ToolType; icon: typeof Type; label: string }[] = [
   { type: "checkbox", icon: CheckSquare, label: "Checkbox" },
   { type: "signature", icon: PenTool, label: "Signature" },
   { type: "date", icon: Calendar, label: "Date" },
+  { type: "whiteout", icon: Eraser, label: "Whiteout" },
 ];
 
 export function Toolbar({

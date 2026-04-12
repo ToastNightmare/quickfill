@@ -65,7 +65,10 @@ export async function POST(request: NextRequest) {
       // Set user-filled values
       for (const field of editorFields) {
         try {
-          if (field.type === "signature" && field.signatureDataUrl) {
+          if (field.type === "whiteout") {
+            // Whiteout fields are drawn directly on the page
+            await drawFieldOnPage(pdfDoc, field, pageScales, font, signatureFont);
+          } else if (field.type === "signature" && field.signatureDataUrl) {
             const widget = findWidget(pdfDoc, form, field.id);
             if (widget) {
               const page = pdfDoc.getPages()[widget.pageIndex];
@@ -204,7 +207,26 @@ async function drawFieldOnPage(pdfDoc: PDFDocument, field: EditorField, pageScal
   const pdfY = page.getHeight() - field.y / scale - field.height / scale;
   const pdfW = field.width / scale;
   const pdfH = field.height / scale;
-  if (field.type === "signature" && field.signatureDataUrl) {
+  
+  if (field.type === "whiteout") {
+    // Draw a filled rectangle with the sampled background color
+    const whiteoutField = field as import("@/lib/types").WhiteoutField;
+    // Parse hex color to RGB (0-1 range for pdf-lib)
+    let r = 1, g = 1, b = 1;
+    const hex = whiteoutField.fillColor.replace("#", "");
+    if (hex.length === 6) {
+      r = parseInt(hex.slice(0, 2), 16) / 255;
+      g = parseInt(hex.slice(2, 4), 16) / 255;
+      b = parseInt(hex.slice(4, 6), 16) / 255;
+    }
+    page.drawRectangle({
+      x: pdfX,
+      y: pdfY,
+      width: pdfW,
+      height: pdfH,
+      color: rgb(r, g, b),
+    });
+  } else if (field.type === "signature" && field.signatureDataUrl) {
     await drawSignatureImage(pdfDoc, page, field.signatureDataUrl, pdfX, pdfY, pdfW, pdfH, field.value, signatureFont, (field.fontSize ?? 16) / scale);
   } else if (field.type === "text" || field.type === "date" || field.type === "signature") {
     if (field.value) {

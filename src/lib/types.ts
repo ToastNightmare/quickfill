@@ -1,4 +1,4 @@
-export type ToolType = "text" | "checkbox" | "signature" | "date";
+export type ToolType = "text" | "checkbox" | "signature" | "date" | "whiteout";
 
 export interface FieldBase {
   id: string;
@@ -40,7 +40,12 @@ export interface DateField extends FieldBase {
   fontSize: number;
 }
 
-export type EditorField = TextField | CheckboxField | SignatureField | DateField;
+export interface WhiteoutField extends FieldBase {
+  type: "whiteout";
+  fillColor: string; // CSS hex or rgba, sampled from PDF background
+}
+
+export type EditorField = TextField | CheckboxField | SignatureField | DateField | WhiteoutField;
 
 export interface AcroFormField {
   name: string;

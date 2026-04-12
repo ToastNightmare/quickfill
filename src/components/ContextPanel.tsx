@@ -3,7 +3,7 @@
 import {
   Type, CheckSquare, PenTool, Calendar,
   Minus, Plus, Trash2, MousePointer2,
-  Sparkles, UserCheck,
+  Sparkles, UserCheck, Eraser,
 } from "lucide-react";
 import type { EditorField, ToolType, SignatureField } from "@/lib/types";
 import type { CheckboxStamp } from "@/lib/types";
@@ -15,6 +15,7 @@ const TOOL_META: Record<ToolType, { icon: typeof Type; label: string; hint: stri
   checkbox:  { icon: CheckSquare, label: "Checkbox",    hint: "Click anywhere on the PDF to stamp a tick or cross. Click again to cycle or clear.",              color: "text-violet-500" },
   signature: { icon: PenTool,     label: "Signature",   hint: "Click the PDF to place a signature field. You can draw or reuse a saved signature.",              color: "text-pink-500" },
   date:      { icon: Calendar,    label: "Date",        hint: "Click the PDF to place a date field. Today's date is pre-filled, edit it after placing.",        color: "text-amber-500" },
+  whiteout:  { icon: Eraser,      label: "Whiteout",    hint: "Drag to draw a rectangle over unwanted text. It will sample the background color automatically.", color: "text-gray-500" },
 };
 
 interface ContextPanelProps {
@@ -52,17 +53,20 @@ export function ContextPanel({
     const TypeIcon =
       fieldType === "checkbox" ? CheckSquare :
       fieldType === "signature" ? PenTool :
-      fieldType === "date" ? Calendar : Type;
+      fieldType === "date" ? Calendar :
+      fieldType === "whiteout" ? Eraser : Type;
 
     const typeLabel =
       fieldType === "checkbox" ? "Checkbox" :
       fieldType === "signature" ? "Signature" :
-      fieldType === "date" ? "Date" : "Text Field";
+      fieldType === "date" ? "Date" :
+      fieldType === "whiteout" ? "Whiteout" : "Text Field";
 
     const typeColor =
       fieldType === "checkbox" ? "text-violet-500" :
       fieldType === "signature" ? "text-pink-500" :
-      fieldType === "date" ? "text-amber-500" : "text-blue-500";
+      fieldType === "date" ? "text-amber-500" :
+      fieldType === "whiteout" ? "text-gray-500" : "text-blue-500";
 
     return (
       <Panel>
@@ -138,6 +142,24 @@ export function ContextPanel({
                   </button>
                 </>
               )}
+            </Section>
+          );
+        })()}
+
+        {/* Whiteout controls */}
+        {fieldType === "whiteout" && (() => {
+          return (
+            <Section label="Whiteout">
+              <div className="mb-3 flex items-center justify-center rounded-xl border-2 border-dashed border-border bg-surface-alt p-4 min-h-[96px]">
+                <div className="text-center">
+                  <Eraser className="h-6 w-6 text-text-muted mx-auto mb-1.5" />
+                  <p className="text-xs font-medium text-text-muted">Background cover</p>
+                  <p className="text-[10px] text-text-muted/60 mt-0.5">Drag to resize or move</p>
+                </div>
+              </div>
+              <p className="text-xs text-text-muted leading-relaxed">
+                This whiteout block will cover pre-printed text with the sampled background color when exported.
+              </p>
             </Section>
           );
         })()}

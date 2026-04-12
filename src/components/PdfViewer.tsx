@@ -3,7 +3,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, useCallback, useImperativeHandle, forwardRef } from "react";
 import { Stage, Layer, Rect, Text, Group, Transformer, Image as KonvaImage } from "react-konva";
 import type Konva from "konva";
-import type { EditorField, ToolType, SignatureField, CheckboxStamp } from "@/lib/types";
+import type { EditorField, ToolType, SignatureField, CheckboxStamp, WhiteoutField } from "@/lib/types";
 import { detectSnapBox, detectAllBoxes, snapCredibilityScore, floodFillCell } from "@/lib/snap-detect";
 import type { SnapResult } from "@/lib/snap-detect";
 
@@ -504,6 +504,28 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
             case "date":
               field = { ...base, type: "date", width: fieldW, height: fieldH, value: new Date().toLocaleDateString("en-AU"), fontSize: 14 };
               break;
+            case "whiteout": {
+              // Sample background color from canvas center of drawn rectangle
+              const canvas = canvasRef.current;
+              let fillColor = "#ffffff";
+              if (canvas) {
+                const ctx = canvas.getContext("2d");
+                if (ctx) {
+                  const canvasCx = Math.round((x + width / 2) * zoomFactor);
+                  const canvasCy = Math.round((y + height / 2) * zoomFactor);
+                  if (canvasCx >= 0 && canvasCy >= 0 && canvasCx < canvas.width && canvasCy < canvas.height) {
+                    try {
+                      const pixel = ctx.getImageData(canvasCx, canvasCy, 1, 1).data;
+                      fillColor = `#${[pixel[0], pixel[1], pixel[2]].map(c => c.toString(16).padStart(2, "0")).join("")}`;
+                    } catch {
+                      fillColor = "#ffffff";
+                    }
+                  }
+                }
+              }
+              field = { ...base, type: "whiteout", width: fieldW, height: fieldH, fillColor };
+              break;
+            }
           }
           
           onFieldAdd(field);
@@ -531,6 +553,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
               checkbox:  { w: 20,  h: 20 },
               signature: { w: 220, h: 70 },
               date:      { w: 160, h: 28 },
+              whiteout:  { w: 100, h: 30 },
             };
             fieldW = defaults[activeTool].w;
             fieldH = defaults[activeTool].h;
@@ -601,6 +624,30 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
               case "date":
                 field = { ...base, type: "date", width: fieldW, height: fieldH, value: new Date().toLocaleDateString("en-AU"), fontSize: inferredFontSize ?? 14 };
                 break;
+              case "whiteout": {
+                // Sample background color from canvas center of placed rectangle
+                const canvas = canvasRef.current;
+                let fillColor = "#ffffff";
+                if (canvas) {
+                  const ctx = canvas.getContext("2d");
+                  if (ctx) {
+                    const cx = Math.round(fieldX + fieldW / 2);
+                    const cy = Math.round(fieldY + fieldH / 2);
+                    const canvasCx = Math.round(cx * zoomFactor);
+                    const canvasCy = Math.round(cy * zoomFactor);
+                    if (canvasCx >= 0 && canvasCy >= 0 && canvasCx < canvas.width && canvasCy < canvas.height) {
+                      try {
+                        const pixel = ctx.getImageData(canvasCx, canvasCy, 1, 1).data;
+                        fillColor = `#${[pixel[0], pixel[1], pixel[2]].map(c => c.toString(16).padStart(2, "0")).join("")}`;
+                      } catch {
+                        fillColor = "#ffffff";
+                      }
+                    }
+                  }
+                }
+                field = { ...base, type: "whiteout", width: fieldW, height: fieldH, fillColor };
+                break;
+              }
             }
 
             onFieldAdd(field);
@@ -648,6 +695,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
         checkbox:  { w: 20,  h: 20 },
         signature: { w: 220, h: 70 },
         date:      { w: 160, h: 28 },
+        whiteout:  { w: 100, h: 30 },
       };
       fieldW = defaults[activeTool].w;
       fieldH = defaults[activeTool].h;
@@ -721,6 +769,28 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
         case "date":
           field = { ...base, type: "date", width: fieldW, height: fieldH, value: new Date().toLocaleDateString("en-AU"), fontSize: inferredFontSize ?? 14 };
           break;
+        case "whiteout": {
+          // Sample background color from canvas center of placed rectangle
+          const canvas = canvasRef.current;
+          let fillColor = "#ffffff";
+          if (canvas) {
+            const ctx = canvas.getContext("2d");
+            if (ctx) {
+              const canvasCx = Math.round(fieldX * zoomFactor + fieldW * zoomFactor / 2);
+              const canvasCy = Math.round(fieldY * zoomFactor + fieldH * zoomFactor / 2);
+              if (canvasCx >= 0 && canvasCy >= 0 && canvasCx < canvas.width && canvasCy < canvas.height) {
+                try {
+                  const pixel = ctx.getImageData(canvasCx, canvasCy, 1, 1).data;
+                  fillColor = `#${[pixel[0], pixel[1], pixel[2]].map(c => c.toString(16).padStart(2, "0")).join("")}`;
+                } catch {
+                  fillColor = "#ffffff";
+                }
+              }
+            }
+          }
+          field = { ...base, type: "whiteout", width: fieldW, height: fieldH, fillColor };
+          break;
+        }
       }
 
       onFieldAdd(field);
@@ -1059,6 +1129,8 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
             if (!editField || editField.type === "checkbox") return null;
             // Signature fields never use text input, always use SignatureModal
             if (editField.type === "signature") return null;
+            // Whiteout fields have no text value
+            if (editField.type === "whiteout") return null;
             const isEditSnapped = editField.snapped ?? false;
 
             return (
@@ -1322,6 +1394,61 @@ function FieldShape({
         })()}
         </Group>
       </>
+    );
+  }
+
+  // Whiteout field - just a filled rectangle
+  if (field.type === "whiteout") {
+    const whiteoutField = field as WhiteoutField;
+    return (
+      <Group
+        id={field.id}
+        ref={groupRef}
+        x={field.x}
+        y={field.y}
+        width={field.width}
+        height={field.height}
+        opacity={dragOpacity}
+        draggable={true} // Whiteout is always draggable (not locked/snapped)
+        onMouseEnter={() => onMouseEnter?.()}
+        onMouseLeave={() => onMouseLeave?.()}
+        onClick={(e) => {
+          e.cancelBubble = true;
+          onSelect();
+        }}
+        onDragStart={() => {
+          setDragOpacity(0.85);
+          onDragStart?.();
+        }}
+        onDragEnd={(e) => {
+          setDragOpacity(1);
+          onDragEnd(e.target.x(), e.target.y());
+        }}
+        onTransformEnd={(e) => {
+          const node = e.target;
+          const scaleX = node.scaleX();
+          const scaleY = node.scaleY();
+          node.scaleX(1);
+          node.scaleY(1);
+          onTransformEnd(
+            Math.max(16, node.width() * scaleX),
+            Math.max(16, node.height() * scaleY),
+            node.x(),
+            node.y()
+          );
+        }}
+      >
+        {/* Filled rectangle with sampled background color */}
+        <Rect
+          width={field.width}
+          height={field.height}
+          fill={whiteoutField.fillColor}
+          stroke={isSelected ? "#3b82f6" : "transparent"}
+          strokeWidth={isSelected ? 1.5 : 0}
+          dash={isSelected ? [4, 3] : undefined}
+          cornerRadius={2}
+        />
+      </Group>
     );
   }
 

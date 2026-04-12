@@ -1,6 +1,6 @@
 "use client";
 
-import { Type, CheckSquare, PenTool, Calendar, X, Trash2, Minus, Plus, MousePointer2 } from "lucide-react";
+import { Type, CheckSquare, PenTool, Calendar, X, Trash2, Minus, Plus, MousePointer2, Eraser } from "lucide-react";
 import type { EditorField, ToolType } from "@/lib/types";
 import type { CheckboxStamp } from "@/lib/types";
 
@@ -11,6 +11,7 @@ const TOOL_META: Record<ToolType, { icon: typeof Type; label: string; hint: stri
   checkbox:  { icon: CheckSquare, label: "Checkbox",    hint: "Click to stamp a tick or cross" },
   signature: { icon: PenTool,     label: "Signature",   hint: "Click the PDF to place a signature field" },
   date:      { icon: Calendar,    label: "Date",        hint: "Click the PDF to place a date field" },
+  whiteout:  { icon: Eraser,      label: "Whiteout",    hint: "Drag to draw a rectangle to cover text" },
 };
 
 interface ContextBarProps {
@@ -73,6 +74,21 @@ export function ContextBar({
             <StampBtn active={stamp === "cross"} onClick={() => onStampChange("cross")} label="✕" title="Cross" />
             <StampBtn active={stamp === "none"}  onClick={() => onStampChange("none")}  label="Clear" title="Clear stamp" small />
           </div>
+          <Spacer />
+          <DeleteBtn onClick={() => { onFieldDelete(selectedField.id); onFieldDeselect(); }} />
+          <CancelBtn onClick={onFieldDeselect} />
+        </Bar>
+      );
+    }
+
+    // Whiteout doesn't have fontSize controls
+    if (fieldType === "whiteout") {
+      return (
+        <Bar>
+          <Eraser className="h-4 w-4 text-accent shrink-0" />
+          <span className="text-sm font-semibold text-text">Whiteout</span>
+          <div className="w-px h-4 bg-border" />
+          <span className="text-xs text-text-muted">Drag to resize or move</span>
           <Spacer />
           <DeleteBtn onClick={() => { onFieldDelete(selectedField.id); onFieldDeselect(); }} />
           <CancelBtn onClick={onFieldDeselect} />
