@@ -161,6 +161,31 @@ const professionalTemplates: Template[] = [
 ];
 
 function TemplateCard({ template }: { template: Template }) {
+  // Map file to slug
+  const slugMap: Record<string, string> = {
+    "ato-tfn-declaration.pdf": "tfn-declaration",
+    "ato-super-choice.pdf": "super-choice",
+    "ato-withholding-declaration.pdf": "withholding-declaration",
+    "employment-separation.pdf": "employment-separation",
+    "medicare-enrolment.pdf": "medicare-enrolment",
+    "statutory-declaration.pdf": "statutory-declaration",
+    "centrelink-su415.pdf": "centrelink-su415",
+    "tenancy-application-nsw.pdf": "rental-application-nsw",
+    "tenancy-application-vic.pdf": "rental-application-vic",
+    "rental-application.pdf": "rental-application",
+    "superannuation-hardship.pdf": "super-hardship",
+    "employee-details.pdf": "employee-details",
+    "australian-invoice.pdf": "tax-invoice",
+    "consent-form.pdf": "consent-form",
+    "medical-consent.pdf": "medical-consent",
+    "bank-account-change.pdf": "bank-account-change",
+    "insurance-claim.pdf": "insurance-claim",
+    "ndis-service-agreement.pdf": "ndis-service-agreement",
+  };
+
+  const slug = slugMap[template.file];
+  const hasDetailPage = slug && template.file !== "ato-withholding-declaration.pdf" && template.file !== "rental-application.pdf" && template.file !== "consent-form.pdf" && template.file !== "bank-account-change.pdf" && template.file !== "insurance-claim.pdf";
+
   return (
     <div className="flex flex-col rounded-xl border border-border bg-surface p-6 shadow-sm hover:shadow-md transition-shadow relative">
       {template.badge && (
@@ -168,10 +193,21 @@ function TemplateCard({ template }: { template: Template }) {
           {template.badge}
         </span>
       )}
-      <div className="text-4xl mb-3">{template.emoji}</div>
-      <span className="text-xs font-semibold uppercase tracking-widest text-text-muted mb-1">{template.category}</span>
-      <h2 className="text-base font-semibold mb-2">{template.title}</h2>
-      <p className="text-sm text-text-muted leading-relaxed flex-1">{template.description}</p>
+      {hasDetailPage ? (
+        <Link href={`/templates/${slug}`} className="block hover:opacity-80 transition-opacity">
+          <div className="text-4xl mb-3">{template.emoji}</div>
+          <span className="text-xs font-semibold uppercase tracking-widest text-text-muted mb-1">{template.category}</span>
+          <h2 className="text-base font-semibold mb-2">{template.title}</h2>
+          <p className="text-sm text-text-muted leading-relaxed flex-1">{template.description}</p>
+        </Link>
+      ) : (
+        <>
+          <div className="text-4xl mb-3">{template.emoji}</div>
+          <span className="text-xs font-semibold uppercase tracking-widest text-text-muted mb-1">{template.category}</span>
+          <h2 className="text-base font-semibold mb-2">{template.title}</h2>
+          <p className="text-sm text-text-muted leading-relaxed flex-1">{template.description}</p>
+        </>
+      )}
       <Link
         href={`/editor?template=${encodeURIComponent(template.file)}`}
         className="mt-5 flex h-10 items-center justify-center gap-2 rounded-lg bg-accent text-sm font-semibold text-white hover:bg-accent-hover transition-colors"

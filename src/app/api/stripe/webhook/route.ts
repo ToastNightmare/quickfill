@@ -42,6 +42,42 @@ function emailWrapper(content: string) {
   `;
 }
 
+function welcomeEmailContent(firstName: string | null, isAnnual: boolean) {
+  const name = firstName || "there";
+  return `
+    <h1 style="font-size: 24px; font-weight: 800; margin: 0 0 16px 0; color: #4f8ef7;">Welcome to QuickFill Pro 🎉</h1>
+    <p style="font-size: 16px; color: #374151; margin: 0 0 24px 0; line-height: 1.6;">Hi ${name},</p>
+    
+    <p style="font-size: 15px; color: #374151; margin: 0 0 16px 0; line-height: 1.6;">You're now on QuickFill Pro. Here's what you've unlocked:</p>
+    
+    <div style="background: #f8fafc; border-radius: 8px; padding: 20px; margin: 24px 0;">
+      <ul style="margin: 0; padding-left: 20px; font-size: 15px; color: #374151; line-height: 2;">
+        <li>✓ Unlimited PDF fills</li>
+        <li>✓ All 13+ Australian government templates</li>
+        <li>✓ Priority support</li>
+        <li>✓ No ads, no limits</li>
+      </ul>
+    </div>
+    
+    <p style="font-size: 15px; color: #374151; margin: 0 0 16px 0; line-height: 1.6;">A few tips to get started:</p>
+    
+    <div style="background: #f0f7ff; border-radius: 8px; padding: 20px; margin: 24px 0;">
+      <ul style="margin: 0; padding-left: 20px; font-size: 15px; color: #1e3a6e; line-height: 2;">
+        <li>• Head to the Templates page to browse real Australian government forms</li>
+        <li>• Your profile auto-fills common fields like name, address, and TFN</li>
+        <li>• Use drag-to-draw to place fields exactly where you need them</li>
+        <li>• Whiteout tool covers pre-printed text before adding your own</li>
+      </ul>
+    </div>
+    
+    <p style="font-size: 14px; color: #6b7280; margin: 24px 0 8px 0; line-height: 1.6;">
+      Your subscription renews automatically at <strong>A$12/month</strong>. You can manage or cancel anytime at <a href="${APP_URL}/profile" style="color: #4f8ef7; text-decoration: none;">getquickfill.com/profile</a>.
+    </p>
+    
+    <p style="font-size: 15px; color: #374151; margin: 24px 0 0 0; line-height: 1.6;">Thanks for supporting QuickFill.<br/>— The QuickFill Team</p>
+  `;
+}
+
 export async function POST(req: NextRequest) {
   const body = await req.text();
   const sig = req.headers.get("stripe-signature");
@@ -100,43 +136,30 @@ export async function POST(req: NextRequest) {
         await getRedis().set(`stripe_customer:${userId}`, session.customer as string);
       }
 
-      // Send upgrade confirmation email
+      // Send Pro welcome email
       const email = session.customer_email ?? (session.customer ? await getEmailForCustomer(session.customer as string) : null);
       const isAnnual = session.metadata?.billing === "annual";
+      
+      // Try to get first name from metadata or customer name
+      let firstName: string | null = session.metadata?.firstName || null;
+      if (!firstName && session.customer) {
+        try {
+          const customer = await getStripe().customers.retrieve(session.customer as string) as Stripe.Customer;
+          if (customer.name) {
+            firstName = customer.name.split(' ')[0];
+          }
+        } catch {
+          // Ignore if we can't get customer name
+        }
+      }
 
       if (email) {
-        console.log("[WEBHOOK] Sending welcome email to:", email);
+        console.log("[WEBHOOK] Sending Pro welcome email to:", email);
         await getResend().emails.send({
-          from: "QuickFill <hello@getquickfill.com>",
+          from: "QuickFill <noreply@getquickfill.com>",
           to: email,
-          subject: "You're now Pro, welcome to QuickFill Pro! 🎉",
-          html: emailWrapper(`
-            <h1 style="font-size: 24px; font-weight: 800; margin: 0 0 8px 0;">You're now Pro! 🎉</h1>
-            <p style="color: #6b7280; margin: 0 0 24px 0;">Your QuickFill Pro subscription is active. Here's what's unlocked:</p>
-
-            <div style="background: #f0f7ff; border: 1px solid #bfdbfe; border-radius: 8px; padding: 16px; margin-bottom: 24px;">
-              <ul style="margin: 0; padding-left: 20px; font-size: 14px; color: #1e3a6e; line-height: 2;">
-                <li><strong>Unlimited PDF fills</strong>, no monthly cap</li>
-                <li><strong>No watermarks</strong> on downloads</li>
-                <li><strong>Auto-fill from profile</strong></li>
-                <li><strong>Unlimited fill history</strong></li>
-                <li><strong>Priority support</strong></li>
-              </ul>
-            </div>
-
-            <p style="font-size: 14px; color: #6b7280; margin: 0 0 8px 0;">
-              ${isAnnual ? "Billed annually at <strong>$100/year</strong>." : "Billed monthly at <strong>$12/month</strong>."}
-              You can manage or cancel your subscription any time from your dashboard.
-            </p>
-
-            <a href="${APP_URL}/editor" style="display: inline-block; background: #2d8ef7; color: white; font-weight: 600; padding: 14px 28px; border-radius: 10px; text-decoration: none; margin: 24px 0; font-size: 15px;">
-              Start filling PDFs →
-            </a>
-
-            <p style="font-size: 13px; color: #9ca3af; margin: 0;">
-              Need to manage billing? <a href="${APP_URL}/dashboard" style="color: #2d8ef7;">Visit your dashboard</a>
-            </p>
-          `),
+          subject: "Welcome to QuickFill Pro 🎉",
+          html: emailWrapper(welcomeEmailContent(firstName, isAnnual)),
         });
       }
 
