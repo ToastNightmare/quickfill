@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useCallback, useEffect, useRef, useMemo } from "react";
-import { ChevronLeft, ChevronRight, Sparkles, X, RotateCcw, Minus, Plus, Download } from "lucide-react";
+import { ChevronLeft, ChevronRight, Sparkles, X, RotateCcw, Minus, Plus, Download, Zap } from "lucide-react";
 import { UploadZone } from "@/components/UploadZone";
 import { MobileFiller } from "@/components/MobileFiller";
 import { Toolbar } from "@/components/Toolbar";
@@ -113,6 +113,7 @@ export default function EditorPage() {
   const [hasAcroForm, setHasAcroForm] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
+  const [showGuestUpsellModal, setShowGuestUpsellModal] = useState(false);
   const [showRestoredBanner, setShowRestoredBanner] = useState(false);
   const [showGuestSignupPrompt, setShowGuestSignupPrompt] = useState(false);
   const [zoom, setZoom] = useState(100);
@@ -693,11 +694,13 @@ export default function EditorPage() {
         isPro = usage.isPro;
         isGuest = usage.tier === "guest";
         
-        // Guest mode: check localStorage for already used
+        // Guest mode: check localStorage for fill count
         if (isGuest) {
-          const guestFillUsed = localStorage.getItem("guestFillUsed");
-          if (guestFillUsed === "true") {
-            setShowGuestSignupPrompt(true);
+          const guestFillCount = parseInt(localStorage.getItem("guestFillCount") || "0", 10);
+          
+          // If this would be the 3rd fill, show upsell modal BEFORE download
+          if (guestFillCount >= 3) {
+            setShowGuestUpsellModal(true);
             setIsDownloading(false);
             return;
           }
@@ -739,9 +742,11 @@ export default function EditorPage() {
       const postUsageRes = await fetch("/api/usage", { method: "POST" });
       const postUsage = await postUsageRes.json().catch(() => ({}));
       
-      // For guest mode, mark as used in localStorage
+      // For guest mode, increment fill count in localStorage
       if (postUsage.guest) {
-        localStorage.setItem("guestFillUsed", "true");
+        const currentCount = parseInt(localStorage.getItem("guestFillCount") || "0", 10);
+        const newCount = currentCount + 1;
+        localStorage.setItem("guestFillCount", String(newCount));
       }
 
       // Save fill history
@@ -1290,6 +1295,49 @@ export default function EditorPage() {
             <button onClick={() => setShowGuestSignupPrompt(false)} className="text-sm text-text-muted hover:text-text transition-colors">
               Maybe later
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Guest 3rd-fill upsell modal */}
+      {showGuestUpsellModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4">
+          <div className="w-full max-w-md rounded-2xl bg-surface p-8 shadow-2xl text-center">
+            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-yellow-500/20 mb-4">
+              <Zap className="h-8 w-8 text-yellow-500" />
+            </div>
+            <h2 className="text-2xl font-bold mb-2">You've used your 3 free fills</h2>
+            <p className="text-text-muted text-sm mb-6">
+              Upgrade to QuickFill Pro for unlimited fills with no watermarks.
+            </p>
+            
+            {/* Price comparison */}
+            <div className="bg-surface-alt rounded-xl p-4 mb-6">
+              <div className="flex items-center justify-center gap-4 text-sm">
+                <div className="text-text-muted">
+                  <span className="line-through">Adobe $24/mo</span>
+                </div>
+                <div className="text-green-500 font-bold">vs</div>
+                <div className="text-accent font-bold">
+                  QuickFill Pro $12/mo
+                </div>
+              </div>
+            </div>
+            
+            <div className="flex flex-col gap-3">
+              <a
+                href="/pricing"
+                className="flex h-11 w-full items-center justify-center rounded-xl bg-accent text-sm font-semibold text-white hover:bg-accent-hover transition-colors"
+              >
+                Upgrade to Pro — $12/month
+              </a>
+              <button
+                onClick={() => setShowGuestUpsellModal(false)}
+                className="text-sm text-text-muted hover:text-text transition-colors"
+              >
+                Maybe later
+              </button>
+            </div>
           </div>
         </div>
       )}

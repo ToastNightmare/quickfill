@@ -54,6 +54,60 @@ const officialTemplates: Template[] = [
   },
 ];
 
+const legalTemplates: Template[] = [
+  {
+    file: "statutory-declaration.pdf",
+    title: "Statutory Declaration",
+    description: "Official statutory declaration form for making legal declarations. Includes witness section and criminal offence warning.",
+    emoji: "⚖️",
+    category: "Legal",
+  },
+];
+
+const centrelinkTemplates: Template[] = [
+  {
+    file: "centrelink-su415.pdf",
+    title: "Centrelink Income & Assets (SU415)",
+    description: "Services Australia form for declaring income and assets. Sections for employment, other income, assets, and partner details.",
+    emoji: "💼",
+    category: "Centrelink",
+  },
+];
+
+const realEstateTemplates: Template[] = [
+  {
+    file: "tenancy-application-nsw.pdf",
+    title: "Rental Application (NSW)",
+    description: "New South Wales rental application with sections for applicant, employment, rental history, references, ID, occupants, pets, and vehicles.",
+    emoji: "🏠",
+    category: "Real Estate",
+  },
+  {
+    file: "tenancy-application-vic.pdf",
+    title: "Rental Application (VIC)",
+    description: "Victoria rental application with Victorian requirements including bond/rent fields and privacy notice.",
+    emoji: "🏡",
+    category: "Real Estate",
+  },
+  {
+    file: "rental-application.pdf",
+    title: "Rental Application",
+    description: "Standard residential rental application for Australian properties. Covers personal details, employment, references, and ID.",
+    emoji: "🏘️",
+    category: "Real Estate",
+  },
+];
+
+const superTemplates: Template[] = [
+  {
+    file: "superannuation-hardship.pdf",
+    title: "Superannuation Hardship Release",
+    description: "Early release of superannuation on compassionate/financial hardship grounds. Sections for member details, grounds, financial details, and supporting documents.",
+    emoji: "📥",
+    category: "Superannuation",
+  },
+];
+
 const professionalTemplates: Template[] = [
   {
     file: "employee-details.pdf",
@@ -61,13 +115,6 @@ const professionalTemplates: Template[] = [
     description: "Collect TFN, bank details, super fund, and emergency contact from new staff. Ready for payroll setup.",
     emoji: "👤",
     category: "Employment",
-  },
-  {
-    file: "rental-application.pdf",
-    title: "Rental Application",
-    description: "Standard residential rental application for Australian properties. Covers personal details, employment, references, and ID.",
-    emoji: "🏠",
-    category: "Real Estate",
   },
   {
     file: "australian-invoice.pdf",
@@ -154,6 +201,46 @@ export default function TemplatesPage() {
         <h2 className="text-xl font-bold text-text mb-6">Official Government Forms</h2>
         <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
           {officialTemplates.map((t) => (
+            <TemplateCard key={t.file} template={t} />
+          ))}
+        </div>
+      </div>
+
+      {/* Legal Section */}
+      <div className="mt-12">
+        <h2 className="text-xl font-bold text-text mb-6">Legal</h2>
+        <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+          {legalTemplates.map((t) => (
+            <TemplateCard key={t.file} template={t} />
+          ))}
+        </div>
+      </div>
+
+      {/* Centrelink Section */}
+      <div className="mt-12">
+        <h2 className="text-xl font-bold text-text mb-6">Centrelink</h2>
+        <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+          {centrelinkTemplates.map((t) => (
+            <TemplateCard key={t.file} template={t} />
+          ))}
+        </div>
+      </div>
+
+      {/* Real Estate Section */}
+      <div className="mt-12">
+        <h2 className="text-xl font-bold text-text mb-6">Real Estate</h2>
+        <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+          {realEstateTemplates.map((t) => (
+            <TemplateCard key={t.file} template={t} />
+          ))}
+        </div>
+      </div>
+
+      {/* Superannuation Section */}
+      <div className="mt-12">
+        <h2 className="text-xl font-bold text-text mb-6">Superannuation</h2>
+        <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+          {superTemplates.map((t) => (
             <TemplateCard key={t.file} template={t} />
           ))}
         </div>
