@@ -60,6 +60,16 @@ export async function POST(req: NextRequest) {
   // ── Upgrade confirmed ──────────────────────────────────────────────────────
   if (event.type === "checkout.session.completed") {
     const session = event.data.object as Stripe.Checkout.Session;
+    
+    console.log("[WEBHOOK] checkout.session.completed received:", {
+      sessionId: session.id,
+      userId: session.metadata?.userId,
+      plan: session.metadata?.plan,
+      billing: session.metadata?.billing,
+      customer: session.customer,
+      subscription: session.subscription,
+    });
+
     const userId = session.metadata?.userId;
 
     if (userId) {
@@ -72,10 +82,19 @@ export async function POST(req: NextRequest) {
           const subscription = await getStripe().subscriptions.retrieve(session.subscription as string);
           const priceId = subscription.items.data[0]?.price?.id;
           if (priceId) tier = tierFromPriceId(priceId);
-        } catch {}
+          console.log("[WEBHOOK] Retrieved subscription, tier:", tier);
+        } catch (err) {
+          console.error("[WEBHOOK] Failed to retrieve subscription:", err);
+        }
       }
 
-      await getRedis().set(`sub:${userId}`, tier ?? "pro", { ex: TTL_SECONDS });
+      if (!tier) {
+        tier = "pro"; // Default to pro if we can't determine
+        console.log("[WEBHOOK] Defaulting to pro tier");
+      }
+
+      console.log("[WEBHOOK] Setting Redis key sub:", userId, "to", tier);
+      await getRedis().set(`sub:${userId}`, tier, { ex: TTL_SECONDS });
 
       if (session.customer) {
         await getRedis().set(`stripe_customer:${userId}`, session.customer as string);
@@ -86,6 +105,7 @@ export async function POST(req: NextRequest) {
       const isAnnual = session.metadata?.billing === "annual";
 
       if (email) {
+        console.log("[WEBHOOK] Sending welcome email to:", email);
         await getResend().emails.send({
           from: "QuickFill <hello@getquickfill.com>",
           to: email,
@@ -119,6 +139,8 @@ export async function POST(req: NextRequest) {
           `),
         });
       }
+
+      console.log("[WEBHOOK] checkout.session.completed processed successfully for user:", userId);
     }
   }
 

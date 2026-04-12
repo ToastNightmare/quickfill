@@ -53,6 +53,23 @@ function DashboardContent() {
       .catch(() => {});
   }, []);
 
+  // Re-fetch usage when upgraded=true to get fresh Pro status
+  useEffect(() => {
+    if (upgraded === "true" && !usageError) {
+      const timer = setTimeout(() => {
+        fetch("/api/usage")
+          .then((r) => r.json())
+          .then((data) => {
+            setUsage(data);
+            // Clear URL param after refreshing
+            router.replace("/dashboard", { scroll: false });
+          })
+          .catch(() => setUsageError(true));
+      }, 1000); // Wait 1 second for webhook to process
+      return () => clearTimeout(timer);
+    }
+  }, [upgraded, usageError, router]);
+
   useEffect(() => {
     if (fills.length === 0) return;
     // Fetch session statuses for all fills
@@ -91,8 +108,6 @@ function DashboardContent() {
   const visibleFills = isPaid ? fills : fills.slice(0, 3);
   const lockedFills = isPaid ? [] : fills.slice(3);
 
-  const tierLabel = tier === "business" ? "Business Plan" : tier === "pro" ? "Pro Plan" : "Free Plan";
-
   return (
     <div className="mx-auto max-w-4xl px-4 py-10 sm:px-6 lg:px-8">
       {/* Welcome header */}
@@ -111,7 +126,7 @@ function DashboardContent() {
               : "bg-surface-alt text-text-muted"
           }`}>
             {isPaid ? <Sparkles className="h-3.5 w-3.5" /> : <User className="h-3.5 w-3.5" />}
-            {tierLabel}
+            {isPaid ? "Pro Plan" : "Free Plan"}
           </div>
         )}
       </div>
@@ -130,22 +145,30 @@ function DashboardContent() {
             <p className="mt-2 text-sm text-red-500">Could not load usage data. Please refresh the page.</p>
           ) : usage ? (
             <>
-              <p className="mt-2 text-sm text-text-muted">
-                {tier === "pro" ? (
-                  "Unlimited fills  -  Pro plan active"
-                ) : tier === "business" ? (
-                  <>{usage.used} of {usage.limit} fills used  -  Business plan</>
-                ) : (
-                  <>{usage.used} of {usage.limit} free fills used</>
-                )}
-              </p>
-              {!isPaid && (
-                <p className="mt-1 text-xs text-text-muted">
-                  Resets {new Date(new Date().getFullYear(), new Date().getMonth() + 1, 1).toLocaleDateString("en-AU", { month: "long", day: "numeric" })}
-                </p>
-              )}
-              {!isPaid && (
+              {isPaid ? (
                 <>
+                  <p className="mt-2 text-sm font-semibold text-accent">
+                    ✓ Pro Plan — Unlimited fills
+                  </p>
+                  <button
+                    onClick={handleManageBilling}
+                    className="mt-4 flex h-11 w-full items-center justify-center gap-2 rounded-xl border border-border text-sm font-semibold hover:bg-surface-alt transition-colors"
+                  >
+                    <ExternalLink className="h-4 w-4" />
+                    Manage Billing
+                  </button>
+                  {billingError && (
+                    <p className="mt-2 text-xs text-red-500">{billingError}</p>
+                  )}
+                </>
+              ) : (
+                <>
+                  <p className="mt-2 text-sm text-text-muted">
+                    {usage.used} of {usage.limit} free fills used
+                  </p>
+                  <p className="mt-1 text-xs text-text-muted">
+                    Resets {new Date(new Date().getFullYear(), new Date().getMonth() + 1, 1).toLocaleDateString("en-AU", { month: "long", day: "numeric" })}
+                  </p>
                   <div className="mt-3 h-2 rounded-full bg-surface-alt overflow-hidden">
                     <div
                       className="h-full rounded-full bg-accent transition-all"
@@ -157,42 +180,8 @@ function DashboardContent() {
                     className="mt-4 flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-accent text-sm font-semibold text-white hover:bg-accent-hover transition-colors"
                   >
                     <Sparkles className="h-4 w-4" />
-                    Upgrade to Pro  -  $12/mo
+                    Upgrade to Pro — $12/mo
                   </button>
-                </>
-              )}
-              {tier === "business" && (
-                <>
-                  <div className="mt-3 h-2 rounded-full bg-surface-alt overflow-hidden">
-                    <div
-                      className="h-full rounded-full bg-accent transition-all"
-                      style={{ width: `${Math.min(100, (usage.used / usage.limit) * 100)}%` }}
-                    />
-                  </div>
-                  <button
-                    onClick={handleManageBilling}
-                    className="mt-4 flex h-11 w-full items-center justify-center gap-2 rounded-xl border border-border text-sm font-semibold hover:bg-surface-alt transition-colors"
-                  >
-                    <ExternalLink className="h-4 w-4" />
-                    Manage Billing
-                  </button>
-                  {billingError && (
-                    <p className="mt-2 text-xs text-red-500">{billingError}</p>
-                  )}
-                </>
-              )}
-              {tier === "pro" && (
-                <>
-                  <button
-                    onClick={handleManageBilling}
-                    className="mt-4 flex h-11 w-full items-center justify-center gap-2 rounded-xl border border-border text-sm font-semibold hover:bg-surface-alt transition-colors"
-                  >
-                    <ExternalLink className="h-4 w-4" />
-                    Manage Billing
-                  </button>
-                  {billingError && (
-                    <p className="mt-2 text-xs text-red-500">{billingError}</p>
-                  )}
                 </>
               )}
             </>
