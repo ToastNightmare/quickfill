@@ -31,6 +31,7 @@ interface PdfViewerProps {
   zoom: number;
   highlightFieldIds?: Set<string>;
   onSignatureFieldPlaced?: (field: EditorField) => void;
+  onPageChange?: (page: number) => void;
 }
 
 let nextFieldId = 1;
@@ -70,6 +71,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
   zoom,
   highlightFieldIds,
   onSignatureFieldPlaced,
+  onPageChange,
 }, ref) {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -111,6 +113,15 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
     if (!selectedFieldId) setEditingFieldId(null);
   }, [selectedFieldId]);
 
+  // Defensive guard: notify parent to clamp currentPage when totalPages changes
+  useEffect(() => {
+    if (_totalPages > 0 && currentPage >= _totalPages) {
+      const clampedPage = _totalPages - 1;
+      console.warn(`PdfViewer: currentPage ${currentPage} exceeds totalPages ${_totalPages}, clamping to ${clampedPage}`);
+      onPageChange?.(clampedPage);
+    }
+  }, [_totalPages, currentPage, onPageChange]);
+
   // Render PDF page
   useEffect(() => {
     let cancelled = false;
@@ -126,9 +137,16 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
         const pdf = await pdfjsLib.getDocument({ data: pdfBytes.slice(0) }).promise;
 
         if (cancelled) return;
-        onTotalPagesChange(pdf.numPages);
+        const newTotalPages = pdf.numPages;
+        onTotalPagesChange(newTotalPages);
 
-        const page = await pdf.getPage(currentPage + 1);
+        // Defensive guard: clamp currentPage if it exceeds the new total pages
+        // This prevents "Failed to render PDF" when loading a smaller PDF after a larger one
+        if (currentPage >= newTotalPages) {
+          console.warn(`Clamping currentPage from ${currentPage} to ${newTotalPages - 1} (totalPages=${newTotalPages})`);
+        }
+
+        const page = await pdf.getPage(Math.min(currentPage + 1, newTotalPages));
         if (cancelled) return;
 
         const containerWidth = containerRef.current?.clientWidth ?? 800;

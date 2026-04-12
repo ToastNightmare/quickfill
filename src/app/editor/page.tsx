@@ -742,6 +742,10 @@ export default function EditorPage() {
     [pageScales]
   );
 
+  const handlePageChange = useCallback((page: number) => {
+    setCurrentPage(page);
+  }, []);
+
   const handleDetectFields = useCallback(async () => {
     if (!pdfViewerRef.current) return;
 
@@ -1035,7 +1039,7 @@ export default function EditorPage() {
                   <ChevronLeft className="h-4 w-4" />
                 </button>
                 <span className="text-sm tabular-nums text-text-muted">
-                  Page {currentPage + 1} of {totalPages}
+                  Page {Math.min(currentPage + 1, totalPages)} of {totalPages}
                 </span>
                 <button
                   onClick={() => setCurrentPage((p) => Math.min(totalPages - 1, p + 1))}
@@ -1095,6 +1099,7 @@ export default function EditorPage() {
             zoom={zoom}
             highlightFieldIds={highlightFieldIds}
             onSignatureFieldPlaced={handleSignatureFieldPlaced}
+            onPageChange={handlePageChange}
           />
         </div>
 
@@ -1131,7 +1136,7 @@ export default function EditorPage() {
       {/* Floating bottom page nav, only on multi-page docs */}
       {pdfBytes && totalPages > 1 && (
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 hidden sm:flex items-center gap-2 rounded-full bg-navy shadow-xl border border-white/10 px-4 py-2">
-          <span className="text-xs text-white/70 font-medium">{currentPage + 1} / {totalPages}</span>
+          <span className="text-xs text-white/70 font-medium">{Math.min(currentPage + 1, totalPages)} / {totalPages}</span>
           <div className="w-px h-4 bg-white/20" />
           <button onClick={() => setCurrentPage(p => Math.max(0, p - 1))} disabled={currentPage === 0} className="text-white/70 hover:text-white disabled:opacity-30 transition-colors">
             <ChevronLeft className="h-4 w-4" />
