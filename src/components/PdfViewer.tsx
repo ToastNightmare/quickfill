@@ -289,6 +289,12 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
     const tr = trRef.current;
     if (!tr) return;
     if (selectedFieldId) {
+      // Never select whiteout fields - they are non-interactive
+      const selectedField = fields.find(f => f.id === selectedFieldId);
+      if (selectedField && selectedField.type === "whiteout") {
+        tr.nodes([]);
+        return;
+      }
       const node = nodeMapRef.current.get(selectedFieldId);
       if (node) {
         tr.nodes([node]);
@@ -299,7 +305,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
       tr.nodes([]);
     }
     tr.getLayer()?.batchDraw();
-  }, [selectedFieldId]);
+  }, [selectedFieldId, fields]);
 
   // Animate snap preview opacity
   useEffect(() => {
@@ -339,12 +345,21 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
 
     const shape = stage.getIntersection(pos);
     if (shape) {
+      // Skip whiteout fields - they are non-interactive, mouse passes through
+      const parent = shape.getParent();
+      if (parent && parent.id()) {
+        const field = fields.find(f => f.id === parent.id() && f.page === currentPage);
+        if (field && field.type === "whiteout") {
+          setCursorStyle("default");
+          return;
+        }
+      }
       setCursorStyle("move");
       return;
     }
 
     setCursorStyle("default");
-  }, [activeTool, isDragging]);
+  }, [activeTool, isDragging, fields, currentPage]);
 
   // Hover snap preview on mouse move (throttled)
   const handleStageMouseMove = useCallback(
@@ -865,6 +880,25 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
       const pos = stage.getPointerPosition();
       if (!pos) return;
 
+      // Check if clicked on a whiteout field - treat as empty canvas
+      const shape = stage.getIntersection(pos);
+      if (shape) {
+        const parent = shape.getParent();
+        if (parent && parent.id()) {
+          const field = pageFields.find(f => f.id === parent.id());
+          if (field && field.type === "whiteout") {
+            // Whiteout is non-interactive, treat click as empty canvas
+            if (activeTool) {
+              createFieldAtPoint(pos.x, pos.y, true);
+            } else {
+              onFieldSelect(null);
+              setEditingFieldId(null);
+            }
+            return;
+          }
+        }
+      }
+
       const clickedOnEmpty = e.target === stage;
 
       if (!clickedOnEmpty) {
@@ -879,8 +913,14 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
                 (f) => f.x === parent.x() && f.y === parent.y()
               );
               if (matchedField) {
-                onFieldSelect(matchedField.id);
-                onToolSelect(null);
+                // Prevent selecting whiteout fields
+                if (matchedField.type === "whiteout") {
+                  onFieldSelect(null);
+                  onToolSelect(null);
+                } else {
+                  onFieldSelect(matchedField.id);
+                  onToolSelect(null);
+                }
                 break;
               }
             }
@@ -1053,11 +1093,13 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
               <FieldShape
                 key={field.id}
                 field={field}
-                isSelected={field.id === selectedFieldId}
+                isSelected={field.id === selectedFieldId && field.type !== "whiteout"}
                 isEditing={field.id === editingFieldId}
                 isHighlighted={field.id === snappedFieldId || (highlightFieldIds?.has(field.id) ?? false)}
                 isHovered={field.id === hoveredFieldId}
                 onSelect={() => {
+                  // Prevent selecting whiteout fields
+                  if (field.type === "whiteout") return;
                   onFieldSelect(field.id);
                   onToolSelect(null);
                   if (!dragStartedRef.current && field.type !== "signature") {
@@ -1067,24 +1109,32 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
                   // Sign Now / Re-sign is triggered from the right panel.
                 }}
                 onMouseEnter={() => {
+                  // Whiteout fields don't hover - skip
+                  if (field.type === "whiteout") return;
                   setHoveredFieldId(field.id);
                   if (!activeTool && !isDragging) {
                     setCursorStyle(field.snapped ? "pointer" : "move");
                   }
                 }}
                 onMouseLeave={() => {
+                  // Whiteout fields don't hover - skip
+                  if (field.type === "whiteout") return;
                   setHoveredFieldId(null);
                   if (!activeTool && !isDragging) {
                     setCursorStyle("default");
                   }
                 }}
                 onDragStart={() => {
+                  // Whiteout fields don't drag - skip
+                  if (field.type === "whiteout") return;
                   dragStartedRef.current = true;
                   setIsDragging(true);
                   setEditingFieldId(null);
                   setCursorStyle("grabbing");
                 }}
                 onDragEnd={(x, y) => {
+                  // Whiteout fields don't drag - skip
+                  if (field.type === "whiteout") return;
                   setIsDragging(false);
                   setCursorStyle("move");
                   onFieldUpdate(field.id, { x, y });
@@ -1437,14 +1487,18 @@ function FieldShape({
   if (field.type === "whiteout") {
     const whiteoutField = field as WhiteoutField;
     return (
-      <Rect
+      <Group
         x={field.x}
         y={field.y}
-        width={field.width}
-        height={field.height}
-        fill={whiteoutField.fillColor}
-        listening={false} // No pointer events - static, non-interactive
-      />
+        listening={false} // Entire group ignores ALL mouse events
+      >
+        <Rect
+          width={field.width}
+          height={field.height}
+          fill={whiteoutField.fillColor}
+          strokeWidth={0}
+        />
+      </Group>
     );
   }
 
