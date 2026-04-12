@@ -89,6 +89,8 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
   const mouseDownPos = useRef<{x: number, y: number} | null>(null);
   const isDragMove = useRef(false);
   const snapPreviewTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const trRef = useRef<Konva.Transformer | null>(null);
+  const nodeMapRef = useRef<Map<string, Konva.Group>>(new Map());
 
   useImperativeHandle(ref, () => ({
     getCanvasDataURL: () => canvasRef.current?.toDataURL("image/png") ?? null,
@@ -190,6 +192,32 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
 
 
 
+
+  // Register/unregister node callbacks for FieldShape
+  const registerNode = useCallback((id: string, node: Konva.Group) => {
+    nodeMapRef.current.set(id, node);
+  }, []);
+
+  const unregisterNode = useCallback((id: string) => {
+    nodeMapRef.current.delete(id);
+  }, []);
+
+  // Drive the single global Transformer based on selectedFieldId
+  useEffect(() => {
+    const tr = trRef.current;
+    if (!tr) return;
+    if (selectedFieldId) {
+      const node = nodeMapRef.current.get(selectedFieldId);
+      if (node) {
+        tr.nodes([node]);
+      } else {
+        tr.nodes([]);
+      }
+    } else {
+      tr.nodes([]);
+    }
+    tr.getLayer()?.batchDraw();
+  }, [selectedFieldId]);
 
   // Animate snap preview opacity
   useEffect(() => {
@@ -628,11 +656,15 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
           );
         })()}
 
-        <Stage
-          width={dimensions.width}
-          height={dimensions.height}
-          scaleX={zoomFactor}
-          scaleY={zoomFactor}
+        {(() => {
+          const selectedField = selectedFieldId ? pageFields.find(f => f.id === selectedFieldId) : null;
+          const selectedFieldIsSnapped = selectedField?.snapped ?? false;
+          return (
+            <Stage
+              width={dimensions.width}
+              height={dimensions.height}
+              scaleX={zoomFactor}
+              scaleY={zoomFactor}
           onMouseDown={handleStageMouseDown}
           onMouseUp={handleStageMouseUp}
           onClick={handleStageClick}
@@ -710,11 +742,28 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
                     onFieldUpdate(field.id, { value } as Partial<EditorField>);
                   }
                 }}
-
+                registerNode={registerNode}
+                unregisterNode={unregisterNode}
               />
             ))}
+            <Transformer
+              ref={trRef}
+              listening={false}
+              rotateEnabled={false}
+              borderStroke="#3b82f6"
+              anchorStroke="#3b82f6"
+              anchorFill="#fff"
+              anchorSize={selectedFieldIsSnapped ? 6 : 8}
+              enabledAnchors={selectedFieldIsSnapped ? [] : undefined}
+              boundBoxFunc={(oldBox, newBox) => {
+                if (newBox.width < 16 || newBox.height < 16) return oldBox;
+                return newBox;
+              }}
+            />
           </Layer>
         </Stage>
+          );
+        })()}
 
         {/* HTML input overlay for text editing */}
         {editingFieldId &&
@@ -832,6 +881,8 @@ function FieldShape({
   onDoubleClick,
   onValueChange,
   onDelete,
+  registerNode,
+  unregisterNode,
 }: {
   field: EditorField;
   isSelected: boolean;
@@ -848,27 +899,20 @@ function FieldShape({
   onDoubleClick: () => void;
   onValueChange: (value: string | boolean | CheckboxStamp) => void;
   onDelete: () => void;
+  registerNode: (id: string, node: Konva.Group) => void;
+  unregisterNode: (id: string) => void;
 }) {
   const groupRef = useRef<Konva.Group>(null);
-  const localTrRef = useRef<Konva.Transformer | null>(null);
 
-  // Callback ref to attach Transformer synchronously on mount — no useEffect race
-  const attachTransformer = useCallback((tr: Konva.Transformer | null) => {
-    localTrRef.current = tr;
-    if (tr && groupRef.current) {
-      tr.nodes([groupRef.current]);
-      tr.getLayer()?.batchDraw();
-    }
-  }, []);
-
-  // Re-enforce correct node whenever isSelected changes — prevents field merging
+  // Register/unregister this field's node with the global transformer
   useEffect(() => {
-    const tr = localTrRef.current;
-    const group = groupRef.current;
-    if (!tr || !group) return;
-    tr.nodes([group]);
-    tr.getLayer()?.batchDraw();
-  }, [isSelected]);
+    const node = groupRef.current;
+    if (!node) return;
+    registerNode(field.id, node);
+    return () => {
+      unregisterNode(field.id);
+    };
+  }, [field.id, registerNode, unregisterNode]);
 
   const [dragOpacity, setDragOpacity] = useState(1);
 
@@ -990,22 +1034,6 @@ function FieldShape({
           );
         })()}
         </Group>
-        {isSelected && (
-          <Transformer
-            ref={attachTransformer}
-            listening={false}
-            rotateEnabled={false}
-            borderStroke="#3b82f6"
-            anchorStroke="#3b82f6"
-            anchorFill="#fff"
-            anchorSize={isSnapped ? 6 : 8}
-            enabledAnchors={isSnapped ? [] : undefined}
-            boundBoxFunc={(oldBox, newBox) => {
-              if (newBox.width < 16 || newBox.height < 16) return oldBox;
-              return newBox;
-            }}
-          />
-        )}
       </>
     );
   }
@@ -1136,22 +1164,6 @@ function FieldShape({
         )
       )}
       </Group>
-      {isSelected && (
-        <Transformer
-          ref={attachTransformer}
-          listening={false}
-          rotateEnabled={false}
-          borderStroke="#3b82f6"
-          anchorStroke="#3b82f6"
-          anchorFill="#fff"
-          anchorSize={isSnapped ? 6 : 8}
-          enabledAnchors={isSnapped ? [] : undefined}
-          boundBoxFunc={(oldBox, newBox) => {
-            if (newBox.width < 20 || newBox.height < 16) return oldBox;
-            return newBox;
-          }}
-        />
-      )}
     </>
   );
 }
