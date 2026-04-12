@@ -88,6 +88,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
   const [isDragging, setIsDragging] = useState(false);
   const [cursorStyle, setCursorStyle] = useState("default");
   const [snapPreviewOpacity, setSnapPreviewOpacity] = useState(0);
+  const [contextMenu, setContextMenu] = useState<{ x: number, y: number, fieldId: string } | null>(null);
   const precomputedBoxesRef = useRef<SnapResult[]>([]);
   const dragStartedRef = useRef(false);
   const mouseDownPos = useRef<{x: number, y: number} | null>(null);
@@ -222,7 +223,14 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
   // Register/unregister node callbacks for FieldShape
   const registerNode = useCallback((id: string, node: Konva.Group) => {
     nodeMapRef.current.set(id, node);
-  }, []);
+    // If this is the currently selected field, attach Transformer immediately
+    // This closes the race window between selectedFieldId being set and the node registering
+    const tr = trRef.current;
+    if (tr && id === selectedFieldId) {
+      tr.nodes([node]);
+      tr.getLayer()?.batchDraw();
+    }
+  }, [selectedFieldId]);
 
   const unregisterNode = useCallback((id: string) => {
     nodeMapRef.current.delete(id);
@@ -242,6 +250,21 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
           e.preventDefault();
           onFieldDelete(selectedFieldId);
           onFieldSelect(null);
+        }
+        return;
+      }
+      
+      // Ctrl+D / Cmd+D - duplicate selected field
+      if ((e.ctrlKey || e.metaKey) && e.key === 'd') {
+        e.preventDefault();
+        if (selectedFieldId) {
+          const field = fields.find(f => f.id === selectedFieldId && f.page === currentPage);
+          if (field) {
+            const newId = genId();
+            const duplicate = { ...field, id: newId, x: field.x + 16, y: field.y + 16 };
+            onFieldAdd(duplicate);
+            requestAnimationFrame(() => onFieldSelect(newId));
+          }
         }
         return;
       }
@@ -285,7 +308,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
   }, [editingFieldId, selectedFieldId, fields, currentPage, onFieldDelete, onFieldSelect, onToolSelect, onFieldUpdate]);
 
   // Drive the single global Transformer based on selectedFieldId
-  useEffect(() => {
+  useLayoutEffect(() => {
     const tr = trRef.current;
     if (!tr) return;
     if (selectedFieldId) {
@@ -323,6 +346,21 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
       setSnapPreview(null);
     }
   }, [snapEnabled]);
+
+  // Context menu: close on click outside or Escape
+  useEffect(() => {
+    if (!contextMenu) return;
+    const handleClick = () => setContextMenu(null);
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setContextMenu(null);
+    };
+    document.addEventListener("click", handleClick);
+    document.addEventListener("keydown", handleEscape);
+    return () => {
+      document.removeEventListener("click", handleClick);
+      document.removeEventListener("keydown", handleEscape);
+    };
+  }, [contextMenu]);
 
   // Update cursor based on context
   const updateCursor = useCallback((stage: Konva.Stage, pos: { x: number; y: number }) => {
@@ -577,7 +615,9 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
           }
           
           onFieldAdd(field);
-          onFieldSelect(id);
+          requestAnimationFrame(() => {
+            onFieldSelect(id);
+          });
           onToolSelect(null);
           
           if (activeTool === "signature") {
@@ -700,7 +740,9 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
             }
 
             onFieldAdd(field);
-            onFieldSelect(id);
+            requestAnimationFrame(() => {
+              onFieldSelect(id);
+            });
             onToolSelect(null);
 
             if (activeTool === "signature") {
@@ -844,7 +886,9 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
       }
 
       onFieldAdd(field);
-      onFieldSelect(id);
+      requestAnimationFrame(() => {
+        onFieldSelect(id);
+      });
       // Deactivate tool after placing so panel switches to field controls
       onToolSelect(null);
 
@@ -1165,6 +1209,12 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
                 }}
                 registerNode={registerNode}
                 unregisterNode={unregisterNode}
+                onContextMenu={(e, fieldId) => {
+                  const pos = e.target.getStage()?.getPointerPosition();
+                  if (pos) {
+                    setContextMenu({ x: pos.x, y: pos.y, fieldId });
+                  }
+                }}
               />
             ))}
             <Transformer
@@ -1185,6 +1235,55 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
         </Stage>
           );
         })()}
+
+        {/* Feature 3: Context menu */}
+        {contextMenu && (
+          <div
+            style={{
+              position: "absolute",
+              left: contextMenu.x,
+              top: contextMenu.y,
+              zIndex: 100,
+            }}
+          >
+            <div className="bg-white rounded-lg shadow-lg border border-border py-1 min-w-[140px]">
+              <div
+                className="px-4 py-2 text-sm hover:bg-surface cursor-pointer flex items-center gap-2"
+                onClick={() => {
+                  const field = pageFields.find(f => f.id === contextMenu.fieldId);
+                  if (field) {
+                    const newId = genId();
+                    const duplicate = { ...field, id: newId, x: field.x + 16, y: field.y + 16 };
+                    onFieldAdd(duplicate);
+                    requestAnimationFrame(() => onFieldSelect(newId));
+                  }
+                  setContextMenu(null);
+                }}
+              >
+                <span>📋</span> Duplicate
+              </div>
+              <div
+                className="px-4 py-2 text-sm hover:bg-surface cursor-pointer flex items-center gap-2"
+                onClick={() => {
+                  onFieldDelete(contextMenu.fieldId);
+                  if (selectedFieldId === contextMenu.fieldId) onFieldSelect(null);
+                  setContextMenu(null);
+                }}
+              >
+                <span>🗑️</span> Delete
+              </div>
+              <div
+                className="px-4 py-2 text-sm hover:bg-surface cursor-pointer flex items-center gap-2"
+                onClick={() => {
+                  onFieldSelect(null);
+                  setContextMenu(null);
+                }}
+              >
+                <span>✕</span> Deselect
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Feature 3: Snapped field lock indicator overlay */}
         {selectedFieldId && (() => {
@@ -1327,6 +1426,7 @@ function FieldShape({
   onDelete,
   registerNode,
   unregisterNode,
+  onContextMenu,
 }: {
   field: EditorField;
   isSelected: boolean;
@@ -1345,6 +1445,7 @@ function FieldShape({
   onDelete: () => void;
   registerNode: (id: string, node: Konva.Group) => void;
   unregisterNode: (id: string) => void;
+  onContextMenu?: (e: any, fieldId: string) => void;
 }) {
   const groupRef = useRef<Konva.Group>(null);
 
@@ -1435,6 +1536,10 @@ function FieldShape({
             node.x(),
             node.y()
           );
+        }}
+        onContextMenu={(e) => {
+          e.evt.preventDefault();
+          onContextMenu?.(e, field.id);
         }}
       >
         {/* Drag shadow, "lifted" feel without hiding the stamp */}
@@ -1560,6 +1665,10 @@ function FieldShape({
           node.x(),
           node.y()
         );
+      }}
+      onContextMenu={(e) => {
+        e.evt.preventDefault();
+        onContextMenu?.(e, field.id);
       }}
     >
       <Rect
