@@ -1803,105 +1803,242 @@ function FieldShape({
     </>
   );
 
-  // Grid field rendering - individual character slots
+  // Grid field rendering - individual character slots with OTP-style input
   if (field.type === "grid") {
     const gridField = field as GridField;
     const charCount = gridField.charCount ?? 11;
     const slotWidth = field.width / charCount;
     const slotHeight = field.height;
     const value = gridField.value || "";
+    const [activeSlotIndex, setActiveSlotIndex] = useState(0);
+    const gridRef = useRef<HTMLDivElement>(null);
+    const inputRef = useRef<HTMLInputElement>(null);
+
+    // Focus the hidden input when the field is selected
+    useEffect(() => {
+      if (isSelected && inputRef.current) {
+        inputRef.current.focus();
+      }
+    }, [isSelected]);
+
+    // Update active slot when value changes externally
+    useEffect(() => {
+      if (value.length < charCount) {
+        setActiveSlotIndex(value.length);
+      }
+    }, [value, charCount]);
+
+    const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+      if (e.key === "Backspace") {
+        e.preventDefault();
+        if (activeSlotIndex > 0) {
+          // Remove character from previous slot
+          const newValue = value.slice(0, activeSlotIndex - 1) + value.slice(activeSlotIndex);
+          onValueChange(newValue);
+          setActiveSlotIndex(activeSlotIndex - 1);
+        }
+      } else if (e.key === "ArrowLeft") {
+        e.preventDefault();
+        if (activeSlotIndex > 0) {
+          setActiveSlotIndex(activeSlotIndex - 1);
+        }
+      } else if (e.key === "ArrowRight") {
+        e.preventDefault();
+        if (activeSlotIndex < charCount - 1) {
+          setActiveSlotIndex(activeSlotIndex + 1);
+        }
+      } else if (e.key === "Enter" || e.key === "Escape") {
+        e.preventDefault();
+        // Deselect the field by calling onSelect (which also deselects when already selected)
+        onSelect();
+      }
+    };
+
+    const handleInput = (e: React.FormEvent<HTMLInputElement>) => {
+      const input = e.target as HTMLInputElement;
+      const inputChar = input.value.slice(-1); // Get last character typed
+      
+      if (inputChar && activeSlotIndex < charCount) {
+        // Add character to current slot and advance
+        const newValue = value.slice(0, activeSlotIndex) + inputChar + value.slice(activeSlotIndex + 1);
+        onValueChange(newValue);
+        setActiveSlotIndex(activeSlotIndex + 1);
+      }
+      
+      // Reset input value to maintain control
+      input.value = "";
+    };
+
+    const handlePaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
+      e.preventDefault();
+      const pastedText = e.clipboardData.getData("text");
+      if (!pastedText) return;
+
+      // Distribute characters across slots starting from activeSlotIndex
+      const chars = pastedText.split("").filter(c => c.length === 1);
+      let newIndex = activeSlotIndex;
+      let newValue = value;
+
+      for (const char of chars) {
+        if (newIndex < charCount) {
+          newValue = newValue.slice(0, newIndex) + char + newValue.slice(newIndex + 1);
+          newIndex++;
+        } else {
+          break;
+        }
+      }
+
+      onValueChange(newValue);
+      setActiveSlotIndex(newIndex);
+      
+      // Clear the hidden input
+      if (inputRef.current) {
+        inputRef.current.value = "";
+      }
+    };
+
+    const handleSlotClick = (index: number) => {
+      setActiveSlotIndex(index);
+      if (inputRef.current) {
+        inputRef.current.focus();
+      }
+    };
 
     return (
-      <Group
-        id={field.id}
-        ref={groupRef}
-        x={field.x}
-        y={field.y}
-        width={field.width}
-        height={field.height}
-        opacity={dragOpacity}
-        draggable={!isSnapped}
-        onMouseEnter={() => onMouseEnter?.()}
-        onMouseLeave={() => onMouseLeave?.()}
-        onClick={(e) => {
-          e.cancelBubble = true;
-          onSelect();
-        }}
-        onDragStart={() => {
-          setDragOpacity(0.85);
-          onDragStart?.();
-        }}
-        onDragEnd={(e) => {
-          setDragOpacity(1);
-          onDragEnd(e.target.x(), e.target.y());
-        }}
-        onTransformEnd={(e) => {
-          const node = e.target;
-          const scaleX = node.scaleX();
-          const scaleY = node.scaleY();
-          node.scaleX(1);
-          node.scaleY(1);
-          onTransformEnd(
-            Math.max(40, node.width() * scaleX),
-            Math.max(20, node.height() * scaleY),
-            node.x(),
-            node.y()
-          );
-        }}
-        onContextMenu={(e) => {
-          e.evt.preventDefault();
-          onContextMenu?.(e, field.id);
-        }}
-      >
-        {/* Background */}
-        <Rect
+      <>
+        <Group
+          id={field.id}
+          ref={groupRef}
+          x={field.x}
+          y={field.y}
           width={field.width}
           height={field.height}
-          fill={getFill()}
-          stroke={getBorderColor()}
-          strokeWidth={getBorderWidth()}
-          cornerRadius={3}
-        />
-        
-        {/* Individual character slots */}
-        {Array.from({ length: charCount }).map((_, i) => {
-          const char = value[i] || "";
-          const isFilled = i < value.length;
-          const isCurrent = i === value.length; // Next slot to fill
+          opacity={dragOpacity}
+          draggable={!isSnapped}
+          onMouseEnter={() => onMouseEnter?.()}
+          onMouseLeave={() => onMouseLeave?.()}
+          onClick={(e) => {
+            e.cancelBubble = true;
+            onSelect();
+            // Focus the hidden input when field is clicked
+            setTimeout(() => {
+              if (inputRef.current) {
+                inputRef.current.focus();
+              }
+            }, 0);
+          }}
+          onDragStart={() => {
+            setDragOpacity(0.85);
+            onDragStart?.();
+          }}
+          onDragEnd={(e) => {
+            setDragOpacity(1);
+            onDragEnd(e.target.x(), e.target.y());
+          }}
+          onTransformEnd={(e) => {
+            const node = e.target;
+            const scaleX = node.scaleX();
+            const scaleY = node.scaleY();
+            node.scaleX(1);
+            node.scaleY(1);
+            onTransformEnd(
+              Math.max(40, node.width() * scaleX),
+              Math.max(20, node.height() * scaleY),
+              node.x(),
+              node.y()
+            );
+          }}
+          onContextMenu={(e) => {
+            e.evt.preventDefault();
+            onContextMenu?.(e, field.id);
+          }}
+        >
+          {/* Background */}
+          <Rect
+            width={field.width}
+            height={field.height}
+            fill={getFill()}
+            stroke={getBorderColor()}
+            strokeWidth={getBorderWidth()}
+            cornerRadius={3}
+          />
           
-          return (
-            <Group
-              key={i}
-              x={i * slotWidth}
-              y={0}
-              width={slotWidth}
-              height={slotHeight}
-            >
-              {/* Slot border */}
-              <Rect
-                width={slotWidth - 1}
+          {/* Individual character slots */}
+          {Array.from({ length: charCount }).map((_, i) => {
+            const char = value[i] || "";
+            const isFilled = i < value.length;
+            const isCurrent = i === activeSlotIndex; // Active slot
+            
+            return (
+              <Group
+                key={i}
+                x={i * slotWidth}
+                y={0}
+                width={slotWidth}
                 height={slotHeight}
-                fill="transparent"
-                stroke={isCurrent ? "#3b82f6" : isFilled ? "rgba(59,130,246,0.3)" : "rgba(59,130,246,0.15)"}
-                strokeWidth={isCurrent ? 1.5 : 0.5}
-              />
-              {/* Character */}
-              {char && (
-                <Text
-                  text={char}
-                  fontSize={slotHeight * 0.6}
-                  fill="#1a1a2e"
-                  fontFamily="Arial"
-                  width={slotWidth}
+                onClick={(e) => {
+                  e.cancelBubble = true;
+                  handleSlotClick(i);
+                }}
+              >
+                {/* Slot border */}
+                <Rect
+                  width={slotWidth - 1}
                   height={slotHeight}
-                  align="center"
-                  verticalAlign="middle"
+                  fill="transparent"
+                  stroke={isCurrent ? "#3b82f6" : isFilled ? "rgba(59,130,246,0.3)" : "rgba(59,130,246,0.15)"}
+                  strokeWidth={isCurrent ? 2 : 0.5}
                 />
-              )}
-            </Group>
-          );
-        })}
-      </Group>
+                {/* Character */}
+                {char && (
+                  <Text
+                    text={char}
+                    fontSize={slotHeight * 0.6}
+                    fill="#1a1a2e"
+                    fontFamily="Arial"
+                    width={slotWidth}
+                    height={slotHeight}
+                    align="center"
+                    verticalAlign="middle"
+                  />
+                )}
+                {/* Cursor indicator for active slot */}
+                {isCurrent && (
+                  <Rect
+                    x={slotWidth * 0.4}
+                    y={slotHeight * 0.2}
+                    width={slotWidth * 0.2}
+                    height={slotHeight * 0.6}
+                    fill="#3b82f6"
+                  />
+                )}
+              </Group>
+            );
+          })}
+        </Group>
+        
+        {/* Hidden input for capturing keyboard input */}
+        <input
+          ref={inputRef}
+          type="text"
+          className="absolute opacity-0 pointer-events-none"
+          style={{
+            position: "absolute",
+            width: "1px",
+            height: "1px",
+            padding: 0,
+            margin: "-1px",
+            overflow: "hidden",
+            clip: "rect(0,0,0,0)",
+            whiteSpace: "nowrap",
+            border: 0,
+          }}
+          onKeyDown={handleKeyDown}
+          onInput={handleInput}
+          onPaste={handlePaste}
+          autoFocus={isSelected}
+        />
+      </>
     );
   }
 
