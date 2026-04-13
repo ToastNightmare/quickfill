@@ -1718,6 +1718,7 @@ function FieldShape({
       }}
     >
       <Rect
+        // BUG FIX: Rect must match Group dimensions exactly - no padding subtraction
         width={field.width}
         height={field.height}
         fill={
@@ -1773,12 +1774,15 @@ function FieldShape({
             fontSize={(field as { fontSize?: number }).fontSize ?? 14}
             fill={isEmpty ? "#9ca3af" : "#1a1a2e"}
             fontFamily="Arial"
-            width={field.width - (isSnapped ? 2 : 4)}
+            // BUG FIX: Lock text width to field dimensions - prevent auto-resize on deselect
+            // Use exact field width minus padding, with ellipsis to prevent expansion
+            width={field.width - (isSnapped ? 4 : 8)}
             height={field.height}
             padding={isSnapped ? 2 : 4}
             verticalAlign="middle"
+            align="left"
             wrap="none"
-            clip={{ x: 0, y: 0, width: field.width - (isSnapped ? 2 : 4), height: field.height }}
+            ellipsis={true}
           />
         )
       )}
