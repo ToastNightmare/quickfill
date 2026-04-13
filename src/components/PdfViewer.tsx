@@ -997,7 +997,15 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
         return;
       }
 
+      // BUG 2 FIX: Prevent double signature placement
+      // Only handle click if it wasn't already processed by mouseUp (drag-to-draw)
+      // For signature tool specifically, ensure we only create once
       if (activeTool) {
+        // Skip if this was a drag move (already handled in mouseUp)
+        if (isDragMove.current) {
+          isDragMove.current = false;
+          return;
+        }
         createFieldAtPoint(pos.x, pos.y, true);
       } else {
         onFieldSelect(null);
@@ -1251,8 +1259,11 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
               borderStroke="#3b82f6"
               anchorStroke="#3b82f6"
               anchorFill="#fff"
-              anchorSize={selectedFieldIsSnapped ? 6 : 8}
-              enabledAnchors={selectedFieldIsSnapped ? [] : undefined}
+              anchorSize={8}
+              // BUG 3 FIX: Always enable all 8 anchors for resizing
+              // Remove the conditional that disabled anchors for snapped fields
+              enabledAnchors={["top-left", "top-center", "top-right", "middle-right", "bottom-right", "bottom-center", "bottom-left", "middle-left"]}
+              keepRatio={false}
               boundBoxFunc={(oldBox, newBox) => {
                 if (newBox.width < 16 || newBox.height < 16) return oldBox;
                 return newBox;
@@ -1479,6 +1490,7 @@ function FieldShape({
   const groupRef = useRef<Konva.Group>(null);
 
   // Register/unregister this field's node with the global transformer (skip for whiteout - static)
+  // BUG 3 FIX: Signature fields MUST register with Transformer for resize to work
   useEffect(() => {
     if (field.type === "whiteout") return; // Whiteout is static, no transformer
     const node = groupRef.current;
@@ -1652,6 +1664,10 @@ function FieldShape({
           : "Click to type...");
   const isEmpty = !field.value && !hasSignatureImage;
 
+  // BUG 3 FIX: Signature fields must register with Transformer and be draggable
+  // Signature fields should NOT be snapped (they use click-to-place, not snap detection)
+  const signatureCanResize = field.type === "signature" && !isSnapped;
+
   return (
     <>
       <Group
@@ -1662,7 +1678,8 @@ function FieldShape({
       width={field.width}
       height={field.height}
       opacity={dragOpacity}
-      draggable={!isSnapped}
+      // BUG 3 FIX: Signature fields are always draggable (never snapped)
+      draggable={field.type === "signature" ? true : !isSnapped}
       onMouseEnter={() => onMouseEnter?.()}
       onMouseLeave={() => onMouseLeave?.()}
       onClick={(e) => {

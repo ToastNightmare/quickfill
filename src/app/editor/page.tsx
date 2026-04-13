@@ -351,11 +351,16 @@ export default function EditorPage() {
     async (file: File, bytes: ArrayBuffer) => {
       setIsLoading(true);
       try {
-        setPdfBytes(bytes);
-        setFileName(file.name);
-        setCurrentPage(0);
+        // BUG 1 FIX: Clear ALL state before loading new template
+        // This ensures no fields from previous session bleed through
+        reset([]);
         setSelectedFieldId(null);
         setActiveTool(null);
+        setCurrentPage(0);
+        setHasAcroForm(false);
+        
+        setPdfBytes(bytes);
+        setFileName(file.name);
 
         // Persist PDF and filename
         savePdfToIndexedDB(bytes);
