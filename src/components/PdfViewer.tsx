@@ -1008,16 +1008,17 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
         return;
       }
 
-      // BUG 2 FIX: Prevent double signature placement
-      // Only handle click if it wasn't already processed by mouseUp (drag-to-draw)
-      // For signature tool specifically, ensure we only create once
+      // FIX: Prevent double field creation
+      // handleStageMouseUp already creates the field for all activeTool cases
+      // so we skip creation here to avoid duplicates (especially when snap is ON)
       if (activeTool) {
-        // Skip if this was a drag move (already handled in mouseUp)
+        // Skip if this was processed by mouseUp (drag move or click)
         if (isDragMove.current) {
           isDragMove.current = false;
           return;
         }
-        createFieldAtPoint(pos.x, pos.y, true);
+        // mouseUp already handled field creation, skip here
+        return;
       } else {
         onFieldSelect(null);
         setEditingFieldId(null);
@@ -1027,7 +1028,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
         }
       }
     },
-    [activeTool, currentPage, fields, onFieldSelect, onToolSelect, createFieldAtPoint]
+    [activeTool, currentPage, fields, onFieldSelect, onToolSelect, createFieldAtPoint, snapEnabled]
   );
 
   // Touch handler for mobile tap-to-place, delegates to createFieldAtPoint
