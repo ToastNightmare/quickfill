@@ -17,7 +17,7 @@ const officialTemplates: Template[] = [
     title: "Tax File Number Declaration",
     description: "Official ATO form (NAT 3092). Required when starting a new job so your employer can withhold the correct amount of tax.",
     emoji: "🏛️",
-    category: "ATO — Official",
+    category: "ATO Official",
     badge: "Official",
   },
   {
@@ -25,13 +25,13 @@ const officialTemplates: Template[] = [
     title: "Superannuation Standard Choice",
     description: "Official ATO form (NAT 13080). Tell your employer which super fund to pay your contributions into.",
     emoji: "🏦",
-    category: "ATO — Official",
+    category: "ATO Official",
     badge: "Official",
   },
   {
     file: "ato-withholding-declaration.pdf",
     title: "Withholding Declaration",
-    description: "Official ATO form (NAT 3093). Advise your employer of changes to your tax withholding — HELP debt, Medicare levy, tax offsets.",
+    description: "Official ATO form (NAT 3093). Advise your employer of changes to your tax withholding: HELP debt, Medicare levy, tax offsets.",
     emoji: "📋",
     category: "ATO — Official",
     badge: "Official",
@@ -41,7 +41,7 @@ const officialTemplates: Template[] = [
     title: "Employment Separation Certificate",
     description: "Official Services Australia form (SU001). Required by Centrelink when you leave a job to claim income support.",
     emoji: "📄",
-    category: "Services Australia — Official",
+    category: "Services Australia Official",
     badge: "Official",
   },
   {
