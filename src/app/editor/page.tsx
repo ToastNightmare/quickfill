@@ -10,6 +10,7 @@ import { ContextPanel } from "@/components/ContextPanel";
 import { SignatureModal } from "@/components/SignatureModal";
 import { WelcomeModal } from "@/components/WelcomeModal";
 import { TourModal } from "@/components/TourModal";
+import { ProUnlockModal } from "@/components/ProUnlockModal";
 import type { PdfViewerHandle } from "@/components/PdfViewer";
 import { useHistory } from "@/lib/use-history";
 import { detectAcroFormFields } from "@/lib/pdf-utils";
@@ -116,6 +117,8 @@ export default function EditorPage() {
   const [showGuestUpsellModal, setShowGuestUpsellModal] = useState(false);
   const [showRestoredBanner, setShowRestoredBanner] = useState(false);
   const [showGuestSignupPrompt, setShowGuestSignupPrompt] = useState(false);
+  const [showProUnlockModal, setShowProUnlockModal] = useState(false);
+  const [unlockFeatureName, setUnlockFeatureName] = useState<string | undefined>(undefined);
   const [zoom, setZoom] = useState(100);
   const [pageScales] = useState(() => new Map<number, number>());
   const [isDetecting, setIsDetecting] = useState(false);
@@ -337,6 +340,28 @@ export default function EditorPage() {
   }, [fields]);
 
   const totalFieldCount = fields.length;
+
+  // Check if user is Pro, show unlock modal if not
+  const checkProFeature = useCallback(async (featureName?: string): Promise<boolean> => {
+    try {
+      const res = await fetch("/api/usage");
+      if (res.ok) {
+        const usage = await res.json();
+        if (usage.tier === "pro" || usage.tier === "business") {
+          return true;
+        }
+        // Not Pro - show unlock modal
+        if (featureName) {
+          setUnlockFeatureName(featureName);
+        }
+        setShowProUnlockModal(true);
+        return false;
+      }
+      return false;
+    } catch {
+      return false;
+    }
+  }, []);
 
   const handleZoomIn = useCallback(() => {
     setZoom((prev) => ZOOM_LEVELS.find((z) => z > prev && z <= SNAP_MAX) ?? prev);
@@ -1388,6 +1413,13 @@ export default function EditorPage() {
       {showTour && (
         <TourModal isOpen={showTour} onClose={handleTourComplete} />
       )}
+
+      {/* Pro unlock modal */}
+      <ProUnlockModal
+        open={showProUnlockModal}
+        onClose={() => setShowProUnlockModal(false)}
+        featureName={unlockFeatureName}
+      />
     </div>
     </>
   );

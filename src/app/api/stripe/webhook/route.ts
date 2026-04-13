@@ -44,6 +44,7 @@ function emailWrapper(content: string) {
 
 function welcomeEmailContent(firstName: string | null, isAnnual: boolean) {
   const name = firstName || "there";
+  const billingText = isAnnual ? "A$100/year" : "A$12/month";
   return `
     <h1 style="font-size: 24px; font-weight: 800; margin: 0 0 16px 0; color: #4f8ef7;">Welcome to QuickFill Pro 🎉</h1>
     <p style="font-size: 16px; color: #374151; margin: 0 0 24px 0; line-height: 1.6;">Hi ${name},</p>
@@ -51,30 +52,26 @@ function welcomeEmailContent(firstName: string | null, isAnnual: boolean) {
     <p style="font-size: 15px; color: #374151; margin: 0 0 16px 0; line-height: 1.6;">You're now on QuickFill Pro. Here's what you've unlocked:</p>
     
     <div style="background: #f8fafc; border-radius: 8px; padding: 20px; margin: 24px 0;">
-      <ul style="margin: 0; padding-left: 20px; font-size: 15px; color: #374151; line-height: 2;">
-        <li>✓ Unlimited PDF fills</li>
+      <ul style="margin: 0; padding-left: 20px; font-size: 15px; color: #374151; line-height: 2.2;">
+        <li>✓ Unlimited PDF fills - no monthly limits</li>
         <li>✓ All 13+ Australian government templates</li>
-        <li>✓ Priority support</li>
-        <li>✓ No ads, no limits</li>
+        <li>✓ Priority support - we respond first</li>
       </ul>
     </div>
     
-    <p style="font-size: 15px; color: #374151; margin: 0 0 16px 0; line-height: 1.6;">A few tips to get started:</p>
+    <p style="font-size: 15px; color: #374151; margin: 0 0 16px 0; line-height: 1.6;">Get started right away:</p>
     
-    <div style="background: #f0f7ff; border-radius: 8px; padding: 20px; margin: 24px 0;">
-      <ul style="margin: 0; padding-left: 20px; font-size: 15px; color: #1e3a6e; line-height: 2;">
-        <li>• Head to the Templates page to browse real Australian government forms</li>
-        <li>• Your profile auto-fills common fields like name, address, and TFN</li>
-        <li>• Use drag-to-draw to place fields exactly where you need them</li>
-        <li>• Whiteout tool covers pre-printed text before adding your own</li>
-      </ul>
+    <div style="text-align: center; margin: 28px 0;">
+      <a href="${APP_URL}/editor" style="display: inline-block; background: #2d8ef7; color: white; font-weight: 600; padding: 14px 32px; border-radius: 10px; text-decoration: none; font-size: 15px;">
+        Start filling now
+      </a>
     </div>
     
     <p style="font-size: 14px; color: #6b7280; margin: 24px 0 8px 0; line-height: 1.6;">
-      Your subscription renews automatically at <strong>A$12/month</strong>. You can manage or cancel anytime at <a href="${APP_URL}/profile" style="color: #4f8ef7; text-decoration: none;">getquickfill.com/profile</a>.
+      Your subscription renews automatically at <strong>${billingText}</strong>. You can manage or cancel anytime from your <a href="${APP_URL}/dashboard" style="color: #4f8ef7; text-decoration: none;">dashboard</a>.
     </p>
     
-    <p style="font-size: 15px; color: #374151; margin: 24px 0 0 0; line-height: 1.6;">Thanks for supporting QuickFill.<br/>The QuickFill Team</p>
+    <p style="font-size: 15px; color: #374151; margin: 24px 0 0 0; line-height: 1.6;">Thanks for supporting QuickFill.<br/><strong>The QuickFill Team</strong></p>
   `;
 }
 

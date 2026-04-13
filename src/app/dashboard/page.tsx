@@ -5,6 +5,7 @@ import { Suspense, useEffect, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { FileText, Sparkles, ExternalLink, Lock, Clock, User, RotateCcw } from "lucide-react";
+import { ProSuccessModal } from "@/components/ProSuccessModal";
 
 interface UsageData {
   used: number;
@@ -38,6 +39,7 @@ function DashboardContent() {
   const [fills, setFills] = useState<FillEntry[]>([]);
   const [billingError, setBillingError] = useState<string | null>(null);
   const [savedSessions, setSavedSessions] = useState<Set<string>>(new Set());
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
   const router = useRouter();
 
   useEffect(() => {
@@ -61,6 +63,10 @@ function DashboardContent() {
           .then((r) => r.json())
           .then((data) => {
             setUsage(data);
+            // Show success modal if now Pro
+            if (data.tier === "pro" || data.tier === "business") {
+              setShowSuccessModal(true);
+            }
             // Clear URL param after refreshing
             router.replace("/dashboard", { scroll: false });
           })
@@ -120,18 +126,19 @@ function DashboardContent() {
         </div>
         {/* Plan badge */}
         {usage && (
-          <div className={`flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold ${
+          <div className={`flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold shadow-sm ${
             isPaid
-              ? "bg-accent/10 text-accent"
-              : "bg-surface-alt text-text-muted"
+              ? "bg-gradient-to-r from-accent to-blue-600 text-white"
+              : "bg-surface-alt text-text-muted border border-border"
           }`}>
-            {isPaid ? <Sparkles className="h-3.5 w-3.5" /> : <User className="h-3.5 w-3.5" />}
-            {isPaid ? "Pro Plan" : "Free Plan"}
+            {isPaid ? <Sparkles className="h-4 w-4" /> : <User className="h-4 w-4" />}
+            {isPaid ? "Pro" : "Free"}
           </div>
         )}
       </div>
 
-      {upgraded === "true" && (
+      {/* Upgrade success message - only show if not showing modal */}
+      {upgraded === "true" && !showSuccessModal && (
         <div className="mb-6 mt-4 rounded-xl bg-green-50 border border-green-200 px-5 py-4 text-sm text-green-800 font-medium">
           Welcome to Pro! Your account has been upgraded. Enjoy unlimited fills.
         </div>
@@ -306,6 +313,13 @@ function DashboardContent() {
           </div>
         </div>
       )}
+
+      {/* Pro success modal */}
+      <ProSuccessModal
+        open={showSuccessModal}
+        onClose={() => setShowSuccessModal(false)}
+        onGetStarted={() => router.push("/editor")}
+      />
     </div>
   );
 }
