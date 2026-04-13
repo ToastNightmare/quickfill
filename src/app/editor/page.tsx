@@ -1245,7 +1245,7 @@ export default function EditorPage() {
         mobile
       />
 
-      {/* Signature modal for editor — key forces full remount on each open so
+      {/* Signature modal for editor: key forces full remount on each open so
           the canvas re-initialises and drawing event listeners re-attach correctly */}
       {signatureModalOpen && (
         <SignatureModal
@@ -1335,7 +1335,7 @@ export default function EditorPage() {
                 href="/pricing"
                 className="flex h-11 w-full items-center justify-center rounded-xl bg-accent text-sm font-semibold text-white hover:bg-accent-hover transition-colors"
               >
-                Upgrade to Pro — $12/month
+                Upgrade to Pro: $12/month
               </a>
               <button
                 onClick={() => setShowGuestUpsellModal(false)}

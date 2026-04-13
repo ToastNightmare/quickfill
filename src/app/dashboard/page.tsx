@@ -148,7 +148,7 @@ function DashboardContent() {
               {isPaid ? (
                 <>
                   <p className="mt-2 text-sm font-semibold text-accent">
-                    ✓ Pro Plan — Unlimited fills
+                    ✓ Pro Plan: Unlimited fills
                   </p>
                   <button
                     onClick={handleManageBilling}
@@ -180,7 +180,7 @@ function DashboardContent() {
                     className="mt-4 flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-accent text-sm font-semibold text-white hover:bg-accent-hover transition-colors"
                   >
                     <Sparkles className="h-4 w-4" />
-                    Upgrade to Pro — $12/mo
+                    Upgrade to Pro: $12/mo
                   </button>
                 </>
               )}

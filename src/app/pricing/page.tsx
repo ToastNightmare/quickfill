@@ -279,14 +279,11 @@ export default function PricingPage() {
                     <div className="mt-4">
                       <div className="flex items-end gap-2">
                         <span className="text-4xl font-extrabold text-white leading-none">$8.33</span>
-                        <div className="flex flex-col items-start pb-0.5">
-                          <span className="text-xs font-semibold text-gray-500 line-through leading-none">$12/mo</span>
-                          <span className="text-gray-400 text-xs leading-none mt-0.5">/month</span>
-                        </div>
+                        <span className="text-gray-400 text-xs leading-none pb-0.5">/month</span>
                       </div>
                       <div className="mt-2 h-7 flex items-center">
                         <div className="inline-flex items-center rounded-full bg-green-500/15 border border-green-500/25 px-3 py-1">
-                          <span className="text-xs font-semibold text-green-400">🎉 You save $44/year, billed $100</span>
+                          <span className="text-xs font-semibold text-green-400">🎉 Billed $100/year, save $44</span>
                         </div>
                       </div>
                     </div>

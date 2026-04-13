@@ -216,9 +216,11 @@ function LoggedInHome() {
           </div>
           <div className="flex gap-6">
             <Link href="/editor" className="text-sm text-gray-400 hover:text-white transition-colors">Fill a PDF</Link>
+            <Link href="/templates" className="text-sm text-gray-400 hover:text-white transition-colors">Templates</Link>
             <Link href="/pricing" className="text-sm text-gray-400 hover:text-white transition-colors">Pricing</Link>
             <Link href="/how-it-works" className="text-sm text-gray-400 hover:text-white transition-colors">How It Works</Link>
             <Link href="/sign-in" className="text-sm text-gray-400 hover:text-white transition-colors">Sign In</Link>
+            <Link href="/profile" className="text-sm text-gray-400 hover:text-white transition-colors">Profile</Link>
             <Link href="/privacy" className="text-sm text-gray-400 hover:text-white transition-colors">Privacy</Link>
             <Link href="/terms" className="text-sm text-gray-400 hover:text-white transition-colors">Terms</Link>
           </div>
@@ -236,7 +238,7 @@ const features = [
     icon: Upload,
     title: "Upload Any Australian Form",
     description:
-      "ATO tax returns, Medicare claims, Centrelink forms, rental applications, council permits — QuickFill handles them all.",
+      "ATO tax returns, Medicare claims, Centrelink forms, rental applications, council permits: QuickFill handles them all.",
   },
   {
     icon: User,
@@ -248,7 +250,7 @@ const features = [
     icon: Download,
     title: "Download in Seconds",
     description:
-      "Your completed PDF is ready instantly. Print it, email it, or submit it — no software required.",
+      "Your completed PDF is ready instantly. Print it, email it, or submit it: no software required.",
   },
 ];
 
@@ -374,13 +376,13 @@ export default function Home() {
             Stop printing locked PDFs forever
           </h1>
           <p className="mx-auto mt-6 max-w-2xl text-lg text-gray-300 sm:text-xl">
-            Fill Australian government and business forms online — no Adobe, no printing, no scanning. Works on any device.
+            Fill Australian government and business forms online: no Adobe, no printing, no scanning. Works on any device.
           </p>
           {/* Feature pills */}
           <div className="mt-6 flex flex-wrap items-center justify-center gap-3 text-sm text-gray-300">
-            <span className="inline-flex items-center gap-1">✏️ Fill any PDF — no locked fields stopping you</span>
+            <span className="inline-flex items-center gap-1">✏️ Fill any PDF: no locked fields stopping you</span>
             <span className="inline-flex items-center gap-1">💰 Half the price of Adobe Acrobat</span>
-            <span className="inline-flex items-center gap-1">🇦🇺 Built for Australian forms — TFN, Centrelink, rental apps, NDIS</span>
+            <span className="inline-flex items-center gap-1">🇦🇺 Built for Australian forms: TFN, Centrelink, rental apps, NDIS</span>
           </div>
           <div className="mt-10 flex flex-col items-center gap-4 sm:flex-row sm:justify-center">
             <Link
@@ -532,7 +534,7 @@ export default function Home() {
               {
                 emoji: "🔄",
                 title: "Re-fill Previous Forms",
-                description: "Filled this form before? One click to re-fill it with the same details — great for monthly BAS and invoices.",
+                description: "Filled this form before? One click to re-fill it with the same details: great for monthly BAS and invoices.",
               },
               {
                 emoji: "🔒",
@@ -674,7 +676,7 @@ export default function Home() {
             </div>
             <div className="rounded-xl border border-border bg-surface-alt p-6">
               <h3 className="font-semibold text-base">Can I use it for government forms?</h3>
-              <p className="mt-2 text-sm text-text-muted">Yes. QuickFill includes real Australian government forms — TFN declarations, Centrelink income forms, Medicare enrolment, NDIS service agreements, and more.</p>
+              <p className="mt-2 text-sm text-text-muted">Yes. QuickFill includes real Australian government forms: TFN declarations, Centrelink income forms, Medicare enrolment, NDIS service agreements, and more.</p>
             </div>
             <div className="rounded-xl border border-border bg-surface-alt p-6">
               <h3 className="font-semibold text-base">What's the difference between free and Pro?</h3>
@@ -748,14 +750,11 @@ export default function Home() {
               <div className="mt-4">
                 <div className="flex items-end gap-2">
                   <span className="text-4xl font-extrabold text-white leading-none">$8.33</span>
-                  <div className="flex flex-col items-start pb-0.5">
-                    <span className="text-xs font-semibold text-gray-500 line-through leading-none">$12/mo</span>
-                    <span className="text-gray-400 text-sm leading-none">/month</span>
-                  </div>
+                  <span className="text-gray-400 text-sm leading-none pb-0.5">/month</span>
                 </div>
                 <div className="mt-2 h-7 flex items-center">
                   <div className="inline-flex items-center rounded-full bg-green-500/15 border border-green-500/25 px-3 py-1">
-                    <span className="text-xs font-semibold text-green-400">🎉 2 months free, billed $100/year</span>
+                    <span className="text-xs font-semibold text-green-400">🎉 Billed $100/year, save $44</span>
                   </div>
                 </div>
               </div>
@@ -807,9 +806,11 @@ export default function Home() {
           </div>
           <div className="flex gap-6">
             <Link href="/editor" className="text-sm text-gray-400 hover:text-white transition-colors">Fill a PDF</Link>
+            <Link href="/templates" className="text-sm text-gray-400 hover:text-white transition-colors">Templates</Link>
             <Link href="/pricing" className="text-sm text-gray-400 hover:text-white transition-colors">Pricing</Link>
             <Link href="/how-it-works" className="text-sm text-gray-400 hover:text-white transition-colors">How It Works</Link>
             <Link href="/sign-in" className="text-sm text-gray-400 hover:text-white transition-colors">Sign In</Link>
+            <Link href="/profile" className="text-sm text-gray-400 hover:text-white transition-colors">Profile</Link>
             <Link href="/privacy" className="text-sm text-gray-400 hover:text-white transition-colors">Privacy</Link>
             <Link href="/terms" className="text-sm text-gray-400 hover:text-white transition-colors">Terms</Link>
           </div>

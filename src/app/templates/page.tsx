@@ -33,7 +33,7 @@ const officialTemplates: Template[] = [
     title: "Withholding Declaration",
     description: "Official ATO form (NAT 3093). Advise your employer of changes to your tax withholding: HELP debt, Medicare levy, tax offsets.",
     emoji: "📋",
-    category: "ATO — Official",
+    category: "ATO: Official",
     badge: "Official",
   },
   {
@@ -49,7 +49,7 @@ const officialTemplates: Template[] = [
     title: "Medicare Enrolment",
     description: "Official Services Australia form (MS004). Apply for a Medicare card as a new resident or Australian citizen.",
     emoji: "🏥",
-    category: "Services Australia — Official",
+    category: "Services Australia: Official",
     badge: "Official",
   },
 ];

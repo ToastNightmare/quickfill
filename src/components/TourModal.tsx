@@ -22,7 +22,7 @@ const steps: Step[] = [
   {
     emoji: "✏️",
     title: "Draw fields anywhere",
-    description: "Select a tool from the left sidebar — Text, Date, Signature, Checkbox, or Whiteout. Then click and drag directly on the PDF to draw the field exactly where you need it.",
+    description: "Select a tool from the left sidebar: Text, Date, Signature, Checkbox, or Whiteout. Then click and drag directly on the PDF to draw the field exactly where you need it.",
   },
   {
     emoji: "🧲",
@@ -32,7 +32,7 @@ const steps: Step[] = [
   {
     emoji: "⬜",
     title: "Cover unwanted text",
-    description: "Use the Whiteout tool to draw over any pre-printed text you want to hide — like instructions or old content. It samples the background colour so it blends right in.",
+    description: "Use the Whiteout tool to draw over any pre-printed text you want to hide: like instructions or old content. It samples the background colour so it blends right in.",
   },
   {
     emoji: "⌨️",
@@ -42,7 +42,7 @@ const steps: Step[] = [
   {
     emoji: "⬇️",
     title: "Download your filled PDF",
-    description: "When you're done, hit Download PDF in the left sidebar. Your completed form downloads instantly — ready to print, email, or lodge.",
+    description: "When you're done, hit Download PDF in the left sidebar. Your completed form downloads instantly: ready to print, email, or lodge.",
   },
 ];
 

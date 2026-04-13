@@ -52,12 +52,12 @@ interface ToolbarProps {
 }
 
 const tools: { type: ToolType; icon: typeof Type; label: string; title: string }[] = [
-  { type: "text", icon: Type, label: "Text Field", title: "Text field — click and drag to place" },
-  { type: "checkbox", icon: CheckSquare, label: "Checkbox", title: "Checkbox — click to place a tick or cross" },
-  { type: "signature", icon: PenTool, label: "Signature", title: "Signature field — draw or type your signature" },
-  { type: "date", icon: Calendar, label: "Date", title: "Date field — click and drag to place" },
-  { type: "grid", icon: Grid3X3, label: "Grid", title: "Character grid — for individual letter/number boxes" },
-  { type: "whiteout", icon: Eraser, label: "Whiteout", title: "Whiteout — cover pre-printed text with background colour" },
+  { type: "text", icon: Type, label: "Text Field", title: "Text field: click and drag to place" },
+  { type: "checkbox", icon: CheckSquare, label: "Checkbox", title: "Checkbox: click to place a tick or cross" },
+  { type: "signature", icon: PenTool, label: "Signature", title: "Signature field: draw or type your signature" },
+  { type: "date", icon: Calendar, label: "Date", title: "Date field: click and drag to place" },
+  { type: "grid", icon: Grid3X3, label: "Grid", title: "Character grid: for individual letter/number boxes" },
+  { type: "whiteout", icon: Eraser, label: "Whiteout", title: "Whiteout: cover pre-printed text with background colour" },
 ];
 
 export function Toolbar({

@@ -74,7 +74,7 @@ function welcomeEmailContent(firstName: string | null, isAnnual: boolean) {
       Your subscription renews automatically at <strong>A$12/month</strong>. You can manage or cancel anytime at <a href="${APP_URL}/profile" style="color: #4f8ef7; text-decoration: none;">getquickfill.com/profile</a>.
     </p>
     
-    <p style="font-size: 15px; color: #374151; margin: 24px 0 0 0; line-height: 1.6;">Thanks for supporting QuickFill.<br/>— The QuickFill Team</p>
+    <p style="font-size: 15px; color: #374151; margin: 24px 0 0 0; line-height: 1.6;">Thanks for supporting QuickFill.<br/>The QuickFill Team</p>
   `;
 }
 
@@ -97,14 +97,7 @@ export async function POST(req: NextRequest) {
   if (event.type === "checkout.session.completed") {
     const session = event.data.object as Stripe.Checkout.Session;
     
-    console.log("[WEBHOOK] checkout.session.completed received:", {
-      sessionId: session.id,
-      userId: session.metadata?.userId,
-      plan: session.metadata?.plan,
-      billing: session.metadata?.billing,
-      customer: session.customer,
-      subscription: session.subscription,
-    });
+    // checkout.session.completed received
 
     const userId = session.metadata?.userId;
 
@@ -118,18 +111,18 @@ export async function POST(req: NextRequest) {
           const subscription = await getStripe().subscriptions.retrieve(session.subscription as string);
           const priceId = subscription.items.data[0]?.price?.id;
           if (priceId) tier = tierFromPriceId(priceId);
-          console.log("[WEBHOOK] Retrieved subscription, tier:", tier);
+          // Retrieved subscription tier
         } catch (err) {
-          console.error("[WEBHOOK] Failed to retrieve subscription:", err);
+          // Failed to retrieve subscription
         }
       }
 
       if (!tier) {
         tier = "pro"; // Default to pro if we can't determine
-        console.log("[WEBHOOK] Defaulting to pro tier");
+        // Defaulting to pro tier
       }
 
-      console.log("[WEBHOOK] Setting Redis key sub:", userId, "to", tier);
+      // Setting Redis subscription key
       await getRedis().set(`sub:${userId}`, tier, { ex: TTL_SECONDS });
 
       if (session.customer) {
@@ -154,7 +147,7 @@ export async function POST(req: NextRequest) {
       }
 
       if (email) {
-        console.log("[WEBHOOK] Sending Pro welcome email to:", email);
+        // Sending Pro welcome email
         await getResend().emails.send({
           from: "QuickFill <noreply@getquickfill.com>",
           to: email,
@@ -163,7 +156,7 @@ export async function POST(req: NextRequest) {
         });
       }
 
-      console.log("[WEBHOOK] checkout.session.completed processed successfully for user:", userId);
+      // checkout.session.completed processed successfully
     }
   }
 
