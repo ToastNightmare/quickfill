@@ -3,18 +3,28 @@
 import {
   Type, CheckSquare, PenTool, Calendar,
   Minus, Plus, Trash2, MousePointer2,
-  Sparkles, UserCheck, Eraser,
+  Sparkles, UserCheck, Eraser, Grid3X3,
 } from "lucide-react";
 import type { EditorField, ToolType, SignatureField } from "@/lib/types";
 import type { CheckboxStamp } from "@/lib/types";
 
 const FONT_SIZES = [8, 10, 11, 12, 14, 16, 18, 24, 36];
 
+// Grid presets for Australian government forms
+const GRID_PRESETS = [
+  { label: "ABN (11 digits)", value: 11 },
+  { label: "TFN (9 digits)", value: 9 },
+  { label: "Medicare (10 chars)", value: 10 },
+  { label: "USI (16 chars)", value: 16 },
+  { label: "Custom", value: "custom" },
+];
+
 const TOOL_META: Record<ToolType, { icon: typeof Type; label: string; hint: string; color: string }> = {
   text:      { icon: Type,        label: "Text Field",  hint: "Click anywhere on the PDF to place a text field. It will snap to form boxes automatically.",      color: "text-blue-500" },
   checkbox:  { icon: CheckSquare, label: "Checkbox",    hint: "Click anywhere on the PDF to stamp a tick or cross. Click again to cycle or clear.",              color: "text-violet-500" },
   signature: { icon: PenTool,     label: "Signature",   hint: "Click the PDF to place a signature field. You can draw or reuse a saved signature.",              color: "text-pink-500" },
   date:      { icon: Calendar,    label: "Date",        hint: "Click the PDF to place a date field. Today's date is pre-filled, edit it after placing.",        color: "text-amber-500" },
+  grid:      { icon: Grid3X3,     label: "Grid",        hint: "Drag across individual character boxes to place a grid field. Auto-fills from profile if matched.", color: "text-emerald-500" },
   whiteout:  { icon: Eraser,      label: "Whiteout",    hint: "Drag to draw a rectangle over unwanted text. It will sample the background color automatically.", color: "text-gray-500" },
 };
 
@@ -54,19 +64,22 @@ export function ContextPanel({
       fieldType === "checkbox" ? CheckSquare :
       fieldType === "signature" ? PenTool :
       fieldType === "date" ? Calendar :
-      fieldType === "whiteout" ? Eraser : Type;
+      fieldType === "whiteout" ? Eraser :
+      fieldType === "grid" ? Grid3X3 : Type;
 
     const typeLabel =
       fieldType === "checkbox" ? "Checkbox" :
       fieldType === "signature" ? "Signature" :
       fieldType === "date" ? "Date" :
-      fieldType === "whiteout" ? "Whiteout" : "Text Field";
+      fieldType === "whiteout" ? "Whiteout" :
+      fieldType === "grid" ? "Character Grid" : "Text Field";
 
     const typeColor =
       fieldType === "checkbox" ? "text-violet-500" :
       fieldType === "signature" ? "text-pink-500" :
       fieldType === "date" ? "text-amber-500" :
-      fieldType === "whiteout" ? "text-gray-500" : "text-blue-500";
+      fieldType === "whiteout" ? "text-gray-500" :
+      fieldType === "grid" ? "text-emerald-500" : "text-blue-500";
 
     return (
       <Panel>
@@ -176,6 +189,76 @@ export function ContextPanel({
           );
         })()}
 
+        {/* Grid field controls */}
+        {fieldType === "grid" && (() => {
+          const gridField = selectedField as import("@/lib/types").GridField;
+          const charCount = gridField.charCount ?? 11;
+          const isCustom = !GRID_PRESETS.find(p => p.value === charCount);
+          
+          return (
+            <>
+              <Section label="Character Count">
+                <select
+                  value={isCustom ? "custom" : charCount}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    if (val === "custom") {
+                      // Keep current count, user will type manually
+                      return;
+                    }
+                    const newCount = parseInt(val, 10);
+                    if (!isNaN(newCount) && newCount > 0 && newCount <= 50) {
+                      onFieldUpdate(selectedField.id, { charCount: newCount } as Partial<EditorField>);
+                    }
+                  }}
+                  className="w-full rounded-lg border border-border bg-surface-alt px-3 py-2 text-sm font-medium text-text focus:outline-none focus:ring-2 focus:ring-accent"
+                >
+                  {GRID_PRESETS.map((preset) => (
+                    <option key={preset.value} value={preset.value}>
+                      {preset.label}
+                    </option>
+                  ))}
+                </select>
+                {isCustom && (
+                  <input
+                    type="number"
+                    min={1}
+                    max={50}
+                    value={charCount}
+                    onChange={(e) => {
+                      const newCount = parseInt(e.target.value, 10);
+                      if (!isNaN(newCount) && newCount > 0 && newCount <= 50) {
+                        onFieldUpdate(selectedField.id, { charCount: newCount } as Partial<EditorField>);
+                      }
+                    }}
+                    className="mt-2 w-full rounded-lg border border-border bg-surface-alt px-3 py-2 text-sm font-medium text-text focus:outline-none focus:ring-2 focus:ring-accent"
+                    placeholder="Custom count (1-50)"
+                  />
+                )}
+              </Section>
+              
+              <Divider />
+              
+              <Section label="Value">
+                <input
+                  type="text"
+                  value={gridField.value || ""}
+                  onChange={(e) => {
+                    // Limit to charCount
+                    const val = e.target.value.slice(0, charCount);
+                    onFieldUpdate(selectedField.id, { value: val } as Partial<EditorField>);
+                  }}
+                  className="w-full rounded-lg border border-border bg-surface-alt px-3 py-2 text-sm font-medium text-text focus:outline-none focus:ring-2 focus:ring-accent"
+                  placeholder="Enter value..."
+                />
+                <p className="mt-1 text-xs text-text-muted">
+                  {gridField.value?.length || 0} / {charCount} characters
+                </p>
+              </Section>
+            </>
+          );
+        })()}
+
         <Divider />
 
         <Section>
@@ -205,6 +288,26 @@ export function ContextPanel({
             <p className="mt-1.5 text-xs text-text-muted leading-relaxed">{hint}</p>
           </div>
         </Section>
+
+        {activeTool === "grid" && (
+          <>
+            <Divider />
+            <Section label="Quick Presets">
+              <div className="space-y-1.5">
+                <p className="text-xs text-text-muted mb-2">Drag across the character boxes on your PDF. After placing, set the character count in the panel.</p>
+                <div className="text-[10px] text-text-muted/70 bg-surface-alt rounded-lg p-2">
+                  <p className="font-medium mb-1">Common Australian forms:</p>
+                  <ul className="space-y-0.5">
+                    <li>• ABN: 11 digits</li>
+                    <li>• TFN: 9 digits</li>
+                    <li>• Medicare: 10 chars</li>
+                    <li>• USI: 16 chars</li>
+                  </ul>
+                </div>
+              </div>
+            </Section>
+          </>
+        )}
 
         <Divider />
 

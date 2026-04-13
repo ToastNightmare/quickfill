@@ -130,6 +130,9 @@ export async function fillPdf(
           } catch {
             await drawFieldOnPage(pdfDoc, field, pageScales, font, signatureFont);
           }
+        } else if (field.type === "grid") {
+          // Grid fields always draw on page (not AcroForm)
+          await drawFieldOnPage(pdfDoc, field, pageScales, font, signatureFont);
         }
       } catch {
         await drawFieldOnPage(pdfDoc, field, pageScales, font, signatureFont);
@@ -247,6 +250,28 @@ async function drawFieldOnPage(
     } else if (stamp === "cross") {
       page.drawLine({ start: { x: cx - r * 0.6, y: cy - r * 0.6 }, end: { x: cx + r * 0.6, y: cy + r * 0.6 }, thickness: lw, color: dark });
       page.drawLine({ start: { x: cx + r * 0.6, y: cy - r * 0.6 }, end: { x: cx - r * 0.6, y: cy + r * 0.6 }, thickness: lw, color: dark });
+    }
+  } else if (field.type === "grid") {
+    // Grid field: render each character in its own slot
+    const gridField = field as import("./types").GridField;
+    const charCount = gridField.charCount ?? 11;
+    const slotWidth = pdfW / charCount;
+    const fontSize = pdfH * 0.6 / scale;
+    const value = gridField.value || "";
+
+    for (let i = 0; i < charCount; i++) {
+      const char = value[i] || "";
+      if (char) {
+        const charX = pdfX + i * slotWidth + slotWidth * 0.1;
+        const charY = pdfY + pdfH - fontSize - 2;
+        page.drawText(sanitize(char), {
+          x: charX,
+          y: charY,
+          size: fontSize,
+          font,
+          color: rgb(0, 0, 0),
+        });
+      }
     }
   }
 }

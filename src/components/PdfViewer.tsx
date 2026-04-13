@@ -3,7 +3,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, useCallback, useImperativeHandle, forwardRef } from "react";
 import { Stage, Layer, Rect, Text, Group, Transformer, Image as KonvaImage } from "react-konva";
 import type Konva from "konva";
-import type { EditorField, ToolType, SignatureField, CheckboxStamp, WhiteoutField } from "@/lib/types";
+import type { EditorField, ToolType, SignatureField, CheckboxStamp, WhiteoutField, GridField } from "@/lib/types";
 import { detectSnapBox, detectAllBoxes, snapCredibilityScore, floodFillCell } from "@/lib/snap-detect";
 import type { SnapResult } from "@/lib/snap-detect";
 
@@ -602,6 +602,9 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
             case "date":
               field = { ...base, type: "date", width: fieldW, height: fieldH, value: new Date().toLocaleDateString("en-AU"), fontSize: 14 };
               break;
+            case "grid":
+              field = { ...base, type: "grid", width: fieldW, height: fieldH, value: "", charCount: 11 };
+              break;
             case "whiteout": {
               // Sample background color from canvas center of drawn rectangle
               const canvas = canvasRef.current;
@@ -652,6 +655,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
               checkbox:  { w: 20,  h: 20 },
               signature: { w: 220, h: 70 },
               date:      { w: 160, h: 28 },
+              grid:      { w: 220, h: 30 },
               whiteout:  { w: 100, h: 30 },
             };
             fieldW = defaults[activeTool].w;
@@ -723,6 +727,9 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
                 break;
               case "date":
                 field = { ...base, type: "date", width: fieldW, height: fieldH, value: new Date().toLocaleDateString("en-AU"), fontSize: inferredFontSize ?? 14 };
+                break;
+              case "grid":
+                field = { ...base, type: "grid", width: fieldW, height: fieldH, value: "", charCount: 11 };
                 break;
               case "whiteout": {
                 // Sample background color from canvas center of placed rectangle
@@ -796,6 +803,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
         checkbox:  { w: 20,  h: 20 },
         signature: { w: 220, h: 70 },
         date:      { w: 160, h: 28 },
+        grid:      { w: 220, h: 30 },
         whiteout:  { w: 100, h: 30 },
       };
       fieldW = defaults[activeTool].w;
@@ -870,6 +878,9 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
           break;
         case "date":
           field = { ...base, type: "date", width: fieldW, height: fieldH, value: new Date().toLocaleDateString("en-AU"), fontSize: inferredFontSize ?? 14 };
+          break;
+        case "grid":
+          field = { ...base, type: "grid", width: fieldW, height: fieldH, value: "", charCount: 11 };
           break;
         case "whiteout": {
           // Sample background color from canvas center of placed rectangle
@@ -1648,7 +1659,7 @@ function FieldShape({
     );
   }
 
-  // Text, date, signature fields
+  // Text, date, signature, grid fields
   const sigDataUrl = field.type === "signature" ? (field as SignatureField).signatureDataUrl : undefined;
   const sigImage = useLoadedImage(sigDataUrl);
   const hasSignatureImage = field.type === "signature" && !!sigDataUrl && !!sigImage;
@@ -1661,6 +1672,8 @@ function FieldShape({
           ? "Click to sign"
           : field.type === "date"
           ? "Click for date"
+          : field.type === "grid"
+          ? "Drag across boxes"
           : "Click to type...");
   const isEmpty = !field.value && !hasSignatureImage;
 
@@ -1789,4 +1802,108 @@ function FieldShape({
       </Group>
     </>
   );
+
+  // Grid field rendering - individual character slots
+  if (field.type === "grid") {
+    const gridField = field as GridField;
+    const charCount = gridField.charCount ?? 11;
+    const slotWidth = field.width / charCount;
+    const slotHeight = field.height;
+    const value = gridField.value || "";
+
+    return (
+      <Group
+        id={field.id}
+        ref={groupRef}
+        x={field.x}
+        y={field.y}
+        width={field.width}
+        height={field.height}
+        opacity={dragOpacity}
+        draggable={!isSnapped}
+        onMouseEnter={() => onMouseEnter?.()}
+        onMouseLeave={() => onMouseLeave?.()}
+        onClick={(e) => {
+          e.cancelBubble = true;
+          onSelect();
+        }}
+        onDragStart={() => {
+          setDragOpacity(0.85);
+          onDragStart?.();
+        }}
+        onDragEnd={(e) => {
+          setDragOpacity(1);
+          onDragEnd(e.target.x(), e.target.y());
+        }}
+        onTransformEnd={(e) => {
+          const node = e.target;
+          const scaleX = node.scaleX();
+          const scaleY = node.scaleY();
+          node.scaleX(1);
+          node.scaleY(1);
+          onTransformEnd(
+            Math.max(40, node.width() * scaleX),
+            Math.max(20, node.height() * scaleY),
+            node.x(),
+            node.y()
+          );
+        }}
+        onContextMenu={(e) => {
+          e.evt.preventDefault();
+          onContextMenu?.(e, field.id);
+        }}
+      >
+        {/* Background */}
+        <Rect
+          width={field.width}
+          height={field.height}
+          fill={getFill()}
+          stroke={getBorderColor()}
+          strokeWidth={getBorderWidth()}
+          cornerRadius={3}
+        />
+        
+        {/* Individual character slots */}
+        {Array.from({ length: charCount }).map((_, i) => {
+          const char = value[i] || "";
+          const isFilled = i < value.length;
+          const isCurrent = i === value.length; // Next slot to fill
+          
+          return (
+            <Group
+              key={i}
+              x={i * slotWidth}
+              y={0}
+              width={slotWidth}
+              height={slotHeight}
+            >
+              {/* Slot border */}
+              <Rect
+                width={slotWidth - 1}
+                height={slotHeight}
+                fill="transparent"
+                stroke={isCurrent ? "#3b82f6" : isFilled ? "rgba(59,130,246,0.3)" : "rgba(59,130,246,0.15)"}
+                strokeWidth={isCurrent ? 1.5 : 0.5}
+              />
+              {/* Character */}
+              {char && (
+                <Text
+                  text={char}
+                  fontSize={slotHeight * 0.6}
+                  fill="#1a1a2e"
+                  fontFamily="Arial"
+                  width={slotWidth}
+                  height={slotHeight}
+                  align="center"
+                  verticalAlign="middle"
+                />
+              )}
+            </Group>
+          );
+        })}
+      </Group>
+    );
+  }
+
+  return null;
 }

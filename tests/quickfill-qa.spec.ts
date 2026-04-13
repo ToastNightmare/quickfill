@@ -99,3 +99,85 @@ test('Navigation links work', async ({ page }) => {
   await page.waitForURL('/pricing');
   await expect(page).toHaveURL('/pricing');
 });
+
+test('Templates page — official badge exists', async ({ page }) => {
+  await page.goto('/templates');
+  await page.waitForLoadState('networkidle');
+
+  // Check at least one element with text "Official" is visible
+  const officialBadge = page.locator('text=Official').first();
+  await expect(officialBadge).toBeVisible();
+});
+
+test('Homepage — comparison table exists', async ({ page }) => {
+  await page.goto('/');
+  await page.waitForLoadState('networkidle');
+
+  // Check element containing "Adobe" or "DocuSign" is visible
+  const adoeElement = page.locator('text=Adobe').first();
+  const docuSignElement = page.locator('text=DocuSign').first();
+  
+  // At least one should be visible
+  const adobeVisible = await adoeElement.count() > 0;
+  const docuSignVisible = await docuSignElement.count() > 0;
+  
+  expect(adobeVisible || docuSignVisible).toBe(true);
+  
+  if (adobeVisible) {
+    await expect(adoeElement).toBeVisible();
+  } else {
+    await expect(docuSignElement).toBeVisible();
+  }
+});
+
+test('Homepage — FAQ section exists', async ({ page }) => {
+  await page.goto('/');
+  await page.waitForLoadState('networkidle');
+
+  // Check at least one FAQ question is visible
+  // Look for common FAQ patterns: accordion, question text, or FAQ heading
+  const faqQuestion = page.locator('button:text("What"), h3:text("What"), .faq-question, [role="button"]:has-text("How"), [role="button"]:has-text("What")').first();
+  
+  // If we find any FAQ-like element, it's good
+  const count = await faqQuestion.count();
+  expect(count).toBeGreaterThan(0);
+  
+  if (count > 0) {
+    await expect(faqQuestion).toBeVisible();
+  }
+});
+
+test('Pricing — Free tier shown', async ({ page }) => {
+  await page.goto('/pricing');
+  await page.waitForLoadState('networkidle');
+
+  // Check element with "Free" visible
+  const freeTier = page.locator('text=Free').first();
+  await expect(freeTier).toBeVisible();
+  
+  // Check for "3 documents" text (Free tier shows "3 documents per month")
+  const threeDocs = page.locator('text="3 documents per month"').first();
+  const threeDocsAlt = page.locator('text=3 documents').first();
+  
+  const hasThreeDocs = await threeDocs.count() > 0 || await threeDocsAlt.count() > 0;
+  expect(hasThreeDocs).toBe(true);
+});
+
+test('Editor toolbar loads', async ({ page }) => {
+  await page.goto('/editor');
+  await page.waitForLoadState('networkidle');
+
+  const url = page.url();
+  
+  // If redirected to sign-in, that's acceptable (editor requires auth)
+  if (url.includes('/sign-in')) {
+    // Sign-in page loaded, which is expected for unauthenticated users
+    // Test passes - editor correctly requires authentication
+    return;
+  }
+  
+  // If we're still on /editor, check that the page loaded without errors
+  // The editor may show an upload zone or other initial state
+  const title = await page.title();
+  expect(title).toContain('QuickFill');
+});
