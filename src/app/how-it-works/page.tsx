@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Upload, MousePointerClick, Download, ArrowRight } from "lucide-react";
+import HowItWorksContent from "./content";
 
 export const metadata: Metadata = {
   title: "How to Fill a PDF Form Online Free | QuickFill",
@@ -21,13 +22,13 @@ const steps = [
     icon: MousePointerClick,
     title: "Step 2: Fill in the Fields",
     description:
-      "QuickFill automatically detects fillable AcroForm fields in your PDF. For flat PDFs, simply select a tool , text, checkbox, signature, or date , and click where you want to place it. Use Auto-fill from Profile to instantly populate common fields like your name, address, ABN, and contact details.",
+      "QuickFill automatically detects fillable AcroForm fields in your PDF. For flat PDFs, simply select a tool, text, checkbox, signature, or date, and click where you want to place it. Use Auto-fill from Profile to instantly populate common fields like your name, address, ABN, and contact details.",
   },
   {
     icon: Download,
     title: "Step 3: Download Your Completed PDF",
     description:
-      "Click the download button to get your filled PDF instantly. Your answers are embedded directly into the document , ready to print, email, or submit to the ATO, Medicare, your real estate agent, or any government agency.",
+      "Click the download button to get your filled PDF instantly. Your answers are embedded directly into the document, ready to print, email, or submit to the ATO, Medicare, your real estate agent, or any government agency.",
   },
 ];
 
@@ -86,31 +87,9 @@ export default function HowItWorksPage() {
           </div>
         </section>
 
-        {/* CTA */}
+        {/* CTA - Client component handles Pro-aware rendering */}
         <section className="bg-surface-alt px-4 py-20 sm:px-6 lg:px-8">
-          <div className="mx-auto max-w-2xl text-center">
-            <h2 className="text-2xl font-bold sm:text-3xl">
-              Ready to fill your first PDF?
-            </h2>
-            <p className="mt-4 text-text-muted">
-              It takes less than 60 seconds. Try it free, no sign up needed.
-            </p>
-            <div className="mt-8 flex flex-col items-center gap-4 sm:flex-row sm:justify-center">
-              <Link
-                href="/editor"
-                className="flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-accent px-6 text-base font-semibold text-white shadow-lg shadow-accent/25 hover:bg-accent-hover transition-colors sm:w-auto"
-              >
-                Fill a PDF Free
-                <ArrowRight className="h-4 w-4" />
-              </Link>
-              <Link
-                href="/pricing"
-                className="flex h-12 w-full items-center justify-center rounded-xl border border-border px-6 text-base font-semibold hover:bg-surface transition-colors sm:w-auto"
-              >
-                See Pricing
-              </Link>
-            </div>
-          </div>
+          <HowItWorksContent />
         </section>
       </div>
     </>
