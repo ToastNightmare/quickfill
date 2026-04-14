@@ -745,15 +745,13 @@ export default function EditorPage() {
         }
       }
 
-      const addWatermark = !isPro;
-
       // Build FormData and send to server-side fill API
       const fd = new FormData();
       fd.append("pdf", new Blob([pdfBytes], { type: "application/pdf" }), "input.pdf");
       fd.append("fields", JSON.stringify(fields));
       fd.append("pageScales", JSON.stringify(Array.from(pageScales.entries())));
       fd.append("hasAcroForm", String(hasAcroForm));
-      fd.append("addWatermark", String(addWatermark));
+      fd.append("isPro", String(isPro));
 
       const fillRes = await fetch("/api/fill-pdf", { method: "POST", body: fd });
       if (!fillRes.ok) {
@@ -797,7 +795,7 @@ export default function EditorPage() {
         // silent  -  non-critical
       }
 
-      if (addWatermark) {
+      if (!isPro) {
         showToast("Download includes QuickFill watermark. Upgrade to Pro to remove it.", 5000);
       }
 

@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { PDFDocument, rgb, StandardFonts, degrees } from "pdf-lib";
 import type { EditorField } from "@/lib/types";
 import { APP_CONFIG } from "@/lib/config";
+import { applyBorderWatermark } from "@/lib/watermark";
 
 /** Replace control characters (including newlines) with a space */
 function sanitize(text: string): string {
@@ -33,7 +34,7 @@ export async function POST(request: NextRequest) {
     const fieldsJson = formData.get("fields") as string | null;
     const pageScalesJson = formData.get("pageScales") as string | null;
     const hasAcroForm = formData.get("hasAcroForm") === "true";
-    const addWatermark = formData.get("addWatermark") === "true";
+    const isPro = formData.get("isPro") === "true";
 
     if (!fieldsJson || !pageScalesJson) {
       return NextResponse.json({ error: "Missing fields or pageScales" }, { status: 400 });
@@ -104,30 +105,10 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    if (addWatermark) {
-      const watermarkFont = await pdfDoc.embedFont(StandardFonts.Helvetica);
-      const pages = pdfDoc.getPages();
-      for (const page of pages) {
-        const { width, height } = page.getSize();
-        // Diagonal watermark: "QuickFill Free" centered, 45 degree rotation
-        const text = "QuickFill Free";
-        const fontSize = 48;
-        const textWidth = watermarkFont.widthOfTextAtSize(text, fontSize);
-        const textHeight = fontSize; // approximate height
-        const cx = width / 2;
-        const cy = height / 2;
-        
-        page.drawText(text, {
-          x: cx - textWidth / 2,
-          y: cy - textHeight / 2,
-          size: fontSize,
-          font: watermarkFont,
-          color: rgb(0.5, 0.5, 0.5),
-          opacity: 0.15,
-          rotate: degrees(45),
-        });
-      }
-    }
+    // Apply border watermark for free/guest users (skip for Pro)
+    const pages = pdfDoc.getPages();
+    const watermarkFont = await pdfDoc.embedFont(StandardFonts.Helvetica);
+    applyBorderWatermark(pages, watermarkFont, isPro);
 
     const resultBytes = await pdfDoc.save();
     return new NextResponse(Buffer.from(resultBytes), {
