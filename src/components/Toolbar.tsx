@@ -122,10 +122,10 @@ export function Toolbar({
         <button
           onClick={onSnapToggle}
           title="Toggle snap detection for structured forms"
-          className={`flex shrink-0 items-center gap-1.5 rounded-full px-3 py-2.5 text-xs font-semibold transition-colors border ${
+          className={`flex shrink-0 items-center gap-1.5 rounded-full px-3 py-2.5 text-xs font-semibold transition-colors ${
             snapEnabled
-              ? "bg-accent text-white border-accent"
-              : "bg-surface text-text-muted border-border hover:border-accent hover:text-accent"
+              ? "bg-accent text-white border-accent border"
+              : "text-text-muted hover:bg-surface-alt hover:text-text"
           }`}
         >
           <Magnet className="h-3.5 w-3.5" />
@@ -238,10 +238,10 @@ export function Toolbar({
         <button
           onClick={onSnapToggle}
           title="Toggle snap detection for structured forms"
-          className={`flex h-8 items-center gap-3 rounded-lg px-2 text-sm font-semibold transition-colors border ${
+          className={`flex h-8 items-center gap-3 rounded-lg px-2 text-sm font-semibold transition-colors ${
             snapEnabled
-              ? "bg-accent text-white border-accent"
-              : "text-text-muted border-border hover:border-accent hover:text-accent"
+              ? "bg-accent text-white border-accent border"
+              : "text-text-muted hover:bg-surface-alt hover:text-text"
           }`}
         >
           <Magnet className="h-4 w-4 shrink-0" />
