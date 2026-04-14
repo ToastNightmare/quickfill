@@ -748,10 +748,10 @@ export function floodFillCell(
   if (w < MIN_BOX_WIDTH || h < MIN_BOX_HEIGHT) return null;
   if (h > MAX_BOX_HEIGHT) return null;
 
-  // Reject only if aspect ratio is extreme — genuine full-row spans
-  // Wide single cells (Name, Address) are valid even at 20:1
+  // Reject abnormally wide boxes that likely span multiple columns
+  // Single cells can be wide (Name, Address) but not beyond 6:1 ratio
   const aspectRatio = w / Math.max(h, 1);
-  if (aspectRatio > 22) return null;
+  if (aspectRatio > 6) return null;
 
   return { x: left, y: top, width: w, height: h };
 }
@@ -769,18 +769,18 @@ function fieldCredibilityScore(box: SnapResult): number {
   let score = area; // base: smaller area = better
 
   // Strong exponential penalty for wide boxes (row-spanning detected as one box)
-  if (box.width > 280) {
-    const excess = box.width - 280;
-    score += Math.pow(excess, 2) * 5;
+  if (box.width > 300) {
+    const excess = box.width - 300;
+    score += Math.pow(excess, 2) * 8;
   }
   // Hard penalty for very wide boxes
-  if (box.width > 500) score += (box.width - 500) * 2000;
+  if (box.width > 450) score += (box.width - 450) * 3000;
 
-  // Penalize extreme aspect ratios (very wide and short = full row span)
-  if (aspectRatio > 4) score += Math.pow(aspectRatio - 4, 2) * 2000;
+  // Penalize extreme aspect ratios more aggressively (very wide and short = full row span)
+  if (aspectRatio > 5) score += Math.pow(aspectRatio - 5, 2) * 3500;
 
   // Reward boxes in typical input field range (single cell)
-  if (box.width >= 30 && box.width <= 280 && box.height >= 10 && box.height <= 80) {
+  if (box.width >= 30 && box.width <= 300 && box.height >= 10 && box.height <= 80) {
     score *= 0.25; // strong reward for well-sized single cells
   }
 
