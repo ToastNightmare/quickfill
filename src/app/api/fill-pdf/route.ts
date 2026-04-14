@@ -1,7 +1,7 @@
 export const runtime = "nodejs";
 
 import { NextRequest, NextResponse } from "next/server";
-import { PDFDocument, rgb, StandardFonts } from "pdf-lib";
+import { PDFDocument, rgb, StandardFonts, degrees } from "pdf-lib";
 import type { EditorField } from "@/lib/types";
 import { APP_CONFIG } from "@/lib/config";
 
@@ -108,11 +108,24 @@ export async function POST(request: NextRequest) {
       const watermarkFont = await pdfDoc.embedFont(StandardFonts.Helvetica);
       const pages = pdfDoc.getPages();
       for (const page of pages) {
-        const { width } = page.getSize();
-        // .trim() guards against Vercel env vars with trailing newlines
-        const text = `Filled with QuickFill, upgrade to Pro at https://getquickfill.com`;
-        const textWidth = watermarkFont.widthOfTextAtSize(text, 8);
-        page.drawText(text, { x: width - textWidth - 12, y: 10, size: 8, font: watermarkFont, color: rgb(0.6, 0.6, 0.6) });
+        const { width, height } = page.getSize();
+        // Diagonal watermark: "QuickFill Free" centered, 45 degree rotation
+        const text = "QuickFill Free";
+        const fontSize = 48;
+        const textWidth = watermarkFont.widthOfTextAtSize(text, fontSize);
+        const textHeight = fontSize; // approximate height
+        const cx = width / 2;
+        const cy = height / 2;
+        
+        page.drawText(text, {
+          x: cx - textWidth / 2,
+          y: cy - textHeight / 2,
+          size: fontSize,
+          font: watermarkFont,
+          color: rgb(0.5, 0.5, 0.5),
+          opacity: 0.15,
+          rotate: degrees(45),
+        });
       }
     }
 

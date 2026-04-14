@@ -1,14 +1,29 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Menu, X } from "lucide-react";
 import { Logo } from "@/components/Logo";
 import { useAuth, UserButton } from "@clerk/nextjs";
 
+interface UsageData {
+  isPro: boolean;
+  tier?: string;
+}
+
 export function Navbar() {
   const [menuOpen, setMenuOpen] = useState(false);
   const { isSignedIn } = useAuth();
+  const [isPro, setIsPro] = useState(false);
+
+  useEffect(() => {
+    if (isSignedIn) {
+      fetch("/api/usage")
+        .then((r) => r.json())
+        .then((data: UsageData) => setIsPro(data.isPro))
+        .catch(() => setIsPro(false));
+    }
+  }, [isSignedIn]);
 
   return (
     <nav className="sticky top-0 z-50 border-b border-border bg-surface/95 backdrop-blur supports-[backdrop-filter]:bg-surface/80">
@@ -25,9 +40,17 @@ export function Navbar() {
           <Link href="/templates" className="text-sm font-medium text-text-muted hover:text-text transition-colors">
             Templates
           </Link>
-          <Link href="/pricing" className="text-sm font-medium text-text-muted hover:text-text transition-colors">
-            Pricing
-          </Link>
+          {isSignedIn && isPro ? (
+            <form action="/api/stripe/portal" method="POST">
+              <button type="submit" className="text-sm font-medium text-text-muted hover:text-text transition-colors">
+                Billing
+              </button>
+            </form>
+          ) : (
+            <Link href="/pricing" className="text-sm font-medium text-text-muted hover:text-text transition-colors">
+              Pricing
+            </Link>
+          )}
           <Link href="/editor" className="text-sm font-medium text-text-muted hover:text-text transition-colors">
             Fill a PDF
           </Link>
@@ -49,6 +72,11 @@ export function Navbar() {
               <Link href="/profile" className="text-sm font-medium text-text-muted hover:text-text transition-colors">
                 Profile
               </Link>
+              {isPro && (
+                <span className="rounded-full bg-accent px-2.5 py-0.5 text-xs font-semibold text-white">
+                  ✦ Pro
+                </span>
+              )}
               <UserButton appearance={{ elements: { avatarBox: "h-9 w-9" } }} />
             </>
           )}
@@ -74,9 +102,17 @@ export function Navbar() {
             <Link href="/templates" onClick={() => setMenuOpen(false)} className="rounded-lg px-3 py-3 text-sm font-medium hover:bg-surface-alt transition-colors">
               Templates
             </Link>
-            <Link href="/pricing" onClick={() => setMenuOpen(false)} className="rounded-lg px-3 py-3 text-sm font-medium hover:bg-surface-alt transition-colors">
-              Pricing
-            </Link>
+            {isSignedIn && isPro ? (
+              <form action="/api/stripe/portal" method="POST">
+                <button type="submit" className="rounded-lg px-3 py-3 text-sm font-medium text-text-muted hover:bg-surface-alt transition-colors text-left">
+                  Billing
+                </button>
+              </form>
+            ) : (
+              <Link href="/pricing" onClick={() => setMenuOpen(false)} className="rounded-lg px-3 py-3 text-sm font-medium hover:bg-surface-alt transition-colors">
+                Pricing
+              </Link>
+            )}
             <Link href="/editor" onClick={() => setMenuOpen(false)} className="rounded-lg px-3 py-3 text-sm font-medium hover:bg-surface-alt transition-colors">
               Fill a PDF
             </Link>
@@ -98,6 +134,11 @@ export function Navbar() {
                 <Link href="/profile" onClick={() => setMenuOpen(false)} className="rounded-lg px-3 py-3 text-sm font-medium hover:bg-surface-alt transition-colors">
                   Profile
                 </Link>
+                {isPro && (
+                  <span className="rounded-full bg-accent px-2.5 py-0.5 text-xs font-semibold text-white">
+                    ✦ Pro
+                  </span>
+                )}
               </>
             )}
           </div>

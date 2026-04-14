@@ -726,10 +726,11 @@ export default function EditorPage() {
         isGuest = usage.tier === "guest";
         
         // Guest mode: check localStorage for fill count
-        if (isGuest) {
+        if (isGuest && !isPro) {
           const guestFillCount = parseInt(localStorage.getItem("guestFillCount") || "0", 10);
           
           // If this would be the 3rd fill, show upsell modal BEFORE download
+          // Pro users never see this modal
           if (guestFillCount >= 3) {
             setShowGuestUpsellModal(true);
             setIsDownloading(false);

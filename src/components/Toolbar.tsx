@@ -21,6 +21,7 @@ import {
 import type { ToolType, EditorField } from "@/lib/types";
 import { Minimap } from "@/components/Minimap";
 import type { RefObject } from "react";
+import { useState, useEffect } from "react";
 
 
 
@@ -89,6 +90,14 @@ export function Toolbar({
   const currentFontSize = showFontSize
     ? (selectedField as { fontSize?: number }).fontSize ?? 14
     : null;
+  const [isPro, setIsPro] = useState(false);
+
+  useEffect(() => {
+    fetch("/api/usage")
+      .then((r) => r.json())
+      .then((data) => setIsPro(data.isPro))
+      .catch(() => setIsPro(false));
+  }, []);
 
   // ── Mobile bottom bar ──────────────────────────────────────────────────────
   if (mobile) {
@@ -163,6 +172,12 @@ export function Toolbar({
               Save
             </button>
           </>
+        )}
+        <div className="w-px h-6 bg-border shrink-0" />
+        {isPro && (
+          <span className="shrink-0 rounded-full bg-accent/10 px-2.5 py-1 text-xs font-semibold text-accent">
+            ✦ Pro
+          </span>
         )}
         <div className="w-px h-6 bg-border shrink-0" />
         <button
@@ -300,6 +315,15 @@ export function Toolbar({
         </button>
 
       </div>
+
+      {/* Pro indicator - subtle tag on right side */}
+      {isPro && (
+        <div className="px-2 py-2 border-t border-border">
+          <span className="hidden sm:inline-block rounded-full bg-accent/10 px-2.5 py-1 text-xs font-semibold text-accent">
+            ✦ Pro
+          </span>
+        </div>
+      )}
 
       {/* Help button at bottom */}
       {onShowHelp && (

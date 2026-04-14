@@ -122,7 +122,9 @@ function DashboardContent() {
           <h1 className="text-2xl font-bold sm:text-3xl">
             Welcome back{user?.firstName ? `, ${user.firstName}` : ""}
           </h1>
-          <p className="mt-1 text-text-muted">Manage your usage and fill history.</p>
+          <p className="mt-1 text-text-muted">
+            {usage?.isPro ? "You're on Pro. Fill as many PDFs as you need, no limits." : "Manage your usage and fill history."}
+          </p>
         </div>
         {/* Plan badge */}
         {usage && (

@@ -3,6 +3,7 @@
 import { Check, X, Sparkles, Loader2 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useAuth } from "@clerk/nextjs";
+import Link from "next/link";
 
 const proFeatures = [
   "Unlimited documents",
@@ -69,18 +70,18 @@ export default function PricingPage() {
   const { isSignedIn } = useAuth();
   const [annual, setAnnual] = useState(true);
   const [upgrading, setUpgrading] = useState(false);
-  const [tier, setTier] = useState<string | null>(null);
+  const [usage, setUsage] = useState<{ tier: string; isPro: boolean } | null>(null);
 
   useEffect(() => {
     if (isSignedIn) {
       fetch("/api/usage")
         .then((r) => r.json())
-        .then((data) => setTier(data.tier ?? "free"))
-        .catch(() => setTier("free"));
+        .then((data) => setUsage({ tier: data.tier ?? "free", isPro: data.isPro }))
+        .catch(() => setUsage({ tier: "free", isPro: false }));
     }
   }, [isSignedIn]);
 
-  const isPro = tier === "pro" || tier === "business";
+  const isPro = usage?.isPro ?? false;
 
   const handleUpgrade = async () => {
     setUpgrading(true);
@@ -138,7 +139,24 @@ export default function PricingPage() {
         <section className="bg-surface px-4 py-12 sm:px-6 lg:px-8 overflow-visible">
           <div className="mx-auto max-w-3xl">
 
+            {/* Pro user block */}
+            {isSignedIn && isPro && (
+              <div className="mb-8 rounded-xl border border-accent bg-accent/5 px-6 py-8 text-center">
+                <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-accent">
+                  <Check className="h-6 w-6 text-white" />
+                </div>
+                <h2 className="text-xl font-bold text-accent">You're already on Pro</h2>
+                <p className="mt-2 text-sm text-text-muted">
+                  You have unlimited fills, no watermarks, and priority support.
+                </p>
+                <Link href="/editor" className="mt-4 inline-flex h-11 items-center justify-center rounded-xl bg-accent px-6 text-sm font-semibold text-white hover:bg-accent-hover transition-colors">
+                  Open Editor
+                </Link>
+              </div>
+            )}
+
             {/* Cards row, Free + fanned Pro */}
+            {!isPro && (
             <div className="grid gap-4 sm:grid-cols-2 sm:items-stretch pt-8">
 
               {/* Free */}
@@ -163,7 +181,7 @@ export default function PricingPage() {
                   ))}
                 </ul>
                 <div className="mt-auto pt-8">
-                  {tier === null && isSignedIn ? (
+                  {usage === null && isSignedIn ? (
                     <div className="flex h-11 items-center justify-center">
                       <Loader2 className="h-4 w-4 animate-spin text-text-muted" />
                     </div>
@@ -336,8 +354,10 @@ export default function PricingPage() {
                 </div>
               </div>
             </div>
+            )}
 
-            {/* Comparison table */}
+            {/* Comparison table - hide for Pro users */}
+            {!isPro && (
             <div className="mt-20 overflow-hidden rounded-xl border border-border">
               <table className="w-full text-sm">
                 <thead>
@@ -368,6 +388,7 @@ export default function PricingPage() {
                 </tbody>
               </table>
             </div>
+            )}
           </div>
         </section>
 
