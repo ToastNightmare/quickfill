@@ -132,10 +132,10 @@ export function Toolbar({
           Snap {snapEnabled ? "On" : "Off"}
         </button>
         <div className="w-px h-6 bg-border shrink-0" />
-        <button onClick={onUndo} disabled={!canUndo} title="Undo (Ctrl+Z)" className="shrink-0 rounded-full p-2.5 text-text-muted hover:bg-surface-alt disabled:opacity-30 transition-colors">
+        <button onClick={onUndo} disabled={!canUndo} title="Undo (Ctrl+Z)" className="shrink-0 rounded-full p-2.5 text-text-muted border border-border hover:border-accent hover:text-accent disabled:opacity-30 transition-colors">
           <Undo2 className="h-4 w-4" />
         </button>
-        <button onClick={onRedo} disabled={!canRedo} title="Redo (Ctrl+Shift+Z)" className="shrink-0 rounded-full p-2.5 text-text-muted hover:bg-surface-alt disabled:opacity-30 transition-colors">
+        <button onClick={onRedo} disabled={!canRedo} title="Redo (Ctrl+Shift+Z)" className="shrink-0 rounded-full p-2.5 text-text-muted border border-border hover:border-accent hover:text-accent disabled:opacity-30 transition-colors">
           <Redo2 className="h-4 w-4" />
         </button>
         <div className="w-px h-6 bg-border shrink-0" />
@@ -143,7 +143,7 @@ export function Toolbar({
           onClick={onDetectFields}
           disabled={isDetecting}
           title="Auto-detect fields"
-          className="flex shrink-0 items-center gap-1.5 rounded-full px-3 py-2.5 text-xs font-medium text-text-muted hover:bg-surface-alt hover:text-text disabled:opacity-50 transition-colors"
+          className="flex shrink-0 items-center gap-1.5 rounded-full px-3 py-2.5 text-xs font-medium text-text-muted border border-border hover:border-accent hover:text-accent disabled:opacity-50 transition-colors"
         >
           {isDetecting ? (
             <div className="h-4 w-4 animate-spin rounded-full border-2 border-accent border-t-transparent" />
@@ -155,7 +155,7 @@ export function Toolbar({
         <button
           onClick={onAutoFill}
           title="Auto-fill from profile"
-          className="flex shrink-0 items-center gap-1.5 rounded-full px-3 py-2.5 text-xs font-medium text-text-muted hover:bg-surface-alt hover:text-text transition-colors"
+          className="flex shrink-0 items-center gap-1.5 rounded-full px-3 py-2.5 text-xs font-medium text-text-muted border border-border hover:border-accent hover:text-accent transition-colors"
         >
           <UserCheck className="h-4 w-4" />
           Auto-fill
@@ -166,7 +166,7 @@ export function Toolbar({
             <button
               onClick={onSaveProgress}
               title="Save Progress"
-              className="flex shrink-0 items-center gap-1.5 rounded-full px-3 py-2.5 text-xs font-medium text-text-muted hover:bg-surface-alt hover:text-text transition-colors"
+              className="flex shrink-0 items-center gap-1.5 rounded-full px-3 py-2.5 text-xs font-medium text-text-muted border border-border hover:border-accent hover:text-accent transition-colors"
             >
               <Save className="h-4 w-4" />
               Save
@@ -195,7 +195,7 @@ export function Toolbar({
             <button
               onClick={onShowHelp}
               title="Show tutorial"
-              className="shrink-0 rounded-full p-2.5 text-text-muted hover:bg-surface-alt transition-colors"
+              className="shrink-0 rounded-full p-2.5 text-text-muted border border-border hover:border-accent hover:text-accent transition-colors"
             >
               <HelpCircle className="h-4 w-4" />
             </button>
