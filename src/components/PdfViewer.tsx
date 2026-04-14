@@ -710,6 +710,33 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
               }
             }
 
+            // Enforce minimum 2px gap between adjacent fields to prevent visual merging
+            if (snapped) {
+              const pageFields = fields.filter((f) => f.page === currentPage);
+              const MIN_GAP = 2;
+              
+              for (const existing of pageFields) {
+                const existingRight = existing.x + existing.width;
+                const existingBottom = existing.y + existing.height;
+                
+                // Check if new field would be adjacent to existing field
+                const isAdjacentRight = Math.abs(fieldX - existingRight) < MIN_GAP && Math.abs((fieldY + fieldH / 2) - (existing.y + existing.height / 2)) < Math.max(fieldH, existing.height);
+                const isAdjacentLeft = Math.abs((fieldX + fieldW) - existing.x) < MIN_GAP && Math.abs((fieldY + fieldH / 2) - (existing.y + existing.height / 2)) < Math.max(fieldH, existing.height);
+                const isAdjacentBottom = Math.abs(fieldY - existingBottom) < MIN_GAP && Math.abs((fieldX + fieldW / 2) - (existing.x + existing.width / 2)) < Math.max(fieldW, existing.width);
+                const isAdjacentTop = Math.abs((fieldY + fieldH) - existing.y) < MIN_GAP && Math.abs((fieldX + fieldW / 2) - (existing.x + existing.width / 2)) < Math.max(fieldW, existing.width);
+                
+                if (isAdjacentRight) {
+                  fieldX = existingRight + MIN_GAP;
+                } else if (isAdjacentLeft) {
+                  fieldX = existing.x - fieldW - MIN_GAP;
+                } else if (isAdjacentBottom) {
+                  fieldY = existingBottom + MIN_GAP;
+                } else if (isAdjacentTop) {
+                  fieldY = existing.y - fieldH - MIN_GAP;
+                }
+              }
+            }
+            
             const inferredFontSize = snapped ? inferFontSize(fieldH) : undefined;
             const snapBounds = snapped ? { x: fieldX, y: fieldY, width: fieldW, height: fieldH } : undefined;
             const base = { id, x: fieldX, y: fieldY, page: currentPage, snapped, snapBounds };
@@ -855,6 +882,33 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
             fieldW = foundSnap.width / zoomFactor;
             fieldH = foundSnap.height / zoomFactor;
             snapped = true;
+          }
+        }
+      }
+
+      // Enforce minimum 2px gap between adjacent fields to prevent visual merging
+      if (snapped) {
+        const pageFields = fields.filter((f) => f.page === currentPage);
+        const MIN_GAP = 2;
+        
+        for (const existing of pageFields) {
+          const existingRight = existing.x + existing.width;
+          const existingBottom = existing.y + existing.height;
+          
+          // Check if new field would be adjacent to existing field
+          const isAdjacentRight = Math.abs(fieldX - existingRight) < MIN_GAP && Math.abs((fieldY + fieldH / 2) - (existing.y + existing.height / 2)) < Math.max(fieldH, existing.height);
+          const isAdjacentLeft = Math.abs((fieldX + fieldW) - existing.x) < MIN_GAP && Math.abs((fieldY + fieldH / 2) - (existing.y + existing.height / 2)) < Math.max(fieldH, existing.height);
+          const isAdjacentBottom = Math.abs(fieldY - existingBottom) < MIN_GAP && Math.abs((fieldX + fieldW / 2) - (existing.x + existing.width / 2)) < Math.max(fieldW, existing.width);
+          const isAdjacentTop = Math.abs((fieldY + fieldH) - existing.y) < MIN_GAP && Math.abs((fieldX + fieldW / 2) - (existing.x + existing.width / 2)) < Math.max(fieldW, existing.width);
+          
+          if (isAdjacentRight) {
+            fieldX = existingRight + MIN_GAP;
+          } else if (isAdjacentLeft) {
+            fieldX = existing.x - fieldW - MIN_GAP;
+          } else if (isAdjacentBottom) {
+            fieldY = existingBottom + MIN_GAP;
+          } else if (isAdjacentTop) {
+            fieldY = existing.y - fieldH - MIN_GAP;
           }
         }
       }
