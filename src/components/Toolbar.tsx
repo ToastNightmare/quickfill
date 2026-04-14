@@ -226,7 +226,7 @@ export function Toolbar({
             className={`flex h-8 items-center gap-3 rounded-lg px-2 text-sm font-semibold transition-colors shadow-sm ${
               activeTool === type
                 ? "bg-accent text-white border border-accent"
-                : "text-text-muted border border-border hover:border-accent hover:text-accent"
+                : "bg-surface-alt text-text-muted border border-border hover:border-accent hover:text-accent"
             }`}
           >
             <Icon className="h-4 w-4 shrink-0" />
@@ -241,7 +241,7 @@ export function Toolbar({
           className={`flex h-8 items-center gap-3 rounded-lg px-2 text-sm font-semibold transition-colors ${
             snapEnabled
               ? "bg-accent text-white border-accent border shadow-sm"
-              : "text-text-muted border border-border hover:border-accent hover:text-accent"
+              : "bg-surface-alt text-text-muted border border-border hover:border-accent hover:text-accent"
           }`}
         >
           <Magnet className="h-4 w-4 shrink-0" />
