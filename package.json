@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "eslint",
     "qa": "jest --passWithNoTests && playwright test --reporter=list",
-    "test": "jest"
+    "test": "jest",
+    "e2e": "playwright test --reporter=list"
   },
   "dependencies": {
     "@clerk/nextjs": "^7.0.7",
