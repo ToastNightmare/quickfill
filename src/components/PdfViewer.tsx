@@ -585,10 +585,10 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
           const fieldW = Math.max(width, 20);
           const fieldH = Math.max(height, 20);
           
-          // Enforce minimum 2px gap between adjacent fields to prevent visual merging
+          // Enforce minimum 4px gap between adjacent fields to prevent visual merging
           let fieldX = x / zoomFactor;
           let fieldY = y / zoomFactor;
-          const MIN_GAP = 2;
+          const MIN_GAP = 4;
           
           const pageFields = fields.filter((f) => f.page === currentPage);
           
@@ -738,10 +738,25 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
               }
             }
 
-            // Enforce minimum 2px gap between adjacent fields to prevent visual merging
+            // Check if snap zone is already occupied by another field on the same page
+            const snapZoneOccupied = fields.some((f) =>
+              f.page === currentPage &&
+              Math.abs(f.x - fieldX) < 10 &&
+              Math.abs(f.y - fieldY) < 10
+            );
+            if (snapZoneOccupied) {
+              // Reject snap, fall back to click position
+              snapped = false;
+              fieldX = pos.x / zoomFactor;
+              fieldY = pos.y / zoomFactor;
+              fieldW = defaults[activeTool].w;
+              fieldH = defaults[activeTool].h;
+            }
+
+            // Enforce minimum 4px gap between adjacent fields to prevent visual merging
             if (snapped) {
               const pageFields = fields.filter((f) => f.page === currentPage);
-              const MIN_GAP = 2;
+              const MIN_GAP = 4;
               
               for (const existing of pageFields) {
                 const existingRight = existing.x + existing.width;
@@ -914,10 +929,25 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
         }
       }
 
-      // Enforce minimum 2px gap between adjacent fields to prevent visual merging
+      // Check if snap zone is already occupied by another field on the same page
+      const snapZoneOccupied = fields.some((f) =>
+        f.page === currentPage &&
+        Math.abs(f.x - fieldX) < 10 &&
+        Math.abs(f.y - fieldY) < 10
+      );
+      if (snapZoneOccupied) {
+        // Reject snap, fall back to click position
+        snapped = false;
+        fieldX = posX / zoomFactor;
+        fieldY = posY / zoomFactor;
+        fieldW = defaults[activeTool].w;
+        fieldH = defaults[activeTool].h;
+      }
+
+      // Enforce minimum 4px gap between adjacent fields to prevent visual merging
       if (snapped) {
         const pageFields = fields.filter((f) => f.page === currentPage);
-        const MIN_GAP = 2;
+        const MIN_GAP = 4;
         
         for (const existing of pageFields) {
           const existingRight = existing.x + existing.width;
