@@ -729,11 +729,20 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
                 }
 
                 if (foundSnap) {
-                  fieldX = foundSnap.x / zoomFactor;
-                  fieldY = foundSnap.y / zoomFactor;
-                  fieldW = foundSnap.width / zoomFactor;
-                  fieldH = foundSnap.height / zoomFactor;
-                  snapped = true;
+                  const snapX = foundSnap.x / zoomFactor;
+                  const snapY = foundSnap.y / zoomFactor;
+                  const snapZoneOccupied = fields.some(
+                    (f) => f.page === currentPage &&
+                    Math.abs(f.x - snapX) < 10 &&
+                    Math.abs(f.y - snapY) < 10
+                  );
+                  if (!snapZoneOccupied) {
+                    fieldX = snapX;
+                    fieldY = foundSnap.y / zoomFactor;
+                    fieldW = foundSnap.width / zoomFactor;
+                    fieldH = foundSnap.height / zoomFactor;
+                    snapped = true;
+                  }
                 }
               }
             }
