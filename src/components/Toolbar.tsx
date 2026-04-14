@@ -223,9 +223,9 @@ export function Toolbar({
             key={type}
             onClick={() => onToolSelect(activeTool === type ? null : type)}
             title={title}
-            className={`flex h-8 items-center gap-3 rounded-lg px-2 text-sm font-medium transition-colors ${
+            className={`flex h-8 items-center gap-3 rounded-lg px-2 text-sm font-semibold transition-colors shadow-sm ${
               activeTool === type
-                ? "bg-accent text-white border-accent border"
+                ? "bg-accent text-white border border-accent"
                 : "text-text-muted border border-border hover:border-accent hover:text-accent"
             }`}
           >
