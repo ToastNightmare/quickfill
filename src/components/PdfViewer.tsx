@@ -585,8 +585,36 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
           const fieldW = Math.max(width, 20);
           const fieldH = Math.max(height, 20);
           
-          const snapBounds = { x: x / zoomFactor, y: y / zoomFactor, width: fieldW, height: fieldH };
-          const base = { id, x: x / zoomFactor, y: y / zoomFactor, page: currentPage, snapped, snapBounds };
+          // Enforce minimum 2px gap between adjacent fields to prevent visual merging
+          let fieldX = x / zoomFactor;
+          let fieldY = y / zoomFactor;
+          const MIN_GAP = 2;
+          
+          const pageFields = fields.filter((f) => f.page === currentPage);
+          
+          for (const existing of pageFields) {
+            const existingRight = existing.x + existing.width;
+            const existingBottom = existing.y + existing.height;
+            
+            // Check if new field would be adjacent to existing field
+            const isAdjacentRight = Math.abs(fieldX - existingRight) < MIN_GAP && Math.abs((fieldY + fieldH / 2) - (existing.y + existing.height / 2)) < Math.max(fieldH, existing.height);
+            const isAdjacentLeft = Math.abs((fieldX + fieldW) - existing.x) < MIN_GAP && Math.abs((fieldY + fieldH / 2) - (existing.y + existing.height / 2)) < Math.max(fieldH, existing.height);
+            const isAdjacentBottom = Math.abs(fieldY - existingBottom) < MIN_GAP && Math.abs((fieldX + fieldW / 2) - (existing.x + existing.width / 2)) < Math.max(fieldW, existing.width);
+            const isAdjacentTop = Math.abs((fieldY + fieldH) - existing.y) < MIN_GAP && Math.abs((fieldX + fieldW / 2) - (existing.x + existing.width / 2)) < Math.max(fieldW, existing.width);
+            
+            if (isAdjacentRight) {
+              fieldX = existingRight + MIN_GAP;
+            } else if (isAdjacentLeft) {
+              fieldX = existing.x - fieldW - MIN_GAP;
+            } else if (isAdjacentBottom) {
+              fieldY = existingBottom + MIN_GAP;
+            } else if (isAdjacentTop) {
+              fieldY = existing.y - fieldH - MIN_GAP;
+            }
+          }
+          
+          const snapBounds = { x: fieldX, y: fieldY, width: fieldW, height: fieldH };
+          const base = { id, x: fieldX, y: fieldY, page: currentPage, snapped, snapBounds };
           
           let field: EditorField;
           switch (activeTool) {
@@ -612,8 +640,8 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
               if (canvas) {
                 const ctx = canvas.getContext("2d");
                 if (ctx) {
-                  const canvasCx = Math.round((x + width / 2) * zoomFactor);
-                  const canvasCy = Math.round((y + height / 2) * zoomFactor);
+                  const canvasCx = Math.round((fieldX + fieldW / 2) * zoomFactor);
+                  const canvasCy = Math.round((fieldY + fieldH / 2) * zoomFactor);
                   if (canvasCx >= 0 && canvasCy >= 0 && canvasCx < canvas.width && canvasCy < canvas.height) {
                     try {
                       const pixel = ctx.getImageData(canvasCx, canvasCy, 1, 1).data;
