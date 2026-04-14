@@ -4,6 +4,7 @@
  */
 
 import { render, screen, waitFor } from "@testing-library/react";
+import "@testing-library/jest-dom";
 import HowItWorksContent from "../content";
 
 // Mock Clerk's useAuth
@@ -57,9 +58,9 @@ describe("HowItWorksContent", () => {
     it("should NOT render 'See Pricing' button for Pro users", async () => {
       render(<HowItWorksContent />);
 
-      // Wait for usage data to load
+      // Wait for Pro-specific text to appear (indicating state updated)
       await waitFor(() => {
-        expect(global.fetch).toHaveBeenCalledWith("/api/usage");
+        expect(screen.getByText(/You're on Pro/i)).toBeInTheDocument();
       });
 
       // Verify See Pricing is NOT present
@@ -70,8 +71,9 @@ describe("HowItWorksContent", () => {
     it("should render 'Fill a PDF' button (not 'Fill a PDF Free') for Pro users", async () => {
       render(<HowItWorksContent />);
 
+      // Wait for Pro-specific text to appear
       await waitFor(() => {
-        expect(global.fetch).toHaveBeenCalledWith("/api/usage");
+        expect(screen.getByText(/You're on Pro/i)).toBeInTheDocument();
       });
 
       // Verify "Fill a PDF" button exists
@@ -85,23 +87,22 @@ describe("HowItWorksContent", () => {
     it("should render 'You're on Pro' subtitle for Pro users", async () => {
       render(<HowItWorksContent />);
 
+      // Wait for Pro-specific text to appear
       await waitFor(() => {
-        expect(global.fetch).toHaveBeenCalledWith("/api/usage");
+        expect(screen.getByText(/You're on Pro/i)).toBeInTheDocument();
       });
-
-      // Verify Pro subtitle is present
-      expect(screen.getByText(/You're on Pro/i)).toBeInTheDocument();
     });
 
-    it("should NOT render 'Try free, no sign up needed' for Pro users", async () => {
+    it("should NOT render 'Try it free, no sign up needed' for Pro users", async () => {
       render(<HowItWorksContent />);
 
+      // Wait for Pro-specific text to appear
       await waitFor(() => {
-        expect(global.fetch).toHaveBeenCalledWith("/api/usage");
+        expect(screen.getByText(/You're on Pro/i)).toBeInTheDocument();
       });
 
       expect(
-        screen.queryByText(/Try free, no sign up needed/i)
+        screen.queryByText(/Try it free, no sign up needed/i)
       ).not.toBeInTheDocument();
     });
   });
@@ -120,8 +121,9 @@ describe("HowItWorksContent", () => {
     it("should render 'See Pricing' button for free users", async () => {
       render(<HowItWorksContent />);
 
+      // Wait for free-tier specific text to appear
       await waitFor(() => {
-        expect(global.fetch).toHaveBeenCalledWith("/api/usage");
+        expect(screen.getByText(/Try it free, no sign up needed/i)).toBeInTheDocument();
       });
 
       // Verify See Pricing IS present
@@ -132,29 +134,30 @@ describe("HowItWorksContent", () => {
     it("should render 'Fill a PDF Free' button for free users", async () => {
       render(<HowItWorksContent />);
 
+      // Wait for free-tier specific text to appear
       await waitFor(() => {
-        expect(global.fetch).toHaveBeenCalledWith("/api/usage");
+        expect(screen.getByText(/Try it free, no sign up needed/i)).toBeInTheDocument();
       });
 
       // Verify "Fill a PDF Free" button exists
       expect(screen.getByText(/Fill a PDF Free/i)).toBeInTheDocument();
     });
 
-    it("should render 'Try free, no sign up needed' subtitle for free users", async () => {
+    it("should render 'Try it free, no sign up needed' subtitle for free users", async () => {
       render(<HowItWorksContent />);
 
+      // Wait for free-tier specific text to appear
       await waitFor(() => {
-        expect(global.fetch).toHaveBeenCalledWith("/api/usage");
+        expect(screen.getByText(/Try it free, no sign up needed/i)).toBeInTheDocument();
       });
-
-      expect(screen.getByText(/Try free, no sign up needed/i)).toBeInTheDocument();
     });
 
     it("should NOT render 'You're on Pro' subtitle for free users", async () => {
       render(<HowItWorksContent />);
 
+      // Wait for free-tier specific text to appear
       await waitFor(() => {
-        expect(global.fetch).toHaveBeenCalledWith("/api/usage");
+        expect(screen.getByText(/Try it free, no sign up needed/i)).toBeInTheDocument();
       });
 
       expect(screen.queryByText(/You're on Pro/i)).not.toBeInTheDocument();
