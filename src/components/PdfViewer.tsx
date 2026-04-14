@@ -1492,6 +1492,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
 
             return (
               <input
+                key={editingFieldId}
                 autoFocus
                 type="text"
                 className="absolute z-20 outline-none"
