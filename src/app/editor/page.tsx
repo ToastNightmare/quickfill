@@ -1141,7 +1141,7 @@ export default function EditorPage() {
 
       {/* Sidebar + Canvas row */}
       <div className="flex flex-1 min-h-0">
-        <div className="flex-shrink-0 h-full overflow-y-auto hidden sm:flex">
+        <div className="flex-shrink-0 h-full overflow-hidden hidden sm:flex">
           <Toolbar
             activeTool={activeTool}
             onToolSelect={setActiveTool}
