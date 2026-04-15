@@ -1168,7 +1168,7 @@ export default function EditorPage() {
           />
         </div>
 
-        <div className="flex-1 h-full overflow-auto relative min-w-0">
+        <div ref={viewerContainerRef} className="flex-1 h-full overflow-auto relative min-w-0">
           <PdfViewer
             ref={pdfViewerRef}
             pdfBytes={pdfBytes}
