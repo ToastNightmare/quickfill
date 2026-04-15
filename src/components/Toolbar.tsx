@@ -212,7 +212,7 @@ export function Toolbar({
     <div className="flex flex-col border-r border-border bg-surface w-16 sm:w-64 h-full">
 
       {/* ── Fixed top: tools + actions ───────────────────────────────────── */}
-      <div className="flex flex-col gap-px px-2 pt-3 pb-2 flex-shrink-0">
+      <div className="flex flex-col gap-px px-2 pt-3 pb-2 overflow-y-auto flex-shrink min-h-0">
 
         {/* Place Fields */}
         <p className="px-2 pt-1 pb-1 text-[10px] font-semibold uppercase tracking-widest text-text-muted hidden sm:block">
@@ -340,7 +340,7 @@ export function Toolbar({
 
       {/* ── Overview: flex-1, fills all remaining space ───────────────────── */}
       {showMinimap && (
-        <div className="hidden sm:flex flex-col flex-1 min-h-0 border-t border-border px-2 pb-2">
+        <div className="hidden sm:flex flex-col min-h-0 border-t border-border px-2 pb-2" style={{ height: "240px", flexShrink: 0 }}>
           <div className="flex items-center gap-1.5 px-1 py-2 flex-shrink-0">
             <Map className="h-3 w-3 text-text-muted" />
             <p className="text-[10px] font-semibold uppercase tracking-widest text-text-muted">
