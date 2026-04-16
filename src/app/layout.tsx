@@ -17,6 +17,7 @@ export const viewport: Viewport = {
 };
 
 export const metadata: Metadata = {
+  metadataBase: new URL(APP_CONFIG.url),
   icons: {
     icon: "/favicon.png",
     shortcut: "/favicon.png",
@@ -35,6 +36,10 @@ export const metadata: Metadata = {
     type: "website",
     locale: "en_AU",
     images: [{ url: "/opengraph-image", width: 1200, height: 630 }],
+  },
+  robots: {
+    index: true,
+    follow: true,
   },
 };
 

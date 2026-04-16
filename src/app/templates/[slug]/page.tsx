@@ -15,12 +15,20 @@ export async function generateMetadata({ params }: PageProps) {
     return {
       title: "Template Not Found | QuickFill",
       description: "The requested template could not be found.",
+      robots: {
+        index: false,
+        follow: false,
+      },
     };
   }
 
   return {
     title: template.seoTitle,
     description: template.seoDescription,
+    robots: {
+      index: true,
+      follow: true,
+    },
     alternates: {
       canonical: `${process.env.NEXT_PUBLIC_APP_URL || "https://getquickfill.com"}/templates/${slug}`,
     },
