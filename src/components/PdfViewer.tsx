@@ -1303,7 +1303,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
             position: "absolute",
             top: 0,
             left: 0,
-            cursor: editingFieldId ? "text" : cursorStyle,
+            cursor: activeTool ? cursorStyle : editingFieldId ? "text" : cursorStyle,
           }}
         >
           <Layer>
