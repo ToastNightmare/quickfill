@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getTemplateBySlug, getRelatedTemplates } from "@/lib/templates-config";
-import { FileText, ArrowRight } from "lucide-react";
+import { FileText, ArrowRight, CheckCircle, XCircle, HelpCircle } from "lucide-react";
 
 interface PageProps {
   params: Promise<{ slug: string }>;
@@ -63,9 +63,57 @@ export default async function TemplatePage({ params }: PageProps) {
       </div>
 
       {/* What is this form? */}
-      <div className="bg-surface rounded-xl p-8 mb-12 border border-border">
+      <div className="bg-surface rounded-xl p-8 mb-8 border border-border">
         <h2 className="text-2xl font-bold mb-4">What is this form?</h2>
         <p className="text-text-muted leading-relaxed">{template.whatIsThis}</p>
+      </div>
+
+      {/* Who needs this form? */}
+      <div className="bg-surface rounded-xl p-8 mb-8 border border-border">
+        <h2 className="text-2xl font-bold mb-4">Who needs this form?</h2>
+        <p className="text-text-muted leading-relaxed">{template.whoNeedsThis}</p>
+      </div>
+
+      {/* Tips for filling it out */}
+      <div className="bg-surface rounded-xl p-8 mb-8 border border-border">
+        <h2 className="text-2xl font-bold mb-6">Tips for filling it out</h2>
+        <ul className="space-y-4">
+          {template.howToComplete.map((tip, index) => (
+            <li key={index} className="flex items-start gap-3">
+              <CheckCircle className="h-6 w-6 text-accent flex-shrink-0 mt-0.5" />
+              <span className="text-text-muted leading-relaxed">{tip}</span>
+            </li>
+          ))}
+        </ul>
+      </div>
+
+      {/* Common mistakes to avoid */}
+      <div className="bg-surface rounded-xl p-8 mb-8 border border-border">
+        <h2 className="text-2xl font-bold mb-6">Common mistakes to avoid</h2>
+        <ul className="space-y-4">
+          {template.commonMistakes.map((mistake, index) => (
+            <li key={index} className="flex items-start gap-3">
+              <XCircle className="h-6 w-6 text-red-500 flex-shrink-0 mt-0.5" />
+              <span className="text-text-muted leading-relaxed">{mistake}</span>
+            </li>
+          ))}
+        </ul>
+      </div>
+
+      {/* FAQ Section */}
+      <div className="bg-surface rounded-xl p-8 mb-12 border border-border">
+        <h2 className="text-2xl font-bold mb-6">Frequently asked questions</h2>
+        <div className="space-y-6">
+          {template.faqs.map((faq, index) => (
+            <div key={index} className="border-b border-border last:border-0 pb-6 last:pb-0">
+              <h3 className="text-lg font-semibold mb-2 flex items-start gap-2">
+                <HelpCircle className="h-5 w-5 text-accent flex-shrink-0 mt-0.5" />
+                {faq.q}
+              </h3>
+              <p className="text-text-muted leading-relaxed ml-7">{faq.a}</p>
+            </div>
+          ))}
+        </div>
       </div>
 
       {/* How to fill it with QuickFill */}
