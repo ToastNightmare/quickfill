@@ -123,6 +123,14 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
     }
   }, [activeTool]);
 
+  // Reset drag drawing state when tool changes or is reselected
+  useEffect(() => {
+    isDragDrawing.current = false;
+    dragStart.current = null;
+    dragCurrent.current = null;
+    setDrawRect(null);
+  }, [activeTool]);
+
   // Defensive guard: notify parent to clamp currentPage when totalPages changes
   useEffect(() => {
     if (_totalPages > 0 && currentPage >= _totalPages) {
@@ -817,10 +825,8 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
                 if (canvas) {
                   const ctx = canvas.getContext("2d");
                   if (ctx) {
-                    const cx = Math.round(fieldX + fieldW / 2);
-                    const cy = Math.round(fieldY + fieldH / 2);
-                    const canvasCx = Math.round(cx * zoomFactor);
-                    const canvasCy = Math.round(cy * zoomFactor);
+                    const canvasCx = Math.round((fieldX + fieldW / 2) * zoomFactor);
+                    const canvasCy = Math.round((fieldY + fieldH / 2) * zoomFactor);
                     if (canvasCx >= 0 && canvasCy >= 0 && canvasCx < canvas.width && canvasCy < canvas.height) {
                       try {
                         const pixel = ctx.getImageData(canvasCx, canvasCy, 1, 1).data;
