@@ -1882,18 +1882,13 @@ function FieldShape({
       {hasSignatureImage && sigImage ? (
         (() => {
           const pad = 4;
-          const maxW = field.width - pad;
-          const maxH = field.height - pad;
-          const scale = Math.min(maxW / sigImage.naturalWidth, maxH / sigImage.naturalHeight);
-          const drawW = sigImage.naturalWidth * scale;
-          const drawH = sigImage.naturalHeight * scale;
           return (
             <KonvaImage
               image={sigImage}
-              x={(field.width - drawW) / 2}
-              y={(field.height - drawH) / 2}
-              width={drawW}
-              height={drawH}
+              x={pad / 2}
+              y={pad / 2}
+              width={field.width - pad}
+              height={field.height - pad}
             />
           );
         })()
