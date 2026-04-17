@@ -139,6 +139,7 @@ export default function EditorPage() {
   const { fields, set: setFields, undo, redo, reset, canUndo, canRedo } = useHistory();
   const restoredRef = useRef(false);
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const skipSessionRestoreRef = useRef(false);
 
   const pdfViewerRef = useRef<PdfViewerHandle>(null);
   const viewerContainerRef = useRef<HTMLDivElement>(null);
@@ -158,6 +159,11 @@ export default function EditorPage() {
   // Load saved session when PDF is loaded
   useEffect(() => {
     if (!pdfBytes || !fileName) return;
+
+    if (skipSessionRestoreRef.current) {
+      skipSessionRestoreRef.current = false;
+      return;
+    }
 
     const loadSession = async () => {
       try {
@@ -384,6 +390,9 @@ export default function EditorPage() {
         setActiveTool(null);
         setCurrentPage(0);
         setHasAcroForm(false);
+        
+        // Skip session restore for this fresh load
+        skipSessionRestoreRef.current = true;
         
         setPdfBytes(bytes);
         setFileName(file.name);
