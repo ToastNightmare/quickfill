@@ -1029,6 +1029,43 @@ export default function EditorPage() {
             </div>
           )}
           <UploadZone onFileLoad={handleFileLoad} />
+
+          {/* Template starter cards */}
+          <div className="px-8 pb-8">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="flex-1 h-px bg-border" />
+              <span className="text-xs font-medium text-text-muted">or start with a template</span>
+              <div className="flex-1 h-px bg-border" />
+            </div>
+            <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
+              {[
+                { file: "ato-tfn-declaration.pdf", title: "TFN Declaration", emoji: "🏛️" },
+                { file: "ato-super-choice.pdf", title: "Super Choice", emoji: "🏦" },
+                { file: "statutory-declaration.pdf", title: "Statutory Declaration", emoji: "⚖️" },
+                { file: "rental-application-nsw.pdf", title: "Rental Application", emoji: "🏠" },
+                { file: "employment-separation.pdf", title: "Employment Separation", emoji: "📄" },
+                { file: "ndis-service-agreement.pdf", title: "NDIS Agreement", emoji: "♿" },
+              ].map(({ file, title, emoji }) => (
+                <button
+                  key={file}
+                  onClick={() => {
+                    setIsLoading(true);
+                    fetch(`/templates/${file}`)
+                      .then(r => r.arrayBuffer())
+                      .then(async bytes => {
+                        const f = new File([bytes], file, { type: "application/pdf" });
+                        await handleFileLoad(f, bytes);
+                      })
+                      .catch(() => setIsLoading(false));
+                  }}
+                  className="flex items-center gap-3 rounded-xl border border-border bg-surface-alt px-4 py-3 text-left hover:border-accent hover:bg-accent/5 transition-colors group"
+                >
+                  <span className="text-xl">{emoji}</span>
+                  <span className="text-sm font-medium text-text-muted group-hover:text-accent transition-colors">{title}</span>
+                </button>
+              ))}
+            </div>
+          </div>
         </div>
       </>
     );
