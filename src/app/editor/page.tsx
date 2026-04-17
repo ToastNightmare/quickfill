@@ -1270,15 +1270,6 @@ export default function EditorPage() {
             snapEnabled={snapEnabled}
             keepRatio={selectedField?.type === "signature"}
           />
-          
-          {/* Empty canvas hint - shown when no fields and no tool active */}
-          {fields.length === 0 && !activeTool && (
-            <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-              <p className="text-sm text-text-muted italic animate-pulse mt-[40%] transform -translate-y-1/2">
-                ✦ Select a tool above, then click and drag to place a field
-              </p>
-            </div>
-          )}
         </div>
 
         {/* Right context panel */}
