@@ -15,6 +15,7 @@ export function Navbar() {
   const [menuOpen, setMenuOpen] = useState(false);
   const { isSignedIn } = useAuth();
   const [isPro, setIsPro] = useState(false);
+  const [isPortalLoading, setIsPortalLoading] = useState(false);
 
   useEffect(() => {
     if (isSignedIn) {
@@ -41,11 +42,22 @@ export function Navbar() {
             Templates
           </Link>
           {isSignedIn && isPro ? (
-            <form action="/api/stripe/portal" method="POST">
-              <button type="submit" className="text-sm font-medium text-text-muted hover:text-text transition-colors">
-                Billing
-              </button>
-            </form>
+            <button
+              onClick={async () => {
+                setIsPortalLoading(true);
+                try {
+                  const res = await fetch("/api/stripe/portal", { method: "POST" });
+                  const data = await res.json();
+                  if (data.url) window.location.href = data.url;
+                } catch (err) {
+                  setIsPortalLoading(false);
+                }
+              }}
+              disabled={isPortalLoading}
+              className="text-sm font-medium text-text-muted hover:text-text transition-colors cursor-pointer"
+            >
+              {isPortalLoading ? "Loading..." : "Billing"}
+            </button>
           ) : (
             <Link href="/pricing" className="text-sm font-medium text-text-muted hover:text-text transition-colors">
               Pricing
@@ -103,11 +115,22 @@ export function Navbar() {
               Templates
             </Link>
             {isSignedIn && isPro ? (
-              <form action="/api/stripe/portal" method="POST">
-                <button type="submit" className="rounded-lg px-3 py-3 text-sm font-medium text-text-muted hover:bg-surface-alt transition-colors text-left">
-                  Billing
-                </button>
-              </form>
+              <button
+                onClick={async () => {
+                  setIsPortalLoading(true);
+                  try {
+                    const res = await fetch("/api/stripe/portal", { method: "POST" });
+                    const data = await res.json();
+                    if (data.url) window.location.href = data.url;
+                  } catch (err) {
+                    setIsPortalLoading(false);
+                  }
+                }}
+                disabled={isPortalLoading}
+                className="rounded-lg px-3 py-3 text-sm font-medium text-text-muted hover:bg-surface-alt transition-colors text-left cursor-pointer"
+              >
+                {isPortalLoading ? "Loading..." : "Billing"}
+              </button>
             ) : (
               <Link href="/pricing" onClick={() => setMenuOpen(false)} className="rounded-lg px-3 py-3 text-sm font-medium hover:bg-surface-alt transition-colors">
                 Pricing
