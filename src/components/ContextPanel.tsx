@@ -261,7 +261,45 @@ export function ContextPanel({
           );
         })()}
 
-        <Divider />
+        {/* Size inputs — not for checkbox or whiteout */}
+        {selectedField.type !== "checkbox" && selectedField.type !== "whiteout" && (
+          <>
+            <Section>
+              <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-widest text-text-muted">Size</p>
+              <div className="flex gap-2">
+                <div className="flex flex-1 flex-col gap-1">
+                  <label className="text-[10px] text-text-muted">W</label>
+                  <input
+                    type="number"
+                    min={20}
+                    max={2000}
+                    value={Math.round(selectedField.width)}
+                    onChange={(e) => {
+                      const val = Math.max(20, parseInt(e.target.value) || 20);
+                      onFieldUpdate(selectedField.id, { width: val } as Partial<EditorField>);
+                    }}
+                    className="w-full rounded-lg border border-border bg-surface-alt px-2 py-1.5 text-sm text-text focus:border-accent focus:outline-none"
+                  />
+                </div>
+                <div className="flex flex-1 flex-col gap-1">
+                  <label className="text-[10px] text-text-muted">H</label>
+                  <input
+                    type="number"
+                    min={10}
+                    max={2000}
+                    value={Math.round(selectedField.height)}
+                    onChange={(e) => {
+                      const val = Math.max(10, parseInt(e.target.value) || 10);
+                      onFieldUpdate(selectedField.id, { height: val } as Partial<EditorField>);
+                    }}
+                    className="w-full rounded-lg border border-border bg-surface-alt px-2 py-1.5 text-sm text-text focus:border-accent focus:outline-none"
+                  />
+                </div>
+              </div>
+            </Section>
+            <Divider />
+          </>
+        )}
 
         <Section>
           {onFieldDuplicate && (
