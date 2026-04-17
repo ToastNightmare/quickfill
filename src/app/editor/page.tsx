@@ -105,10 +105,6 @@ function pollCanvasForContent(
 }
 
 export default function EditorPage() {
-  useEffect(() => {
-    document.title = "Fill a PDF | QuickFill";
-  }, []);
-
   const [pdfBytes, setPdfBytes] = useState<ArrayBuffer | null>(null);
   const [fileName, setFileName] = useState<string>("");
   const [activeTool, setActiveTool] = useState<ToolType | null>(null);
@@ -147,6 +143,16 @@ export default function EditorPage() {
 
   const pdfViewerRef = useRef<PdfViewerHandle>(null);
   const viewerContainerRef = useRef<HTMLDivElement>(null);
+
+  // Dynamic page title based on fileName
+  useEffect(() => {
+    if (fileName) {
+      const name = fileName.replace(/\.pdf$/i, "").replace(/[-_]/g, " ");
+      document.title = `${name} | QuickFill`;
+    } else {
+      document.title = "Fill a PDF | QuickFill";
+    }
+  }, [fileName]);
 
   // Load saved signature on mount
   useEffect(() => {
