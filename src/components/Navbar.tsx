@@ -80,7 +80,7 @@ export function Navbar() {
             <>
               {isPro && (
                 <span className="rounded-full bg-accent px-2.5 py-0.5 text-xs font-semibold text-white">
-                  ✦ Pro
+                  PRO
                 </span>
               )}
               <UserButton appearance={{ elements: { avatarBox: "h-9 w-9" } }}>
@@ -158,7 +158,7 @@ export function Navbar() {
                 </Link>
                 {isPro && (
                   <span className="rounded-full bg-accent px-2.5 py-0.5 text-xs font-semibold text-white">
-                    ✦ Pro
+                    PRO
                   </span>
                 )}
               </>
