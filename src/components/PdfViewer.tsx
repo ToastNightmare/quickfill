@@ -1397,7 +1397,6 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
             ))}
             <Transformer
               ref={trRef}
-              listening={false}
               rotateEnabled={false}
               borderStroke="#3b82f6"
               anchorStroke="#3b82f6"
