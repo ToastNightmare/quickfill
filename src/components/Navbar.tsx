@@ -78,18 +78,17 @@ export function Navbar() {
             </>
           ) : (
             <>
-              <Link href="/dashboard" className="text-sm font-medium text-text-muted hover:text-text transition-colors">
-                Dashboard
-              </Link>
-              <Link href="/profile" className="text-sm font-medium text-text-muted hover:text-text transition-colors">
-                Profile
-              </Link>
               {isPro && (
                 <span className="rounded-full bg-accent px-2.5 py-0.5 text-xs font-semibold text-white">
                   ✦ Pro
                 </span>
               )}
-              <UserButton appearance={{ elements: { avatarBox: "h-9 w-9" } }} />
+              <UserButton appearance={{ elements: { avatarBox: "h-9 w-9" } }}>
+                <UserButton.MenuItems>
+                  <UserButton.Link label="Dashboard" labelIcon={<span>📋</span>} href="/dashboard" />
+                  <UserButton.Link label="Profile" labelIcon={<span>👤</span>} href="/profile" />
+                </UserButton.MenuItems>
+              </UserButton>
             </>
           )}
         </div>
