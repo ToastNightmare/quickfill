@@ -60,6 +60,7 @@ export function ContextPanel({
   isDetecting,
 }: ContextPanelProps) {
   const [sizeExpanded, setSizeExpanded] = useState(false);
+  const [charCountExpanded, setCharCountExpanded] = useState(false);
 
   // ── Field selected ALWAYS takes priority (even if activeTool hasn't cleared yet)
   if (selectedField) {
@@ -202,43 +203,54 @@ export function ContextPanel({
           
           return (
             <>
-              <Section label="Character Count">
-                <select
-                  value={isCustom ? "custom" : charCount}
-                  onChange={(e) => {
-                    const val = e.target.value;
-                    if (val === "custom") {
-                      // Keep current count, user will type manually
-                      return;
-                    }
-                    const newCount = parseInt(val, 10);
-                    if (!isNaN(newCount) && newCount > 0 && newCount <= 50) {
-                      onFieldUpdate(selectedField.id, { charCount: newCount } as Partial<EditorField>);
-                    }
-                  }}
-                  className="w-full rounded-lg border border-border bg-surface-alt px-3 py-2 text-sm font-medium text-text focus:outline-none focus:ring-2 focus:ring-accent"
+              <Section>
+                <button
+                  onClick={() => setCharCountExpanded(v => !v)}
+                  className="flex w-full items-center justify-between text-[10px] font-semibold uppercase tracking-widest text-text-muted hover:text-text transition-colors"
                 >
-                  {GRID_PRESETS.map((preset) => (
-                    <option key={preset.value} value={preset.value}>
-                      {preset.label}
-                    </option>
-                  ))}
-                </select>
-                {isCustom && (
-                  <input
-                    type="number"
-                    min={1}
-                    max={50}
-                    value={charCount}
-                    onChange={(e) => {
-                      const newCount = parseInt(e.target.value, 10);
-                      if (!isNaN(newCount) && newCount > 0 && newCount <= 50) {
-                        onFieldUpdate(selectedField.id, { charCount: newCount } as Partial<EditorField>);
-                      }
-                    }}
-                    className="mt-2 w-full rounded-lg border border-border bg-surface-alt px-3 py-2 text-sm font-medium text-text focus:outline-none focus:ring-2 focus:ring-accent"
-                    placeholder="Custom count (1-50)"
-                  />
+                  Character Count
+                  {charCountExpanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+                </button>
+                {charCountExpanded && (
+                  <>
+                    <select
+                      value={isCustom ? "custom" : charCount}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        if (val === "custom") {
+                          // Keep current count, user will type manually
+                          return;
+                        }
+                        const newCount = parseInt(val, 10);
+                        if (!isNaN(newCount) && newCount > 0 && newCount <= 50) {
+                          onFieldUpdate(selectedField.id, { charCount: newCount } as Partial<EditorField>);
+                        }
+                      }}
+                      className="w-full rounded-lg border border-border bg-surface-alt px-3 py-2 text-sm font-medium text-text focus:outline-none focus:ring-2 focus:ring-accent"
+                    >
+                      {GRID_PRESETS.map((preset) => (
+                        <option key={preset.value} value={preset.value}>
+                          {preset.label}
+                        </option>
+                      ))}
+                    </select>
+                    {isCustom && (
+                      <input
+                        type="number"
+                        min={1}
+                        max={50}
+                        value={charCount}
+                        onChange={(e) => {
+                          const newCount = parseInt(e.target.value, 10);
+                          if (!isNaN(newCount) && newCount > 0 && newCount <= 50) {
+                            onFieldUpdate(selectedField.id, { charCount: newCount } as Partial<EditorField>);
+                          }
+                        }}
+                        className="mt-2 w-full rounded-lg border border-border bg-surface-alt px-3 py-2 text-sm font-medium text-text focus:outline-none focus:ring-2 focus:ring-accent"
+                        placeholder="Custom count (1-50)"
+                      />
+                    )}
+                  </>
                 )}
               </Section>
               

@@ -2095,12 +2095,18 @@ function FieldShape({
             const scaleY = node.scaleY();
             node.scaleX(1);
             node.scaleY(1);
-            onTransformEnd(
-              Math.max(40, node.width() * scaleX),
-              Math.max(20, node.height() * scaleY),
-              node.x(),
-              node.y()
-            );
+            const rawWidth = Math.max(40, node.width() * scaleX);
+            const rawHeight = Math.max(20, node.height() * scaleY);
+            if (field.type === "grid") {
+              const gridField = field as import("@/lib/types").GridField;
+              const currentCharCount = gridField.charCount ?? 11;
+              const cellSize = field.width / currentCharCount;
+              const newCharCount = Math.min(50, Math.max(1, Math.round(rawWidth / cellSize)));
+              const snappedWidth = newCharCount * cellSize;
+              onTransformEnd(snappedWidth, rawHeight, node.x(), node.y());
+            } else {
+              onTransformEnd(rawWidth, rawHeight, node.x(), node.y());
+            }
           }}
           onContextMenu={(e) => {
             e.evt.preventDefault();
