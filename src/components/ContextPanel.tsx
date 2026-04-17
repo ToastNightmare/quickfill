@@ -1,9 +1,11 @@
 "use client";
 
+import { useState } from "react";
 import {
   Type, CheckSquare, PenTool, Calendar,
   Minus, Plus, Trash2, MousePointer2,
   Sparkles, UserCheck, Eraser, Grid3X3, Copy,
+  ChevronDown, ChevronUp,
 } from "lucide-react";
 import type { EditorField, ToolType, SignatureField } from "@/lib/types";
 import type { CheckboxStamp } from "@/lib/types";
@@ -57,6 +59,7 @@ export function ContextPanel({
   onDetectFields,
   isDetecting,
 }: ContextPanelProps) {
+  const [sizeExpanded, setSizeExpanded] = useState(false);
 
   // ── Field selected ALWAYS takes priority (even if activeTool hasn't cleared yet)
   if (selectedField) {
@@ -265,37 +268,55 @@ export function ContextPanel({
         {selectedField.type !== "checkbox" && selectedField.type !== "whiteout" && (
           <>
             <Section>
-              <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-widest text-text-muted">Size</p>
-              <div className="flex gap-2">
-                <div className="flex flex-1 flex-col gap-1">
-                  <label className="text-[10px] text-text-muted">W</label>
-                  <input
-                    type="number"
-                    min={20}
-                    max={2000}
-                    value={Math.round(selectedField.width)}
-                    onChange={(e) => {
-                      const val = Math.max(20, parseInt(e.target.value) || 20);
-                      onFieldUpdate(selectedField.id, { width: val } as Partial<EditorField>);
-                    }}
-                    className="w-full rounded-lg border border-border bg-surface-alt px-2 py-1.5 text-sm text-text focus:border-accent focus:outline-none"
-                  />
+              <button
+                onClick={() => setSizeExpanded(v => !v)}
+                className="flex w-full items-center justify-between text-[10px] font-semibold uppercase tracking-widest text-text-muted hover:text-text transition-colors"
+              >
+                Size
+                {sizeExpanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+              </button>
+              {sizeExpanded && (
+                <div className="flex gap-2 mt-2">
+                  <div className="flex flex-1 flex-col gap-1">
+                    <label className="text-[10px] text-text-muted">W</label>
+                    <input
+                      type="number"
+                      min={20}
+                      max={2000}
+                      value={Math.round(selectedField.width)}
+                      onChange={(e) => {
+                        const val = Math.max(20, parseInt(e.target.value) || 20);
+                        if (selectedField.type === "signature") {
+                          const ratio = selectedField.height / selectedField.width;
+                          onFieldUpdate(selectedField.id, { width: val, height: Math.round(val * ratio) } as Partial<EditorField>);
+                        } else {
+                          onFieldUpdate(selectedField.id, { width: val } as Partial<EditorField>);
+                        }
+                      }}
+                      className="w-full rounded-lg border border-border bg-surface-alt px-2 py-1.5 text-sm text-text focus:border-accent focus:outline-none"
+                    />
+                  </div>
+                  <div className="flex flex-1 flex-col gap-1">
+                    <label className="text-[10px] text-text-muted">H</label>
+                    <input
+                      type="number"
+                      min={10}
+                      max={2000}
+                      value={Math.round(selectedField.height)}
+                      onChange={(e) => {
+                        const val = Math.max(10, parseInt(e.target.value) || 10);
+                        if (selectedField.type === "signature") {
+                          const ratio = selectedField.width / selectedField.height;
+                          onFieldUpdate(selectedField.id, { height: val, width: Math.round(val * ratio) } as Partial<EditorField>);
+                        } else {
+                          onFieldUpdate(selectedField.id, { height: val } as Partial<EditorField>);
+                        }
+                      }}
+                      className="w-full rounded-lg border border-border bg-surface-alt px-2 py-1.5 text-sm text-text focus:border-accent focus:outline-none"
+                    />
+                  </div>
                 </div>
-                <div className="flex flex-1 flex-col gap-1">
-                  <label className="text-[10px] text-text-muted">H</label>
-                  <input
-                    type="number"
-                    min={10}
-                    max={2000}
-                    value={Math.round(selectedField.height)}
-                    onChange={(e) => {
-                      const val = Math.max(10, parseInt(e.target.value) || 10);
-                      onFieldUpdate(selectedField.id, { height: val } as Partial<EditorField>);
-                    }}
-                    className="w-full rounded-lg border border-border bg-surface-alt px-2 py-1.5 text-sm text-text focus:border-accent focus:outline-none"
-                  />
-                </div>
-              </div>
+              )}
             </Section>
             <Divider />
           </>
