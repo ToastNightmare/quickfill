@@ -93,6 +93,13 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
   const [cursorStyle, setCursorStyle] = useState("default");
   const [snapPreviewOpacity, setSnapPreviewOpacity] = useState(0);
   const [contextMenu, setContextMenu] = useState<{ x: number, y: number, fieldId: string } | null>(null);
+  const [activeGridFieldId, setActiveGridFieldId] = useState<string | null>(null);
+  const activeGridInputRef = useRef<HTMLInputElement>(null);
+  const [gridHandlers, setGridHandlers] = useState<{
+    onKeyDown: (e: React.KeyboardEvent<HTMLInputElement>) => void;
+    onInput: (e: React.FormEvent<HTMLInputElement>) => void;
+    onPaste: (e: React.ClipboardEvent<HTMLInputElement>) => void;
+  } | null>(null);
   const precomputedBoxesRef = useRef<SnapResult[]>([]);
   const dragStartedRef = useRef(false);
   const mouseDownPos = useRef<{x: number, y: number} | null>(null);
@@ -1395,6 +1402,15 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
                     setContextMenu({ x: pos.x, y: pos.y, fieldId });
                   }
                 }}
+                onGridActivate={(handlers) => {
+                  setActiveGridFieldId(field.id);
+                  setGridHandlers(handlers);
+                  setTimeout(() => activeGridInputRef.current?.focus(), 50);
+                }}
+                onGridDeactivate={() => {
+                  setActiveGridFieldId(null);
+                  setGridHandlers(null);
+                }}
               />
             ))}
             <Transformer
@@ -1592,6 +1608,29 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
               />
             );
           })()}
+        {/* Grid field hidden input — must be outside Konva Stage */}
+        {activeGridFieldId && gridHandlers && (
+          <input
+            ref={activeGridInputRef}
+            type="text"
+            className="absolute opacity-0"
+            style={{
+              position: "absolute",
+              width: "1px",
+              height: "1px",
+              padding: 0,
+              margin: "-1px",
+              overflow: "hidden",
+              clip: "rect(0,0,0,0)",
+              whiteSpace: "nowrap",
+              border: 0,
+              pointerEvents: "none",
+            }}
+            onKeyDown={gridHandlers.onKeyDown}
+            onInput={gridHandlers.onInput}
+            onPaste={gridHandlers.onPaste}
+          />
+        )}
       </div>
     </div>
   );
@@ -1632,6 +1671,8 @@ function FieldShape({
   registerNode,
   unregisterNode,
   onContextMenu,
+  onGridActivate,
+  onGridDeactivate,
 }: {
   field: EditorField;
   isSelected: boolean;
@@ -1651,6 +1692,8 @@ function FieldShape({
   registerNode: (id: string, node: Konva.Group) => void;
   unregisterNode: (id: string) => void;
   onContextMenu?: (e: any, fieldId: string) => void;
+  onGridActivate?: (handlers: { onKeyDown: (e: React.KeyboardEvent<HTMLInputElement>) => void; onInput: (e: React.FormEvent<HTMLInputElement>) => void; onPaste: (e: React.ClipboardEvent<HTMLInputElement>) => void }) => void;
+  onGridDeactivate?: () => void;
 }) {
   const groupRef = useRef<Konva.Group>(null);
 
@@ -1965,15 +2008,13 @@ function FieldShape({
     const slotHeight = field.height;
     const value = gridField.value || "";
     const [activeSlotIndex, setActiveSlotIndex] = useState(0);
-    const gridRef = useRef<HTMLDivElement>(null);
-    const inputRef = useRef<HTMLInputElement>(null);
 
-    // Focus the hidden input when the field is selected
+    // Notify parent when grid is selected/deselected so it can manage the hidden input
     useEffect(() => {
-      if (isSelected && inputRef.current) {
-        setTimeout(() => {
-          inputRef.current?.focus();
-        }, 50);
+      if (isSelected) {
+        onGridActivate?.({ onKeyDown: handleKeyDown, onInput: handleInput, onPaste: handlePaste });
+      } else {
+        onGridDeactivate?.();
       }
     }, [isSelected]);
 
@@ -2046,18 +2087,10 @@ function FieldShape({
 
       onValueChange(newValue);
       setActiveSlotIndex(newIndex);
-      
-      // Clear the hidden input
-      if (inputRef.current) {
-        inputRef.current.value = "";
-      }
     };
 
     const handleSlotClick = (index: number) => {
       setActiveSlotIndex(index);
-      if (inputRef.current) {
-        inputRef.current.focus();
-      }
     };
 
     return (
@@ -2076,12 +2109,6 @@ function FieldShape({
           onClick={(e) => {
             e.cancelBubble = true;
             onSelect();
-            // Focus the hidden input when field is clicked
-            setTimeout(() => {
-              if (inputRef.current) {
-                inputRef.current.focus();
-              }
-            }, 0);
           }}
           onDragStart={() => {
             setDragOpacity(0.85);
@@ -2178,28 +2205,6 @@ function FieldShape({
             );
           })}
         </Group>
-        
-        {/* Hidden input for capturing keyboard input */}
-        <input
-          ref={inputRef}
-          type="text"
-          className="absolute opacity-0 pointer-events-none"
-          style={{
-            position: "absolute",
-            width: "1px",
-            height: "1px",
-            padding: 0,
-            margin: "-1px",
-            overflow: "hidden",
-            clip: "rect(0,0,0,0)",
-            whiteSpace: "nowrap",
-            border: 0,
-          }}
-          onKeyDown={handleKeyDown}
-          onInput={handleInput}
-          onPaste={handlePaste}
-          autoFocus={isSelected}
-        />
       </>
     );
   }
