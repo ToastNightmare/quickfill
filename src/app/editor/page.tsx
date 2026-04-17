@@ -135,6 +135,7 @@ export default function EditorPage() {
   const [snapEnabled, setSnapEnabled] = useState(false); // OFF by default
   const [showWelcomeModal, setShowWelcomeModal] = useState(false);
   const [showTour, setShowTour] = useState(false);
+  const [activeTemplate, setActiveTemplate] = useState<string | null>(null);
   const { fields, set: setFields, undo, redo, reset, canUndo, canRedo } = useHistory();
   const restoredRef = useRef(false);
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -458,20 +459,31 @@ export default function EditorPage() {
     [reset]
   );
 
-  // Load template from URL param
+  // Load template from URL param — reset state when template changes
   useEffect(() => {
-    if (pdfBytes) return;
     const params = new URLSearchParams(window.location.search);
     const templateParam = params.get("template");
     if (!templateParam) return;
-    fetch(`/templates/${templateParam}`)
-      .then((r) => r.arrayBuffer())
-      .then(async (bytes) => {
-        const file = new File([bytes], templateParam, { type: "application/pdf" });
-        await handleFileLoad(file, bytes);
-      })
-      .catch(() => {});
-  }, [pdfBytes, handleFileLoad]);
+    if (templateParam === activeTemplate) return;
+
+    // New template selected — clear previous session
+    clearEditorState().then(() => {
+      reset([]);
+      setPdfBytes(null);
+      setFileName("");
+      setCurrentPage(0);
+      setSelectedFieldId(null);
+      setActiveTemplate(templateParam);
+
+      fetch(`/templates/${templateParam}`)
+        .then((r) => r.arrayBuffer())
+        .then(async (bytes) => {
+          const file = new File([bytes], templateParam, { type: "application/pdf" });
+          await handleFileLoad(file, bytes);
+        })
+        .catch(() => {});
+    });
+  }, [activeTemplate, handleFileLoad, reset]);
 
   const handleFieldAdd = useCallback(
     (field: EditorField) => {
