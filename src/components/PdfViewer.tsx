@@ -1971,7 +1971,9 @@ function FieldShape({
     // Focus the hidden input when the field is selected
     useEffect(() => {
       if (isSelected && inputRef.current) {
-        inputRef.current.focus();
+        setTimeout(() => {
+          inputRef.current?.focus();
+        }, 50);
       }
     }, [isSelected]);
 
