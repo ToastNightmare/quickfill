@@ -219,7 +219,7 @@ function LoggedInHome() {
             <Link href="/templates" className="text-sm text-gray-400 hover:text-white transition-colors">Templates</Link>
             <Link href="/pricing" className="text-sm text-gray-400 hover:text-white transition-colors">Pricing</Link>
             <Link href="/how-it-works" className="text-sm text-gray-400 hover:text-white transition-colors">How It Works</Link>
-            <Link href="/sign-in" className="text-sm text-gray-400 hover:text-white transition-colors">Sign In</Link>
+            <Link href="/dashboard" className="text-sm text-gray-400 hover:text-white transition-colors">Dashboard</Link>
             <Link href="/profile" className="text-sm text-gray-400 hover:text-white transition-colors">Profile</Link>
             <Link href="/privacy" className="text-sm text-gray-400 hover:text-white transition-colors">Privacy</Link>
             <Link href="/terms" className="text-sm text-gray-400 hover:text-white transition-colors">Terms</Link>
@@ -809,8 +809,14 @@ export default function Home() {
             <Link href="/templates" className="text-sm text-gray-400 hover:text-white transition-colors">Templates</Link>
             <Link href="/pricing" className="text-sm text-gray-400 hover:text-white transition-colors">Pricing</Link>
             <Link href="/how-it-works" className="text-sm text-gray-400 hover:text-white transition-colors">How It Works</Link>
-            <Link href="/sign-in" className="text-sm text-gray-400 hover:text-white transition-colors">Sign In</Link>
-            <Link href="/profile" className="text-sm text-gray-400 hover:text-white transition-colors">Profile</Link>
+            {isSignedIn ? (
+              <>
+                <Link href="/dashboard" className="text-sm text-gray-400 hover:text-white transition-colors">Dashboard</Link>
+                <Link href="/profile" className="text-sm text-gray-400 hover:text-white transition-colors">Profile</Link>
+              </>
+            ) : (
+              <Link href="/sign-in" className="text-sm text-gray-400 hover:text-white transition-colors">Sign In</Link>
+            )}
             <Link href="/privacy" className="text-sm text-gray-400 hover:text-white transition-colors">Privacy</Link>
             <Link href="/terms" className="text-sm text-gray-400 hover:text-white transition-colors">Terms</Link>
           </div>
