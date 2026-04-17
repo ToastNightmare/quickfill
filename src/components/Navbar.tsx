@@ -63,7 +63,7 @@ export function Navbar() {
               Pricing
             </Link>
           )}
-          <Link href="/editor" className="text-sm font-medium text-text-muted hover:text-text transition-colors">
+          <Link href="/editor" className="rounded-lg border border-accent px-4 py-2 text-sm font-semibold text-accent hover:bg-accent hover:text-white transition-colors">
             Fill a PDF
           </Link>
 
@@ -136,7 +136,7 @@ export function Navbar() {
                 Pricing
               </Link>
             )}
-            <Link href="/editor" onClick={() => setMenuOpen(false)} className="rounded-lg px-3 py-3 text-sm font-medium hover:bg-surface-alt transition-colors">
+            <Link href="/editor" onClick={() => setMenuOpen(false)} className="rounded-lg border border-accent px-3 py-3 text-sm font-semibold text-accent hover:bg-accent hover:text-white transition-colors text-center">
               Fill a PDF
             </Link>
 
