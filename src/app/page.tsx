@@ -213,7 +213,7 @@ function LoggedInHome() {
       <footer className="border-t border-border bg-navy px-4 py-12 sm:px-6 lg:px-8">
         <div className="mx-auto flex max-w-6xl flex-col items-center gap-6 sm:flex-row sm:justify-between">
           <Logo variant="full-white" className="h-10 w-auto max-w-[200px]" />
-          <div className="flex gap-6">
+          <div className="grid grid-cols-2 gap-x-8 gap-y-2 sm:flex sm:gap-6">
             <Link href="/editor" className="text-sm text-gray-400 hover:text-white transition-colors">Fill a PDF</Link>
             <Link href="/templates" className="text-sm text-gray-400 hover:text-white transition-colors">Templates</Link>
             <Link href="/pricing" className="text-sm text-gray-400 hover:text-white transition-colors">Pricing</Link>
@@ -801,7 +801,7 @@ export default function Home() {
       <footer className="border-t border-border bg-navy px-4 py-12 sm:px-6 lg:px-8">
         <div className="mx-auto flex max-w-6xl flex-col items-center gap-6 sm:flex-row sm:justify-between">
           <Logo variant="full-white" className="h-10 w-auto max-w-[200px]" />
-          <div className="flex gap-6">
+          <div className="grid grid-cols-2 gap-x-8 gap-y-2 sm:flex sm:gap-6">
             <Link href="/editor" className="text-sm text-gray-400 hover:text-white transition-colors">Fill a PDF</Link>
             <Link href="/templates" className="text-sm text-gray-400 hover:text-white transition-colors">Templates</Link>
             <Link href="/pricing" className="text-sm text-gray-400 hover:text-white transition-colors">Pricing</Link>
