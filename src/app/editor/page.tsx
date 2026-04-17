@@ -1068,8 +1068,17 @@ export default function EditorPage() {
 
       {/* Top bar with file name, zoom, progress, and page nav */}
       <div className="flex items-center justify-between gap-2 border-b border-border bg-surface px-4 py-2 flex-shrink-0">
-          {/* Left: filename */}
+          {/* Left: browse templates + filename */}
           <div className="flex items-center gap-2 min-w-0">
+            <a
+              href="/templates"
+              className="flex shrink-0 items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-text-muted hover:bg-surface-alt hover:text-text transition-colors"
+              title="Browse all templates"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+              <span className="hidden sm:inline">Templates</span>
+            </a>
+            <span className="hidden sm:inline text-text-muted/30 text-xs">/</span>
             <p className="truncate text-sm font-medium text-text-muted">{fileName}</p>
           </div>
 
