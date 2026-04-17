@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { Logo } from "@/components/Logo";
 import {
   Upload,
   ScanSearch,
@@ -211,9 +212,7 @@ function LoggedInHome() {
       {/* Footer */}
       <footer className="border-t border-border bg-navy px-4 py-12 sm:px-6 lg:px-8">
         <div className="mx-auto flex max-w-6xl flex-col items-center gap-6 sm:flex-row sm:justify-between">
-          <div className="flex items-center gap-2 font-bold text-white">
-            <img src="/logo-white.svg" alt="QuickFill" className="h-10 w-auto max-w-[200px]" />
-          </div>
+          <Logo variant="full-white" className="h-10 w-auto max-w-[200px]" />
           <div className="flex gap-6">
             <Link href="/editor" className="text-sm text-gray-400 hover:text-white transition-colors">Fill a PDF</Link>
             <Link href="/templates" className="text-sm text-gray-400 hover:text-white transition-colors">Templates</Link>
@@ -801,9 +800,7 @@ export default function Home() {
       {/* Footer */}
       <footer className="border-t border-border bg-navy px-4 py-12 sm:px-6 lg:px-8">
         <div className="mx-auto flex max-w-6xl flex-col items-center gap-6 sm:flex-row sm:justify-between">
-          <div className="flex items-center gap-2 font-bold text-white">
-            <img src="/logo-white.svg" alt="QuickFill" className="h-10 w-auto max-w-[200px]" />
-          </div>
+          <Logo variant="full-white" className="h-10 w-auto max-w-[200px]" />
           <div className="flex gap-6">
             <Link href="/editor" className="text-sm text-gray-400 hover:text-white transition-colors">Fill a PDF</Link>
             <Link href="/templates" className="text-sm text-gray-400 hover:text-white transition-colors">Templates</Link>
