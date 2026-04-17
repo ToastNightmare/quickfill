@@ -243,22 +243,8 @@ export function ContextPanel({
               </Section>
               
               <Divider />
-              
-              <Section label="Value">
-                <input
-                  type="text"
-                  value={gridField.value || ""}
-                  onChange={(e) => {
-                    // Limit to charCount
-                    const val = e.target.value.slice(0, charCount);
-                    onFieldUpdate(selectedField.id, { value: val } as Partial<EditorField>);
-                  }}
-                  className="w-full rounded-lg border border-border bg-surface-alt px-3 py-2 text-sm font-medium text-text focus:outline-none focus:ring-2 focus:ring-accent"
-                  placeholder="Enter value..."
-                />
-                <p className="mt-1 text-xs text-text-muted">
-                  {gridField.value?.length || 0} / {charCount} characters
-                </p>
+              <Section>
+                <p className="text-xs text-text-muted text-center">{gridField.value?.length || 0} / {charCount} characters filled</p>
               </Section>
             </>
           );

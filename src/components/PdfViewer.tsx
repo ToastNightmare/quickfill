@@ -1823,7 +1823,7 @@ function FieldShape({
           : field.type === "date"
           ? "Click for date"
           : field.type === "grid"
-          ? "Drag across boxes"
+          ? ""
           : "Click to type...");
   const isEmpty = !field.value && !hasSignatureImage;
 
@@ -2135,7 +2135,7 @@ function FieldShape({
                 <Rect
                   width={slotWidth - 1}
                   height={slotHeight}
-                  fill="transparent"
+                  fill={isCurrent && isSelected ? "rgba(59,130,246,0.12)" : "transparent"}
                   stroke={isCurrent ? "#3b82f6" : isFilled ? "rgba(59,130,246,0.3)" : "rgba(59,130,246,0.15)"}
                   strokeWidth={isCurrent ? 2 : 0.5}
                 />
