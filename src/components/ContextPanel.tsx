@@ -3,7 +3,7 @@
 import {
   Type, CheckSquare, PenTool, Calendar,
   Minus, Plus, Trash2, MousePointer2,
-  Sparkles, UserCheck, Eraser, Grid3X3,
+  Sparkles, UserCheck, Eraser, Grid3X3, Copy,
 } from "lucide-react";
 import type { EditorField, ToolType, SignatureField } from "@/lib/types";
 import type { CheckboxStamp } from "@/lib/types";
@@ -35,6 +35,7 @@ interface ContextPanelProps {
   onFieldUpdate: (id: string, updates: Partial<EditorField>) => void;
   onFieldDelete: (id: string) => void;
   onFieldDeselect: () => void;
+  onFieldDuplicate?: (id: string) => void;
   onStampChange: (stamp: CheckboxStamp) => void;
   onSignatureRequest: (fieldId: string) => void;
   onAutoFill: () => void;
@@ -49,6 +50,7 @@ export function ContextPanel({
   onFieldUpdate,
   onFieldDelete,
   onFieldDeselect,
+  onFieldDuplicate,
   onStampChange,
   onSignatureRequest,
   onAutoFill,
@@ -262,9 +264,18 @@ export function ContextPanel({
         <Divider />
 
         <Section>
+          {onFieldDuplicate && (
+            <button
+              onClick={() => onFieldDuplicate(selectedField.id)}
+              className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-text-muted hover:bg-surface-alt hover:text-text transition-colors"
+            >
+              <Copy className="h-4 w-4 shrink-0" />
+              Duplicate
+            </button>
+          )}
           <button
             onClick={() => { onFieldDelete(selectedField.id); onFieldDeselect(); }}
-            className="flex w-full items-center justify-center gap-2 rounded-xl bg-red-50 py-2.5 text-sm font-semibold text-red-600 hover:bg-red-100 transition-colors"
+            className="flex w-full items-center justify-center gap-2 rounded-xl bg-red-50 py-2.5 text-sm font-semibold text-red-600 hover:bg-red-100 transition-colors mt-2"
           >
             <Trash2 className="h-4 w-4" />
             Delete Field

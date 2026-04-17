@@ -1230,6 +1230,7 @@ export default function EditorPage() {
           onFieldUpdate={handleFieldUpdate}
           onFieldDelete={handleFieldDelete}
           onFieldDeselect={() => setSelectedFieldId(null)}
+          onFieldDuplicate={handleFieldDuplicate}
           onStampChange={(stamp) => {
             if (selectedField) {
               handleFieldUpdate(selectedField.id, {
