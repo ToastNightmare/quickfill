@@ -17,6 +17,7 @@ import {
   Magnet,
   HelpCircle,
   Grid3X3,
+  RotateCcw,
 } from "lucide-react";
 import type { ToolType, EditorField } from "@/lib/types";
 import { Minimap } from "@/components/Minimap";
@@ -33,6 +34,7 @@ interface ToolbarProps {
   onClear: () => void;
   onDownload: () => void;
   onSaveProgress?: () => void;
+  onStartOver?: () => void;
   canUndo: boolean;
   canRedo: boolean;
   isDownloading: boolean;
@@ -45,6 +47,7 @@ interface ToolbarProps {
   onSnapToggle: () => void;
   onShowHelp?: () => void;
   mobile?: boolean;
+  fields?: EditorField[];
   // Minimap props (desktop only)
   minimapCanvas?: HTMLCanvasElement | null;
   viewerRef?: RefObject<HTMLDivElement | null>;
@@ -69,6 +72,7 @@ export function Toolbar({
   onClear,
   onDownload,
   onSaveProgress,
+  onStartOver,
   canUndo,
   canRedo,
   isDownloading,
@@ -81,6 +85,7 @@ export function Toolbar({
   onSnapToggle,
   onShowHelp,
   mobile,
+  fields,
   minimapCanvas,
   viewerRef,
   zoom,
@@ -234,20 +239,6 @@ export function Toolbar({
           </button>
         ))}
 
-        {/* Snap Toggle */}
-        <button
-          onClick={onSnapToggle}
-          title="Toggle snap detection for structured forms"
-          className={`flex h-8 items-center gap-3 rounded-lg px-2 text-sm font-semibold transition-colors ${
-            snapEnabled
-              ? "bg-accent text-white border-accent border shadow-sm"
-              : "bg-surface-alt text-text-muted border border-border hover:border-accent hover:text-accent"
-          }`}
-        >
-          <Magnet className="h-4 w-4 shrink-0" />
-          <span className="hidden sm:inline">{snapEnabled ? "Snap On" : "Snap Off"}</span>
-        </button>
-
         <div className="my-1 h-px bg-border mx-1" />
 
         {/* Actions */}
@@ -279,13 +270,32 @@ export function Toolbar({
           </span>
         </button>
         <button
+          onClick={onSnapToggle}
+          title="Toggle snap detection for structured forms"
+          className={`flex h-8 items-center gap-3 rounded-lg px-2 text-sm font-semibold transition-colors ${
+            snapEnabled
+              ? "bg-accent text-white border-accent border shadow-sm"
+              : "bg-surface-alt text-text-muted border border-border hover:border-accent hover:text-accent"
+          }`}
+        >
+          <Magnet className="h-4 w-4 shrink-0" />
+          <span className="hidden sm:inline">{snapEnabled ? "Snap On" : "Snap Off"}</span>
+        </button>
+        <button
           onClick={onClear}
-          title="Clear All fields"
+          title="Clear Fields"
           className="flex h-8 items-center gap-3 rounded-lg px-2 text-sm font-medium text-text-muted hover:bg-red-50 hover:text-red-600 transition-colors"
         >
           <Trash2 className="h-4 w-4 shrink-0" />
-          <span className="hidden sm:inline">Clear All</span>
+          <span className="hidden sm:inline">Clear Fields</span>
         </button>
+
+        {/* Field count indicator */}
+        {fields && fields.length > 0 && (
+          <p className="px-2 py-1 text-[10px] text-text-muted hidden sm:block">
+            {fields.length} field{fields.length !== 1 ? "s" : ""} placed
+          </p>
+        )}
 
         <div className="my-1 h-px bg-border mx-1" />
 
@@ -298,6 +308,18 @@ export function Toolbar({
           >
             <Save className="h-4 w-4 shrink-0" />
             <span className="hidden sm:inline">Save Progress</span>
+          </button>
+        )}
+
+        {/* Start Over */}
+        {onStartOver && (
+          <button
+            onClick={onStartOver}
+            title="Clear all fields and start fresh"
+            className="flex h-8 items-center gap-3 rounded-lg px-2 text-sm font-medium text-text-muted hover:bg-red-50 hover:text-red-600 transition-colors"
+          >
+            <RotateCcw className="h-4 w-4 shrink-0" />
+            <span className="hidden sm:inline">Start Over</span>
           </button>
         )}
 
@@ -316,12 +338,18 @@ export function Toolbar({
 
       </div>
 
-      {/* Pro indicator - subtle tag on right side */}
-      {isPro && (
+      {/* Pro indicator */}
+      {isPro ? (
         <div className="px-2 py-2 border-t border-border">
           <span className="hidden sm:inline-block rounded-full bg-accent/10 px-2.5 py-1 text-xs font-semibold text-accent">
-            ✦ Pro
+            PRO
           </span>
+        </div>
+      ) : (
+        <div className="px-2 py-2 border-t border-border hidden sm:block">
+          <a href="/pricing" className="flex items-center gap-2 rounded-lg bg-accent/10 px-3 py-2 text-xs font-semibold text-accent hover:bg-accent hover:text-white transition-colors">
+            Upgrade to Pro
+          </a>
         </div>
       )}
 

@@ -1058,17 +1058,9 @@ export default function EditorPage() {
 
       {/* Top bar with file name, zoom, progress, and page nav */}
       <div className="flex items-center justify-between gap-2 border-b border-border bg-surface px-4 py-2 flex-shrink-0">
-          {/* Left: filename + start over */}
+          {/* Left: filename */}
           <div className="flex items-center gap-2 min-w-0">
             <p className="truncate text-sm font-medium text-text-muted">{fileName}</p>
-            <button
-              onClick={handleStartOver}
-              className="flex shrink-0 items-center gap-1 rounded-md px-2 py-1 text-xs text-text-muted hover:bg-surface-alt hover:text-text transition-colors"
-              title="Clear & Start Over"
-            >
-              <RotateCcw className="h-3 w-3" />
-              <span className="hidden sm:inline">Start Over</span>
-            </button>
           </div>
 
           {/* Center: zoom controls */}
@@ -1185,6 +1177,8 @@ export default function EditorPage() {
             minimapCanvas={minimapCanvas}
             viewerRef={viewerContainerRef}
             zoom={zoom}
+            fields={fields}
+            onStartOver={handleStartOver}
             onMinimapRefresh={() => { let qa = 0; const qp = () => { const c = pdfViewerRef.current?.getCanvas(); if (c) { try { const x = c.getContext("2d")?.getImageData(c.width/2,c.height/2,1,1); if (x && x.data[3]>0) { setMinimapCanvas(c); return; } } catch{} } if (qa++<15) setTimeout(qp,200); }; setTimeout(qp,500); }}
           />
         </div>
@@ -1288,6 +1282,8 @@ export default function EditorPage() {
         snapEnabled={snapEnabled}
         onSnapToggle={() => setSnapEnabled(v => !v)}
         onShowHelp={handleShowHelp}
+        fields={fields}
+        onStartOver={handleStartOver}
         mobile
       />
 
