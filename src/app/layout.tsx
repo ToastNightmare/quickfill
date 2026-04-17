@@ -19,8 +19,11 @@ export const viewport: Viewport = {
 export const metadata: Metadata = {
   metadataBase: new URL(APP_CONFIG.url),
   icons: {
-    icon: [{ url: "/logo-mark.png", type: "image/png" }],
-    shortcut: "/logo-mark.png",
+    icon: [
+      { url: "/favicon.ico", sizes: "any" },
+      { url: "/logo-mark.svg", type: "image/svg+xml" },
+    ],
+    shortcut: "/favicon.ico",
     apple: "/logo-mark.png",
   },
   title: "Fill PDF Forms Online Free | QuickFill",
