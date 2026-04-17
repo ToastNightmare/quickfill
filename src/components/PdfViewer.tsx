@@ -643,7 +643,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
               field = { ...base, type: "date", width: fieldW, height: fieldH, value: new Date().toLocaleDateString("en-AU"), fontSize: 14 };
               break;
             case "grid":
-              field = { ...base, type: "grid", width: fieldW, height: fieldH, value: "", charCount: 11 };
+              field = { ...base, type: "grid", width: fieldW, height: fieldH, value: "", charCount: Math.min(50, Math.max(1, Math.round(fieldW / 24))) };
               break;
             case "whiteout": {
               // Sample background color from canvas center of drawn rectangle
@@ -820,7 +820,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
                 field = { ...base, type: "date", width: fieldW, height: fieldH, value: new Date().toLocaleDateString("en-AU"), fontSize: inferredFontSize ?? 14 };
                 break;
               case "grid":
-                field = { ...base, type: "grid", width: fieldW, height: fieldH, value: "", charCount: 11 };
+                field = { ...base, type: "grid", width: fieldW, height: fieldH, value: "", charCount: Math.min(50, Math.max(1, Math.round(fieldW / 24))) };
                 break;
               case "whiteout": {
                 // Sample background color from canvas center of placed rectangle
@@ -1011,7 +1011,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
           field = { ...base, type: "date", width: fieldW, height: fieldH, value: new Date().toLocaleDateString("en-AU"), fontSize: inferredFontSize ?? 14 };
           break;
         case "grid":
-          field = { ...base, type: "grid", width: fieldW, height: fieldH, value: "", charCount: 11 };
+          field = { ...base, type: "grid", width: fieldW, height: fieldH, value: "", charCount: Math.min(50, Math.max(1, Math.round(fieldW / 24))) };
           break;
         case "whiteout": {
           // Sample background color from canvas center of placed rectangle
@@ -2009,10 +2009,10 @@ function FieldShape({
       const inputChar = input.value.slice(-1); // Get last character typed
       
       if (inputChar && activeSlotIndex < charCount) {
-        // Add character to current slot and advance
+        // Add character to current slot — do not auto-advance
         const newValue = value.slice(0, activeSlotIndex) + inputChar + value.slice(activeSlotIndex + 1);
         onValueChange(newValue);
-        setActiveSlotIndex(activeSlotIndex + 1);
+        // Do not auto-advance — user clicks or arrows to move
       }
       
       // Reset input value to maintain control
@@ -2135,9 +2135,9 @@ function FieldShape({
                 <Rect
                   width={slotWidth - 1}
                   height={slotHeight}
-                  fill={isCurrent && isSelected ? "rgba(59,130,246,0.12)" : "transparent"}
+                  fill={isCurrent && isSelected ? "rgba(59,130,246,0.18)" : "transparent"}
                   stroke={isCurrent ? "#3b82f6" : isFilled ? "rgba(59,130,246,0.3)" : "rgba(59,130,246,0.15)"}
-                  strokeWidth={isCurrent ? 2 : 0.5}
+                  strokeWidth={isCurrent ? 2.5 : 0.5}
                 />
                 {/* Character */}
                 {char && (
