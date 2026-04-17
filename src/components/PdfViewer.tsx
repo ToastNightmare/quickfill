@@ -1453,15 +1453,6 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
               >
                 <span>🗑️</span> Delete
               </div>
-              <div
-                className="px-4 py-2 text-sm hover:bg-surface cursor-pointer flex items-center gap-2"
-                onClick={() => {
-                  onFieldSelect(null);
-                  setContextMenu(null);
-                }}
-              >
-                <span>✕</span> Deselect
-              </div>
             </div>
           </div>
         )}
