@@ -2009,10 +2009,10 @@ function FieldShape({
       const inputChar = input.value.slice(-1); // Get last character typed
       
       if (inputChar && activeSlotIndex < charCount) {
-        // Add character to current slot — do not auto-advance
+        // Add character to current slot and auto-advance
         const newValue = value.slice(0, activeSlotIndex) + inputChar + value.slice(activeSlotIndex + 1);
         onValueChange(newValue);
-        // Do not auto-advance — user clicks or arrows to move
+        setActiveSlotIndex(activeSlotIndex + 1);
       }
       
       // Reset input value to maintain control
@@ -2135,9 +2135,9 @@ function FieldShape({
                 <Rect
                   width={slotWidth - 1}
                   height={slotHeight}
-                  fill={isCurrent && isSelected ? "rgba(59,130,246,0.18)" : "transparent"}
-                  stroke={isCurrent ? "#3b82f6" : isFilled ? "rgba(59,130,246,0.3)" : "rgba(59,130,246,0.15)"}
-                  strokeWidth={isCurrent ? 2.5 : 0.5}
+                  fill={isCurrent && isSelected ? "rgba(59,130,246,0.18)" : isSelected ? "rgba(59,130,246,0.05)" : "transparent"}
+                  stroke={isCurrent && isSelected ? "#3b82f6" : isSelected ? "rgba(59,130,246,0.4)" : isFilled ? "rgba(59,130,246,0.3)" : "rgba(59,130,246,0.15)"}
+                  strokeWidth={isCurrent && isSelected ? 2.5 : isSelected ? 1 : 0.5}
                 />
                 {/* Character */}
                 {char && (
