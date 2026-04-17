@@ -31,6 +31,7 @@ interface PdfViewerProps {
   zoom: number;
   highlightFieldIds?: Set<string>;
   onSignatureFieldPlaced?: (field: EditorField) => void;
+  onSignatureRequest?: (fieldId: string) => void;
   onPageChange?: (page: number) => void;
   snapEnabled: boolean;
   keepRatio?: boolean;
@@ -73,6 +74,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
   zoom,
   highlightFieldIds,
   onSignatureFieldPlaced,
+  onSignatureRequest,
   onPageChange,
   snapEnabled,
   keepRatio,
@@ -1426,6 +1428,21 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
             }}
           >
             <div className="bg-white rounded-lg shadow-lg border border-border py-1 min-w-[140px]">
+              {(() => {
+                const ctxField = pageFields.find(f => f.id === contextMenu.fieldId);
+                if (!ctxField || ctxField.type !== "signature") return null;
+                return (
+                  <div
+                    className="px-4 py-2 text-sm hover:bg-surface cursor-pointer flex items-center gap-2"
+                    onClick={() => {
+                      onSignatureRequest?.(contextMenu.fieldId);
+                      setContextMenu(null);
+                    }}
+                  >
+                    <span>✍️</span> Re-sign
+                  </div>
+                );
+              })()}
               <div
                 className="px-4 py-2 text-sm hover:bg-surface cursor-pointer flex items-center gap-2"
                 onClick={() => {

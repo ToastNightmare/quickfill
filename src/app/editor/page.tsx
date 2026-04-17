@@ -1222,6 +1222,13 @@ export default function EditorPage() {
             zoom={zoom}
             highlightFieldIds={highlightFieldIds}
             onSignatureFieldPlaced={handleSignatureFieldPlaced}
+            onSignatureRequest={(fieldId) => {
+              const field = fields.find((f) => f.id === fieldId);
+              if (field) {
+                setPendingSignatureField(field);
+                setSignatureModalOpen(true);
+              }
+            }}
             onPageChange={handlePageChange}
             snapEnabled={snapEnabled}
             keepRatio={selectedField?.type === "signature"}
