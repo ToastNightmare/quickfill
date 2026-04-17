@@ -105,6 +105,10 @@ function pollCanvasForContent(
 }
 
 export default function EditorPage() {
+  useEffect(() => {
+    document.title = "Fill a PDF | QuickFill";
+  }, []);
+
   const [pdfBytes, setPdfBytes] = useState<ArrayBuffer | null>(null);
   const [fileName, setFileName] = useState<string>("");
   const [activeTool, setActiveTool] = useState<ToolType | null>(null);

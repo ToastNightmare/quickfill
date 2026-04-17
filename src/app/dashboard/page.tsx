@@ -30,6 +30,10 @@ export default function DashboardPage() {
 }
 
 function DashboardContent() {
+  useEffect(() => {
+    document.title = "Dashboard | QuickFill";
+  }, []);
+
   const { user } = useUser();
   const searchParams = useSearchParams();
   const upgraded = searchParams.get("upgraded");

@@ -1,6 +1,10 @@
-"use client";
+import type { Metadata } from "next";
 import Link from "next/link";
 import { FileText } from "lucide-react";
+
+export const metadata: Metadata = {
+  title: "PDF Form Templates | QuickFill",
+};
 
 interface Template {
   file: string;

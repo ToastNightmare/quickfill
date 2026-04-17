@@ -66,6 +66,10 @@ const emptyProfile: ProfileData = {
 };
 
 export default function ProfilePage() {
+  useEffect(() => {
+    document.title = "Profile | QuickFill";
+  }, []);
+
   const { user } = useUser();
   const [profile, setProfile] = useState<ProfileData>(emptyProfile);
   const [saving, setSaving] = useState(false);
