@@ -1211,6 +1211,7 @@ export default function EditorPage() {
             onSignatureFieldPlaced={handleSignatureFieldPlaced}
             onPageChange={handlePageChange}
             snapEnabled={snapEnabled}
+            keepRatio={selectedField?.type === "signature"}
           />
           
           {/* Empty canvas hint - shown when no fields and no tool active */}

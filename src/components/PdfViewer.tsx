@@ -33,6 +33,7 @@ interface PdfViewerProps {
   onSignatureFieldPlaced?: (field: EditorField) => void;
   onPageChange?: (page: number) => void;
   snapEnabled: boolean;
+  keepRatio?: boolean;
 }
 
 let nextFieldId = 1;
@@ -74,6 +75,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
   onSignatureFieldPlaced,
   onPageChange,
   snapEnabled,
+  keepRatio,
 }, ref) {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -1402,7 +1404,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
               // BUG 3 FIX: Always enable all 8 anchors for resizing
               // Remove the conditional that disabled anchors for snapped fields
               enabledAnchors={["top-left", "top-center", "top-right", "middle-right", "bottom-right", "bottom-center", "bottom-left", "middle-left"]}
-              keepRatio={false}
+              keepRatio={keepRatio ?? false}
               boundBoxFunc={(oldBox, newBox) => {
                 if (newBox.width < 16 || newBox.height < 16) return oldBox;
                 return newBox;
@@ -1882,13 +1884,18 @@ function FieldShape({
       {hasSignatureImage && sigImage ? (
         (() => {
           const pad = 4;
+          const maxW = field.width - pad;
+          const maxH = field.height - pad;
+          const scale = Math.min(maxW / sigImage.naturalWidth, maxH / sigImage.naturalHeight);
+          const drawW = sigImage.naturalWidth * scale;
+          const drawH = sigImage.naturalHeight * scale;
           return (
             <KonvaImage
               image={sigImage}
-              x={pad / 2}
-              y={pad / 2}
-              width={field.width - pad}
-              height={field.height - pad}
+              x={(field.width - drawW) / 2}
+              y={(field.height - drawH) / 2}
+              width={drawW}
+              height={drawH}
             />
           );
         })()
