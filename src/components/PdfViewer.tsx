@@ -1557,6 +1557,18 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
                   }
                   e.stopPropagation();
                 }}
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  const rect = (e.target as HTMLElement).getBoundingClientRect();
+                  const stage = document.querySelector("canvas")?.getBoundingClientRect();
+                  if (stage && editField) {
+                    setContextMenu({
+                      x: e.clientX - stage.left,
+                      y: e.clientY - stage.top,
+                      fieldId: editField.id,
+                    });
+                  }
+                }}
               />
             );
           })()}
