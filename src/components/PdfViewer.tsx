@@ -108,9 +108,11 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
 
   // Attach document keydown listener when grid field is selected
   useEffect(() => {
+    console.log('[PdfViewer] activeGridFieldId changed:', activeGridFieldId);
     if (!activeGridFieldId) return;
     
     const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      console.log('[PdfViewer] global keydown fired, key:', e.key, 'activeGridFieldId:', activeGridFieldId);
       if (!gridHandlersRef.current) return;
       gridHandlersRef.current.onKeyDown(e);
     };
@@ -1433,6 +1435,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
                   }
                 }}
                 onGridActivate={(handlers) => {
+                  console.log('[PdfViewer] onGridActivate called, fieldId:', handlers.fieldId);
                   setActiveGridFieldId(handlers.fieldId);
                   gridHandlersRef.current = handlers;
                 }}
@@ -2027,7 +2030,9 @@ function FieldShape({
 
     // Notify parent when grid is selected/deselected so it can manage the hidden input
     useEffect(() => {
+      console.log('[Grid] isSelected changed:', isSelected, 'field id:', field.id);
       if (isSelected) {
+        console.log('[Grid] calling onGridActivate');
         onGridActivate?.({ 
           onKeyDown: handleKeyDown, 
           onInput: handleInput, 
@@ -2040,6 +2045,7 @@ function FieldShape({
           fieldY: field.y,
         });
       } else {
+        console.log('[Grid] calling onGridDeactivate');
         onGridDeactivate?.();
       }
     }, [isSelected]);
@@ -2052,6 +2058,7 @@ function FieldShape({
     }, [value, charCount]);
 
     const handleKeyDown = (e: KeyboardEvent) => {
+      console.log('[Grid] handleKeyDown called, key:', e.key, 'activeSlotIndex:', activeSlotIndex);
       if (e.key === "Backspace") {
         e.preventDefault();
         if (activeSlotIndex > 0) {
@@ -2078,10 +2085,12 @@ function FieldShape({
     };
 
     const handleInput = (e: Event) => {
+      console.log('[Grid] handleInput called, inputChar:', (e.target as { value?: string })?.value);
       // For document keypress, we pass a synthetic event with the character in target.value
       const inputChar = (e.target as { value?: string })?.value || '';
       
       if (inputChar && inputChar.length === 1 && activeSlotIndex < charCount) {
+        console.log('[Grid] inserting char:', inputChar, 'at index:', activeSlotIndex);
         // Add character to current slot and auto-advance
         const newValue = value.slice(0, activeSlotIndex) + inputChar + value.slice(activeSlotIndex + 1);
         onValueChange(newValue);
