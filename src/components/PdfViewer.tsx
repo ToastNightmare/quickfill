@@ -94,7 +94,6 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
   const [snapPreviewOpacity, setSnapPreviewOpacity] = useState(0);
   const [contextMenu, setContextMenu] = useState<{ x: number, y: number, fieldId: string } | null>(null);
   const [activeGridFieldId, setActiveGridFieldId] = useState<string | null>(null);
-  const activeGridInputRef = useRef<HTMLInputElement>(null);
   const gridHandlersRef = useRef<{
     onKeyDown: (e: KeyboardEvent) => void;
     onInput: (e: Event) => void;
@@ -106,54 +105,29 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
     fieldX: number;
     fieldY: number;
   } | null>(null);
-  const [gridInputPos, setGridInputPos] = useState<{ left: number; top: number } | null>(null);
-  
-  // Update grid input position when active slot changes
-  useEffect(() => {
-    if (gridHandlersRef.current && gridInputPos) {
-      const stageEl = document.querySelector('.konvajs-content canvas') as HTMLCanvasElement | null;
-      if (stageEl) {
-        const stageRect = stageEl.getBoundingClientRect();
-        const scaleX = stageEl.clientWidth / stageEl.width;
-        const scaleY = stageEl.clientHeight / stageEl.height;
-        const cellLeft = stageRect.left + (gridHandlersRef.current.fieldX * scaleX) + (gridHandlersRef.current.activeSlotIndex * gridHandlersRef.current.slotWidth * scaleX);
-        const cellTop = stageRect.top + (gridHandlersRef.current.fieldY * scaleY);
-        setGridInputPos({ left: cellLeft, top: cellTop });
-      }
-    }
-  }, [gridInputPos?.left]);
 
-  // Attach native event handlers to the hidden grid input ONCE
+  // Attach document keydown listener when grid field is selected
   useEffect(() => {
-    const el = activeGridInputRef.current;
-    if (!el) return;
+    if (!activeGridFieldId) return;
     
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (gridHandlersRef.current) gridHandlersRef.current.onKeyDown(e);
-    };
-    const handleInput = (e: Event) => {
-      if (gridHandlersRef.current) gridHandlersRef.current.onInput(e);
-    };
-    const handlePaste = (e: ClipboardEvent) => {
-      if (gridHandlersRef.current) gridHandlersRef.current.onPaste(e);
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      if (!gridHandlersRef.current) return;
+      gridHandlersRef.current.onKeyDown(e);
     };
     
-    el.addEventListener('keydown', handleKeyDown);
-    el.addEventListener('input', handleInput);
-    el.addEventListener('paste', handlePaste);
+    const handleGlobalKeyPress = (e: KeyboardEvent) => {
+      if (!gridHandlersRef.current) return;
+      // Create a minimal event-like object for handleInput
+      gridHandlersRef.current.onInput({ target: { value: e.key } } as unknown as Event);
+    };
+    
+    document.addEventListener('keydown', handleGlobalKeyDown);
+    document.addEventListener('keypress', handleGlobalKeyPress);
     
     return () => {
-      el.removeEventListener('keydown', handleKeyDown);
-      el.removeEventListener('input', handleInput);
-      el.removeEventListener('paste', handlePaste);
+      document.removeEventListener('keydown', handleGlobalKeyDown);
+      document.removeEventListener('keypress', handleGlobalKeyPress);
     };
-  }, []);
-
-  // Focus input when grid field is activated
-  useEffect(() => {
-    if (activeGridFieldId && activeGridInputRef.current) {
-      activeGridInputRef.current.focus();
-    }
   }, [activeGridFieldId]);
   
   const precomputedBoxesRef = useRef<SnapResult[]>([]);
@@ -1461,21 +1435,10 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
                 onGridActivate={(handlers) => {
                   setActiveGridFieldId(handlers.fieldId);
                   gridHandlersRef.current = handlers;
-                  // Calculate position of the active cell
-                  const stageEl = document.querySelector('.konvajs-content canvas') as HTMLCanvasElement | null;
-                  if (stageEl) {
-                    const stageRect = stageEl.getBoundingClientRect();
-                    const scaleX = stageEl.clientWidth / stageEl.width;
-                    const scaleY = stageEl.clientHeight / stageEl.height;
-                    const cellLeft = stageRect.left + (handlers.fieldX * scaleX) + (handlers.activeSlotIndex * handlers.slotWidth * scaleX);
-                    const cellTop = stageRect.top + (handlers.fieldY * scaleY);
-                    setGridInputPos({ left: cellLeft, top: cellTop });
-                  }
                 }}
                 onGridDeactivate={() => {
                   setActiveGridFieldId(null);
                   gridHandlersRef.current = null;
-                  setGridInputPos(null);
                 }}
               />
             ))}
@@ -1674,27 +1637,6 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
               />
             );
           })()}
-        {/* Grid field hidden input — single input outside Konva Stage, positioned at cursor */}
-        <input
-          ref={activeGridInputRef}
-          id="grid-input"
-          type="text"
-          style={{
-            position: "fixed",
-            opacity: 0,
-            left: gridInputPos?.left ?? 0,
-            top: gridInputPos?.top ?? 0,
-            width: "1px",
-            height: "1px",
-            padding: 0,
-            margin: 0,
-            overflow: "hidden",
-            clip: "rect(0,0,0,0)",
-            whiteSpace: "nowrap",
-            border: 0,
-            zIndex: 9999,
-          }}
-        />
       </div>
     </div>
   );
@@ -2136,18 +2078,15 @@ function FieldShape({
     };
 
     const handleInput = (e: Event) => {
-      const input = e.target as HTMLInputElement;
-      const inputChar = input.value.slice(-1); // Get last character typed
+      // For document keypress, we pass a synthetic event with the character in target.value
+      const inputChar = (e.target as { value?: string })?.value || '';
       
-      if (inputChar && activeSlotIndex < charCount) {
+      if (inputChar && inputChar.length === 1 && activeSlotIndex < charCount) {
         // Add character to current slot and auto-advance
         const newValue = value.slice(0, activeSlotIndex) + inputChar + value.slice(activeSlotIndex + 1);
         onValueChange(newValue);
         setActiveSlotIndex(activeSlotIndex + 1);
       }
-      
-      // Reset input value to maintain control
-      input.value = "";
     };
 
     const handlePaste = (e: ClipboardEvent) => {
