@@ -108,27 +108,17 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
 
   // Attach document keydown listener when grid field is selected
   useEffect(() => {
-    console.log('[PdfViewer] activeGridFieldId changed:', activeGridFieldId);
     if (!activeGridFieldId) return;
     
     const handleGlobalKeyDown = (e: KeyboardEvent) => {
-      console.log('[PdfViewer] global keydown fired, key:', e.key, 'activeGridFieldId:', activeGridFieldId);
       if (!gridHandlersRef.current) return;
       gridHandlersRef.current.onKeyDown(e);
     };
     
-    const handleGlobalKeyPress = (e: KeyboardEvent) => {
-      if (!gridHandlersRef.current) return;
-      // Create a minimal event-like object for handleInput
-      gridHandlersRef.current.onInput({ target: { value: e.key } } as unknown as Event);
-    };
-    
     document.addEventListener('keydown', handleGlobalKeyDown);
-    document.addEventListener('keypress', handleGlobalKeyPress);
     
     return () => {
       document.removeEventListener('keydown', handleGlobalKeyDown);
-      document.removeEventListener('keypress', handleGlobalKeyPress);
     };
   }, [activeGridFieldId]);
   
@@ -1435,7 +1425,6 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
                   }
                 }}
                 onGridActivate={(handlers) => {
-                  console.log('[PdfViewer] onGridActivate called, fieldId:', handlers.fieldId);
                   setActiveGridFieldId(handlers.fieldId);
                   gridHandlersRef.current = handlers;
                 }}
@@ -2030,9 +2019,7 @@ function FieldShape({
 
     // Notify parent when grid is selected/deselected so it can manage the hidden input
     useEffect(() => {
-      console.log('[Grid] isSelected changed:', isSelected, 'field id:', field.id);
       if (isSelected) {
-        console.log('[Grid] calling onGridActivate');
         onGridActivate?.({ 
           onKeyDown: handleKeyDown, 
           onInput: handleInput, 
@@ -2045,7 +2032,6 @@ function FieldShape({
           fieldY: field.y,
         });
       } else {
-        console.log('[Grid] calling onGridDeactivate');
         onGridDeactivate?.();
       }
     }, [isSelected]);
@@ -2058,11 +2044,20 @@ function FieldShape({
     }, [value, charCount]);
 
     const handleKeyDown = (e: KeyboardEvent) => {
-      console.log('[Grid] handleKeyDown called, key:', e.key, 'activeSlotIndex:', activeSlotIndex);
+      // Handle printable characters (single key, not modifier keys)
+      if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        e.preventDefault();
+        if (activeSlotIndex < charCount) {
+          const newValue = value.slice(0, activeSlotIndex) + e.key + value.slice(activeSlotIndex + 1);
+          onValueChange(newValue);
+          setActiveSlotIndex(Math.min(activeSlotIndex + 1, charCount - 1));
+        }
+        return;
+      }
+      
       if (e.key === "Backspace") {
         e.preventDefault();
         if (activeSlotIndex > 0) {
-          // Remove character from previous slot
           const newValue = value.slice(0, activeSlotIndex - 1) + value.slice(activeSlotIndex);
           onValueChange(newValue);
           setActiveSlotIndex(activeSlotIndex - 1);
@@ -2079,23 +2074,12 @@ function FieldShape({
         }
       } else if (e.key === "Enter" || e.key === "Escape") {
         e.preventDefault();
-        // Deselect the field by calling onSelect (which also deselects when already selected)
         onSelect();
       }
     };
 
     const handleInput = (e: Event) => {
-      console.log('[Grid] handleInput called, inputChar:', (e.target as { value?: string })?.value);
-      // For document keypress, we pass a synthetic event with the character in target.value
-      const inputChar = (e.target as { value?: string })?.value || '';
-      
-      if (inputChar && inputChar.length === 1 && activeSlotIndex < charCount) {
-        console.log('[Grid] inserting char:', inputChar, 'at index:', activeSlotIndex);
-        // Add character to current slot and auto-advance
-        const newValue = value.slice(0, activeSlotIndex) + inputChar + value.slice(activeSlotIndex + 1);
-        onValueChange(newValue);
-        setActiveSlotIndex(activeSlotIndex + 1);
-      }
+      // No longer used - printable chars handled in handleKeyDown
     };
 
     const handlePaste = (e: ClipboardEvent) => {
