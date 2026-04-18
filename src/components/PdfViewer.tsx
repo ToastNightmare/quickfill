@@ -96,9 +96,9 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
   const [activeGridFieldId, setActiveGridFieldId] = useState<string | null>(null);
   const activeGridInputRef = useRef<HTMLInputElement>(null);
   const [gridHandlers, setGridHandlers] = useState<{
-    onKeyDown: (e: React.KeyboardEvent<HTMLInputElement>) => void;
-    onInput: (e: React.FormEvent<HTMLInputElement>) => void;
-    onPaste: (e: React.ClipboardEvent<HTMLInputElement>) => void;
+    onKeyDown: (e: KeyboardEvent) => void;
+    onInput: (e: Event) => void;
+    onPaste: (e: ClipboardEvent) => void;
     fieldId: string;
     activeSlotIndex: number;
     slotWidth: number;
@@ -111,7 +111,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
   // Update grid input position when active slot changes
   useEffect(() => {
     if (gridHandlers && gridInputPos) {
-      const stageEl = document.querySelector('canvas.konvajs-content') as HTMLCanvasElement | null;
+      const stageEl = document.querySelector('.konvajs-content canvas') as HTMLCanvasElement | null;
       if (stageEl) {
         const stageRect = stageEl.getBoundingClientRect();
         const scaleX = stageEl.clientWidth / stageEl.width;
@@ -122,6 +122,21 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
       }
     }
   }, [gridHandlers?.activeSlotIndex, gridInputPos?.left]);
+
+  // Attach native event handlers to the hidden grid input
+  useEffect(() => {
+    const el = activeGridInputRef.current;
+    if (!el || !gridHandlers) return;
+    el.addEventListener('keydown', gridHandlers.onKeyDown);
+    el.addEventListener('input', gridHandlers.onInput);
+    el.addEventListener('paste', gridHandlers.onPaste);
+    el.focus();
+    return () => {
+      el.removeEventListener('keydown', gridHandlers.onKeyDown);
+      el.removeEventListener('input', gridHandlers.onInput);
+      el.removeEventListener('paste', gridHandlers.onPaste);
+    };
+  }, [gridHandlers]);
   
   const precomputedBoxesRef = useRef<SnapResult[]>([]);
   const dragStartedRef = useRef(false);
@@ -1429,7 +1444,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
                   setActiveGridFieldId(handlers.fieldId);
                   setGridHandlers(handlers);
                   // Calculate position of the active cell
-                  const stageEl = document.querySelector('canvas.konvajs-content') as HTMLCanvasElement | null;
+                  const stageEl = document.querySelector('.konvajs-content canvas') as HTMLCanvasElement | null;
                   if (stageEl) {
                     const stageRect = stageEl.getBoundingClientRect();
                     const scaleX = stageEl.clientWidth / stageEl.width;
@@ -1438,7 +1453,6 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
                     const cellTop = stageRect.top + (handlers.fieldY * scaleY);
                     setGridInputPos({ left: cellLeft, top: cellTop });
                   }
-                  setTimeout(() => activeGridInputRef.current?.focus(), 0);
                 }}
                 onGridDeactivate={() => {
                   setActiveGridFieldId(null);
@@ -1662,9 +1676,6 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
             border: 0,
             zIndex: 9999,
           }}
-          onKeyDown={gridHandlers?.onKeyDown}
-          onInput={gridHandlers?.onInput}
-          onPaste={gridHandlers?.onPaste}
         />
       </div>
     </div>
@@ -1728,9 +1739,9 @@ function FieldShape({
   unregisterNode: (id: string) => void;
   onContextMenu?: (e: any, fieldId: string) => void;
   onGridActivate?: (handlers: { 
-    onKeyDown: (e: React.KeyboardEvent<HTMLInputElement>) => void; 
-    onInput: (e: React.FormEvent<HTMLInputElement>) => void; 
-    onPaste: (e: React.ClipboardEvent<HTMLInputElement>) => void;
+    onKeyDown: (e: KeyboardEvent) => void; 
+    onInput: (e: Event) => void; 
+    onPaste: (e: ClipboardEvent) => void;
     fieldId: string;
     activeSlotIndex: number;
     slotWidth: number;
@@ -2080,7 +2091,7 @@ function FieldShape({
       }
     }, [value, charCount]);
 
-    const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Backspace") {
         e.preventDefault();
         if (activeSlotIndex > 0) {
@@ -2106,7 +2117,7 @@ function FieldShape({
       }
     };
 
-    const handleInput = (e: React.FormEvent<HTMLInputElement>) => {
+    const handleInput = (e: Event) => {
       const input = e.target as HTMLInputElement;
       const inputChar = input.value.slice(-1); // Get last character typed
       
@@ -2121,9 +2132,9 @@ function FieldShape({
       input.value = "";
     };
 
-    const handlePaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
+    const handlePaste = (e: ClipboardEvent) => {
       e.preventDefault();
-      const pastedText = e.clipboardData.getData("text");
+      const pastedText = e.clipboardData?.getData("text");
       if (!pastedText) return;
 
       // Distribute characters across slots starting from activeSlotIndex
