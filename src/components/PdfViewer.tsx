@@ -95,7 +95,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
   const [contextMenu, setContextMenu] = useState<{ x: number, y: number, fieldId: string } | null>(null);
   const [activeGridFieldId, setActiveGridFieldId] = useState<string | null>(null);
   const activeGridInputRef = useRef<HTMLInputElement>(null);
-  const [gridHandlers, setGridHandlers] = useState<{
+  const gridHandlersRef = useRef<{
     onKeyDown: (e: KeyboardEvent) => void;
     onInput: (e: Event) => void;
     onPaste: (e: ClipboardEvent) => void;
@@ -110,33 +110,51 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
   
   // Update grid input position when active slot changes
   useEffect(() => {
-    if (gridHandlers && gridInputPos) {
+    if (gridHandlersRef.current && gridInputPos) {
       const stageEl = document.querySelector('.konvajs-content canvas') as HTMLCanvasElement | null;
       if (stageEl) {
         const stageRect = stageEl.getBoundingClientRect();
         const scaleX = stageEl.clientWidth / stageEl.width;
         const scaleY = stageEl.clientHeight / stageEl.height;
-        const cellLeft = stageRect.left + (gridHandlers.fieldX * scaleX) + (gridHandlers.activeSlotIndex * gridHandlers.slotWidth * scaleX);
-        const cellTop = stageRect.top + (gridHandlers.fieldY * scaleY);
+        const cellLeft = stageRect.left + (gridHandlersRef.current.fieldX * scaleX) + (gridHandlersRef.current.activeSlotIndex * gridHandlersRef.current.slotWidth * scaleX);
+        const cellTop = stageRect.top + (gridHandlersRef.current.fieldY * scaleY);
         setGridInputPos({ left: cellLeft, top: cellTop });
       }
     }
-  }, [gridHandlers?.activeSlotIndex, gridInputPos?.left]);
+  }, [gridInputPos?.left]);
 
-  // Attach native event handlers to the hidden grid input
+  // Attach native event handlers to the hidden grid input ONCE
   useEffect(() => {
     const el = activeGridInputRef.current;
-    if (!el || !gridHandlers) return;
-    el.addEventListener('keydown', gridHandlers.onKeyDown);
-    el.addEventListener('input', gridHandlers.onInput);
-    el.addEventListener('paste', gridHandlers.onPaste);
-    el.focus();
-    return () => {
-      el.removeEventListener('keydown', gridHandlers.onKeyDown);
-      el.removeEventListener('input', gridHandlers.onInput);
-      el.removeEventListener('paste', gridHandlers.onPaste);
+    if (!el) return;
+    
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (gridHandlersRef.current) gridHandlersRef.current.onKeyDown(e);
     };
-  }, [gridHandlers]);
+    const handleInput = (e: Event) => {
+      if (gridHandlersRef.current) gridHandlersRef.current.onInput(e);
+    };
+    const handlePaste = (e: ClipboardEvent) => {
+      if (gridHandlersRef.current) gridHandlersRef.current.onPaste(e);
+    };
+    
+    el.addEventListener('keydown', handleKeyDown);
+    el.addEventListener('input', handleInput);
+    el.addEventListener('paste', handlePaste);
+    
+    return () => {
+      el.removeEventListener('keydown', handleKeyDown);
+      el.removeEventListener('input', handleInput);
+      el.removeEventListener('paste', handlePaste);
+    };
+  }, []);
+
+  // Focus input when grid field is activated
+  useEffect(() => {
+    if (activeGridFieldId && activeGridInputRef.current) {
+      activeGridInputRef.current.focus();
+    }
+  }, [activeGridFieldId]);
   
   const precomputedBoxesRef = useRef<SnapResult[]>([]);
   const dragStartedRef = useRef(false);
@@ -1442,7 +1460,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
                 }}
                 onGridActivate={(handlers) => {
                   setActiveGridFieldId(handlers.fieldId);
-                  setGridHandlers(handlers);
+                  gridHandlersRef.current = handlers;
                   // Calculate position of the active cell
                   const stageEl = document.querySelector('.konvajs-content canvas') as HTMLCanvasElement | null;
                   if (stageEl) {
@@ -1456,7 +1474,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
                 }}
                 onGridDeactivate={() => {
                   setActiveGridFieldId(null);
-                  setGridHandlers(null);
+                  gridHandlersRef.current = null;
                   setGridInputPos(null);
                 }}
               />
@@ -2082,7 +2100,7 @@ function FieldShape({
       } else {
         onGridDeactivate?.();
       }
-    }, [isSelected, activeSlotIndex]);
+    }, [isSelected]);
 
     // Update active slot when value changes externally
     useEffect(() => {
