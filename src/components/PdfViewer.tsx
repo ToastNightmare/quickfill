@@ -99,7 +99,30 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
     onKeyDown: (e: React.KeyboardEvent<HTMLInputElement>) => void;
     onInput: (e: React.FormEvent<HTMLInputElement>) => void;
     onPaste: (e: React.ClipboardEvent<HTMLInputElement>) => void;
+    fieldId: string;
+    activeSlotIndex: number;
+    slotWidth: number;
+    slotHeight: number;
+    fieldX: number;
+    fieldY: number;
   } | null>(null);
+  const [gridInputPos, setGridInputPos] = useState<{ left: number; top: number } | null>(null);
+  
+  // Update grid input position when active slot changes
+  useEffect(() => {
+    if (gridHandlers && gridInputPos) {
+      const stageEl = document.querySelector('canvas.konvajs-content') as HTMLCanvasElement | null;
+      if (stageEl) {
+        const stageRect = stageEl.getBoundingClientRect();
+        const scaleX = stageEl.clientWidth / stageEl.width;
+        const scaleY = stageEl.clientHeight / stageEl.height;
+        const cellLeft = stageRect.left + (gridHandlers.fieldX * scaleX) + (gridHandlers.activeSlotIndex * gridHandlers.slotWidth * scaleX);
+        const cellTop = stageRect.top + (gridHandlers.fieldY * scaleY);
+        setGridInputPos({ left: cellLeft, top: cellTop });
+      }
+    }
+  }, [gridHandlers?.activeSlotIndex, gridInputPos?.left]);
+  
   const precomputedBoxesRef = useRef<SnapResult[]>([]);
   const dragStartedRef = useRef(false);
   const mouseDownPos = useRef<{x: number, y: number} | null>(null);
@@ -1403,13 +1426,24 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
                   }
                 }}
                 onGridActivate={(handlers) => {
-                  setActiveGridFieldId(field.id);
+                  setActiveGridFieldId(handlers.fieldId);
                   setGridHandlers(handlers);
-                  setTimeout(() => activeGridInputRef.current?.focus(), 50);
+                  // Calculate position of the active cell
+                  const stageEl = document.querySelector('canvas.konvajs-content') as HTMLCanvasElement | null;
+                  if (stageEl) {
+                    const stageRect = stageEl.getBoundingClientRect();
+                    const scaleX = stageEl.clientWidth / stageEl.width;
+                    const scaleY = stageEl.clientHeight / stageEl.height;
+                    const cellLeft = stageRect.left + (handlers.fieldX * scaleX) + (handlers.activeSlotIndex * handlers.slotWidth * scaleX);
+                    const cellTop = stageRect.top + (handlers.fieldY * scaleY);
+                    setGridInputPos({ left: cellLeft, top: cellTop });
+                  }
+                  setTimeout(() => activeGridInputRef.current?.focus(), 0);
                 }}
                 onGridDeactivate={() => {
                   setActiveGridFieldId(null);
                   setGridHandlers(null);
+                  setGridInputPos(null);
                 }}
               />
             ))}
@@ -1608,29 +1642,30 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
               />
             );
           })()}
-        {/* Grid field hidden input — must be outside Konva Stage */}
-        {activeGridFieldId && gridHandlers && (
-          <input
-            ref={activeGridInputRef}
-            type="text"
-            className="absolute opacity-0"
-            style={{
-              position: "absolute",
-              width: "1px",
-              height: "1px",
-              padding: 0,
-              margin: "-1px",
-              overflow: "hidden",
-              clip: "rect(0,0,0,0)",
-              whiteSpace: "nowrap",
-              border: 0,
-              pointerEvents: "none",
-            }}
-            onKeyDown={gridHandlers.onKeyDown}
-            onInput={gridHandlers.onInput}
-            onPaste={gridHandlers.onPaste}
-          />
-        )}
+        {/* Grid field hidden input — single input outside Konva Stage, positioned at cursor */}
+        <input
+          ref={activeGridInputRef}
+          id="grid-input"
+          type="text"
+          style={{
+            position: "fixed",
+            opacity: 0,
+            left: gridInputPos?.left ?? 0,
+            top: gridInputPos?.top ?? 0,
+            width: "1px",
+            height: "1px",
+            padding: 0,
+            margin: 0,
+            overflow: "hidden",
+            clip: "rect(0,0,0,0)",
+            whiteSpace: "nowrap",
+            border: 0,
+            zIndex: 9999,
+          }}
+          onKeyDown={gridHandlers?.onKeyDown}
+          onInput={gridHandlers?.onInput}
+          onPaste={gridHandlers?.onPaste}
+        />
       </div>
     </div>
   );
@@ -1692,7 +1727,17 @@ function FieldShape({
   registerNode: (id: string, node: Konva.Group) => void;
   unregisterNode: (id: string) => void;
   onContextMenu?: (e: any, fieldId: string) => void;
-  onGridActivate?: (handlers: { onKeyDown: (e: React.KeyboardEvent<HTMLInputElement>) => void; onInput: (e: React.FormEvent<HTMLInputElement>) => void; onPaste: (e: React.ClipboardEvent<HTMLInputElement>) => void }) => void;
+  onGridActivate?: (handlers: { 
+    onKeyDown: (e: React.KeyboardEvent<HTMLInputElement>) => void; 
+    onInput: (e: React.FormEvent<HTMLInputElement>) => void; 
+    onPaste: (e: React.ClipboardEvent<HTMLInputElement>) => void;
+    fieldId: string;
+    activeSlotIndex: number;
+    slotWidth: number;
+    slotHeight: number;
+    fieldX: number;
+    fieldY: number;
+  }) => void;
   onGridDeactivate?: () => void;
 }) {
   const groupRef = useRef<Konva.Group>(null);
@@ -2012,11 +2057,21 @@ function FieldShape({
     // Notify parent when grid is selected/deselected so it can manage the hidden input
     useEffect(() => {
       if (isSelected) {
-        onGridActivate?.({ onKeyDown: handleKeyDown, onInput: handleInput, onPaste: handlePaste });
+        onGridActivate?.({ 
+          onKeyDown: handleKeyDown, 
+          onInput: handleInput, 
+          onPaste: handlePaste,
+          fieldId: field.id,
+          activeSlotIndex,
+          slotWidth,
+          slotHeight,
+          fieldX: field.x,
+          fieldY: field.y,
+        });
       } else {
         onGridDeactivate?.();
       }
-    }, [isSelected]);
+    }, [isSelected, activeSlotIndex]);
 
     // Update active slot when value changes externally
     useEffect(() => {
