@@ -2058,6 +2058,7 @@ function FieldShape({
           // Ensure value string is padded to charCount length
           let paddedValue = value.padEnd(charCount, "");
           const newValue = paddedValue.slice(0, activeSlotIndex) + e.key + paddedValue.slice(activeSlotIndex + 1);
+          console.log('[Comb] Typing:', e.key, 'at index', activeSlotIndex, 'newValue:', newValue, 'length:', newValue.length);
           onValueChange(newValue);
           setActiveSlotIndex(Math.min(activeSlotIndex + 1, charCount - 1));
         }
@@ -2069,9 +2070,11 @@ function FieldShape({
         if (activeSlotIndex > 0) {
           // Ensure value string is padded to charCount length
           let paddedValue = value.padEnd(charCount, "");
-          const newValue = paddedValue.slice(0, activeSlotIndex - 1) + paddedValue.slice(activeSlotIndex);
+          // Clear the character at the previous slot (don't shift)
+          const prevIndex = activeSlotIndex - 1;
+          const newValue = paddedValue.slice(0, prevIndex) + "" + paddedValue.slice(prevIndex + 1);
           onValueChange(newValue);
-          setActiveSlotIndex(activeSlotIndex - 1);
+          setActiveSlotIndex(prevIndex);
         }
       } else if (e.key === "ArrowLeft") {
         e.preventDefault();
