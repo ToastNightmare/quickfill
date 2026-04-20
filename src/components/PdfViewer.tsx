@@ -2058,7 +2058,6 @@ function FieldShape({
           // Ensure value string is padded to charCount length
           let paddedValue = value.padEnd(charCount, "");
           const newValue = paddedValue.slice(0, activeSlotIndex) + e.key + paddedValue.slice(activeSlotIndex + 1);
-          console.log('[Comb] Typing:', e.key, 'at index', activeSlotIndex, 'newValue:', newValue, 'length:', newValue.length);
           onValueChange(newValue);
           setActiveSlotIndex(Math.min(activeSlotIndex + 1, charCount - 1));
         }
@@ -2188,7 +2187,6 @@ function FieldShape({
             const char = value[i] || "";
             const isFilled = i < value.length;
             const isCurrent = i === activeSlotIndex; // Active slot
-            if (i === 0) console.log('[Comb] Render slot 0:', 'char:', char, 'value:', value, 'value.length:', value.length, 'charCount:', charCount);
             
             return (
               <Group
