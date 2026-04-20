@@ -59,6 +59,7 @@ export interface CombField extends FieldBase {
   charCount: number; // number of cells in the comb
   cursorIndex?: number; // persisted cursor position for re-selection
   cellWidth?: number; // manual cell width override for alignment with form boxes
+  offsetX?: number; // horizontal offset for fine-tuning alignment (-20 to +20px)
 }
 
 export type EditorField = TextField | CheckboxField | SignatureField | DateField | WhiteoutField | GridField | CombField;

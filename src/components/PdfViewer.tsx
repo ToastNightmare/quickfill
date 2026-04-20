@@ -1936,6 +1936,7 @@ function FieldShape({
     const slotWidth = combCellWidth ?? (field.width / charCount);
     const slotHeight = field.height;
     const value = gridField.value || "";
+    const offsetX = (gridField as import("@/lib/types").CombField).offsetX ?? 0;
     
     // Use persisted cursor from field data, or default to end of current value
     const initialCursor = (gridField as import("@/lib/types").CombField).cursorIndex ?? Math.min(value.replace(/ +$/, "").length, charCount - 1);
@@ -2091,7 +2092,7 @@ function FieldShape({
             return (
               <Group
                 key={i}
-                x={i * slotWidth}
+                x={i * slotWidth + offsetX}
                 y={0}
                 width={slotWidth}
                 height={slotHeight}
