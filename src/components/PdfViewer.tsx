@@ -1832,7 +1832,205 @@ function FieldShape({
     );
   }
 
-  // Text, date, signature, grid fields
+  // Grid/Comb field rendering - individual character slots with OTP-style input
+  // MUST come before generic text field handling to avoid being swallowed by the default return
+  if (field.type === "grid" || field.type === "comb") {
+    const gridField = field as GridField | import("@/lib/types").CombField;
+    const charCount = gridField.charCount ?? (field.type === "comb" ? 9 : 11);
+    const slotWidth = field.width / charCount;
+    const slotHeight = field.height;
+    const value = gridField.value || "";
+    const [activeSlotIndex, setActiveSlotIndex] = useState(0);
+
+    // Refs to avoid stale closure
+    const activeSlotIndexRef = useRef(0);
+    const valueRef = useRef(value);
+    const handleKeyDownRef = useRef<(e: KeyboardEvent) => void>(() => {});
+
+    // Keep refs in sync with state
+    useEffect(() => {
+      valueRef.current = value;
+    }, [value]);
+
+    useEffect(() => {
+      activeSlotIndexRef.current = activeSlotIndex;
+    }, [activeSlotIndex]);
+
+    // Define handleKeyDown using refs - updated every render for fresh closure
+    handleKeyDownRef.current = (e: KeyboardEvent) => {
+      const currentIndex = activeSlotIndexRef.current;
+      const currentValue = valueRef.current;
+
+      // Handle printable characters (single key, not modifier keys)
+      if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        e.preventDefault();
+        if (currentIndex < charCount) {
+          const paddedValue = currentValue.padEnd(charCount, " ");
+          const newValue = paddedValue.slice(0, currentIndex) + e.key + paddedValue.slice(currentIndex + 1);
+          onValueChange(newValue);
+          const nextIndex = Math.min(currentIndex + 1, charCount - 1);
+          setActiveSlotIndex(nextIndex);
+          activeSlotIndexRef.current = nextIndex;
+        }
+        return;
+      }
+      
+      if (e.key === "Backspace") {
+        e.preventDefault();
+        if (currentIndex > 0) {
+          const paddedValue = currentValue.padEnd(charCount, " ");
+          const prevIndex = currentIndex - 1;
+          const newValue = paddedValue.slice(0, prevIndex) + " " + paddedValue.slice(prevIndex + 1);
+          onValueChange(newValue);
+          setActiveSlotIndex(prevIndex);
+          activeSlotIndexRef.current = prevIndex;
+        }
+      } else if (e.key === "ArrowLeft") {
+        e.preventDefault();
+        if (currentIndex > 0) {
+          const newIndex = currentIndex - 1;
+          setActiveSlotIndex(newIndex);
+          activeSlotIndexRef.current = newIndex;
+        }
+      } else if (e.key === "ArrowRight") {
+        e.preventDefault();
+        if (currentIndex < charCount - 1) {
+          const newIndex = currentIndex + 1;
+          setActiveSlotIndex(newIndex);
+          activeSlotIndexRef.current = newIndex;
+        }
+      } else if (e.key === "Enter" || e.key === "Escape") {
+        e.preventDefault();
+        onSelect();
+      }
+    };
+
+    // Attach/detach document keydown listener when selected
+    useEffect(() => {
+      if (!isSelected) return;
+      const handler = (e: KeyboardEvent) => handleKeyDownRef.current(e);
+      document.addEventListener("keydown", handler);
+      return () => document.removeEventListener("keydown", handler);
+    }, [isSelected]);
+
+    const handleSlotClick = (index: number) => {
+      setActiveSlotIndex(index);
+      activeSlotIndexRef.current = index;
+    };
+
+    return (
+      <>
+        <Group
+          id={field.id}
+          ref={groupRef}
+          x={field.x}
+          y={field.y}
+          width={field.width}
+          height={field.height}
+          opacity={dragOpacity}
+          draggable={!isSnapped}
+          onMouseEnter={() => onMouseEnter?.()}
+          onMouseLeave={() => onMouseLeave?.()}
+          onClick={(e) => {
+            e.cancelBubble = true;
+            onSelect();
+          }}
+          onDragStart={() => {
+            setDragOpacity(0.85);
+            onDragStart?.();
+          }}
+          onDragEnd={(e) => {
+            setDragOpacity(1);
+            onDragEnd(e.target.x(), e.target.y());
+          }}
+          onTransformEnd={(e) => {
+            const node = e.target;
+            const scaleX = node.scaleX();
+            const scaleY = node.scaleY();
+            node.scaleX(1);
+            node.scaleY(1);
+            const rawWidth = Math.max(40, node.width() * scaleX);
+            const rawHeight = Math.max(20, node.height() * scaleY);
+            const currentCharCount = gridField.charCount ?? (field.type === "comb" ? 9 : 11);
+            const cellSize = field.width / currentCharCount;
+            const maxCount = field.type === "comb" ? 30 : 50;
+            const newCharCount = Math.min(maxCount, Math.max(1, Math.round(rawWidth / cellSize)));
+            const snappedWidth = newCharCount * cellSize;
+            onTransformEnd(snappedWidth, rawHeight, node.x(), node.y());
+          }}
+          onContextMenu={(e) => {
+            e.evt.preventDefault();
+            onContextMenu?.(e, field.id);
+          }}
+        >
+          {/* Background */}
+          <Rect
+            width={field.width}
+            height={field.height}
+            fill={getFill()}
+            stroke={getBorderColor()}
+            strokeWidth={getBorderWidth()}
+            cornerRadius={3}
+          />
+          
+          {/* Individual character slots */}
+          {Array.from({ length: charCount }).map((_, i) => {
+            const char = value[i] || "";
+            const isFilled = char !== "" && char !== " ";
+            const isCurrent = i === activeSlotIndex;
+            
+            return (
+              <Group
+                key={i}
+                x={i * slotWidth}
+                y={0}
+                width={slotWidth}
+                height={slotHeight}
+                onClick={(e) => {
+                  e.cancelBubble = true;
+                  handleSlotClick(i);
+                }}
+              >
+                {/* Slot border */}
+                <Rect
+                  width={slotWidth - 1}
+                  height={slotHeight}
+                  fill={isCurrent && isSelected ? "rgba(59,130,246,0.18)" : isSelected ? "rgba(59,130,246,0.05)" : "transparent"}
+                  stroke={isCurrent && isSelected ? "#3b82f6" : isSelected ? "rgba(59,130,246,0.4)" : isFilled ? "rgba(59,130,246,0.3)" : "rgba(59,130,246,0.15)"}
+                  strokeWidth={isCurrent && isSelected ? 2.5 : isSelected ? 1 : 0.5}
+                />
+                {/* Character centered in slot */}
+                {char && char !== " " && (
+                  <Text
+                    text={char}
+                    fontSize={slotHeight * 0.6}
+                    fill="#1a1a2e"
+                    fontFamily="Arial"
+                    width={slotWidth}
+                    height={slotHeight}
+                    align="center"
+                    verticalAlign="middle"
+                  />
+                )}
+                {/* Cursor indicator for active slot when selected */}
+                {isCurrent && isSelected && (
+                  <Rect
+                    x={slotWidth / 2 - 1}
+                    y={slotHeight * 0.15}
+                    width={2}
+                    height={slotHeight * 0.7}
+                    fill="#3b82f6"
+                  />
+                )}
+              </Group>
+            );
+          })}
+        </Group>
+      </>
+    );
+  }
+
+  // Text, date, signature fields (NOT grid/comb - handled above)
   const sigDataUrl = field.type === "signature" ? (field as SignatureField).signatureDataUrl : undefined;
   const sigImage = useLoadedImage(sigDataUrl);
   const hasSignatureImage = field.type === "signature" && !!sigDataUrl && !!sigImage;
@@ -1845,8 +2043,6 @@ function FieldShape({
           ? "Click to sign"
           : field.type === "date"
           ? "Click for date"
-          : field.type === "grid"
-          ? ""
           : "Click to type...");
   const isEmpty = !field.value && !hasSignatureImage;
 
@@ -1975,237 +2171,4 @@ function FieldShape({
       </Group>
     </>
   );
-
-  // Grid/Comb field rendering - individual character slots with OTP-style input
-  if (field.type === "grid" || field.type === "comb") {
-    const gridField = field as GridField | import("@/lib/types").CombField;
-    const charCount = gridField.charCount ?? (field.type === "comb" ? 9 : 11);
-    const slotWidth = field.width / charCount;
-    const slotHeight = field.height;
-    const value = gridField.value || "";
-    const [activeSlotIndex, setActiveSlotIndex] = useState(0);
-
-    // Refs to avoid stale closure
-    const activeSlotIndexRef = useRef(0);
-    const valueRef = useRef(value);
-    const handleKeyDownRef = useRef<(e: KeyboardEvent) => void>(() => {});
-
-    // Keep refs in sync with state
-    useEffect(() => {
-      valueRef.current = value;
-    }, [value]);
-
-    useEffect(() => {
-      activeSlotIndexRef.current = activeSlotIndex;
-    }, [activeSlotIndex]);
-
-    // Define handleKeyDown using refs
-    handleKeyDownRef.current = (e: KeyboardEvent) => {
-      const currentIndex = activeSlotIndexRef.current;
-      const currentValue = valueRef.current;
-
-      // Handle printable characters (single key, not modifier keys)
-      if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
-        e.preventDefault();
-        if (currentIndex < charCount) {
-          const paddedValue = currentValue.padEnd(charCount, "");
-          const newValue = paddedValue.slice(0, currentIndex) + e.key + paddedValue.slice(currentIndex + 1);
-          onValueChange(newValue);
-          const nextIndex = Math.min(currentIndex + 1, charCount - 1);
-          setActiveSlotIndex(nextIndex);
-          activeSlotIndexRef.current = nextIndex;
-        }
-        return;
-      }
-      
-      if (e.key === "Backspace") {
-        e.preventDefault();
-        if (currentIndex > 0) {
-          const paddedValue = currentValue.padEnd(charCount, "");
-          const prevIndex = currentIndex - 1;
-          const newValue = paddedValue.slice(0, prevIndex) + "" + paddedValue.slice(prevIndex + 1);
-          onValueChange(newValue);
-          setActiveSlotIndex(prevIndex);
-          activeSlotIndexRef.current = prevIndex;
-        }
-      } else if (e.key === "ArrowLeft") {
-        e.preventDefault();
-        if (currentIndex > 0) {
-          const newIndex = currentIndex - 1;
-          setActiveSlotIndex(newIndex);
-          activeSlotIndexRef.current = newIndex;
-        }
-      } else if (e.key === "ArrowRight") {
-        e.preventDefault();
-        if (currentIndex < charCount - 1) {
-          const newIndex = currentIndex + 1;
-          setActiveSlotIndex(newIndex);
-          activeSlotIndexRef.current = newIndex;
-        }
-      } else if (e.key === "Enter" || e.key === "Escape") {
-        e.preventDefault();
-        onSelect();
-      }
-    };
-
-    // Attach/detach document keydown listener when selected
-    useEffect(() => {
-      if (!isSelected) return;
-      const handler = (e: KeyboardEvent) => handleKeyDownRef.current(e);
-      document.addEventListener("keydown", handler);
-      return () => document.removeEventListener("keydown", handler);
-    }, [isSelected]);
-
-    const handleInput = (e: Event) => {
-      // No longer used - printable chars handled in handleKeyDown
-    };
-
-    const handlePaste = (e: ClipboardEvent) => {
-      e.preventDefault();
-      const pastedText = e.clipboardData?.getData("text");
-      if (!pastedText) return;
-
-      // Distribute characters across slots starting from activeSlotIndex
-      const chars = pastedText.split("").filter(c => c.length === 1);
-      let newIndex = activeSlotIndexRef.current;
-      let newValue = valueRef.current;
-
-      for (const char of chars) {
-        if (newIndex < charCount) {
-          const paddedValue = newValue.padEnd(charCount, "");
-          newValue = paddedValue.slice(0, newIndex) + char + paddedValue.slice(newIndex + 1);
-          newIndex++;
-        } else {
-          break;
-        }
-      }
-
-      onValueChange(newValue);
-      setActiveSlotIndex(newIndex);
-      activeSlotIndexRef.current = newIndex;
-    };
-
-    const handleSlotClick = (index: number) => {
-      setActiveSlotIndex(index);
-      activeSlotIndexRef.current = index;
-    };
-
-    return (
-      <>
-        <Group
-          id={field.id}
-          ref={groupRef}
-          x={field.x}
-          y={field.y}
-          width={field.width}
-          height={field.height}
-          opacity={dragOpacity}
-          draggable={!isSnapped}
-          onMouseEnter={() => onMouseEnter?.()}
-          onMouseLeave={() => onMouseLeave?.()}
-          onClick={(e) => {
-            e.cancelBubble = true;
-            onSelect();
-          }}
-          onDragStart={() => {
-            setDragOpacity(0.85);
-            onDragStart?.();
-          }}
-          onDragEnd={(e) => {
-            setDragOpacity(1);
-            onDragEnd(e.target.x(), e.target.y());
-          }}
-          onTransformEnd={(e) => {
-            const node = e.target;
-            const scaleX = node.scaleX();
-            const scaleY = node.scaleY();
-            node.scaleX(1);
-            node.scaleY(1);
-            const rawWidth = Math.max(40, node.width() * scaleX);
-            const rawHeight = Math.max(20, node.height() * scaleY);
-            if (field.type === "grid" || field.type === "comb") {
-              const gridField = field as GridField | import("@/lib/types").CombField;
-              const currentCharCount = gridField.charCount ?? (field.type === "comb" ? 9 : 11);
-              const cellSize = field.width / currentCharCount;
-              const maxCount = field.type === "comb" ? 30 : 50;
-              const newCharCount = Math.min(maxCount, Math.max(1, Math.round(rawWidth / cellSize)));
-              const snappedWidth = newCharCount * cellSize;
-              onTransformEnd(snappedWidth, rawHeight, node.x(), node.y());
-            } else {
-              onTransformEnd(rawWidth, rawHeight, node.x(), node.y());
-            }
-          }}
-          onContextMenu={(e) => {
-            e.evt.preventDefault();
-            onContextMenu?.(e, field.id);
-          }}
-        >
-          {/* Background */}
-          <Rect
-            width={field.width}
-            height={field.height}
-            fill={getFill()}
-            stroke={getBorderColor()}
-            strokeWidth={getBorderWidth()}
-            cornerRadius={3}
-          />
-          
-          {/* Individual character slots */}
-          {Array.from({ length: charCount }).map((_, i) => {
-            const char = value[i] || "";
-            const isFilled = i < value.length;
-            const isCurrent = i === activeSlotIndex; // Active slot
-            
-            return (
-              <Group
-                key={i}
-                x={i * slotWidth}
-                y={0}
-                width={slotWidth}
-                height={slotHeight}
-                onClick={(e) => {
-                  e.cancelBubble = true;
-                  handleSlotClick(i);
-                }}
-              >
-                {/* Slot border */}
-                <Rect
-                  width={slotWidth - 1}
-                  height={slotHeight}
-                  fill={isCurrent && isSelected ? "rgba(59,130,246,0.18)" : isSelected ? "rgba(59,130,246,0.05)" : "transparent"}
-                  stroke={isCurrent && isSelected ? "#3b82f6" : isSelected ? "rgba(59,130,246,0.4)" : isFilled ? "rgba(59,130,246,0.3)" : "rgba(59,130,246,0.15)"}
-                  strokeWidth={isCurrent && isSelected ? 2.5 : isSelected ? 1 : 0.5}
-                />
-                {/* Character */}
-                {char && (
-                  <Text
-                    text={char}
-                    fontSize={slotHeight * 0.6}
-                    fill="#1a1a2e"
-                    fontFamily="Arial"
-                    width={slotWidth}
-                    height={slotHeight}
-                    align="center"
-                    verticalAlign="middle"
-                  />
-                )}
-                {/* Cursor indicator for active slot */}
-                {isCurrent && (
-                  <Rect
-                    x={slotWidth * 0.4}
-                    y={slotHeight * 0.2}
-                    width={slotWidth * 0.2}
-                    height={slotHeight * 0.6}
-                    fill="#3b82f6"
-                  />
-                )}
-              </Group>
-            );
-          })}
-        </Group>
-      </>
-    );
-  }
-
-  return null;
 }
