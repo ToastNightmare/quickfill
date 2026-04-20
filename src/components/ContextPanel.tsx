@@ -360,6 +360,31 @@ export function ContextPanel({
               
               <Divider />
               <Section>
+                <label className="text-[10px] font-semibold uppercase tracking-widest text-text-muted">
+                  Char Offset
+                </label>
+                <div className="flex items-center gap-2 mt-1">
+                  <input
+                    type="range"
+                    min={-10}
+                    max={10}
+                    step={1}
+                    value={combField.charOffsetX ?? 0}
+                    onChange={(e) => {
+                      const newOffset = parseInt(e.target.value, 10);
+                      onFieldUpdate(selectedField.id, { charOffsetX: newOffset } as Partial<EditorField>);
+                    }}
+                    className="flex-1 h-2 bg-surface-alt rounded-lg appearance-none cursor-pointer accent-accent"
+                  />
+                  <span className="text-xs text-text-muted w-10 text-right">{combField.charOffsetX ?? 0}px</span>
+                </div>
+                <p className="mt-1 text-xs text-text-muted">
+                  Center characters within cells
+                </p>
+              </Section>
+              
+              <Divider />
+              <Section>
                 <p className="text-xs text-text-muted text-center">{combField.value?.replace(/ +$/, "").length || 0} / {charCount} characters filled</p>
               </Section>
             </>
