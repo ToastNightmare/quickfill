@@ -661,6 +661,9 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
               let snapX = fieldX; // Default to drawn position
               let snapY = fieldY;
               let snapHeight = fieldH;
+              let cellPositions: number[] | undefined;
+              let cellWidthsArr: number[] | undefined;
+              let totalWidth = fieldW;
               
               if (canvas) {
                 const combResult = detectCombCells(
@@ -679,22 +682,34 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
                   // Snap Y and height to detected box bounds
                   snapY = Math.round(combResult.y / zoomFactor);
                   snapHeight = Math.round(combResult.height / zoomFactor);
+                  
+                  // Store cell centers relative to field X for non-uniform spacing
+                  if (combResult.cellCenters && combResult.cellCenters.length > 0) {
+                    cellPositions = combResult.cellCenters.map(c => Math.round((c / zoomFactor) - snapX));
+                    cellWidthsArr = combResult.cellWidths.map(w => Math.round(w / zoomFactor));
+                    // Calculate total width from first cell to end of last cell
+                    const lastCellRight = combResult.cellBoundaries[combResult.cellBoundaries.length - 1] + 
+                      (combResult.cellWidths[combResult.cellWidths.length - 1] || combResult.cellWidth);
+                    totalWidth = Math.round((lastCellRight - combResult.firstCellX) / zoomFactor);
+                  }
                 }
               }
               
               const finalCharCount = detectedCellCount ?? Math.min(30, Math.max(1, Math.round(fieldW / 24)));
-              const finalWidth = detectedCellWidth ? detectedCellWidth * finalCharCount : fieldW;
+              const finalWidth = cellPositions ? totalWidth : (detectedCellWidth ? detectedCellWidth * finalCharCount : fieldW);
               
               field = { 
                 ...base, 
-                x: snapX, // Use snapped X position
-                y: snapY, // Use snapped Y position
+                x: snapX,
+                y: snapY,
                 type: "comb", 
                 width: finalWidth, 
                 height: snapHeight, 
                 value: "", 
                 charCount: finalCharCount,
                 cellWidth: detectedCellWidth,
+                cellPositions: cellPositions,
+                cellWidths: cellWidthsArr,
               };
               break;
             }
@@ -884,6 +899,9 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
                 let combSnapX = fieldX;
                 let combSnapY = fieldY;
                 let combSnapHeight = fieldH;
+                let combCellPositions: number[] | undefined;
+                let combCellWidthsArr: number[] | undefined;
+                let combTotalWidth = fieldW;
                 
                 if (combCanvas) {
                   const combResult = detectCombCells(
@@ -899,11 +917,19 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
                     combSnapX = Math.round(combResult.firstCellX / zoomFactor);
                     combSnapY = Math.round(combResult.y / zoomFactor);
                     combSnapHeight = Math.round(combResult.height / zoomFactor);
+                    
+                    if (combResult.cellCenters && combResult.cellCenters.length > 0) {
+                      combCellPositions = combResult.cellCenters.map(c => Math.round((c / zoomFactor) - combSnapX));
+                      combCellWidthsArr = combResult.cellWidths.map(w => Math.round(w / zoomFactor));
+                      const lastCellRight = combResult.cellBoundaries[combResult.cellBoundaries.length - 1] + 
+                        (combResult.cellWidths[combResult.cellWidths.length - 1] || combResult.cellWidth);
+                      combTotalWidth = Math.round((lastCellRight - combResult.firstCellX) / zoomFactor);
+                    }
                   }
                 }
                 
                 const combFinalCharCount = combDetectedCellCount ?? Math.min(30, Math.max(1, Math.round(fieldW / 24)));
-                const combFinalWidth = combDetectedCellWidth ? combDetectedCellWidth * combFinalCharCount : fieldW;
+                const combFinalWidth = combCellPositions ? combTotalWidth : (combDetectedCellWidth ? combDetectedCellWidth * combFinalCharCount : fieldW);
                 
                 field = { 
                   ...base, 
@@ -915,6 +941,8 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
                   value: "", 
                   charCount: combFinalCharCount,
                   cellWidth: combDetectedCellWidth,
+                  cellPositions: combCellPositions,
+                  cellWidths: combCellWidthsArr,
                 };
                 break;
               }
@@ -1118,6 +1146,9 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
           let combSnapX3 = fieldX;
           let combSnapY3 = fieldY;
           let combSnapHeight3 = fieldH;
+          let combCellPositions3: number[] | undefined;
+          let combCellWidthsArr3: number[] | undefined;
+          let combTotalWidth3 = fieldW;
           
           if (combCanvas3) {
             const combResult3 = detectCombCells(
@@ -1133,11 +1164,19 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
               combSnapX3 = Math.round(combResult3.firstCellX / zoomFactor);
               combSnapY3 = Math.round(combResult3.y / zoomFactor);
               combSnapHeight3 = Math.round(combResult3.height / zoomFactor);
+              
+              if (combResult3.cellCenters && combResult3.cellCenters.length > 0) {
+                combCellPositions3 = combResult3.cellCenters.map(c => Math.round((c / zoomFactor) - combSnapX3));
+                combCellWidthsArr3 = combResult3.cellWidths.map(w => Math.round(w / zoomFactor));
+                const lastCellRight3 = combResult3.cellBoundaries[combResult3.cellBoundaries.length - 1] + 
+                  (combResult3.cellWidths[combResult3.cellWidths.length - 1] || combResult3.cellWidth);
+                combTotalWidth3 = Math.round((lastCellRight3 - combResult3.firstCellX) / zoomFactor);
+              }
             }
           }
           
           const combFinalCharCount3 = combDetectedCellCount3 ?? Math.min(30, Math.max(1, Math.round(fieldW / 24)));
-          const combFinalWidth3 = combDetectedCellWidth3 ? combDetectedCellWidth3 * combFinalCharCount3 : fieldW;
+          const combFinalWidth3 = combCellPositions3 ? combTotalWidth3 : (combDetectedCellWidth3 ? combDetectedCellWidth3 * combFinalCharCount3 : fieldW);
           
           field = { 
             ...base, 
@@ -1149,6 +1188,8 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
             value: "", 
             charCount: combFinalCharCount3,
             cellWidth: combDetectedCellWidth3,
+            cellPositions: combCellPositions3,
+            cellWidths: combCellWidthsArr3,
           };
           break;
         }
@@ -1964,6 +2005,9 @@ function FieldShape({
     const value = gridField.value || "";
     const offsetX = (gridField as import("@/lib/types").CombField).offsetX ?? 0;
     const charOffsetX = (gridField as import("@/lib/types").CombField).charOffsetX ?? 0;
+    // Non-uniform cell positions (for TFN-style fields with gaps)
+    const cellPositions = (gridField as import("@/lib/types").CombField).cellPositions;
+    const cellWidthsArr = (gridField as import("@/lib/types").CombField).cellWidths;
     
     // Use persisted cursor from field data, or default to end of current value
     const initialCursor = (gridField as import("@/lib/types").CombField).cursorIndex ?? Math.min(value.replace(/ +$/, "").length, charCount - 1);
@@ -2123,12 +2167,19 @@ function FieldShape({
             const isFilled = char !== "" && char !== " ";
             const isCurrent = i === activeSlotIndex;
             
+            // Use detected cell positions if available (non-uniform spacing)
+            // cellPositions stores the CENTER of each cell relative to field X
+            // We need to calculate the left edge for the Group position
+            const thisCellWidth = cellWidthsArr && cellWidthsArr[i] ? cellWidthsArr[i] : slotWidth;
+            const cellCenterX = cellPositions && cellPositions[i] !== undefined ? cellPositions[i] : (i * slotWidth + slotWidth / 2);
+            const cellLeftX = cellCenterX - thisCellWidth / 2;
+            
             return (
               <Group
                 key={i}
-                x={i * slotWidth + offsetX}
+                x={cellLeftX + offsetX}
                 y={0}
-                width={slotWidth}
+                width={thisCellWidth}
                 height={slotHeight}
                 onClick={(e) => {
                   e.cancelBubble = true;
@@ -2137,7 +2188,7 @@ function FieldShape({
               >
                 {/* Slot border */}
                 <Rect
-                  width={slotWidth - 1}
+                  width={thisCellWidth - 1}
                   height={slotHeight}
                   fill={isCurrent && isSelected ? "rgba(59,130,246,0.18)" : isSelected ? "rgba(59,130,246,0.05)" : "transparent"}
                   stroke={isCurrent && isSelected ? "#3b82f6" : isSelected ? "rgba(59,130,246,0.4)" : isFilled ? "rgba(59,130,246,0.3)" : "rgba(59,130,246,0.15)"}
@@ -2151,7 +2202,7 @@ function FieldShape({
                     fontSize={slotHeight * 0.6}
                     fill="#1a1a2e"
                     fontFamily="Arial"
-                    width={slotWidth}
+                    width={thisCellWidth}
                     height={slotHeight}
                     align="center"
                     verticalAlign="middle"
@@ -2160,7 +2211,7 @@ function FieldShape({
                 {/* Cursor indicator for active slot when selected */}
                 {isCurrent && isSelected && (
                   <Rect
-                    x={slotWidth / 2 - 1}
+                    x={thisCellWidth / 2 - 1}
                     y={slotHeight * 0.15}
                     width={2}
                     height={slotHeight * 0.7}

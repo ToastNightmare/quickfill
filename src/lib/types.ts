@@ -61,6 +61,8 @@ export interface CombField extends FieldBase {
   cellWidth?: number; // manual cell width override for alignment with form boxes
   offsetX?: number; // horizontal offset for fine-tuning alignment (-20 to +20px)
   charOffsetX?: number; // character offset within each cell for centering (-10 to +10px)
+  cellPositions?: number[]; // X positions of each cell center relative to field X (for non-uniform spacing)
+  cellWidths?: number[]; // Width of each individual cell (for non-uniform spacing like TFN)
 }
 
 export type EditorField = TextField | CheckboxField | SignatureField | DateField | WhiteoutField | GridField | CombField;

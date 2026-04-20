@@ -1090,11 +1090,13 @@ function deduplicateBoxes(boxes: SnapResult[]): SnapResult[] {
 /**
  * Detect comb cell spacing from a region of the PDF.
  * Scans for a row of equally-spaced vertical dividers and returns:
- * - cellWidth: the detected width of each cell
+ * - cellWidth: the average width of each cell
  * - cellCount: the number of cells detected
  * - x, y, width, height: the bounding box of the detected comb row
  * - firstCellX: the X position of the first cell's left edge (for precise alignment)
  * - cellBoundaries: array of X positions for each cell's left edge
+ * - cellCenters: array of X positions for each cell's center (for character placement)
+ * - cellWidths: array of individual cell widths (for non-uniform spacing like TFN)
  * 
  * Returns null if no comb pattern is detected.
  */
@@ -1107,6 +1109,8 @@ export interface CombDetectResult {
   height: number;
   firstCellX: number; // X position of first cell's left edge in canvas coordinates
   cellBoundaries: number[]; // X positions of each cell's left edge
+  cellCenters: number[]; // X positions of each cell's center for character placement
+  cellWidths: number[]; // Width of each individual cell (handles gaps)
 }
 
 export function detectCombCells(
@@ -1207,27 +1211,42 @@ export function detectCombCells(
     maxY = Math.max(maxY, line.y2);
   }
 
-  // Build array of cell boundary X positions (in canvas coordinates)
+  // Build arrays of cell boundaries, centers, and widths
+  // This handles non-uniform spacing (like TFN fields with gaps between groups)
   const cellBoundaries: number[] = [];
-  let prevX = tallLines[0].x;
-  cellBoundaries.push(x1 + prevX);
+  const cellCenters: number[] = [];
+  const cellWidths: number[] = [];
   
-  for (let i = 1; i < tallLines.length; i++) {
-    const gap = tallLines[i].x - prevX;
-    if (Math.abs(gap - bestGap) <= 4) {
-      cellBoundaries.push(x1 + tallLines[i].x);
-      prevX = tallLines[i].x;
+  // Include ALL vertical lines as potential cell boundaries, not just uniform ones
+  for (let i = 0; i < tallLines.length - 1; i++) {
+    const leftEdge = x1 + tallLines[i].x;
+    const rightEdge = x1 + tallLines[i + 1].x;
+    const width = rightEdge - leftEdge;
+    
+    // Only include cells that are reasonably sized (not huge gaps)
+    if (width >= 8 && width <= 80) {
+      cellBoundaries.push(leftEdge);
+      cellCenters.push(leftEdge + width / 2);
+      cellWidths.push(width);
     }
   }
+  
+  // If we found individual cells, use those; otherwise fall back to uniform detection
+  const finalCellCount = cellBoundaries.length > 0 ? cellBoundaries.length : cellCount;
+  const avgCellWidth = cellWidths.length > 0 
+    ? cellWidths.reduce((a, b) => a + b, 0) / cellWidths.length 
+    : bestGap;
 
   return {
-    cellWidth: bestGap,
-    cellCount: cellCount,
+    cellWidth: avgCellWidth,
+    cellCount: finalCellCount,
     x: x1 + firstX,
     y: y1 + minY,
     width: lastX - firstX,
     height: maxY - minY,
-    firstCellX: x1 + firstX,
+    firstCellX: cellBoundaries.length > 0 ? cellBoundaries[0] : x1 + firstX,
     cellBoundaries: cellBoundaries,
+    cellCenters: cellCenters,
+    cellWidths: cellWidths,
   };
 }
