@@ -1,4 +1,4 @@
-export type ToolType = "text" | "checkbox" | "signature" | "date" | "whiteout" | "grid" | "comb";
+export type ToolType = "text" | "checkbox" | "signature" | "date" | "whiteout" | "comb";
 
 export interface FieldBase {
   id: string;
@@ -45,14 +45,6 @@ export interface WhiteoutField extends FieldBase {
   fillColor: string; // CSS hex or rgba, sampled from PDF background
 }
 
-export interface GridField extends FieldBase {
-  type: "grid";
-  value: string; // concatenated value of all slots
-  charCount: number; // number of character slots
-  slotWidth?: number; // optional: width of individual slot
-  slotHeight?: number; // optional: height of individual slot
-}
-
 export interface CombField extends FieldBase {
   type: "comb";
   value: string; // concatenated value of all cells
@@ -65,7 +57,7 @@ export interface CombField extends FieldBase {
   cellWidths?: number[]; // Width of each individual cell (for non-uniform spacing like TFN)
 }
 
-export type EditorField = TextField | CheckboxField | SignatureField | DateField | WhiteoutField | GridField | CombField;
+export type EditorField = TextField | CheckboxField | SignatureField | DateField | WhiteoutField | CombField;
 
 export interface AcroFormField {
   name: string;

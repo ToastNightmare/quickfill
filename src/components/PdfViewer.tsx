@@ -3,7 +3,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, useCallback, useImperativeHandle, forwardRef } from "react";
 import { Stage, Layer, Rect, Text, Group, Transformer, Image as KonvaImage } from "react-konva";
 import type Konva from "konva";
-import type { EditorField, ToolType, SignatureField, CheckboxStamp, WhiteoutField, GridField } from "@/lib/types";
+import type { EditorField, ToolType, SignatureField, CheckboxStamp, WhiteoutField, CombField } from "@/lib/types";
 import { detectSnapBox, detectAllBoxes, snapCredibilityScore, floodFillCell, detectCombCells } from "@/lib/snap-detect";
 import type { SnapResult, CombDetectResult } from "@/lib/snap-detect";
 
@@ -263,15 +263,15 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
       
       const selectedField = selectedFieldId ? fields.find(f => f.id === selectedFieldId && f.page === currentPage) : null;
       
-      // If selected field is comb or grid, let the field handle its own typing keys
+      // If selected field is comb (Box Field), let the field handle its own typing keys
       // Only allow Escape and Ctrl+D through to this handler
-      if (selectedField && (selectedField.type === "comb" || selectedField.type === "grid")) {
+      if (selectedField && selectedField.type === "comb") {
         const isEscape = e.key === "Escape";
         const isDuplicate = (e.ctrlKey || e.metaKey) && e.key === "d";
         if (!isEscape && !isDuplicate) return;
       }
       
-      // Delete / Backspace - delete selected field (but not for comb/grid - handled above)
+      // Delete / Backspace - delete selected field (but not for comb - handled above)
       if (e.key === "Delete" || e.key === "Backspace") {
         if (selectedFieldId) {
           e.preventDefault();
@@ -650,9 +650,6 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
             case "date":
               field = { ...base, type: "date", width: fieldW, height: fieldH, value: new Date().toLocaleDateString("en-AU"), fontSize: 14 };
               break;
-            case "grid":
-              field = { ...base, type: "grid", width: fieldW, height: fieldH, value: "", charCount: Math.min(50, Math.max(1, Math.round(fieldW / 24))) };
-              break;
             case "comb": {
               // Try to auto-detect comb cells from the PDF
               const canvas = canvasRef.current;
@@ -763,7 +760,6 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
               checkbox:  { w: 20,  h: 20 },
               signature: { w: 220, h: 70 },
               date:      { w: 160, h: 28 },
-              grid:      { w: 220, h: 30 },
               comb:      { w: 220, h: 30 },
               whiteout:  { w: 100, h: 30 },
             };
@@ -887,9 +883,6 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
                 break;
               case "date":
                 field = { ...base, type: "date", width: fieldW, height: fieldH, value: new Date().toLocaleDateString("en-AU"), fontSize: inferredFontSize ?? 14 };
-                break;
-              case "grid":
-                field = { ...base, type: "grid", width: fieldW, height: fieldH, value: "", charCount: Math.min(50, Math.max(1, Math.round(fieldW / 24))) };
                 break;
               case "comb": {
                 // Try to auto-detect comb cells from the PDF
@@ -1016,7 +1009,6 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
         checkbox:  { w: 20,  h: 20 },
         signature: { w: 220, h: 70 },
         date:      { w: 160, h: 28 },
-        grid:      { w: 220, h: 30 },
         comb:      { w: 220, h: 30 },
         whiteout:  { w: 100, h: 30 },
       };
@@ -1134,9 +1126,6 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
           break;
         case "date":
           field = { ...base, type: "date", width: fieldW, height: fieldH, value: new Date().toLocaleDateString("en-AU"), fontSize: inferredFontSize ?? 14 };
-          break;
-        case "grid":
-          field = { ...base, type: "grid", width: fieldW, height: fieldH, value: "", charCount: Math.min(50, Math.max(1, Math.round(fieldW / 24))) };
           break;
         case "comb": {
           // Try to auto-detect comb cells from the PDF
@@ -1549,7 +1538,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
                   onFieldUpdate(field.id, { width, height, x, y })
                 }
                 onDoubleClick={() => {
-                  if (field.type !== "grid") setEditingFieldId(field.id);
+                  if (field.type !== "comb") setEditingFieldId(field.id);
                 }}
                 onDelete={() => {
                   onFieldDelete(field.id);
@@ -1686,7 +1675,8 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
             // Whiteout fields have no text value
             if (editField.type === "whiteout") return null;
             // Grid and Comb fields use their own per-cell input handling
-            if (editField.type === "grid" || editField.type === "comb") return null;
+            // Comb (Box Field) uses its own per-cell input handling
+            if (editField.type === "comb") return null;
             const isEditSnapped = editField.snapped ?? false;
 
             return (
@@ -1995,22 +1985,22 @@ function FieldShape({
 
   // Grid/Comb field rendering - individual character slots with OTP-style input
   // MUST come before generic text field handling to avoid being swallowed by the default return
-  if (field.type === "grid" || field.type === "comb") {
-    const gridField = field as GridField | import("@/lib/types").CombField;
-    const charCount = gridField.charCount ?? (field.type === "comb" ? 9 : 11);
+  // Box Field (comb) rendering - individual character slots
+  if (field.type === "comb") {
+    const combField = field as CombField;
+    const charCount = combField.charCount ?? 9;
     // Use cellWidth if set, otherwise calculate from field width
-    const combCellWidth = (gridField as import("@/lib/types").CombField).cellWidth;
-    const slotWidth = combCellWidth ?? (field.width / charCount);
+    const slotWidth = combField.cellWidth ?? (field.width / charCount);
     const slotHeight = field.height;
-    const value = gridField.value || "";
-    const offsetX = (gridField as import("@/lib/types").CombField).offsetX ?? 0;
-    const charOffsetX = (gridField as import("@/lib/types").CombField).charOffsetX ?? 0;
+    const value = combField.value || "";
+    const offsetX = combField.offsetX ?? 0;
+    const charOffsetX = combField.charOffsetX ?? 0;
     // Non-uniform cell positions (for TFN-style fields with gaps)
-    const cellPositions = (gridField as import("@/lib/types").CombField).cellPositions;
-    const cellWidthsArr = (gridField as import("@/lib/types").CombField).cellWidths;
+    const cellPositions = combField.cellPositions;
+    const cellWidthsArr = combField.cellWidths;
     
     // Use persisted cursor from field data, or default to end of current value
-    const initialCursor = (gridField as import("@/lib/types").CombField).cursorIndex ?? Math.min(value.replace(/ +$/, "").length, charCount - 1);
+    const initialCursor = combField.cursorIndex ?? Math.min(value.replace(/ +$/, "").length, charCount - 1);
     const [activeSlotIndex, setActiveSlotIndex] = useState(initialCursor);
 
     // Refs to avoid stale closure
@@ -2139,9 +2129,9 @@ function FieldShape({
             node.scaleY(1);
             const rawWidth = Math.max(40, node.width() * scaleX);
             const rawHeight = Math.max(20, node.height() * scaleY);
-            const currentCharCount = gridField.charCount ?? (field.type === "comb" ? 9 : 11);
+            const currentCharCount = combField.charCount ?? 9;
             const cellSize = field.width / currentCharCount;
-            const maxCount = field.type === "comb" ? 30 : 50;
+            const maxCount = 30;
             const newCharCount = Math.min(maxCount, Math.max(1, Math.round(rawWidth / cellSize)));
             const snappedWidth = newCharCount * cellSize;
             onTransformEnd(snappedWidth, rawHeight, node.x(), node.y());

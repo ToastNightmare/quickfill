@@ -130,9 +130,6 @@ export async function fillPdf(
           } catch {
             await drawFieldOnPage(pdfDoc, field, pageScales, font, signatureFont);
           }
-        } else if (field.type === "grid") {
-          // Grid fields always draw on page (not AcroForm)
-          await drawFieldOnPage(pdfDoc, field, pageScales, font, signatureFont);
         }
       } catch {
         await drawFieldOnPage(pdfDoc, field, pageScales, font, signatureFont);
@@ -251,19 +248,22 @@ async function drawFieldOnPage(
       page.drawLine({ start: { x: cx - r * 0.6, y: cy - r * 0.6 }, end: { x: cx + r * 0.6, y: cy + r * 0.6 }, thickness: lw, color: dark });
       page.drawLine({ start: { x: cx + r * 0.6, y: cy - r * 0.6 }, end: { x: cx - r * 0.6, y: cy + r * 0.6 }, thickness: lw, color: dark });
     }
-  } else if (field.type === "grid" || field.type === "comb") {
-    // Grid/Comb field: render each character in its own slot
-    const gridField = field as import("./types").GridField | import("./types").CombField;
-    const charCount = gridField.charCount ?? (field.type === "comb" ? 9 : 11);
-    const slotWidth = pdfW / charCount;
+  } else if (field.type === "comb") {
+    // Box Field (comb): render each character in its own cell
+    const combField = field as import("./types").CombField;
+    const charCount = combField.charCount ?? 9;
+    const cellWidth = combField.cellWidth ?? (pdfW / charCount);
     const fontSize = pdfH * 0.6 / scale;
-    const value = gridField.value || "";
+    const value = combField.value || "";
+    const offsetX = (combField.offsetX ?? 0) / scale;
+    const charOffsetX = (combField.charOffsetX ?? 0) / scale;
 
     for (let i = 0; i < charCount; i++) {
       const char = value[i] || "";
-      if (char) {
-        const charX = pdfX + i * slotWidth + slotWidth * 0.1;
-        const charY = pdfY + pdfH - fontSize - 2;
+      if (char && char !== " ") {
+        // Center character in cell
+        const charX = pdfX + offsetX + i * (cellWidth / scale) + (cellWidth / scale) * 0.5 + charOffsetX - fontSize * 0.25;
+        const charY = pdfY + pdfH - fontSize - (pdfH - fontSize) / 2;
         page.drawText(sanitize(char), {
           x: charX,
           y: charY,
