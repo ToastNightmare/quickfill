@@ -1213,22 +1213,58 @@ export function detectCombCells(
 
   // Build arrays of cell boundaries, centers, and widths
   // This handles non-uniform spacing (like TFN fields with gaps between groups)
-  const cellBoundaries: number[] = [];
-  const cellCenters: number[] = [];
-  const cellWidths: number[] = [];
   
-  // Include ALL vertical lines as potential cell boundaries, not just uniform ones
+  // First pass: collect all potential cells
+  const allCells: { left: number; center: number; width: number }[] = [];
   for (let i = 0; i < tallLines.length - 1; i++) {
     const leftEdge = x1 + tallLines[i].x;
     const rightEdge = x1 + tallLines[i + 1].x;
     const width = rightEdge - leftEdge;
     
-    // Only include cells that are reasonably sized (not huge gaps)
     if (width >= 8 && width <= 80) {
-      cellBoundaries.push(leftEdge);
-      cellCenters.push(leftEdge + width / 2);
-      cellWidths.push(width);
+      allCells.push({ left: leftEdge, center: leftEdge + width / 2, width });
     }
+  }
+  
+  if (allCells.length === 0) {
+    // Fall back to uniform spacing
+    const cellBoundaries: number[] = [];
+    const cellCenters: number[] = [];
+    const cellWidths: number[] = [];
+    return {
+      cellWidth: bestGap,
+      cellCount: cellCount,
+      x: x1 + firstX,
+      y: y1 + minY,
+      width: lastX - firstX,
+      height: maxY - minY,
+      firstCellX: x1 + firstX,
+      cellBoundaries,
+      cellCenters,
+      cellWidths,
+    };
+  }
+  
+  // Second pass: filter out gaps between groups
+  // Gaps are cells that are significantly wider than the typical cell
+  const widths = allCells.map(c => c.width);
+  widths.sort((a, b) => a - b);
+  const medianWidth = widths[Math.floor(widths.length / 2)];
+  
+  // A gap is anything more than 1.5x the median width
+  const gapThreshold = medianWidth * 1.5;
+  
+  const cellBoundaries: number[] = [];
+  const cellCenters: number[] = [];
+  const cellWidths: number[] = [];
+  
+  for (const cell of allCells) {
+    // Skip gaps (cells that are too wide compared to typical cells)
+    if (cell.width > gapThreshold) continue;
+    
+    cellBoundaries.push(cell.left);
+    cellCenters.push(cell.center);
+    cellWidths.push(cell.width);
   }
   
   // If we found individual cells, use those; otherwise fall back to uniform detection
