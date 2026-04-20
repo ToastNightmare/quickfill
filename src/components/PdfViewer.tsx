@@ -2184,15 +2184,19 @@ function FieldShape({
                 onClick={(e) => {
                   e.cancelBubble = true;
                   handleSlotClick(i);
+                  // Also select the field if not already selected
+                  if (!isSelected) {
+                    onSelect();
+                  }
                 }}
               >
-                {/* Slot border */}
+                {/* Slot border - only visible when selected or hovered */}
                 <Rect
                   width={thisCellWidth - 1}
                   height={slotHeight}
                   fill={isCurrent && isSelected ? "rgba(59,130,246,0.18)" : isSelected ? "rgba(59,130,246,0.05)" : "transparent"}
-                  stroke={isCurrent && isSelected ? "#3b82f6" : isSelected ? "rgba(59,130,246,0.4)" : isFilled ? "rgba(59,130,246,0.3)" : "rgba(59,130,246,0.15)"}
-                  strokeWidth={isCurrent && isSelected ? 2.5 : isSelected ? 1 : 0.5}
+                  stroke={isCurrent && isSelected ? "#3b82f6" : isSelected ? "rgba(59,130,246,0.4)" : "transparent"}
+                  strokeWidth={isCurrent && isSelected ? 2.5 : isSelected ? 1 : 0}
                 />
                 {/* Character centered in slot */}
                 {char && char !== " " && (
