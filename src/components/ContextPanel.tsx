@@ -267,6 +267,7 @@ export function ContextPanel({
         {fieldType === "comb" && (() => {
           const combField = selectedField as import("@/lib/types").CombField;
           const charCount = combField.charCount ?? 9;
+          const currentCellWidth = combField.cellWidth ?? Math.round(selectedField.width / charCount);
           
           return (
             <>
@@ -305,7 +306,36 @@ export function ContextPanel({
               
               <Divider />
               <Section>
-                <p className="text-xs text-text-muted text-center">{combField.value?.length || 0} / {charCount} characters filled</p>
+                <label className="text-[10px] font-semibold uppercase tracking-widest text-text-muted">
+                  Cell Width
+                </label>
+                <div className="flex items-center gap-2 mt-1">
+                  <input
+                    type="range"
+                    min={12}
+                    max={50}
+                    step={1}
+                    value={currentCellWidth}
+                    onChange={(e) => {
+                      const newWidth = parseInt(e.target.value, 10);
+                      const newTotalWidth = newWidth * charCount;
+                      onFieldUpdate(selectedField.id, { 
+                        cellWidth: newWidth,
+                        width: newTotalWidth
+                      } as Partial<EditorField>);
+                    }}
+                    className="flex-1 h-2 bg-surface-alt rounded-lg appearance-none cursor-pointer accent-accent"
+                  />
+                  <span className="text-xs text-text-muted w-8 text-right">{currentCellWidth}px</span>
+                </div>
+                <p className="mt-1 text-xs text-text-muted">
+                  Adjust to match form box spacing
+                </p>
+              </Section>
+              
+              <Divider />
+              <Section>
+                <p className="text-xs text-text-muted text-center">{combField.value?.replace(/ +$/, "").length || 0} / {charCount} characters filled</p>
               </Section>
             </>
           );

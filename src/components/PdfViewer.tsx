@@ -1837,7 +1837,9 @@ function FieldShape({
   if (field.type === "grid" || field.type === "comb") {
     const gridField = field as GridField | import("@/lib/types").CombField;
     const charCount = gridField.charCount ?? (field.type === "comb" ? 9 : 11);
-    const slotWidth = field.width / charCount;
+    // Use cellWidth if set, otherwise calculate from field width
+    const combCellWidth = (gridField as import("@/lib/types").CombField).cellWidth;
+    const slotWidth = combCellWidth ?? (field.width / charCount);
     const slotHeight = field.height;
     const value = gridField.value || "";
     
