@@ -1685,8 +1685,8 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
             if (editField.type === "signature") return null;
             // Whiteout fields have no text value
             if (editField.type === "whiteout") return null;
-            // Grid fields use their own hidden input for per-cell entry
-            if (editField.type === "grid") return null;
+            // Grid and Comb fields use their own per-cell input handling
+            if (editField.type === "grid" || editField.type === "comb") return null;
             const isEditSnapped = editField.snapped ?? false;
 
             return (
