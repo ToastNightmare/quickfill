@@ -2017,11 +2017,18 @@ function FieldShape({
     };
 
     // Attach/detach document keydown listener when selected
+    // Use capture phase to get events before parent handlers
     useEffect(() => {
       if (!isSelected) return;
-      const handler = (e: KeyboardEvent) => handleKeyDownRef.current(e);
-      document.addEventListener("keydown", handler);
-      return () => document.removeEventListener("keydown", handler);
+      const handler = (e: KeyboardEvent) => {
+        // Only handle if this is a typing key (not navigation or modifiers alone)
+        if (e.key.length === 1 || e.key === "Backspace" || e.key === "ArrowLeft" || e.key === "ArrowRight" || e.key === "Escape" || e.key === "Enter") {
+          handleKeyDownRef.current(e);
+        }
+      };
+      // Use capture phase to intercept before bubbling
+      document.addEventListener("keydown", handler, true);
+      return () => document.removeEventListener("keydown", handler, true);
     }, [isSelected]);
 
     const handleSlotClick = (index: number) => {
