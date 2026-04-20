@@ -1006,7 +1006,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
         setDrawRect(null);
       }
     },
-    [activeTool, currentPage, zoomFactor, onFieldAdd, onFieldSelect, onToolSelect, onSignatureFieldPlaced, snapPreview]
+    [activeTool, currentPage, zoomFactor, onFieldAdd, onFieldSelect, onToolSelect, onSignatureFieldPlaced, snapPreview, whiteoutColor]
   );
 
   // Core field creation logic - shared by click and touch
@@ -1253,7 +1253,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
 
       return true;
     },
-    [activeTool, currentPage, onFieldAdd, onFieldSelect, onToolSelect, zoomFactor, snapPreview, onSignatureFieldPlaced, snapEnabled]
+    [activeTool, currentPage, onFieldAdd, onFieldSelect, onToolSelect, zoomFactor, snapPreview, onSignatureFieldPlaced, snapEnabled, whiteoutColor]
   );
 
   const handleStageClick = useCallback(
