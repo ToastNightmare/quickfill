@@ -1840,10 +1840,13 @@ function FieldShape({
     const slotWidth = field.width / charCount;
     const slotHeight = field.height;
     const value = gridField.value || "";
-    const [activeSlotIndex, setActiveSlotIndex] = useState(0);
+    
+    // Use persisted cursor from field data, or default to end of current value
+    const initialCursor = (gridField as import("@/lib/types").CombField).cursorIndex ?? Math.min(value.replace(/ +$/, "").length, charCount - 1);
+    const [activeSlotIndex, setActiveSlotIndex] = useState(initialCursor);
 
     // Refs to avoid stale closure
-    const activeSlotIndexRef = useRef(0);
+    const activeSlotIndexRef = useRef(initialCursor);
     const valueRef = useRef(value);
     const handleKeyDownRef = useRef<(e: KeyboardEvent) => void>(() => {});
 
@@ -1855,6 +1858,16 @@ function FieldShape({
     useEffect(() => {
       activeSlotIndexRef.current = activeSlotIndex;
     }, [activeSlotIndex]);
+    
+    // When field becomes selected, position cursor at end of existing text
+    useEffect(() => {
+      if (isSelected) {
+        const textLength = value.replace(/ +$/, "").length;
+        const newCursor = Math.min(textLength, charCount - 1);
+        setActiveSlotIndex(newCursor);
+        activeSlotIndexRef.current = newCursor;
+      }
+    }, [isSelected]);
 
     // Define handleKeyDown using refs - updated every render for fresh closure
     handleKeyDownRef.current = (e: KeyboardEvent) => {
