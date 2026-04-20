@@ -2188,6 +2188,7 @@ function FieldShape({
             const char = value[i] || "";
             const isFilled = i < value.length;
             const isCurrent = i === activeSlotIndex; // Active slot
+            if (i === 0) console.log('[Comb] Render slot 0:', 'char:', char, 'value:', value, 'value.length:', value.length, 'charCount:', charCount);
             
             return (
               <Group
