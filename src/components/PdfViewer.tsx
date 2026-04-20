@@ -2170,8 +2170,10 @@ function FieldShape({
             // Use detected cell positions if available (non-uniform spacing)
             // cellPositions stores the CENTER of each cell relative to field X
             // We need to calculate the left edge for the Group position
-            const thisCellWidth = cellWidthsArr && cellWidthsArr[i] ? cellWidthsArr[i] : slotWidth;
-            const cellCenterX = cellPositions && cellPositions[i] !== undefined ? cellPositions[i] : (i * slotWidth + slotWidth / 2);
+            // IMPORTANT: Only use cellPositions if we have positions for ALL cells, otherwise use uniform
+            const hasAllPositions = cellPositions && cellPositions.length >= charCount;
+            const thisCellWidth = hasAllPositions && cellWidthsArr && cellWidthsArr[i] ? cellWidthsArr[i] : slotWidth;
+            const cellCenterX = hasAllPositions && cellPositions[i] !== undefined ? cellPositions[i] : (i * slotWidth + slotWidth / 2);
             const cellLeftX = cellCenterX - thisCellWidth / 2;
             
             return (
