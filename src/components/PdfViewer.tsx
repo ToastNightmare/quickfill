@@ -93,35 +93,6 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
   const [cursorStyle, setCursorStyle] = useState("default");
   const [snapPreviewOpacity, setSnapPreviewOpacity] = useState(0);
   const [contextMenu, setContextMenu] = useState<{ x: number, y: number, fieldId: string } | null>(null);
-  const [activeGridFieldId, setActiveGridFieldId] = useState<string | null>(null);
-  const gridHandlersRef = useRef<{
-    onKeyDown: (e: KeyboardEvent) => void;
-    onInput: (e: Event) => void;
-    onPaste: (e: ClipboardEvent) => void;
-    fieldId: string;
-    activeSlotIndex: number;
-    slotWidth: number;
-    slotHeight: number;
-    fieldX: number;
-    fieldY: number;
-  } | null>(null);
-
-  // Attach document keydown listener when grid field is selected
-  useEffect(() => {
-    if (!activeGridFieldId) return;
-    
-    const handleGlobalKeyDown = (e: KeyboardEvent) => {
-      if (!gridHandlersRef.current) return;
-      gridHandlersRef.current.onKeyDown(e);
-    };
-    
-    document.addEventListener('keydown', handleGlobalKeyDown);
-    
-    return () => {
-      document.removeEventListener('keydown', handleGlobalKeyDown);
-    };
-  }, [activeGridFieldId]);
-  
   const precomputedBoxesRef = useRef<SnapResult[]>([]);
   const dragStartedRef = useRef(false);
   const mouseDownPos = useRef<{x: number, y: number} | null>(null);
@@ -1435,14 +1406,6 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
                     setContextMenu({ x: pos.x, y: pos.y, fieldId });
                   }
                 }}
-                onGridActivate={(handlers) => {
-                  setActiveGridFieldId(handlers.fieldId);
-                  gridHandlersRef.current = handlers;
-                }}
-                onGridDeactivate={() => {
-                  setActiveGridFieldId(null);
-                  gridHandlersRef.current = null;
-                }}
               />
             ))}
             <Transformer
@@ -1680,8 +1643,6 @@ function FieldShape({
   registerNode,
   unregisterNode,
   onContextMenu,
-  onGridActivate,
-  onGridDeactivate,
 }: {
   field: EditorField;
   isSelected: boolean;
@@ -1701,18 +1662,6 @@ function FieldShape({
   registerNode: (id: string, node: Konva.Group) => void;
   unregisterNode: (id: string) => void;
   onContextMenu?: (e: any, fieldId: string) => void;
-  onGridActivate?: (handlers: { 
-    onKeyDown: (e: KeyboardEvent) => void; 
-    onInput: (e: Event) => void; 
-    onPaste: (e: ClipboardEvent) => void;
-    fieldId: string;
-    activeSlotIndex: number;
-    slotWidth: number;
-    slotHeight: number;
-    fieldX: number;
-    fieldY: number;
-  }) => void;
-  onGridDeactivate?: () => void;
 }) {
   const groupRef = useRef<Konva.Group>(null);
 
@@ -2028,9 +1977,10 @@ function FieldShape({
     const value = gridField.value || "";
     const [activeSlotIndex, setActiveSlotIndex] = useState(0);
 
-    // Refs to avoid stale closure in handleKeyDown
+    // Refs to avoid stale closure
     const activeSlotIndexRef = useRef(0);
     const valueRef = useRef(value);
+    const handleKeyDownRef = useRef<(e: KeyboardEvent) => void>(() => {});
 
     // Keep refs in sync with state
     useEffect(() => {
@@ -2041,29 +1991,8 @@ function FieldShape({
       activeSlotIndexRef.current = activeSlotIndex;
     }, [activeSlotIndex]);
 
-    // Notify parent when grid is selected/deselected so it can manage the hidden input
-    useEffect(() => {
-      if (isSelected) {
-        onGridActivate?.({ 
-          onKeyDown: handleKeyDown, 
-          onInput: handleInput, 
-          onPaste: handlePaste,
-          fieldId: field.id,
-          activeSlotIndex,
-          slotWidth,
-          slotHeight,
-          fieldX: field.x,
-          fieldY: field.y,
-        });
-      } else {
-        onGridDeactivate?.();
-      }
-    }, [isSelected]);
-
-    // Cursor position is managed by user actions only (typing, arrow keys, clicks)
-    // No automatic cursor adjustment based on value length
-
-    const handleKeyDown = (e: KeyboardEvent) => {
+    // Define handleKeyDown using refs
+    handleKeyDownRef.current = (e: KeyboardEvent) => {
       const currentIndex = activeSlotIndexRef.current;
       const currentValue = valueRef.current;
 
@@ -2110,6 +2039,14 @@ function FieldShape({
         onSelect();
       }
     };
+
+    // Attach/detach document keydown listener when selected
+    useEffect(() => {
+      if (!isSelected) return;
+      const handler = (e: KeyboardEvent) => handleKeyDownRef.current(e);
+      document.addEventListener("keydown", handler);
+      return () => document.removeEventListener("keydown", handler);
+    }, [isSelected]);
 
     const handleInput = (e: Event) => {
       // No longer used - printable chars handled in handleKeyDown
