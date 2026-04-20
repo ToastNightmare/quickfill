@@ -1,4 +1,4 @@
-export type ToolType = "text" | "checkbox" | "signature" | "date" | "whiteout" | "grid";
+export type ToolType = "text" | "checkbox" | "signature" | "date" | "whiteout" | "grid" | "comb";
 
 export interface FieldBase {
   id: string;
@@ -53,7 +53,13 @@ export interface GridField extends FieldBase {
   slotHeight?: number; // optional: height of individual slot
 }
 
-export type EditorField = TextField | CheckboxField | SignatureField | DateField | WhiteoutField | GridField;
+export interface CombField extends FieldBase {
+  type: "comb";
+  value: string; // concatenated value of all cells
+  charCount: number; // number of cells in the comb
+}
+
+export type EditorField = TextField | CheckboxField | SignatureField | DateField | WhiteoutField | GridField | CombField;
 
 export interface AcroFormField {
   name: string;

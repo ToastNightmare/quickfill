@@ -5,7 +5,7 @@ import {
   Type, CheckSquare, PenTool, Calendar,
   Minus, Plus, Trash2, MousePointer2,
   Sparkles, UserCheck, Eraser, Grid3X3, Copy,
-  ChevronDown, ChevronUp,
+  ChevronDown, ChevronUp, SquareSplitHorizontal,
 } from "lucide-react";
 import type { EditorField, ToolType, SignatureField } from "@/lib/types";
 import type { CheckboxStamp } from "@/lib/types";
@@ -27,6 +27,7 @@ const TOOL_META: Record<ToolType, { icon: typeof Type; label: string; hint: stri
   signature: { icon: PenTool,     label: "Signature",   hint: "Click the PDF to place a signature field. You can draw or reuse a saved signature.",              color: "text-pink-500" },
   date:      { icon: Calendar,    label: "Date",        hint: "Click the PDF to place a date field. Today's date is pre-filled, edit it after placing.",        color: "text-amber-500" },
   grid:      { icon: Grid3X3,     label: "Grid",        hint: "Drag across individual character boxes to place a grid field. Auto-fills from profile if matched.", color: "text-emerald-500" },
+  comb:      { icon: SquareSplitHorizontal, label: "Comb", hint: "Drag to place a comb field for numbers like TFN, ABN, Medicare. Each cell holds one character.", color: "text-cyan-500" },
   whiteout:  { icon: Eraser,      label: "Whiteout",    hint: "Drag to draw a rectangle over unwanted text. It will sample the background color automatically.", color: "text-gray-500" },
 };
 
@@ -257,6 +258,54 @@ export function ContextPanel({
               <Divider />
               <Section>
                 <p className="text-xs text-text-muted text-center">{gridField.value?.length || 0} / {charCount} characters filled</p>
+              </Section>
+            </>
+          );
+        })()}
+
+        {/* Comb field controls */}
+        {fieldType === "comb" && (() => {
+          const combField = selectedField as import("@/lib/types").CombField;
+          const charCount = combField.charCount ?? 9;
+          
+          return (
+            <>
+              <Section>
+                <button
+                  onClick={() => setCharCountExpanded(v => !v)}
+                  className="flex w-full items-center justify-between text-[10px] font-semibold uppercase tracking-widest text-text-muted hover:text-text transition-colors"
+                >
+                  Character Count
+                  {charCountExpanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+                </button>
+                {charCountExpanded && (
+                  <>
+                    <select
+                      value={charCount}
+                      onChange={(e) => {
+                        const newCount = parseInt(e.target.value, 10);
+                        if (!isNaN(newCount) && newCount > 0 && newCount <= 30) {
+                          onFieldUpdate(selectedField.id, { charCount: newCount } as Partial<EditorField>);
+                        }
+                      }}
+                      className="w-full rounded-lg border border-border bg-surface-alt px-3 py-2 text-sm font-medium text-text focus:outline-none focus:ring-2 focus:ring-accent"
+                    >
+                      {[8, 9, 10, 11, 12, 15, 16, 20, 30].map((n) => (
+                        <option key={n} value={n}>
+                          {n} {n === 1 ? "character" : "characters"}
+                        </option>
+                      ))}
+                    </select>
+                    <p className="mt-2 text-xs text-text-muted">
+                      Common: 9 (TFN), 11 (ABN), 10 (Medicare)
+                    </p>
+                  </>
+                )}
+              </Section>
+              
+              <Divider />
+              <Section>
+                <p className="text-xs text-text-muted text-center">{combField.value?.length || 0} / {charCount} characters filled</p>
               </Section>
             </>
           );

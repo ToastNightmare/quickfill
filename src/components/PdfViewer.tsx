@@ -674,6 +674,9 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
             case "grid":
               field = { ...base, type: "grid", width: fieldW, height: fieldH, value: "", charCount: Math.min(50, Math.max(1, Math.round(fieldW / 24))) };
               break;
+            case "comb":
+              field = { ...base, type: "comb", width: fieldW, height: fieldH, value: "", charCount: Math.min(30, Math.max(1, Math.round(fieldW / 24))) };
+              break;
             case "whiteout": {
               // Sample background color from canvas center of drawn rectangle
               const canvas = canvasRef.current;
@@ -725,6 +728,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
               signature: { w: 220, h: 70 },
               date:      { w: 160, h: 28 },
               grid:      { w: 220, h: 30 },
+              comb:      { w: 220, h: 30 },
               whiteout:  { w: 100, h: 30 },
             };
             fieldW = defaults[activeTool].w;
@@ -851,6 +855,9 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
               case "grid":
                 field = { ...base, type: "grid", width: fieldW, height: fieldH, value: "", charCount: Math.min(50, Math.max(1, Math.round(fieldW / 24))) };
                 break;
+              case "comb":
+                field = { ...base, type: "comb", width: fieldW, height: fieldH, value: "", charCount: Math.min(30, Math.max(1, Math.round(fieldW / 24))) };
+                break;
               case "whiteout": {
                 // Sample background color from canvas center of placed rectangle
                 const canvas = canvasRef.current;
@@ -922,6 +929,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
         signature: { w: 220, h: 70 },
         date:      { w: 160, h: 28 },
         grid:      { w: 220, h: 30 },
+        comb:      { w: 220, h: 30 },
         whiteout:  { w: 100, h: 30 },
       };
       fieldW = defaults[activeTool].w;
@@ -1041,6 +1049,9 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
           break;
         case "grid":
           field = { ...base, type: "grid", width: fieldW, height: fieldH, value: "", charCount: Math.min(50, Math.max(1, Math.round(fieldW / 24))) };
+          break;
+        case "comb":
+          field = { ...base, type: "comb", width: fieldW, height: fieldH, value: "", charCount: Math.min(30, Math.max(1, Math.round(fieldW / 24))) };
           break;
         case "whiteout": {
           // Sample background color from canvas center of placed rectangle
@@ -2008,10 +2019,10 @@ function FieldShape({
     </>
   );
 
-  // Grid field rendering - individual character slots with OTP-style input
-  if (field.type === "grid") {
-    const gridField = field as GridField;
-    const charCount = gridField.charCount ?? 11;
+  // Grid/Comb field rendering - individual character slots with OTP-style input
+  if (field.type === "grid" || field.type === "comb") {
+    const gridField = field as GridField | import("@/lib/types").CombField;
+    const charCount = gridField.charCount ?? (field.type === "comb" ? 9 : 11);
     const slotWidth = field.width / charCount;
     const slotHeight = field.height;
     const value = gridField.value || "";
@@ -2142,11 +2153,12 @@ function FieldShape({
             node.scaleY(1);
             const rawWidth = Math.max(40, node.width() * scaleX);
             const rawHeight = Math.max(20, node.height() * scaleY);
-            if (field.type === "grid") {
-              const gridField = field as import("@/lib/types").GridField;
-              const currentCharCount = gridField.charCount ?? 11;
+            if (field.type === "grid" || field.type === "comb") {
+              const gridField = field as GridField | import("@/lib/types").CombField;
+              const currentCharCount = gridField.charCount ?? (field.type === "comb" ? 9 : 11);
               const cellSize = field.width / currentCharCount;
-              const newCharCount = Math.min(50, Math.max(1, Math.round(rawWidth / cellSize)));
+              const maxCount = field.type === "comb" ? 30 : 50;
+              const newCharCount = Math.min(maxCount, Math.max(1, Math.round(rawWidth / cellSize)));
               const snappedWidth = newCharCount * cellSize;
               onTransformEnd(snappedWidth, rawHeight, node.x(), node.y());
             } else {

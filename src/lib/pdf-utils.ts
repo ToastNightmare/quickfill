@@ -251,10 +251,10 @@ async function drawFieldOnPage(
       page.drawLine({ start: { x: cx - r * 0.6, y: cy - r * 0.6 }, end: { x: cx + r * 0.6, y: cy + r * 0.6 }, thickness: lw, color: dark });
       page.drawLine({ start: { x: cx + r * 0.6, y: cy - r * 0.6 }, end: { x: cx - r * 0.6, y: cy + r * 0.6 }, thickness: lw, color: dark });
     }
-  } else if (field.type === "grid") {
-    // Grid field: render each character in its own slot
-    const gridField = field as import("./types").GridField;
-    const charCount = gridField.charCount ?? 11;
+  } else if (field.type === "grid" || field.type === "comb") {
+    // Grid/Comb field: render each character in its own slot
+    const gridField = field as import("./types").GridField | import("./types").CombField;
+    const charCount = gridField.charCount ?? (field.type === "comb" ? 9 : 11);
     const slotWidth = pdfW / charCount;
     const fontSize = pdfH * 0.6 / scale;
     const value = gridField.value || "";
