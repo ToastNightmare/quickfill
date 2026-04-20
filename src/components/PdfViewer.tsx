@@ -4,8 +4,8 @@ import { useEffect, useLayoutEffect, useRef, useState, useCallback, useImperativ
 import { Stage, Layer, Rect, Text, Group, Transformer, Image as KonvaImage } from "react-konva";
 import type Konva from "konva";
 import type { EditorField, ToolType, SignatureField, CheckboxStamp, WhiteoutField, GridField } from "@/lib/types";
-import { detectSnapBox, detectAllBoxes, snapCredibilityScore, floodFillCell } from "@/lib/snap-detect";
-import type { SnapResult } from "@/lib/snap-detect";
+import { detectSnapBox, detectAllBoxes, snapCredibilityScore, floodFillCell, detectCombCells } from "@/lib/snap-detect";
+import type { SnapResult, CombDetectResult } from "@/lib/snap-detect";
 
 export interface PdfViewerHandle {
   getCanvasDataURL: () => string | null;
@@ -653,9 +653,41 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
             case "grid":
               field = { ...base, type: "grid", width: fieldW, height: fieldH, value: "", charCount: Math.min(50, Math.max(1, Math.round(fieldW / 24))) };
               break;
-            case "comb":
-              field = { ...base, type: "comb", width: fieldW, height: fieldH, value: "", charCount: Math.min(30, Math.max(1, Math.round(fieldW / 24))) };
+            case "comb": {
+              // Try to auto-detect comb cells from the PDF
+              const canvas = canvasRef.current;
+              let detectedCellWidth: number | undefined;
+              let detectedCellCount: number | undefined;
+              
+              if (canvas) {
+                const combResult = detectCombCells(
+                  canvas,
+                  fieldX * zoomFactor,
+                  fieldY * zoomFactor,
+                  fieldW * zoomFactor,
+                  fieldH * zoomFactor,
+                );
+                if (combResult && combResult.cellCount >= 2) {
+                  // Use detected cell width and count
+                  detectedCellWidth = Math.round(combResult.cellWidth / zoomFactor);
+                  detectedCellCount = combResult.cellCount;
+                }
+              }
+              
+              const finalCharCount = detectedCellCount ?? Math.min(30, Math.max(1, Math.round(fieldW / 24)));
+              const finalWidth = detectedCellWidth ? detectedCellWidth * finalCharCount : fieldW;
+              
+              field = { 
+                ...base, 
+                type: "comb", 
+                width: finalWidth, 
+                height: fieldH, 
+                value: "", 
+                charCount: finalCharCount,
+                cellWidth: detectedCellWidth,
+              };
               break;
+            }
             case "whiteout": {
               // Sample background color from canvas center of drawn rectangle
               const canvas = canvasRef.current;
@@ -834,9 +866,40 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
               case "grid":
                 field = { ...base, type: "grid", width: fieldW, height: fieldH, value: "", charCount: Math.min(50, Math.max(1, Math.round(fieldW / 24))) };
                 break;
-              case "comb":
-                field = { ...base, type: "comb", width: fieldW, height: fieldH, value: "", charCount: Math.min(30, Math.max(1, Math.round(fieldW / 24))) };
+              case "comb": {
+                // Try to auto-detect comb cells from the PDF
+                const combCanvas = canvasRef.current;
+                let combDetectedCellWidth: number | undefined;
+                let combDetectedCellCount: number | undefined;
+                
+                if (combCanvas) {
+                  const combResult = detectCombCells(
+                    combCanvas,
+                    fieldX * zoomFactor,
+                    fieldY * zoomFactor,
+                    fieldW * zoomFactor,
+                    fieldH * zoomFactor,
+                  );
+                  if (combResult && combResult.cellCount >= 2) {
+                    combDetectedCellWidth = Math.round(combResult.cellWidth / zoomFactor);
+                    combDetectedCellCount = combResult.cellCount;
+                  }
+                }
+                
+                const combFinalCharCount = combDetectedCellCount ?? Math.min(30, Math.max(1, Math.round(fieldW / 24)));
+                const combFinalWidth = combDetectedCellWidth ? combDetectedCellWidth * combFinalCharCount : fieldW;
+                
+                field = { 
+                  ...base, 
+                  type: "comb", 
+                  width: combFinalWidth, 
+                  height: fieldH, 
+                  value: "", 
+                  charCount: combFinalCharCount,
+                  cellWidth: combDetectedCellWidth,
+                };
                 break;
+              }
               case "whiteout": {
                 // Sample background color from canvas center of placed rectangle
                 const canvas = canvasRef.current;
@@ -1029,9 +1092,40 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
         case "grid":
           field = { ...base, type: "grid", width: fieldW, height: fieldH, value: "", charCount: Math.min(50, Math.max(1, Math.round(fieldW / 24))) };
           break;
-        case "comb":
-          field = { ...base, type: "comb", width: fieldW, height: fieldH, value: "", charCount: Math.min(30, Math.max(1, Math.round(fieldW / 24))) };
+        case "comb": {
+          // Try to auto-detect comb cells from the PDF
+          const combCanvas3 = canvasRef.current;
+          let combDetectedCellWidth3: number | undefined;
+          let combDetectedCellCount3: number | undefined;
+          
+          if (combCanvas3) {
+            const combResult3 = detectCombCells(
+              combCanvas3,
+              fieldX * zoomFactor,
+              fieldY * zoomFactor,
+              fieldW * zoomFactor,
+              fieldH * zoomFactor,
+            );
+            if (combResult3 && combResult3.cellCount >= 2) {
+              combDetectedCellWidth3 = Math.round(combResult3.cellWidth / zoomFactor);
+              combDetectedCellCount3 = combResult3.cellCount;
+            }
+          }
+          
+          const combFinalCharCount3 = combDetectedCellCount3 ?? Math.min(30, Math.max(1, Math.round(fieldW / 24)));
+          const combFinalWidth3 = combDetectedCellWidth3 ? combDetectedCellWidth3 * combFinalCharCount3 : fieldW;
+          
+          field = { 
+            ...base, 
+            type: "comb", 
+            width: combFinalWidth3, 
+            height: fieldH, 
+            value: "", 
+            charCount: combFinalCharCount3,
+            cellWidth: combDetectedCellWidth3,
+          };
           break;
+        }
         case "whiteout": {
           // Sample background color from canvas center of placed rectangle
           const canvas = canvasRef.current;

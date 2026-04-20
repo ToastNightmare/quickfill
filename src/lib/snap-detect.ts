@@ -1086,3 +1086,129 @@ function deduplicateBoxes(boxes: SnapResult[]): SnapResult[] {
 
   return kept;
 }
+
+/**
+ * Detect comb cell spacing from a region of the PDF.
+ * Scans for a row of equally-spaced vertical dividers and returns:
+ * - cellWidth: the detected width of each cell
+ * - cellCount: the number of cells detected
+ * - x, y, width, height: the bounding box of the detected comb row
+ * 
+ * Returns null if no comb pattern is detected.
+ */
+export interface CombDetectResult {
+  cellWidth: number;
+  cellCount: number;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+export function detectCombCells(
+  canvas: HTMLCanvasElement,
+  regionX: number,
+  regionY: number,
+  regionWidth: number,
+  regionHeight: number,
+): CombDetectResult | null {
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return null;
+
+  // Clamp region to canvas bounds
+  const x1 = Math.max(0, Math.floor(regionX));
+  const y1 = Math.max(0, Math.floor(regionY));
+  const x2 = Math.min(canvas.width, Math.ceil(regionX + regionWidth));
+  const y2 = Math.min(canvas.height, Math.ceil(regionY + regionHeight));
+  const w = x2 - x1;
+  const h = y2 - y1;
+
+  if (w < 30 || h < 10) return null;
+
+  let imageData: ImageData;
+  try {
+    imageData = ctx.getImageData(x1, y1, w, h);
+  } catch {
+    return null;
+  }
+
+  const { data } = imageData;
+
+  // Find vertical lines in the region
+  const vLines = findVerticalLines(data, w, h, isDark);
+  if (vLines.length < 2) {
+    // Try with medium threshold
+    const vLinesMedium = findVerticalLines(data, w, h, isMedium);
+    if (vLinesMedium.length < 2) return null;
+    vLines.push(...vLinesMedium);
+  }
+
+  // Merge nearby vertical lines
+  const merged = mergeVLines(vLines);
+  if (merged.length < 2) return null;
+
+  // Sort by x position
+  merged.sort((a, b) => a.x - b.x);
+
+  // Filter to lines that span most of the region height (actual cell dividers)
+  const minSpan = h * 0.5;
+  const tallLines = merged.filter((v) => v.y2 - v.y1 >= minSpan);
+  if (tallLines.length < 2) return null;
+
+  // Calculate gaps between consecutive vertical lines
+  const gaps: number[] = [];
+  for (let i = 1; i < tallLines.length; i++) {
+    gaps.push(tallLines[i].x - tallLines[i - 1].x);
+  }
+
+  if (gaps.length === 0) return null;
+
+  // Find the most common gap (cell width) - allow 3px tolerance
+  const gapCounts = new Map<number, number>();
+  for (const gap of gaps) {
+    // Round to nearest 2px for grouping
+    const rounded = Math.round(gap / 2) * 2;
+    gapCounts.set(rounded, (gapCounts.get(rounded) || 0) + 1);
+  }
+
+  let bestGap = 0;
+  let bestCount = 0;
+  for (const [gap, count] of gapCounts) {
+    if (count > bestCount && gap >= 10 && gap <= 60) {
+      bestGap = gap;
+      bestCount = count;
+    }
+  }
+
+  if (bestGap === 0 || bestCount < 2) return null;
+
+  // Count cells with this gap width (tolerance of 4px)
+  let cellCount = 1;
+  let firstX = tallLines[0].x;
+  let lastX = tallLines[0].x;
+
+  for (let i = 1; i < tallLines.length; i++) {
+    const gap = tallLines[i].x - tallLines[i - 1].x;
+    if (Math.abs(gap - bestGap) <= 4) {
+      cellCount++;
+      lastX = tallLines[i].x;
+    }
+  }
+
+  // Find the vertical extent of the cells
+  let minY = h;
+  let maxY = 0;
+  for (const line of tallLines) {
+    minY = Math.min(minY, line.y1);
+    maxY = Math.max(maxY, line.y2);
+  }
+
+  return {
+    cellWidth: bestGap,
+    cellCount: cellCount,
+    x: x1 + firstX,
+    y: y1 + minY,
+    width: lastX - firstX,
+    height: maxY - minY,
+  };
+}
