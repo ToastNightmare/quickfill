@@ -2005,9 +2005,6 @@ function FieldShape({
     const value = gridField.value || "";
     const offsetX = (gridField as import("@/lib/types").CombField).offsetX ?? 0;
     const charOffsetX = (gridField as import("@/lib/types").CombField).charOffsetX ?? 0;
-    // Non-uniform cell positions (for TFN-style fields with gaps)
-    const cellPositions = (gridField as import("@/lib/types").CombField).cellPositions;
-    const cellWidthsArr = (gridField as import("@/lib/types").CombField).cellWidths;
     
     // Use persisted cursor from field data, or default to end of current value
     const initialCursor = (gridField as import("@/lib/types").CombField).cursorIndex ?? Math.min(value.replace(/ +$/, "").length, charCount - 1);
@@ -2167,12 +2164,9 @@ function FieldShape({
             const isFilled = char !== "" && char !== " ";
             const isCurrent = i === activeSlotIndex;
             
-            // Use detected cell positions if available (non-uniform spacing)
-            // cellPositions stores the CENTER of each cell relative to field X
-            // We need to calculate the left edge for the Group position
-            const thisCellWidth = cellWidthsArr && cellWidthsArr[i] ? cellWidthsArr[i] : slotWidth;
-            const cellCenterX = cellPositions && cellPositions[i] !== undefined ? cellPositions[i] : (i * slotWidth + slotWidth / 2);
-            const cellLeftX = cellCenterX - thisCellWidth / 2;
+            // Simple uniform spacing - user adjusts with X Offset slider
+            const thisCellWidth = slotWidth;
+            const cellLeftX = i * slotWidth;
             
             return (
               <Group
