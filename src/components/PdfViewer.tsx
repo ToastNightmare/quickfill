@@ -93,6 +93,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
   const [cursorStyle, setCursorStyle] = useState("default");
   const [snapPreviewOpacity, setSnapPreviewOpacity] = useState(0);
   const [contextMenu, setContextMenu] = useState<{ x: number, y: number, fieldId: string } | null>(null);
+  const [whiteoutColor, setWhiteoutColor] = useState<string | null>(null); // Pre-sampled whiteout color
   const precomputedBoxesRef = useRef<SnapResult[]>([]);
   const dragStartedRef = useRef(false);
   const mouseDownPos = useRef<{x: number, y: number} | null>(null);
@@ -541,6 +542,10 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
   const handleStageMouseLeave = useCallback(() => {
     setSnapPreview(null);
     setCursorStyle(activeTool ? "crosshair" : "default");
+    // Reset whiteout color when switching away from whiteout tool
+    if (activeTool !== "whiteout") {
+      setWhiteoutColor(null);
+    }
   }, [activeTool]);
 
   const handleStageMouseDown = useCallback(
@@ -711,20 +716,24 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
               break;
             }
             case "whiteout": {
-              // Sample background color from canvas center of drawn rectangle
-              const canvas = canvasRef.current;
-              let fillColor = "#ffffff";
-              if (canvas) {
-                const ctx = canvas.getContext("2d");
-                if (ctx) {
-                  const canvasCx = Math.round((fieldX + fieldW / 2) * zoomFactor);
-                  const canvasCy = Math.round((fieldY + fieldH / 2) * zoomFactor);
-                  if (canvasCx >= 0 && canvasCy >= 0 && canvasCx < canvas.width && canvasCy < canvas.height) {
-                    try {
-                      const pixel = ctx.getImageData(canvasCx, canvasCy, 1, 1).data;
-                      fillColor = `#${[pixel[0], pixel[1], pixel[2]].map(c => c.toString(16).padStart(2, "0")).join("")}`;
-                    } catch {
-                      fillColor = "#ffffff";
+              // Use pre-sampled whiteout color if available, otherwise sample from canvas
+              let fillColor = whiteoutColor || "#ffffff";
+              if (!whiteoutColor) {
+                const canvas = canvasRef.current;
+                if (canvas) {
+                  const ctx = canvas.getContext("2d");
+                  if (ctx) {
+                    const canvasCx = Math.round((fieldX + fieldW / 2) * zoomFactor);
+                    const canvasCy = Math.round((fieldY + fieldH / 2) * zoomFactor);
+                    if (canvasCx >= 0 && canvasCy >= 0 && canvasCx < canvas.width && canvasCy < canvas.height) {
+                      try {
+                        const pixel = ctx.getImageData(canvasCx, canvasCy, 1, 1).data;
+                        fillColor = `#${[pixel[0], pixel[1], pixel[2]].map(c => c.toString(16).padStart(2, "0")).join("")}`;
+                        // Auto-save sampled color for subsequent whiteouts
+                        setWhiteoutColor(fillColor);
+                      } catch {
+                        fillColor = "#ffffff";
+                      }
                     }
                   }
                 }
@@ -735,8 +744,11 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
           }
           
           onFieldAdd(field);
-          onToolSelect(null);
-          setCursorStyle("default");
+          // Keep whiteout tool active for multiple placements
+          if (activeTool !== "whiteout") {
+            onToolSelect(null);
+          }
+          setCursorStyle(activeTool === "whiteout" ? "crosshair" : "default");
           onFieldSelect(id);
           
           if (activeTool === "signature") {
@@ -940,20 +952,23 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
                 break;
               }
               case "whiteout": {
-                // Sample background color from canvas center of placed rectangle
-                const canvas = canvasRef.current;
-                let fillColor = "#ffffff";
-                if (canvas) {
-                  const ctx = canvas.getContext("2d");
-                  if (ctx) {
-                    const canvasCx = Math.round((fieldX + fieldW / 2) * zoomFactor);
-                    const canvasCy = Math.round((fieldY + fieldH / 2) * zoomFactor);
-                    if (canvasCx >= 0 && canvasCy >= 0 && canvasCx < canvas.width && canvasCy < canvas.height) {
-                      try {
-                        const pixel = ctx.getImageData(canvasCx, canvasCy, 1, 1).data;
-                        fillColor = `#${[pixel[0], pixel[1], pixel[2]].map(c => c.toString(16).padStart(2, "0")).join("")}`;
-                      } catch {
-                        fillColor = "#ffffff";
+                // Use pre-sampled whiteout color if available
+                let fillColor = whiteoutColor || "#ffffff";
+                if (!whiteoutColor) {
+                  const canvas = canvasRef.current;
+                  if (canvas) {
+                    const ctx = canvas.getContext("2d");
+                    if (ctx) {
+                      const canvasCx = Math.round((fieldX + fieldW / 2) * zoomFactor);
+                      const canvasCy = Math.round((fieldY + fieldH / 2) * zoomFactor);
+                      if (canvasCx >= 0 && canvasCy >= 0 && canvasCx < canvas.width && canvasCy < canvas.height) {
+                        try {
+                          const pixel = ctx.getImageData(canvasCx, canvasCy, 1, 1).data;
+                          fillColor = `#${[pixel[0], pixel[1], pixel[2]].map(c => c.toString(16).padStart(2, "0")).join("")}`;
+                          setWhiteoutColor(fillColor);
+                        } catch {
+                          fillColor = "#ffffff";
+                        }
                       }
                     }
                   }
@@ -964,8 +979,11 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
             }
 
             onFieldAdd(field);
-            onToolSelect(null);
-            setCursorStyle("default");
+            // Keep whiteout tool active
+            if (activeTool !== "whiteout") {
+              onToolSelect(null);
+            }
+            setCursorStyle(activeTool === "whiteout" ? "crosshair" : "default");
             onFieldSelect(id);
 
             if (activeTool === "signature") {
@@ -1183,20 +1201,23 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
           break;
         }
         case "whiteout": {
-          // Sample background color from canvas center of placed rectangle
-          const canvas = canvasRef.current;
-          let fillColor = "#ffffff";
-          if (canvas) {
-            const ctx = canvas.getContext("2d");
-            if (ctx) {
-              const canvasCx = Math.round(fieldX * zoomFactor + fieldW * zoomFactor / 2);
-              const canvasCy = Math.round(fieldY * zoomFactor + fieldH * zoomFactor / 2);
-              if (canvasCx >= 0 && canvasCy >= 0 && canvasCx < canvas.width && canvasCy < canvas.height) {
-                try {
-                  const pixel = ctx.getImageData(canvasCx, canvasCy, 1, 1).data;
-                  fillColor = `#${[pixel[0], pixel[1], pixel[2]].map(c => c.toString(16).padStart(2, "0")).join("")}`;
-                } catch {
-                  fillColor = "#ffffff";
+          // Use pre-sampled whiteout color if available
+          let fillColor = whiteoutColor || "#ffffff";
+          if (!whiteoutColor) {
+            const canvas = canvasRef.current;
+            if (canvas) {
+              const ctx = canvas.getContext("2d");
+              if (ctx) {
+                const canvasCx = Math.round(fieldX * zoomFactor + fieldW * zoomFactor / 2);
+                const canvasCy = Math.round(fieldY * zoomFactor + fieldH * zoomFactor / 2);
+                if (canvasCx >= 0 && canvasCy >= 0 && canvasCx < canvas.width && canvasCy < canvas.height) {
+                  try {
+                    const pixel = ctx.getImageData(canvasCx, canvasCy, 1, 1).data;
+                    fillColor = `#${[pixel[0], pixel[1], pixel[2]].map(c => c.toString(16).padStart(2, "0")).join("")}`;
+                    setWhiteoutColor(fillColor);
+                  } catch {
+                    fillColor = "#ffffff";
+                  }
                 }
               }
             }
@@ -1207,9 +1228,14 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
       }
 
       onFieldAdd(field);
-      onToolSelect(null);
-      setCursorStyle("default");
-      onFieldSelect(id);
+      // Keep whiteout tool active
+      if (activeTool !== "whiteout") {
+        onToolSelect(null);
+      }
+      setCursorStyle(activeTool === "whiteout" ? "crosshair" : "default");
+      if (activeTool !== "whiteout") {
+        onFieldSelect(id);
+      }
 
       // For signature fields, trigger signature placement flow
       if (activeTool === "signature") {
