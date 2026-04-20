@@ -2167,10 +2167,15 @@ function FieldShape({
             const isFilled = char !== "" && char !== " ";
             const isCurrent = i === activeSlotIndex;
             
-            // Simple uniform cell positioning
-            // User adjusts with Cell Width, X Offset, and Char Offset sliders
-            const thisCellWidth = slotWidth;
-            const cellLeftX = i * slotWidth;
+            // Use detected cell positions if available (non-uniform spacing)
+            // cellPositions stores the CENTER of each cell relative to field X
+            // We need to calculate the left edge for the Group position
+            // Use cellPositions for this specific index if it exists
+            const hasCellPosition = cellPositions && cellPositions[i] !== undefined;
+            const hasCellWidth = cellWidthsArr && cellWidthsArr[i] !== undefined;
+            const thisCellWidth = hasCellWidth ? cellWidthsArr[i] : slotWidth;
+            const cellCenterX = hasCellPosition ? cellPositions[i] : (i * slotWidth + slotWidth / 2);
+            const cellLeftX = cellCenterX - thisCellWidth / 2;
             
             return (
               <Group
