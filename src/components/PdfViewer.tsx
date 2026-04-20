@@ -2047,19 +2047,17 @@ function FieldShape({
       }
     }, [isSelected]);
 
-    // Update active slot when value changes externally
-    useEffect(() => {
-      if (value.length < charCount) {
-        setActiveSlotIndex(value.length);
-      }
-    }, [value, charCount]);
+    // Cursor position is managed by user actions only (typing, arrow keys, clicks)
+    // No automatic cursor adjustment based on value length
 
     const handleKeyDown = (e: KeyboardEvent) => {
       // Handle printable characters (single key, not modifier keys)
       if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
         e.preventDefault();
         if (activeSlotIndex < charCount) {
-          const newValue = value.slice(0, activeSlotIndex) + e.key + value.slice(activeSlotIndex + 1);
+          // Ensure value string is padded to charCount length
+          let paddedValue = value.padEnd(charCount, "");
+          const newValue = paddedValue.slice(0, activeSlotIndex) + e.key + paddedValue.slice(activeSlotIndex + 1);
           onValueChange(newValue);
           setActiveSlotIndex(Math.min(activeSlotIndex + 1, charCount - 1));
         }
@@ -2069,7 +2067,9 @@ function FieldShape({
       if (e.key === "Backspace") {
         e.preventDefault();
         if (activeSlotIndex > 0) {
-          const newValue = value.slice(0, activeSlotIndex - 1) + value.slice(activeSlotIndex);
+          // Ensure value string is padded to charCount length
+          let paddedValue = value.padEnd(charCount, "");
+          const newValue = paddedValue.slice(0, activeSlotIndex - 1) + paddedValue.slice(activeSlotIndex);
           onValueChange(newValue);
           setActiveSlotIndex(activeSlotIndex - 1);
         }
