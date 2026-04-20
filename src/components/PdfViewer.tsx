@@ -2028,6 +2028,19 @@ function FieldShape({
     const value = gridField.value || "";
     const [activeSlotIndex, setActiveSlotIndex] = useState(0);
 
+    // Refs to avoid stale closure in handleKeyDown
+    const activeSlotIndexRef = useRef(0);
+    const valueRef = useRef(value);
+
+    // Keep refs in sync with state
+    useEffect(() => {
+      valueRef.current = value;
+    }, [value]);
+
+    useEffect(() => {
+      activeSlotIndexRef.current = activeSlotIndex;
+    }, [activeSlotIndex]);
+
     // Notify parent when grid is selected/deselected so it can manage the hidden input
     useEffect(() => {
       if (isSelected) {
@@ -2051,39 +2064,46 @@ function FieldShape({
     // No automatic cursor adjustment based on value length
 
     const handleKeyDown = (e: KeyboardEvent) => {
+      const currentIndex = activeSlotIndexRef.current;
+      const currentValue = valueRef.current;
+
       // Handle printable characters (single key, not modifier keys)
       if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
         e.preventDefault();
-        if (activeSlotIndex < charCount) {
-          // Ensure value string is padded to charCount length
-          let paddedValue = value.padEnd(charCount, "");
-          const newValue = paddedValue.slice(0, activeSlotIndex) + e.key + paddedValue.slice(activeSlotIndex + 1);
+        if (currentIndex < charCount) {
+          const paddedValue = currentValue.padEnd(charCount, "");
+          const newValue = paddedValue.slice(0, currentIndex) + e.key + paddedValue.slice(currentIndex + 1);
           onValueChange(newValue);
-          setActiveSlotIndex(Math.min(activeSlotIndex + 1, charCount - 1));
+          const nextIndex = Math.min(currentIndex + 1, charCount - 1);
+          setActiveSlotIndex(nextIndex);
+          activeSlotIndexRef.current = nextIndex;
         }
         return;
       }
       
       if (e.key === "Backspace") {
         e.preventDefault();
-        if (activeSlotIndex > 0) {
-          // Ensure value string is padded to charCount length
-          let paddedValue = value.padEnd(charCount, "");
-          // Clear the character at the previous slot (don't shift)
-          const prevIndex = activeSlotIndex - 1;
+        if (currentIndex > 0) {
+          const paddedValue = currentValue.padEnd(charCount, "");
+          const prevIndex = currentIndex - 1;
           const newValue = paddedValue.slice(0, prevIndex) + "" + paddedValue.slice(prevIndex + 1);
           onValueChange(newValue);
           setActiveSlotIndex(prevIndex);
+          activeSlotIndexRef.current = prevIndex;
         }
       } else if (e.key === "ArrowLeft") {
         e.preventDefault();
-        if (activeSlotIndex > 0) {
-          setActiveSlotIndex(activeSlotIndex - 1);
+        if (currentIndex > 0) {
+          const newIndex = currentIndex - 1;
+          setActiveSlotIndex(newIndex);
+          activeSlotIndexRef.current = newIndex;
         }
       } else if (e.key === "ArrowRight") {
         e.preventDefault();
-        if (activeSlotIndex < charCount - 1) {
-          setActiveSlotIndex(activeSlotIndex + 1);
+        if (currentIndex < charCount - 1) {
+          const newIndex = currentIndex + 1;
+          setActiveSlotIndex(newIndex);
+          activeSlotIndexRef.current = newIndex;
         }
       } else if (e.key === "Enter" || e.key === "Escape") {
         e.preventDefault();
@@ -2102,12 +2122,13 @@ function FieldShape({
 
       // Distribute characters across slots starting from activeSlotIndex
       const chars = pastedText.split("").filter(c => c.length === 1);
-      let newIndex = activeSlotIndex;
-      let newValue = value;
+      let newIndex = activeSlotIndexRef.current;
+      let newValue = valueRef.current;
 
       for (const char of chars) {
         if (newIndex < charCount) {
-          newValue = newValue.slice(0, newIndex) + char + newValue.slice(newIndex + 1);
+          const paddedValue = newValue.padEnd(charCount, "");
+          newValue = paddedValue.slice(0, newIndex) + char + paddedValue.slice(newIndex + 1);
           newIndex++;
         } else {
           break;
@@ -2116,10 +2137,12 @@ function FieldShape({
 
       onValueChange(newValue);
       setActiveSlotIndex(newIndex);
+      activeSlotIndexRef.current = newIndex;
     };
 
     const handleSlotClick = (index: number) => {
       setActiveSlotIndex(index);
+      activeSlotIndexRef.current = index;
     };
 
     return (
