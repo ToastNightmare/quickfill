@@ -263,7 +263,15 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
       
       const selectedField = selectedFieldId ? fields.find(f => f.id === selectedFieldId && f.page === currentPage) : null;
       
-      // Delete / Backspace - delete selected field
+      // If selected field is comb or grid, let the field handle its own typing keys
+      // Only allow Escape and Ctrl+D through to this handler
+      if (selectedField && (selectedField.type === "comb" || selectedField.type === "grid")) {
+        const isEscape = e.key === "Escape";
+        const isDuplicate = (e.ctrlKey || e.metaKey) && e.key === "d";
+        if (!isEscape && !isDuplicate) return;
+      }
+      
+      // Delete / Backspace - delete selected field (but not for comb/grid - handled above)
       if (e.key === "Delete" || e.key === "Backspace") {
         if (selectedFieldId) {
           e.preventDefault();
