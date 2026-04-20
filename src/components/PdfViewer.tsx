@@ -658,6 +658,9 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
               const canvas = canvasRef.current;
               let detectedCellWidth: number | undefined;
               let detectedCellCount: number | undefined;
+              let snapX = fieldX; // Default to drawn position
+              let snapY = fieldY;
+              let snapHeight = fieldH;
               
               if (canvas) {
                 const combResult = detectCombCells(
@@ -671,6 +674,11 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
                   // Use detected cell width and count
                   detectedCellWidth = Math.round(combResult.cellWidth / zoomFactor);
                   detectedCellCount = combResult.cellCount;
+                  // Snap X position to first detected cell boundary
+                  snapX = Math.round(combResult.firstCellX / zoomFactor);
+                  // Snap Y and height to detected box bounds
+                  snapY = Math.round(combResult.y / zoomFactor);
+                  snapHeight = Math.round(combResult.height / zoomFactor);
                 }
               }
               
@@ -679,9 +687,11 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
               
               field = { 
                 ...base, 
+                x: snapX, // Use snapped X position
+                y: snapY, // Use snapped Y position
                 type: "comb", 
                 width: finalWidth, 
-                height: fieldH, 
+                height: snapHeight, 
                 value: "", 
                 charCount: finalCharCount,
                 cellWidth: detectedCellWidth,
@@ -871,6 +881,9 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
                 const combCanvas = canvasRef.current;
                 let combDetectedCellWidth: number | undefined;
                 let combDetectedCellCount: number | undefined;
+                let combSnapX = fieldX;
+                let combSnapY = fieldY;
+                let combSnapHeight = fieldH;
                 
                 if (combCanvas) {
                   const combResult = detectCombCells(
@@ -883,6 +896,9 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
                   if (combResult && combResult.cellCount >= 2) {
                     combDetectedCellWidth = Math.round(combResult.cellWidth / zoomFactor);
                     combDetectedCellCount = combResult.cellCount;
+                    combSnapX = Math.round(combResult.firstCellX / zoomFactor);
+                    combSnapY = Math.round(combResult.y / zoomFactor);
+                    combSnapHeight = Math.round(combResult.height / zoomFactor);
                   }
                 }
                 
@@ -891,9 +907,11 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
                 
                 field = { 
                   ...base, 
+                  x: combSnapX,
+                  y: combSnapY,
                   type: "comb", 
                   width: combFinalWidth, 
-                  height: fieldH, 
+                  height: combSnapHeight, 
                   value: "", 
                   charCount: combFinalCharCount,
                   cellWidth: combDetectedCellWidth,
@@ -1097,6 +1115,9 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
           const combCanvas3 = canvasRef.current;
           let combDetectedCellWidth3: number | undefined;
           let combDetectedCellCount3: number | undefined;
+          let combSnapX3 = fieldX;
+          let combSnapY3 = fieldY;
+          let combSnapHeight3 = fieldH;
           
           if (combCanvas3) {
             const combResult3 = detectCombCells(
@@ -1109,6 +1130,9 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
             if (combResult3 && combResult3.cellCount >= 2) {
               combDetectedCellWidth3 = Math.round(combResult3.cellWidth / zoomFactor);
               combDetectedCellCount3 = combResult3.cellCount;
+              combSnapX3 = Math.round(combResult3.firstCellX / zoomFactor);
+              combSnapY3 = Math.round(combResult3.y / zoomFactor);
+              combSnapHeight3 = Math.round(combResult3.height / zoomFactor);
             }
           }
           
@@ -1117,9 +1141,11 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
           
           field = { 
             ...base, 
+            x: combSnapX3,
+            y: combSnapY3,
             type: "comb", 
             width: combFinalWidth3, 
-            height: fieldH, 
+            height: combSnapHeight3, 
             value: "", 
             charCount: combFinalCharCount3,
             cellWidth: combDetectedCellWidth3,

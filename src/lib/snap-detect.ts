@@ -1093,6 +1093,8 @@ function deduplicateBoxes(boxes: SnapResult[]): SnapResult[] {
  * - cellWidth: the detected width of each cell
  * - cellCount: the number of cells detected
  * - x, y, width, height: the bounding box of the detected comb row
+ * - firstCellX: the X position of the first cell's left edge (for precise alignment)
+ * - cellBoundaries: array of X positions for each cell's left edge
  * 
  * Returns null if no comb pattern is detected.
  */
@@ -1103,6 +1105,8 @@ export interface CombDetectResult {
   y: number;
   width: number;
   height: number;
+  firstCellX: number; // X position of first cell's left edge in canvas coordinates
+  cellBoundaries: number[]; // X positions of each cell's left edge
 }
 
 export function detectCombCells(
@@ -1203,6 +1207,19 @@ export function detectCombCells(
     maxY = Math.max(maxY, line.y2);
   }
 
+  // Build array of cell boundary X positions (in canvas coordinates)
+  const cellBoundaries: number[] = [];
+  let prevX = tallLines[0].x;
+  cellBoundaries.push(x1 + prevX);
+  
+  for (let i = 1; i < tallLines.length; i++) {
+    const gap = tallLines[i].x - prevX;
+    if (Math.abs(gap - bestGap) <= 4) {
+      cellBoundaries.push(x1 + tallLines[i].x);
+      prevX = tallLines[i].x;
+    }
+  }
+
   return {
     cellWidth: bestGap,
     cellCount: cellCount,
@@ -1210,5 +1227,7 @@ export function detectCombCells(
     y: y1 + minY,
     width: lastX - firstX,
     height: maxY - minY,
+    firstCellX: x1 + firstX,
+    cellBoundaries: cellBoundaries,
   };
 }
