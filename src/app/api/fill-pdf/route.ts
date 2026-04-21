@@ -225,6 +225,9 @@ async function drawFieldOnPage(pdfDoc: PDFDocument, field: EditorField, pageScal
   const pdfY = page.getHeight() - field.y / scale - field.height / scale;
   const pdfW = field.width / scale;
   const pdfH = field.height / scale;
+
+  // Debug logging for coordinate calculation
+  console.log(`[drawFieldOnPage] field.id=${field.id} field.x=${field.x} field.y=${field.y} scale=${scale} pdfX=${pdfX} pdfY=${pdfY} pageHeight=${page.getHeight()}`);
   
   if (field.type === "whiteout") {
     // Draw a filled rectangle with the sampled background color

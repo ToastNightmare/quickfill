@@ -401,6 +401,7 @@ export default function EditorPage() {
         setActiveTool(null);
         setCurrentPage(0);
         setHasAcroForm(false);
+        pageScales.clear(); // Clear old page scales for fresh coordinate calculation
         
         // Skip session restore for this fresh load
         skipSessionRestoreRef.current = true;
@@ -476,7 +477,7 @@ export default function EditorPage() {
         setTimeout(pollCanvas, 300);
       }
     },
-    [reset]
+    [reset, pageScales]
   );
 
   // Load template from URL param — reset state when template changes
@@ -493,6 +494,7 @@ export default function EditorPage() {
       setFileName("");
       setCurrentPage(0);
       setSelectedFieldId(null);
+      pageScales.clear(); // Clear old page scales for fresh coordinate calculation
       setActiveTemplate(templateParam);
 
       fetch(`/templates/${templateParam}`)
@@ -503,7 +505,7 @@ export default function EditorPage() {
         })
         .catch(() => {});
     });
-  }, [activeTemplate, handleFileLoad, reset]);
+  }, [activeTemplate, handleFileLoad, reset, pageScales]);
 
   const handleFieldAdd = useCallback(
     (field: EditorField) => {
@@ -611,8 +613,9 @@ export default function EditorPage() {
     setHasAcroForm(false);
     setSelectedFieldId(null);
     setActiveTool(null);
+    pageScales.clear(); // Clear old page scales for fresh coordinate calculation
     reset([]);
-  }, [reset]);
+  }, [reset, pageScales]);
 
   const showToast = useCallback((msg: string, duration = 3000) => {
     setToast(msg);
@@ -855,7 +858,12 @@ export default function EditorPage() {
 
   const handlePageScaleSet = useCallback(
     (page: number, scale: number) => {
-      pageScales.set(page, scale);
+      // Only set scale once per page to prevent zoom-induced overwrites.
+      // Field coordinates are stored in base canvas space (fitScale * pdfPoint),
+      // so changing the scale after fields are placed would break positioning.
+      if (!pageScales.has(page)) {
+        pageScales.set(page, scale);
+      }
     },
     [pageScales]
   );
