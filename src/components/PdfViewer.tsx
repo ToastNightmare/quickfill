@@ -439,7 +439,9 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
       if (!stage) return;
       // Use native event offsetX/Y for consistent coordinates during drag
       const nativeEvt = e.evt;
-      const pos = { x: nativeEvt.offsetX, y: nativeEvt.offsetY };
+      const container = stage.container();
+      const rect = container.getBoundingClientRect();
+      const pos = { x: nativeEvt.clientX - rect.left, y: nativeEvt.clientY - rect.top };
 
       updateCursor(stage, pos);
 
@@ -553,10 +555,12 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
     (e: Konva.KonvaEventObject<MouseEvent>) => {
       const stage = e.target.getStage();
       if (!stage) return;
-      // Use native event offsetX/Y for reliable coordinates on first interaction
-      // Konva's getPointerPosition() can have stale bounding rect cache on first click
+      // Use clientX/Y with getBoundingClientRect for reliable coordinates on first interaction
+      // offsetX/Y is relative to event target which may not be the canvas on first click
       const nativeEvt = e.evt;
-      const pos = { x: nativeEvt.offsetX, y: nativeEvt.offsetY };
+      const container = stage.container();
+      const rect = container.getBoundingClientRect();
+      const pos = { x: nativeEvt.clientX - rect.left, y: nativeEvt.clientY - rect.top };
       mouseDownPos.current = { x: pos.x, y: pos.y };
       // Feature 1: Record drag start if tool is active and clicking on empty canvas
       if (activeTool && e.target === stage) {
@@ -574,9 +578,11 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
     (e: Konva.KonvaEventObject<MouseEvent>) => {
       const stage = e.target.getStage();
       if (!stage) return;
-      // Use native event offsetX/Y for consistent coordinates with mouseDown
+      // Use clientX/Y with getBoundingClientRect for consistent coordinates with mouseDown
       const nativeEvt = e.evt;
-      const pos = { x: nativeEvt.offsetX, y: nativeEvt.offsetY };
+      const container = stage.container();
+      const rect = container.getBoundingClientRect();
+      const pos = { x: nativeEvt.clientX - rect.left, y: nativeEvt.clientY - rect.top };
       if (mouseDownPos.current) {
         const dx = pos.x - mouseDownPos.current.x;
         const dy = pos.y - mouseDownPos.current.y;
