@@ -273,10 +273,11 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
       }
       
       // Delete / Backspace - delete selected field (but not for comb - handled above)
+      // Only delete if the field is on the current page (selectedField found)
       if (e.key === "Delete" || e.key === "Backspace") {
-        if (selectedFieldId) {
+        if (selectedField) {
           e.preventDefault();
-          onFieldDelete(selectedFieldId);
+          onFieldDelete(selectedField.id);
           onFieldSelect(null);
         }
         return;
@@ -1016,7 +1017,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
         setDrawRect(null);
       }
     },
-    [activeTool, currentPage, zoomFactor, onFieldAdd, onFieldSelect, onToolSelect, onSignatureFieldPlaced, snapPreview, whiteoutColor]
+    [activeTool, currentPage, zoomFactor, onFieldAdd, onFieldSelect, onToolSelect, onSignatureFieldPlaced, snapPreview, whiteoutColor, fields, snapEnabled]
   );
 
   // Core field creation logic - shared by click and touch
