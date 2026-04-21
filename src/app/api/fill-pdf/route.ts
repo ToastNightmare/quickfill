@@ -1,3 +1,5 @@
+// PDFs are processed in memory only and never persisted to disk or database
+
 export const runtime = "nodejs";
 
 import { NextRequest, NextResponse } from "next/server";
