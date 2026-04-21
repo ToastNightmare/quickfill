@@ -140,8 +140,6 @@ export default function EditorPage() {
   const { fields, set: setFields, undo, redo, reset, canUndo, canRedo } = useHistory();
   const restoredRef = useRef(false);
   const initialRestoreDoneRef = useRef(false);
-  const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const skipSessionRestoreRef = useRef(false);
 
   const pdfViewerRef = useRef<PdfViewerHandle>(null);
   const viewerContainerRef = useRef<HTMLDivElement>(null);
@@ -168,36 +166,6 @@ export default function EditorPage() {
       .catch(() => {});
   }, []);
 
-  // Load saved session when PDF is loaded
-  useEffect(() => {
-    if (!pdfBytes || !fileName) return;
-
-    if (skipSessionRestoreRef.current) {
-      skipSessionRestoreRef.current = false;
-      return;
-    }
-
-    const loadSession = async () => {
-      try {
-        const res = await fetch(`/api/session?filename=${encodeURIComponent(fileName)}`);
-        if (res.ok) {
-          const session = await res.json();
-          if (session && session.fields && session.fields.length > 0) {
-            reset(session.fields);
-            if (typeof session.currentPage === "number") {
-              setCurrentPage(session.currentPage);
-            }
-            setShowRestoredBanner(true);
-            setTimeout(() => setShowRestoredBanner(false), 3000);
-          }
-        }
-      } catch {
-        // Silent - session load is non-critical
-      }
-    };
-
-    loadSession();
-  }, [pdfBytes, fileName, reset]);
 
   // Show welcome banner for first-time users
   useEffect(() => {
@@ -223,10 +191,6 @@ export default function EditorPage() {
       const savedFields = loadFieldsFromLocalStorage();
       const savedPage = loadPageFromLocalStorage();
       const savedName = loadFileNameFromLocalStorage();
-
-      // Skip API session restore since we are restoring from localStorage
-      // This prevents the API from overwriting localStorage-restored fields
-      skipSessionRestoreRef.current = true;
 
       setPdfBytes(savedPdf);
       setFileName(savedName);
@@ -317,39 +281,6 @@ export default function EditorPage() {
     }
   }, [snapEnabled]);
 
-  // Auto-save session when fields change (debounced 3 seconds)
-  useEffect(() => {
-    // Skip auto-save until initial restoration is complete
-    if (!pdfBytes || !fileName || !initialRestoreDoneRef.current) return;
-
-    // Clear any pending save
-    if (saveTimeoutRef.current) {
-      clearTimeout(saveTimeoutRef.current);
-    }
-
-    // Debounce save by 3 seconds
-    saveTimeoutRef.current = setTimeout(async () => {
-      try {
-        await fetch("/api/session", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            filename: fileName,
-            fields,
-            currentPage,
-          }),
-        });
-      } catch {
-        // Silent - auto-save is non-critical
-      }
-    }, 3000);
-
-    return () => {
-      if (saveTimeoutRef.current) {
-        clearTimeout(saveTimeoutRef.current);
-      }
-    };
-  }, [fields, currentPage, pdfBytes, fileName]);
 
   const selectedField = useMemo(() => {
     if (!selectedFieldId) return null;
@@ -411,9 +342,6 @@ export default function EditorPage() {
         setCurrentPage(0);
         setHasAcroForm(false);
         pageScales.clear(); // Clear old page scales for fresh coordinate calculation
-        
-        // Skip session restore for this fresh load
-        skipSessionRestoreRef.current = true;
         // Mark as ready for field persistence
         initialRestoreDoneRef.current = true;
 
@@ -573,11 +501,6 @@ export default function EditorPage() {
       if (((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === "z") || ((e.ctrlKey || e.metaKey) && e.key === "y")) {
         e.preventDefault();
         redo();
-      }
-      // Delete selected field: Delete or Backspace
-      if ((e.key === "Delete" || e.key === "Backspace") && selectedFieldId) {
-        e.preventDefault();
-        handleFieldDelete(selectedFieldId);
       }
       // Duplicate selected field: Ctrl+D / Cmd+D
       if ((e.ctrlKey || e.metaKey) && e.key === "d" && selectedFieldId) {
@@ -869,14 +792,17 @@ export default function EditorPage() {
 
   const handlePageScaleSet = useCallback(
     (page: number, scale: number) => {
-      // Only set scale once per page to prevent zoom-induced overwrites.
-      // Field coordinates are stored in base canvas space (fitScale * pdfPoint),
-      // so changing the scale after fields are placed would break positioning.
-      if (!pageScales.has(page)) {
-        pageScales.set(page, scale);
+      // Only update scale when at 100% zoom (base render) to avoid zoom-induced overwrites.
+      // Field coordinates are stored in base canvas space (fitScale * pdfPoint).
+      // Allow updates when scale genuinely changes (e.g., PDF re-render at different size).
+      if (zoom === 100) {
+        const existing = pageScales.get(page);
+        if (existing !== scale) {
+          pageScales.set(page, scale);
+        }
       }
     },
-    [pageScales]
+    [pageScales, zoom]
   );
 
   const handlePageChange = useCallback((page: number) => {
