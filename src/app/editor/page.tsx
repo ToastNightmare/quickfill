@@ -703,13 +703,13 @@ export default function EditorPage() {
         isPro = usage.isPro;
         isGuest = usage.tier === "guest";
         
-        // Guest mode: check localStorage for fill count
+        // Guest mode: check server-side fill count
         if (isGuest && !isPro) {
-          const guestFillCount = parseInt(localStorage.getItem("guestFillCount") || "0", 10);
+          const serverFillCount = usage.used || 0;
           
           // If this would be the 3rd fill, show upsell modal BEFORE download
           // Pro users never see this modal
-          if (guestFillCount >= 3) {
+          if (serverFillCount >= 3) {
             setShowGuestUpsellModal(true);
             setIsDownloading(false);
             return;
@@ -747,15 +747,8 @@ export default function EditorPage() {
       URL.revokeObjectURL(url);
 
       // Increment usage after successful download
-      const postUsageRes = await fetch("/api/usage", { method: "POST" });
-      const postUsage = await postUsageRes.json().catch(() => ({}));
-      
-      // For guest mode, increment fill count in localStorage
-      if (postUsage.guest) {
-        const currentCount = parseInt(localStorage.getItem("guestFillCount") || "0", 10);
-        const newCount = currentCount + 1;
-        localStorage.setItem("guestFillCount", String(newCount));
-      }
+      // For guest users, this is tracked server-side by IP hash
+      await fetch("/api/usage", { method: "POST" });
 
       // Save fill history
       try {

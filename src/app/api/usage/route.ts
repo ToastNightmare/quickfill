@@ -1,6 +1,7 @@
 import { auth } from "@clerk/nextjs/server";
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { getRedis } from "@/lib/redis";
+import crypto from "crypto";
 
 const TIER_LIMITS: Record<string, number> = {
   free: 3,
@@ -8,7 +9,8 @@ const TIER_LIMITS: Record<string, number> = {
   business: 50,
 };
 
-const TTL_SECONDS = 35 * 24 * 60 * 60; // 35 days
+const TTL_SECONDS = 35 * 24 * 60 * 60; // 35 days for authenticated users
+const GUEST_TTL_SECONDS = 30 * 24 * 60 * 60; // 30 days for guest users
 
 function usageKey(userId: string) {
   const now = new Date();
@@ -16,18 +18,28 @@ function usageKey(userId: string) {
   return `usage:${userId}:${month}`;
 }
 
-export async function GET() {
+function getGuestIdentifier(request: NextRequest): string {
+  const forwarded = request.headers.get("x-forwarded-for");
+  const realIp = request.headers.get("x-real-ip");
+  const ip = forwarded?.split(",")[0] || realIp || "unknown";
+  // Hash the IP to create an anonymous identifier
+  const hash = crypto.createHash("sha256").update(ip).digest("hex");
+  return `guest:fills:${hash}`;
+}
+
+export async function GET(request: NextRequest) {
   const { userId } = await auth();
   
-  // Guest mode: allow 1 fill without sign-up
+  // Guest mode: track usage by IP hash
   if (!userId) {
-    const guestKey = "usage:guest";
+    const guestKey = getGuestIdentifier(request);
     const used = await getRedis().get<number>(guestKey);
     return NextResponse.json({
       used: used ?? 0,
-      limit: 1,
+      limit: 3,
       isPro: false,
       tier: "guest",
+      guest: true,
     });
   }
 
@@ -48,12 +60,20 @@ export async function GET() {
   });
 }
 
-export async function POST() {
+export async function POST(request: NextRequest) {
   const { userId } = await auth();
   
-  // Guest mode: track usage in localStorage, return success
+  // Guest mode: track usage by IP hash server-side
   if (!userId) {
-    return NextResponse.json({ used: 1, guest: true });
+    const guestKey = getGuestIdentifier(request);
+    const newCount = await getRedis().incr(guestKey);
+    
+    // Set TTL on first increment
+    if (newCount === 1) {
+      await getRedis().expire(guestKey, GUEST_TTL_SECONDS);
+    }
+    
+    return NextResponse.json({ used: newCount, guest: true });
   }
 
   const key = usageKey(userId);
