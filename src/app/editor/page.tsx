@@ -139,6 +139,7 @@ export default function EditorPage() {
   const [activeTemplate, setActiveTemplate] = useState<string | null>(null);
   const { fields, set: setFields, undo, redo, reset, canUndo, canRedo } = useHistory();
   const restoredRef = useRef(false);
+  const initialRestoreDoneRef = useRef(false);
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const skipSessionRestoreRef = useRef(false);
 
@@ -223,6 +224,10 @@ export default function EditorPage() {
       const savedPage = loadPageFromLocalStorage();
       const savedName = loadFileNameFromLocalStorage();
 
+      // Skip API session restore since we are restoring from localStorage
+      // This prevents the API from overwriting localStorage-restored fields
+      skipSessionRestoreRef.current = true;
+
       setPdfBytes(savedPdf);
       setFileName(savedName);
       setCurrentPage(savedPage);
@@ -232,6 +237,9 @@ export default function EditorPage() {
       setShowRestoredBanner(true);
       setTimeout(() => setShowRestoredBanner(false), 3000);
       pollCanvasForContent(pdfViewerRef, setMinimapCanvas);
+
+      // Mark initial restoration as complete so persist effect can save
+      initialRestoreDoneRef.current = true;
 
       // Detect AcroForm for progress tracking
       try {
@@ -243,9 +251,9 @@ export default function EditorPage() {
     });
   }, [reset]);
 
-  // Persist fields on change
+  // Persist fields on change (only after initial restoration is complete)
   useEffect(() => {
-    if (pdfBytes) {
+    if (pdfBytes && initialRestoreDoneRef.current) {
       saveFieldsToLocalStorage(fields);
     }
   }, [fields, pdfBytes]);
@@ -311,7 +319,8 @@ export default function EditorPage() {
 
   // Auto-save session when fields change (debounced 3 seconds)
   useEffect(() => {
-    if (!pdfBytes || !fileName) return;
+    // Skip auto-save until initial restoration is complete
+    if (!pdfBytes || !fileName || !initialRestoreDoneRef.current) return;
 
     // Clear any pending save
     if (saveTimeoutRef.current) {
@@ -405,7 +414,9 @@ export default function EditorPage() {
         
         // Skip session restore for this fresh load
         skipSessionRestoreRef.current = true;
-        
+        // Mark as ready for field persistence
+        initialRestoreDoneRef.current = true;
+
         setPdfBytes(bytes);
         setFileName(file.name);
 
