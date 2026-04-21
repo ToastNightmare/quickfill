@@ -1,6 +1,7 @@
 import OpenAI from "openai";
 import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
+import { checkRateLimit } from "@/lib/rate-limit";
 
 // Lazy singleton OpenAI client — only instantiated at request time
 let _openaiClient: OpenAI | null = null;
@@ -20,6 +21,15 @@ export async function POST(req: Request) {
   const { userId } = await auth();
   if (!userId) {
     return NextResponse.json({ fields: [], error: "Unauthorized" }, { status: 401 });
+  }
+
+  // Rate limiting check
+  const forwarded = req.headers.get("x-forwarded-for");
+  const realIp = req.headers.get("x-real-ip");
+  const identifier = forwarded?.split(",")[0] || realIp || "anonymous";
+  const { success, remaining } = await checkRateLimit(identifier);
+  if (!success) {
+    return NextResponse.json({ fields: [], error: "Too many requests, try again in a minute" }, { status: 429 });
   }
 
   try {

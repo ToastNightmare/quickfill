@@ -5,6 +5,7 @@ import { PDFDocument, rgb, StandardFonts, degrees, PDFName } from "pdf-lib";
 import type { EditorField } from "@/lib/types";
 import { APP_CONFIG } from "@/lib/config";
 import { applyBorderWatermark } from "@/lib/watermark";
+import { checkRateLimit } from "@/lib/rate-limit";
 
 /** Replace control characters (including newlines) with a space */
 function sanitize(text: string): string {
@@ -26,6 +27,15 @@ function dataUrlToBytes(dataUrl: string): Uint8Array {
 
 export async function POST(request: NextRequest) {
   try {
+    // Rate limiting check
+    const forwarded = request.headers.get("x-forwarded-for");
+    const realIp = request.headers.get("x-real-ip");
+    const identifier = forwarded?.split(",")[0] || realIp || "anonymous";
+    const { success, remaining } = await checkRateLimit(identifier);
+    if (!success) {
+      return NextResponse.json({ error: "Too many requests, try again in a minute" }, { status: 429 });
+    }
+
     const formData = await request.formData();
 
     const pdfFile = formData.get("pdf") as File | null;

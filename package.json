@@ -15,6 +15,7 @@
     "@clerk/nextjs": "^7.0.7",
     "@pdf-lib/fontkit": "^1.1.1",
     "@stripe/stripe-js": "^9.0.1",
+    "@upstash/ratelimit": "^2.0.8",
     "@upstash/redis": "^1.37.0",
     "canvas-confetti": "^1.9.4",
     "konva": "^10.2.3",
