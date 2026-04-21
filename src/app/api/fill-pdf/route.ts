@@ -1,7 +1,7 @@
 export const runtime = "nodejs";
 
 import { NextRequest, NextResponse } from "next/server";
-import { PDFDocument, rgb, StandardFonts, degrees } from "pdf-lib";
+import { PDFDocument, rgb, StandardFonts, degrees, PDFName } from "pdf-lib";
 import type { EditorField } from "@/lib/types";
 import { APP_CONFIG } from "@/lib/config";
 import { applyBorderWatermark } from "@/lib/watermark";
@@ -101,12 +101,27 @@ export async function POST(request: NextRequest) {
       }
 
       // Try to flatten the form - if it fails (e.g., fields without valid /AP/N appearance dicts),
-      // skip flattening. The PDF will still have drawn fields, just with editable form fields remaining.
+      // fall back to making fields read-only
       try {
         form.flatten({ updateFieldAppearances: false });
       } catch (flattenErr) {
-        console.warn("form.flatten() failed, skipping flatten:", flattenErr instanceof Error ? flattenErr.message : flattenErr);
-        // PDF is still valid with form fields intact - user values are already set
+        console.warn("form.flatten() failed, making fields read-only:", flattenErr instanceof Error ? flattenErr.message : flattenErr);
+        // Layer 2: Set all remaining fields to read-only to prevent tampering
+        for (const field of form.getFields()) {
+          try {
+            field.enableReadOnly();
+          } catch {
+            // Skip fields that cannot be made read-only
+          }
+        }
+      }
+
+      // Layer 3: Remove AcroForm dictionary entirely to make PDF completely static
+      // This prevents any form interaction even if read-only fails
+      try {
+        pdfDoc.catalog.delete(PDFName.of("AcroForm"));
+      } catch {
+        // AcroForm removal not critical - read-only fields are still protected
       }
     } else {
       for (const field of editorFields) {
