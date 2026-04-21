@@ -437,14 +437,15 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
     (e: Konva.KonvaEventObject<MouseEvent>) => {
       const stage = e.target.getStage();
       if (!stage) return;
-      const pos = stage.getPointerPosition();
-      if (!pos) return;
+      // Use native event offsetX/Y for consistent coordinates during drag
+      const nativeEvt = e.evt;
+      const pos = { x: nativeEvt.offsetX, y: nativeEvt.offsetY };
 
       updateCursor(stage, pos);
 
       // Feature 1: Update drag rectangle while dragging
       if (isDragDrawing.current && dragStart.current && activeTool && e.target === stage) {
-        dragCurrent.current = pos;
+        dragCurrent.current = { x: pos.x, y: pos.y };
         const x = Math.min(dragStart.current.x, pos.x);
         const y = Math.min(dragStart.current.y, pos.y);
         const w = Math.abs(pos.x - dragStart.current.x);
@@ -552,16 +553,17 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
     (e: Konva.KonvaEventObject<MouseEvent>) => {
       const stage = e.target.getStage();
       if (!stage) return;
-      const pos = stage.getPointerPosition();
-      if (pos) {
-        mouseDownPos.current = { x: pos.x, y: pos.y };
-        // Feature 1: Record drag start if tool is active and clicking on empty canvas
-        if (activeTool && e.target === stage) {
-          dragStart.current = { x: pos.x, y: pos.y };
-          dragCurrent.current = { x: pos.x, y: pos.y };
-          isDragDrawing.current = true;
-          setDrawRect({ x: pos.x, y: pos.y, w: 0, h: 0 });
-        }
+      // Use native event offsetX/Y for reliable coordinates on first interaction
+      // Konva's getPointerPosition() can have stale bounding rect cache on first click
+      const nativeEvt = e.evt;
+      const pos = { x: nativeEvt.offsetX, y: nativeEvt.offsetY };
+      mouseDownPos.current = { x: pos.x, y: pos.y };
+      // Feature 1: Record drag start if tool is active and clicking on empty canvas
+      if (activeTool && e.target === stage) {
+        dragStart.current = { x: pos.x, y: pos.y };
+        dragCurrent.current = { x: pos.x, y: pos.y };
+        isDragDrawing.current = true;
+        setDrawRect({ x: pos.x, y: pos.y, w: 0, h: 0 });
       }
       isDragMove.current = false;
     },
@@ -572,8 +574,10 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
     (e: Konva.KonvaEventObject<MouseEvent>) => {
       const stage = e.target.getStage();
       if (!stage) return;
-      const pos = stage.getPointerPosition();
-      if (pos && mouseDownPos.current) {
+      // Use native event offsetX/Y for consistent coordinates with mouseDown
+      const nativeEvt = e.evt;
+      const pos = { x: nativeEvt.offsetX, y: nativeEvt.offsetY };
+      if (mouseDownPos.current) {
         const dx = pos.x - mouseDownPos.current.x;
         const dy = pos.y - mouseDownPos.current.y;
         const dist = Math.sqrt(dx * dx + dy * dy);
