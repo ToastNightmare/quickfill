@@ -26,6 +26,7 @@ import {
   clearEditorState,
   saveZoomToLocalStorage,
   loadZoomFromLocalStorage,
+  cleanupOldIndexedDBSessions,
 } from "@/lib/persistence";
 import type { EditorField, ToolType } from "@/lib/types";
 import { useAuth } from "@clerk/nextjs";
@@ -171,6 +172,11 @@ export default function EditorPage() {
   useEffect(() => {
     const dismissed = localStorage.getItem("qf_welcome_dismissed");
     if (!dismissed) setShowWelcome(true);
+  }, []);
+
+  // Cleanup old IndexedDB sessions on mount (fire and forget)
+  useEffect(() => {
+    cleanupOldIndexedDBSessions();
   }, []);
 
   const dismissWelcome = useCallback(() => {

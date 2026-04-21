@@ -3,17 +3,28 @@ import type { EditorField } from "./types";
 const DB_NAME = "quickfill_db";
 const STORE_NAME = "pdfs";
 const PDF_KEY = "current_pdf";
+const PDF_TIMESTAMP_KEY = "current_pdf_timestamp";
 
 const FIELDS_KEY = "quickfill_fields";
 const PAGE_KEY = "quickfill_page";
 const FILENAME_KEY = "quickfill_filename";
 const ZOOM_KEY = "quickfill_zoom";
 
+// 7 days in milliseconds
+const MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+
 function openDB(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
-    const request = indexedDB.open(DB_NAME, 1);
-    request.onupgradeneeded = () => {
-      request.result.createObjectStore(STORE_NAME);
+    const request = indexedDB.open(DB_NAME, 2);
+    request.onupgradeneeded = (event) => {
+      const db = (event.target as IDBOpenDBRequest).result;
+      if (!db.objectStoreNames.contains(STORE_NAME)) {
+        db.createObjectStore(STORE_NAME);
+      }
+      // Add timestamp store for cleanup
+      if (!db.objectStoreNames.contains(PDF_TIMESTAMP_KEY)) {
+        db.createObjectStore(PDF_TIMESTAMP_KEY);
+      }
     };
     request.onsuccess = () => resolve(request.result);
     request.onerror = () => reject(request.error);
@@ -23,8 +34,9 @@ function openDB(): Promise<IDBDatabase> {
 export async function savePdfToIndexedDB(arrayBuffer: ArrayBuffer): Promise<void> {
   try {
     const db = await openDB();
-    const tx = db.transaction(STORE_NAME, "readwrite");
+    const tx = db.transaction([STORE_NAME, PDF_TIMESTAMP_KEY], "readwrite");
     tx.objectStore(STORE_NAME).put(arrayBuffer, PDF_KEY);
+    tx.objectStore(PDF_TIMESTAMP_KEY).put(Date.now(), PDF_TIMESTAMP_KEY);
     await new Promise<void>((resolve, reject) => {
       tx.oncomplete = () => resolve();
       tx.onerror = () => reject(tx.error);
@@ -158,5 +170,47 @@ export async function clearEditorState(): Promise<void> {
     localStorage.removeItem(ZOOM_KEY);
   } catch {
     // silent
+  }
+}
+
+/**
+ * Cleanup IndexedDB: delete PDFs older than 7 days.
+ * Runs non-blocking, fire and forget.
+ */
+export async function cleanupOldIndexedDBSessions(): Promise<void> {
+  try {
+    const db = await openDB();
+    const tx = db.transaction([STORE_NAME, PDF_TIMESTAMP_KEY], "readwrite");
+    const timestampStore = tx.objectStore(PDF_TIMESTAMP_KEY);
+    const pdfStore = tx.objectStore(STORE_NAME);
+    
+    const timestampRequest = timestampStore.get(PDF_TIMESTAMP_KEY);
+    
+    timestampRequest.onsuccess = async () => {
+      const storedTimestamp = timestampRequest.result as number | undefined;
+      
+      if (storedTimestamp) {
+        const age = Date.now() - storedTimestamp;
+        
+        // Delete if older than 7 days
+        if (age > MAX_AGE_MS) {
+          pdfStore.delete(PDF_KEY);
+          timestampStore.delete(PDF_TIMESTAMP_KEY);
+          console.log("Cleaned up old PDF from IndexedDB (older than 7 days)");
+        }
+      }
+      
+      await new Promise<void>((resolve, reject) => {
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error);
+      });
+      db.close();
+    };
+    
+    timestampRequest.onerror = () => {
+      db.close();
+    };
+  } catch (err) {
+    console.warn("Failed to cleanup IndexedDB:", err);
   }
 }
