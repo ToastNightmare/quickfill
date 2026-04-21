@@ -1,4 +1,4 @@
-import { PDFDocument, rgb, StandardFonts, PDFName } from "pdf-lib";
+import { PDFDocument, rgb, StandardFonts } from "pdf-lib";
 import type { EditorField } from "./types";
 import { APP_CONFIG } from "./config";
 
@@ -136,36 +136,14 @@ export async function fillPdf(
       }
     }
 
-    // Remove fields that lack valid appearance streams (would crash flatten)
-    const acroForm = (form as unknown as { acroForm: { removeField: (f: unknown) => void } }).acroForm;
-    const fieldsToRemove: { acroField: unknown }[] = [];
-    for (const field of form.getFields()) {
-      try {
-        const widgets = field.acroField.getWidgets();
-        let hasValidAppearance = false;
-        for (const widget of widgets) {
-          const apDict = widget.dict.lookup(PDFName.of("AP"));
-          if (apDict && typeof apDict === "object" && "get" in apDict) {
-            const n = (apDict as { get: (k: unknown) => unknown }).get(PDFName.of("N"));
-            if (n) {
-              hasValidAppearance = true;
-              break;
-            }
-          }
-        }
-        if (!hasValidAppearance) {
-          fieldsToRemove.push(field);
-        }
-      } catch {
-        fieldsToRemove.push(field);
-      }
+    // Try to flatten the form - if it fails (e.g., fields without valid /AP/N appearance dicts),
+    // skip flattening. The PDF will still have drawn fields, just with editable form fields remaining.
+    try {
+      form.flatten();
+    } catch (flattenErr) {
+      console.warn("form.flatten() failed, skipping flatten:", flattenErr);
+      // PDF is still valid with form fields intact - user values are already set
     }
-    for (const field of fieldsToRemove) {
-      try { acroForm.removeField(field.acroField); } catch { /* skip */ }
-    }
-
-    // Flatten, works because all values are now WinAnsi-safe
-    form.flatten();
   } else {
     for (const field of editorFields) {
       await drawFieldOnPage(pdfDoc, field, pageScales, font, signatureFont);
