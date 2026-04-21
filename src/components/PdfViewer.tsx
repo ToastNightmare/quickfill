@@ -1398,7 +1398,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
   return (
     <div
       ref={containerRef}
-      className="relative flex-1 overflow-auto bg-[#f0f0f0] p-4"
+      className="relative w-max min-w-full min-h-full bg-[#f0f0f0] p-4"
       onTouchEnd={handleTouchEnd}
       style={{ touchAction: activeTool ? "none" : "pan-x pan-y" }}
     >
