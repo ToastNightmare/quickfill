@@ -245,7 +245,7 @@ async function drawFieldOnPage(pdfDoc: PDFDocument, field: EditorField, pageScal
     const value = combField.value ?? "";
     if (!value) return;
 
-    const fontSize = (combField.fontSize ?? 14) / scale;
+    const fontSize = ((combField as unknown as { fontSize?: number }).fontSize ?? 14) / scale;
     const charCount = combField.charCount || 1;
     const offsetX = (combField.offsetX ?? 0) / scale;
     const charOffsetX = (combField.charOffsetX ?? 0) / scale;
