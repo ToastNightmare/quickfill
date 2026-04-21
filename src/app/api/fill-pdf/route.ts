@@ -235,18 +235,20 @@ function drawCheckmark(page: PDFPage, pdfX: number, pdfY: number, pdfW: number, 
   }
 }
 
-async function drawFieldOnPage(pdfDoc: PDFDocument, field: EditorField, pageScales: Map<number, number>, font: PDFFont, signatureFont: PDFFont) {
+async function drawFieldOnPage(pdfDoc: PDFDocument, field: EditorField, _pageScales: Map<number, number>, font: PDFFont, signatureFont: PDFFont) {
   const page = pdfDoc.getPages()[field.page];
   if (!page) return;
-  const scale = pageScales.get(field.page) ?? 1;
-  const pdfX = field.x / scale;
-  const pdfY = page.getHeight() - field.y / scale - field.height / scale;
-  const pdfW = field.width / scale;
-  const pdfH = field.height / scale;
+
+  // Field coordinates are now stored in PDF point space directly
+  // No scaling needed - just flip Y axis (PDF origin is bottom-left)
+  const pdfX = field.x;
+  const pdfY = page.getHeight() - field.y - field.height;
+  const pdfW = field.width;
+  const pdfH = field.height;
 
   // Debug logging for coordinate calculation
-  console.log(`[drawFieldOnPage] field.id=${field.id} field.x=${field.x} field.y=${field.y} scale=${scale} pdfX=${pdfX} pdfY=${pdfY} pageHeight=${page.getHeight()}`);
-  
+  console.log(`[drawFieldOnPage] field.id=${field.id} field.x=${field.x} field.y=${field.y} pdfX=${pdfX} pdfY=${pdfY} pageHeight=${page.getHeight()}`);
+
   if (field.type === "whiteout") {
     // Draw a filled rectangle with the sampled background color
     const whiteoutField = field as import("@/lib/types").WhiteoutField;
@@ -266,10 +268,10 @@ async function drawFieldOnPage(pdfDoc: PDFDocument, field: EditorField, pageScal
       color: rgb(r, g, b),
     });
   } else if (field.type === "signature" && field.signatureDataUrl) {
-    await drawSignatureImage(pdfDoc, page, field.signatureDataUrl, pdfX, pdfY, pdfW, pdfH, field.value, signatureFont, (field.fontSize ?? 16) / scale);
+    await drawSignatureImage(pdfDoc, page, field.signatureDataUrl, pdfX, pdfY, pdfW, pdfH, field.value, signatureFont, field.fontSize ?? 16);
   } else if (field.type === "text" || field.type === "date" || field.type === "signature") {
     if (field.value) {
-      const fontSize = (field.type === "signature" ? 16 : field.fontSize ?? 14) / scale;
+      const fontSize = field.type === "signature" ? 16 : field.fontSize ?? 14;
       const activeFont = field.type === "signature" ? signatureFont : font;
       drawMultilineText(page, field.value, pdfX + 2, pdfY + pdfH - fontSize - 2, fontSize, activeFont);
     }
@@ -281,10 +283,11 @@ async function drawFieldOnPage(pdfDoc: PDFDocument, field: EditorField, pageScal
     const value = combField.value ?? "";
     if (!value) return;
 
-    const fontSize = ((combField as unknown as { fontSize?: number }).fontSize ?? 14) / scale;
+    const fontSize = (combField as unknown as { fontSize?: number }).fontSize ?? 14;
     const charCount = combField.charCount || 1;
-    const offsetX = (combField.offsetX ?? 0) / scale;
-    const charOffsetX = (combField.charOffsetX ?? 0) / scale;
+    // Coordinates are already in PDF points - no scaling needed
+    const offsetX = combField.offsetX ?? 0;
+    const charOffsetX = combField.charOffsetX ?? 0;
 
     // Calculate starting position with offset
     const startX = pdfX + offsetX;
@@ -292,7 +295,7 @@ async function drawFieldOnPage(pdfDoc: PDFDocument, field: EditorField, pageScal
     // Use non-uniform cell positions/widths if available, otherwise uniform spacing
     const cellPositions = combField.cellPositions;
     const cellWidths = combField.cellWidths;
-    const uniformCellWidth = (combField.cellWidth ?? (field.width / charCount)) / scale;
+    const uniformCellWidth = combField.cellWidth ?? (field.width / charCount);
 
     // Draw each character centered in its cell
     for (let i = 0; i < value.length && i < charCount; i++) {
@@ -304,9 +307,9 @@ async function drawFieldOnPage(pdfDoc: PDFDocument, field: EditorField, pageScal
       let cellW: number;
 
       if (cellPositions && cellPositions[i] !== undefined) {
-        // Non-uniform: cellPositions are relative to field X
-        cellCenterX = startX + cellPositions[i] / scale;
-        cellW = (cellWidths && cellWidths[i] !== undefined) ? cellWidths[i] / scale : uniformCellWidth;
+        // Non-uniform: cellPositions are relative to field X (already in PDF points)
+        cellCenterX = startX + cellPositions[i];
+        cellW = (cellWidths && cellWidths[i] !== undefined) ? cellWidths[i] : uniformCellWidth;
       } else {
         // Uniform spacing
         cellW = uniformCellWidth;

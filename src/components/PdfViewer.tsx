@@ -122,7 +122,9 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [dimensions, setDimensions] = useState({ width: 800, height: 1100 });
-  const [, setScale] = useState(1);
+  // fitScale: ratio from PDF points to base canvas pixels (before zoom)
+  // Field coordinates are stored in PDF point space for consistency across resizes
+  const [fitScale, setFitScale] = useState(1);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [editingFieldId, setEditingFieldId] = useState<string | null>(null);
@@ -223,12 +225,12 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
 
         const containerWidth = containerRef.current?.clientWidth ?? 800;
         const viewport = page.getViewport({ scale: 1 });
-        const fitScale = Math.min((containerWidth - 32) / viewport.width, 1.5);
-        const effectiveScale = fitScale * zoomFactor;
+        const newFitScale = Math.min((containerWidth - 32) / viewport.width, 1.5);
+        const effectiveScale = newFitScale * zoomFactor;
         const scaledViewport = page.getViewport({ scale: effectiveScale });
 
-        setScale(fitScale);
-        onPageScaleSet(currentPage, fitScale);
+        setFitScale(newFitScale);
+        onPageScaleSet(currentPage, newFitScale);
         setDimensions({
           width: Math.floor(scaledViewport.width),
           height: Math.floor(scaledViewport.height),
@@ -566,20 +568,22 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
         }
 
         if (snap) {
+          // Convert canvas pixels to PDF point space
+          const effectiveScale = fitScale * zoomFactor;
           const newPreview = {
-            x: snap.x / zoomFactor,
-            y: snap.y / zoomFactor,
-            width: snap.width / zoomFactor,
-            height: snap.height / zoomFactor,
+            x: snap.x / effectiveScale,
+            y: snap.y / effectiveScale,
+            width: snap.width / effectiveScale,
+            height: snap.height / effectiveScale,
           };
-          // Only update if snap changed significantly (>8px), prevents flicker
+          // Only update if snap changed significantly (>6 PDF points), prevents flicker
           setSnapPreview(prev => {
             if (!prev) return newPreview;
             const dx = Math.abs(newPreview.x - prev.x);
             const dy = Math.abs(newPreview.y - prev.y);
             const dw = Math.abs(newPreview.width - prev.width);
             const dh = Math.abs(newPreview.height - prev.height);
-            if (dx < 8 && dy < 8 && dw < 8 && dh < 8) return prev; // no change
+            if (dx < 6 && dy < 6 && dw < 6 && dh < 6) return prev; // no change
             return newPreview;
           });
         } else {
@@ -589,7 +593,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
         setSnapPreview(null);
       }
     },
-    [activeTool, zoomFactor, updateCursor, snapPreview, snapEnabled]
+    [activeTool, zoomFactor, fitScale, updateCursor, snapPreview, snapEnabled]
   );
 
   const handleStageMouseLeave = useCallback(() => {
@@ -653,27 +657,30 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
         if (absDx > 10 && absDy > 10 && activeTool && e.target === stage) {
           const x = Math.min(dragStart.current.x, pos.x);
           const y = Math.min(dragStart.current.y, pos.y);
-          const width = absDx / zoomFactor;
-          const height = absDy / zoomFactor;
-          
+          // Convert canvas pixels to PDF point space (divide by fitScale * zoomFactor)
+          const effectiveScale = fitScale * zoomFactor;
+          const width = absDx / effectiveScale;
+          const height = absDy / effectiveScale;
+
           const id = genId();
           const snapped = false; // No snap detection when user draws manually
-          
+
           const defaults = {
             text:      { w: 200, h: 28 },
             checkbox:  { w: 20,  h: 20 },
             signature: { w: 220, h: 70 },
             date:      { w: 160, h: 28 },
           };
-          
-          // Use drawn dimensions, but ensure minimum sizes
-          const fieldW = Math.max(width, 20);
-          const fieldH = Math.max(height, 20);
-          
+
+          // Use drawn dimensions, but ensure minimum sizes (in PDF points)
+          const fieldW = Math.max(width, 20 / fitScale);
+          const fieldH = Math.max(height, 20 / fitScale);
+
           // Enforce minimum 4px gap between adjacent fields to prevent visual merging
-          let fieldX = x / zoomFactor;
-          let fieldY = y / zoomFactor;
-          const MIN_GAP = 4;
+          // Gap is in PDF point space (approximately 3 PDF points)
+          let fieldX = x / effectiveScale;
+          let fieldY = y / effectiveScale;
+          const MIN_GAP = 3;
           
           const pageFields = fields.filter((f) => f.page === currentPage);
           
@@ -720,43 +727,44 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
               const canvas = canvasRef.current;
               let detectedCellWidth: number | undefined;
               let detectedCellCount: number | undefined;
-              let snapX = fieldX; // Default to drawn position
+              let snapX = fieldX; // Default to drawn position (PDF points)
               let snapY = fieldY;
               let snapHeight = fieldH;
               let cellPositions: number[] | undefined;
               let cellWidthsArr: number[] | undefined;
               let totalWidth = fieldW;
-              
+
               if (canvas) {
+                // Convert PDF points to canvas pixels for detection
                 const combResult = detectCombCells(
                   canvas,
-                  fieldX * zoomFactor,
-                  fieldY * zoomFactor,
-                  fieldW * zoomFactor,
-                  fieldH * zoomFactor,
+                  fieldX * effectiveScale,
+                  fieldY * effectiveScale,
+                  fieldW * effectiveScale,
+                  fieldH * effectiveScale,
                 );
                 if (combResult && combResult.cellCount >= 2) {
-                  // Use detected cell width and count
-                  detectedCellWidth = Math.round(combResult.cellWidth / zoomFactor);
+                  // Convert detected values back to PDF point space
+                  detectedCellWidth = Math.round(combResult.cellWidth / effectiveScale);
                   detectedCellCount = combResult.cellCount;
-                  // Snap X position to first detected cell boundary
-                  snapX = Math.round(combResult.firstCellX / zoomFactor);
-                  // Snap Y and height to detected box bounds
-                  snapY = Math.round(combResult.y / zoomFactor);
-                  snapHeight = Math.round(combResult.height / zoomFactor);
-                  
-                  // Store cell centers relative to field X for non-uniform spacing
+                  // Snap X position to first detected cell boundary (PDF points)
+                  snapX = Math.round(combResult.firstCellX / effectiveScale);
+                  // Snap Y and height to detected box bounds (PDF points)
+                  snapY = Math.round(combResult.y / effectiveScale);
+                  snapHeight = Math.round(combResult.height / effectiveScale);
+
+                  // Store cell centers relative to field X for non-uniform spacing (PDF points)
                   if (combResult.cellCenters && combResult.cellCenters.length > 0) {
-                    cellPositions = combResult.cellCenters.map(c => Math.round((c / zoomFactor) - snapX));
-                    cellWidthsArr = combResult.cellWidths.map(w => Math.round(w / zoomFactor));
+                    cellPositions = combResult.cellCenters.map(c => Math.round((c / effectiveScale) - snapX));
+                    cellWidthsArr = combResult.cellWidths.map(w => Math.round(w / effectiveScale));
                     // Calculate total width from first cell to end of last cell
-                    const lastCellRight = combResult.cellBoundaries[combResult.cellBoundaries.length - 1] + 
+                    const lastCellRight = combResult.cellBoundaries[combResult.cellBoundaries.length - 1] +
                       (combResult.cellWidths[combResult.cellWidths.length - 1] || combResult.cellWidth);
-                    totalWidth = Math.round((lastCellRight - combResult.firstCellX) / zoomFactor);
+                    totalWidth = Math.round((lastCellRight - combResult.firstCellX) / effectiveScale);
                   }
                 }
               }
-              
+
               const finalCharCount = detectedCellCount ?? Math.min(30, Math.max(1, Math.round(fieldW / 24)));
               const finalWidth = cellPositions ? totalWidth : (detectedCellWidth ? detectedCellWidth * finalCharCount : fieldW);
               
@@ -818,12 +826,15 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
           const clickedOnEmpty = e.target === stage;
           if (activeTool && clickedOnEmpty && pos) {
             const id = genId();
-            let fieldX = pos.x / zoomFactor;
-            let fieldY = pos.y / zoomFactor;
+            // Convert canvas pixels to PDF point space
+            const effectiveScale = fitScale * zoomFactor;
+            let fieldX = pos.x / effectiveScale;
+            let fieldY = pos.y / effectiveScale;
             let fieldW: number;
             let fieldH: number;
             let snapped = false;
 
+            // Default sizes in PDF points (72 points = 1 inch)
             const defaults = {
               text:      { w: 200, h: 28 },
               checkbox:  { w: 20,  h: 20 },
@@ -839,6 +850,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
             // Also skip snap detection if snapEnabled is false
             if (activeTool !== "checkbox" && activeTool !== "signature" && snapEnabled) {
               if (snapPreview) {
+                // snapPreview is now in PDF point space
                 fieldX = snapPreview.x;
                 fieldY = snapPreview.y;
                 fieldW = snapPreview.width;
@@ -848,6 +860,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
                 const preBoxes = precomputedBoxesRef.current;
                 let foundSnap: SnapResult | null = null;
 
+                // preBoxes are in canvas pixels, pos is also canvas pixels
                 if (preBoxes.length > 0) {
                   const containing: SnapResult[] = [];
                   for (const box of preBoxes) {
@@ -875,18 +888,19 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
                 }
 
                 if (foundSnap) {
-                  const snapX = foundSnap.x / zoomFactor;
-                  const snapY = foundSnap.y / zoomFactor;
+                  // Convert snap result from canvas pixels to PDF points
+                  const snapX = foundSnap.x / effectiveScale;
+                  const snapY = foundSnap.y / effectiveScale;
                   const snapZoneOccupied = fields.some(
                     (f) => f.page === currentPage &&
-                    Math.abs(f.x - snapX) < 10 &&
-                    Math.abs(f.y - snapY) < 10
+                    Math.abs(f.x - snapX) < 8 &&
+                    Math.abs(f.y - snapY) < 8
                   );
                   if (!snapZoneOccupied) {
                     fieldX = snapX;
-                    fieldY = foundSnap.y / zoomFactor;
-                    fieldW = foundSnap.width / zoomFactor;
-                    fieldH = foundSnap.height / zoomFactor;
+                    fieldY = snapY;
+                    fieldW = foundSnap.width / effectiveScale;
+                    fieldH = foundSnap.height / effectiveScale;
                     snapped = true;
                   }
                 }
@@ -896,22 +910,22 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
             // Check if snap zone is already occupied by another field on the same page
             const snapZoneOccupied = fields.some((f) =>
               f.page === currentPage &&
-              Math.abs(f.x - fieldX) < 10 &&
-              Math.abs(f.y - fieldY) < 10
+              Math.abs(f.x - fieldX) < 8 &&
+              Math.abs(f.y - fieldY) < 8
             );
             if (snapZoneOccupied) {
               // Reject snap, fall back to click position
               snapped = false;
-              fieldX = pos.x / zoomFactor;
-              fieldY = pos.y / zoomFactor;
+              fieldX = pos.x / effectiveScale;
+              fieldY = pos.y / effectiveScale;
               fieldW = defaults[activeTool].w;
               fieldH = defaults[activeTool].h;
             }
 
-            // Enforce minimum 4px gap between adjacent fields to prevent visual merging
+            // Enforce minimum gap between adjacent fields (in PDF points)
             if (snapped) {
               const pageFields = fields.filter((f) => f.page === currentPage);
-              const MIN_GAP = 4;
+              const MIN_GAP = 3;
               
               for (const existing of pageFields) {
                 const existingRight = existing.x + existing.width;
@@ -964,32 +978,34 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
                 let combCellPositions: number[] | undefined;
                 let combCellWidthsArr: number[] | undefined;
                 let combTotalWidth = fieldW;
-                
+
                 if (combCanvas) {
+                  // Convert PDF points to canvas pixels for detection
                   const combResult = detectCombCells(
                     combCanvas,
-                    fieldX * zoomFactor,
-                    fieldY * zoomFactor,
-                    fieldW * zoomFactor,
-                    fieldH * zoomFactor,
+                    fieldX * effectiveScale,
+                    fieldY * effectiveScale,
+                    fieldW * effectiveScale,
+                    fieldH * effectiveScale,
                   );
                   if (combResult && combResult.cellCount >= 2) {
-                    combDetectedCellWidth = Math.round(combResult.cellWidth / zoomFactor);
+                    // Convert back to PDF point space
+                    combDetectedCellWidth = Math.round(combResult.cellWidth / effectiveScale);
                     combDetectedCellCount = combResult.cellCount;
-                    combSnapX = Math.round(combResult.firstCellX / zoomFactor);
-                    combSnapY = Math.round(combResult.y / zoomFactor);
-                    combSnapHeight = Math.round(combResult.height / zoomFactor);
-                    
+                    combSnapX = Math.round(combResult.firstCellX / effectiveScale);
+                    combSnapY = Math.round(combResult.y / effectiveScale);
+                    combSnapHeight = Math.round(combResult.height / effectiveScale);
+
                     if (combResult.cellCenters && combResult.cellCenters.length > 0) {
-                      combCellPositions = combResult.cellCenters.map(c => Math.round((c / zoomFactor) - combSnapX));
-                      combCellWidthsArr = combResult.cellWidths.map(w => Math.round(w / zoomFactor));
-                      const lastCellRight = combResult.cellBoundaries[combResult.cellBoundaries.length - 1] + 
+                      combCellPositions = combResult.cellCenters.map(c => Math.round((c / effectiveScale) - combSnapX));
+                      combCellWidthsArr = combResult.cellWidths.map(w => Math.round(w / effectiveScale));
+                      const lastCellRight = combResult.cellBoundaries[combResult.cellBoundaries.length - 1] +
                         (combResult.cellWidths[combResult.cellWidths.length - 1] || combResult.cellWidth);
-                      combTotalWidth = Math.round((lastCellRight - combResult.firstCellX) / zoomFactor);
+                      combTotalWidth = Math.round((lastCellRight - combResult.firstCellX) / effectiveScale);
                     }
                   }
                 }
-                
+
                 const combFinalCharCount = combDetectedCellCount ?? Math.min(30, Math.max(1, Math.round(fieldW / 24)));
                 const combFinalWidth = combCellPositions ? combTotalWidth : (combDetectedCellWidth ? combDetectedCellWidth * combFinalCharCount : fieldW);
                 
@@ -1060,7 +1076,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
         setDrawRect(null);
       }
     },
-    [activeTool, currentPage, zoomFactor, onFieldAdd, onFieldSelect, onToolSelect, onSignatureFieldPlaced, snapPreview, whiteoutColor, fields, snapEnabled]
+    [activeTool, currentPage, zoomFactor, fitScale, onFieldAdd, onFieldSelect, onToolSelect, onSignatureFieldPlaced, snapPreview, whiteoutColor, fields, snapEnabled]
   );
 
   // Core field creation logic - shared by click and touch
@@ -1069,13 +1085,16 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
       if (!activeTool || !clickedOnEmpty) return false;
 
       const id = genId();
+      // Convert canvas pixels to PDF point space
+      const effectiveScale = fitScale * zoomFactor;
 
-      let fieldX = posX / zoomFactor;
-      let fieldY = posY / zoomFactor;
+      let fieldX = posX / effectiveScale;
+      let fieldY = posY / effectiveScale;
       let fieldW: number;
       let fieldH: number;
       let snapped = false;
 
+      // Default sizes in PDF points
       const defaults = {
         text:      { w: 200, h: 28 },
         checkbox:  { w: 20,  h: 20 },
@@ -1092,6 +1111,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
       if (activeTool !== "checkbox" && activeTool !== "signature" && snapEnabled) {
         // Snap-first: always try snap detection first
         if (snapPreview) {
+          // snapPreview is now in PDF point space
           fieldX = snapPreview.x;
           fieldY = snapPreview.y;
           fieldW = snapPreview.width;
@@ -1101,6 +1121,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
           const preBoxes = precomputedBoxesRef.current;
           let foundSnap: SnapResult | null = null;
 
+          // preBoxes are in canvas pixels
           if (preBoxes.length > 0) {
             const containing: SnapResult[] = [];
             for (const box of preBoxes) {
@@ -1128,10 +1149,11 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
           }
 
           if (foundSnap) {
-            fieldX = foundSnap.x / zoomFactor;
-            fieldY = foundSnap.y / zoomFactor;
-            fieldW = foundSnap.width / zoomFactor;
-            fieldH = foundSnap.height / zoomFactor;
+            // Convert canvas pixels to PDF points
+            fieldX = foundSnap.x / effectiveScale;
+            fieldY = foundSnap.y / effectiveScale;
+            fieldW = foundSnap.width / effectiveScale;
+            fieldH = foundSnap.height / effectiveScale;
             snapped = true;
           }
         }
@@ -1140,33 +1162,33 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
       // Check if snap zone is already occupied by another field on the same page
       const snapZoneOccupied = fields.some((f) =>
         f.page === currentPage &&
-        Math.abs(f.x - fieldX) < 10 &&
-        Math.abs(f.y - fieldY) < 10
+        Math.abs(f.x - fieldX) < 8 &&
+        Math.abs(f.y - fieldY) < 8
       );
       if (snapZoneOccupied) {
         // Reject snap, fall back to click position
         snapped = false;
-        fieldX = posX / zoomFactor;
-        fieldY = posY / zoomFactor;
+        fieldX = posX / effectiveScale;
+        fieldY = posY / effectiveScale;
         fieldW = defaults[activeTool].w;
         fieldH = defaults[activeTool].h;
       }
 
-      // Enforce minimum 4px gap between adjacent fields to prevent visual merging
+      // Enforce minimum gap between adjacent fields (in PDF points)
       if (snapped) {
         const pageFields = fields.filter((f) => f.page === currentPage);
-        const MIN_GAP = 4;
-        
+        const MIN_GAP = 3;
+
         for (const existing of pageFields) {
           const existingRight = existing.x + existing.width;
           const existingBottom = existing.y + existing.height;
-          
+
           // Check if new field would be adjacent to existing field
           const isAdjacentRight = Math.abs(fieldX - existingRight) < MIN_GAP && Math.abs((fieldY + fieldH / 2) - (existing.y + existing.height / 2)) < Math.max(fieldH, existing.height);
           const isAdjacentLeft = Math.abs((fieldX + fieldW) - existing.x) < MIN_GAP && Math.abs((fieldY + fieldH / 2) - (existing.y + existing.height / 2)) < Math.max(fieldH, existing.height);
           const isAdjacentBottom = Math.abs(fieldY - existingBottom) < MIN_GAP && Math.abs((fieldX + fieldW / 2) - (existing.x + existing.width / 2)) < Math.max(fieldW, existing.width);
           const isAdjacentTop = Math.abs((fieldY + fieldH) - existing.y) < MIN_GAP && Math.abs((fieldX + fieldW / 2) - (existing.x + existing.width / 2)) < Math.max(fieldW, existing.width);
-          
+
           if (isAdjacentRight) {
             fieldX = existingRight + MIN_GAP;
           } else if (isAdjacentLeft) {
@@ -1210,32 +1232,34 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
           let combCellPositions3: number[] | undefined;
           let combCellWidthsArr3: number[] | undefined;
           let combTotalWidth3 = fieldW;
-          
+
           if (combCanvas3) {
+            // Convert PDF points to canvas pixels for detection
             const combResult3 = detectCombCells(
               combCanvas3,
-              fieldX * zoomFactor,
-              fieldY * zoomFactor,
-              fieldW * zoomFactor,
-              fieldH * zoomFactor,
+              fieldX * effectiveScale,
+              fieldY * effectiveScale,
+              fieldW * effectiveScale,
+              fieldH * effectiveScale,
             );
             if (combResult3 && combResult3.cellCount >= 2) {
-              combDetectedCellWidth3 = Math.round(combResult3.cellWidth / zoomFactor);
+              // Convert back to PDF point space
+              combDetectedCellWidth3 = Math.round(combResult3.cellWidth / effectiveScale);
               combDetectedCellCount3 = combResult3.cellCount;
-              combSnapX3 = Math.round(combResult3.firstCellX / zoomFactor);
-              combSnapY3 = Math.round(combResult3.y / zoomFactor);
-              combSnapHeight3 = Math.round(combResult3.height / zoomFactor);
-              
+              combSnapX3 = Math.round(combResult3.firstCellX / effectiveScale);
+              combSnapY3 = Math.round(combResult3.y / effectiveScale);
+              combSnapHeight3 = Math.round(combResult3.height / effectiveScale);
+
               if (combResult3.cellCenters && combResult3.cellCenters.length > 0) {
-                combCellPositions3 = combResult3.cellCenters.map(c => Math.round((c / zoomFactor) - combSnapX3));
-                combCellWidthsArr3 = combResult3.cellWidths.map(w => Math.round(w / zoomFactor));
-                const lastCellRight3 = combResult3.cellBoundaries[combResult3.cellBoundaries.length - 1] + 
+                combCellPositions3 = combResult3.cellCenters.map(c => Math.round((c / effectiveScale) - combSnapX3));
+                combCellWidthsArr3 = combResult3.cellWidths.map(w => Math.round(w / effectiveScale));
+                const lastCellRight3 = combResult3.cellBoundaries[combResult3.cellBoundaries.length - 1] +
                   (combResult3.cellWidths[combResult3.cellWidths.length - 1] || combResult3.cellWidth);
-                combTotalWidth3 = Math.round((lastCellRight3 - combResult3.firstCellX) / zoomFactor);
+                combTotalWidth3 = Math.round((lastCellRight3 - combResult3.firstCellX) / effectiveScale);
               }
             }
           }
-          
+
           const combFinalCharCount3 = combDetectedCellCount3 ?? Math.min(30, Math.max(1, Math.round(fieldW / 24)));
           const combFinalWidth3 = combCellPositions3 ? combTotalWidth3 : (combDetectedCellWidth3 ? combDetectedCellWidth3 * combFinalCharCount3 : fieldW);
           
@@ -1302,7 +1326,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
 
       return true;
     },
-    [activeTool, currentPage, onFieldAdd, onFieldSelect, onToolSelect, zoomFactor, snapPreview, onSignatureFieldPlaced, snapEnabled, whiteoutColor]
+    [activeTool, currentPage, onFieldAdd, onFieldSelect, onToolSelect, zoomFactor, fitScale, snapPreview, onSignatureFieldPlaced, snapEnabled, whiteoutColor, fields]
   );
 
   const handleStageClick = useCallback(
@@ -1467,16 +1491,18 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
 
         {/* Strong snap preview overlay */}
         {activeTool && snapPreview && (() => {
-          const snapW = snapPreview.width * zoomFactor;
-          const snapH = snapPreview.height * zoomFactor;
+          // snapPreview is in PDF point space, convert to canvas pixels
+          const effectiveScale = fitScale * zoomFactor;
+          const snapW = snapPreview.width * effectiveScale;
+          const snapH = snapPreview.height * effectiveScale;
           const isTiny = snapW < 28 || snapH < 28;
           return (
             <div
               className="snap-preview-highlight"
               style={{
                 position: "absolute",
-                left: snapPreview.x * zoomFactor,
-                top: snapPreview.y * zoomFactor,
+                left: snapPreview.x * effectiveScale,
+                top: snapPreview.y * effectiveScale,
                 width: Math.max(snapW, 20),
                 height: Math.max(snapH, 20),
                 border: `2px solid ${isTiny ? "rgba(59,130,246,0.5)" : "#3b82f6"}`,
@@ -1557,6 +1583,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
               <FieldShape
                 key={field.id}
                 field={field}
+                fitScale={fitScale}
                 isSelected={field.id === selectedFieldId && field.type !== "whiteout"}
                 isEditing={field.id === editingFieldId}
                 isHighlighted={field.id === snappedFieldId || (highlightFieldIds?.has(field.id) ?? false)}
@@ -1602,15 +1629,22 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
                   if (field.type === "whiteout") return;
                   setIsDragging(false);
                   setCursorStyle("move");
-                  onFieldUpdate(field.id, { x, y });
+                  // Convert from Stage coords to PDF point space
+                  onFieldUpdate(field.id, { x: x / fitScale, y: y / fitScale });
                   setTimeout(() => { dragStartedRef.current = false; }, 50);
                 }}
                 onTransformStart={() => {
                   setEditingFieldId(null);
                 }}
-                onTransformEnd={(width, height, x, y) =>
-                  onFieldUpdate(field.id, { width, height, x, y })
-                }
+                onTransformEnd={(width, height, x, y) => {
+                  // Convert from Stage coords to PDF point space
+                  onFieldUpdate(field.id, {
+                    width: width / fitScale,
+                    height: height / fitScale,
+                    x: x / fitScale,
+                    y: y / fitScale,
+                  });
+                }}
                 onDoubleClick={() => {
                   if (field.type !== "comb") setEditingFieldId(field.id);
                 }}
@@ -1722,12 +1756,13 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
         {selectedFieldId && (() => {
           const selectedField = pageFields.find(f => f.id === selectedFieldId);
           if (!selectedField || !selectedField.snapped) return null;
+          const lockEffectiveScale = fitScale * zoomFactor;
           return (
             <div
               style={{
                 position: "absolute",
-                left: selectedField.x * zoomFactor + 2,
-                top: selectedField.y * zoomFactor + 2,
+                left: selectedField.x * lockEffectiveScale + 2,
+                top: selectedField.y * lockEffectiveScale + 2,
                 fontSize: 10,
                 opacity: 0.4,
                 pointerEvents: "none",
@@ -1752,6 +1787,8 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
             // Comb (Box Field) uses its own per-cell input handling
             if (editField.type === "comb") return null;
             const isEditSnapped = editField.snapped ?? false;
+            // Convert from PDF point space to canvas pixels
+            const effectiveScale = fitScale * zoomFactor;
 
             return (
               <input
@@ -1760,11 +1797,11 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
                 type="text"
                 className="absolute z-20 outline-none"
                 style={{
-                  left: editField.x * zoomFactor,
-                  top: editField.y * zoomFactor,
-                  width: editField.width * zoomFactor,
-                  height: editField.height * zoomFactor,
-                  fontSize: Math.max(16, ((editField as { fontSize?: number }).fontSize ?? 14) * zoomFactor),
+                  left: editField.x * effectiveScale,
+                  top: editField.y * effectiveScale,
+                  width: editField.width * effectiveScale,
+                  height: editField.height * effectiveScale,
+                  fontSize: Math.max(16, ((editField as { fontSize?: number }).fontSize ?? 14) * effectiveScale),
                   fontFamily: "Arial, sans-serif",
                   color: "#1a1a2e",
                   cursor: "text",
@@ -1796,7 +1833,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
                   onFieldUpdate(editField.id, { value: newValue } as Partial<EditorField>);
 
                   // Auto-expand field width if text overflows
-                  const fontSize = ((editField as { fontSize?: number }).fontSize ?? 14) * zoomFactor;
+                  const fontSize = ((editField as { fontSize?: number }).fontSize ?? 14) * effectiveScale;
                   const padding = (isEditSnapped ? 2 : 4) * 2;
                   // Measure text width using canvas
                   const canvas = document.createElement("canvas");
@@ -1804,12 +1841,12 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
                   if (ctx) {
                     ctx.font = `${fontSize}px Arial, sans-serif`;
                     const textWidth = ctx.measureText(newValue).width + padding + 8;
-                    const currentWidth = editField.width * zoomFactor;
+                    const currentWidth = editField.width * effectiveScale;
                     if (textWidth > currentWidth) {
-                      // Expand field to fit text, in unscaled coords
+                      // Expand field to fit text, in PDF point space
                       onFieldUpdate(editField.id, {
                         value: newValue,
-                        width: Math.ceil(textWidth / zoomFactor),
+                        width: Math.ceil(textWidth / effectiveScale),
                       } as Partial<EditorField>);
                     }
                   }
@@ -1859,6 +1896,7 @@ function useLoadedImage(src: string | undefined): HTMLImageElement | null {
 // Individual field component
 function FieldShape({
   field,
+  fitScale,
   isSelected,
   isEditing,
   isHighlighted,
@@ -1878,6 +1916,7 @@ function FieldShape({
   onContextMenu,
 }: {
   field: EditorField;
+  fitScale: number;
   isSelected: boolean;
   isEditing: boolean;
   isHighlighted: boolean;
@@ -1939,18 +1978,24 @@ function FieldShape({
     return "transparent";
   };
 
+  // Scale field coordinates from PDF points to Stage coords
+  const stageX = field.x * fitScale;
+  const stageY = field.y * fitScale;
+  const stageW = field.width * fitScale;
+  const stageH = field.height * fitScale;
+
   if (field.type === "checkbox") {
     return (
       <>
         <Group
           id={field.id}
           ref={groupRef}
-          x={field.x}
-        y={field.y}
-        width={field.width}
-        height={field.height}
-        opacity={dragOpacity}
-        draggable={!isSnapped}
+          x={stageX}
+          y={stageY}
+          width={stageW}
+          height={stageH}
+          opacity={dragOpacity}
+          draggable={!isSnapped}
         onMouseEnter={() => onMouseEnter?.()}
         onMouseLeave={() => onMouseLeave?.()}
         onClick={(e) => {
@@ -1995,8 +2040,8 @@ function FieldShape({
         {/* Drag shadow, "lifted" feel without hiding the stamp */}
         {dragOpacity < 1 && (
           <Rect
-            width={field.width}
-            height={field.height}
+            width={stageW}
+            height={stageH}
             fill="transparent"
             shadowColor="rgba(0,0,0,0.25)"
             shadowBlur={8}
@@ -2006,8 +2051,8 @@ function FieldShape({
         {/* Selection/hover indicator, subtle dashed border, only on interact */}
         {(isSelected || isHovered || isHighlighted) && (
           <Rect
-            width={field.width}
-            height={field.height}
+            width={stageW}
+            height={stageH}
             fill="transparent"
             stroke={isHighlighted ? "#2563eb" : isSelected ? "#3b82f6" : "rgba(59,130,246,0.4)"}
             strokeWidth={isHighlighted ? 2 : isSelected ? 1.5 : 1}
@@ -2019,15 +2064,15 @@ function FieldShape({
         {(() => {
           const stamp: CheckboxStamp = (field as { stamp?: CheckboxStamp }).stamp ?? (field.checked ? "tick" : "none");
           if (stamp === "none") return null;
-          const size = Math.min(field.width, field.height) * 0.88;
+          const size = Math.min(stageW, stageH) * 0.88;
           return (
             <Text
               text={stamp === "tick" ? "✓" : "✕"}
               fontSize={size}
               fill="#111827"
               fontStyle="bold"
-              width={field.width}
-              height={field.height}
+              width={stageW}
+              height={stageH}
               align="center"
               verticalAlign="middle"
             />
@@ -2043,13 +2088,13 @@ function FieldShape({
     const whiteoutField = field as WhiteoutField;
     return (
       <Group
-        x={field.x}
-        y={field.y}
+        x={stageX}
+        y={stageY}
         listening={false} // Entire group ignores ALL mouse events
       >
         <Rect
-          width={field.width}
-          height={field.height}
+          width={stageW}
+          height={stageH}
           fill={whiteoutField.fillColor}
           strokeWidth={0}
         />
@@ -2063,15 +2108,16 @@ function FieldShape({
   if (field.type === "comb") {
     const combField = field as CombField;
     const charCount = combField.charCount ?? 9;
-    // Use cellWidth if set, otherwise calculate from field width
-    const slotWidth = combField.cellWidth ?? (field.width / charCount);
-    const slotHeight = field.height;
+    // Use cellWidth if set, otherwise calculate from field width (in PDF points)
+    const slotWidthPdf = combField.cellWidth ?? (field.width / charCount);
+    const slotWidth = slotWidthPdf * fitScale;
+    const slotHeight = stageH;
     const value = combField.value || "";
-    const offsetX = combField.offsetX ?? 0;
-    const charOffsetX = combField.charOffsetX ?? 0;
-    // Non-uniform cell positions (for TFN-style fields with gaps)
-    const cellPositions = combField.cellPositions;
-    const cellWidthsArr = combField.cellWidths;
+    const offsetX = (combField.offsetX ?? 0) * fitScale;
+    const charOffsetX = (combField.charOffsetX ?? 0) * fitScale;
+    // Non-uniform cell positions (for TFN-style fields with gaps) - scale to Stage coords
+    const cellPositions = combField.cellPositions?.map(p => p * fitScale);
+    const cellWidthsArr = combField.cellWidths?.map(w => w * fitScale);
     
     // Use persisted cursor from field data, or default to end of current value
     const initialCursor = combField.cursorIndex ?? Math.min(value.replace(/ +$/, "").length, charCount - 1);
@@ -2175,10 +2221,10 @@ function FieldShape({
         <Group
           id={field.id}
           ref={groupRef}
-          x={field.x}
-          y={field.y}
-          width={field.width}
-          height={field.height}
+          x={stageX}
+          y={stageY}
+          width={stageW}
+          height={stageH}
           opacity={dragOpacity}
           draggable={!isSnapped}
           onMouseEnter={() => onMouseEnter?.()}
@@ -2204,7 +2250,7 @@ function FieldShape({
             const rawWidth = Math.max(40, node.width() * scaleX);
             const rawHeight = Math.max(20, node.height() * scaleY);
             const currentCharCount = combField.charCount ?? 9;
-            const cellSize = field.width / currentCharCount;
+            const cellSize = stageW / currentCharCount;
             const maxCount = 30;
             const newCharCount = Math.min(maxCount, Math.max(1, Math.round(rawWidth / cellSize)));
             const snappedWidth = newCharCount * cellSize;
@@ -2217,8 +2263,8 @@ function FieldShape({
         >
           {/* Background */}
           <Rect
-            width={field.width}
-            height={field.height}
+            width={stageW}
+            height={stageH}
             fill={getFill()}
             stroke={getBorderColor()}
             strokeWidth={getBorderWidth()}
@@ -2322,119 +2368,119 @@ function FieldShape({
       <Group
         id={field.id}
         ref={groupRef}
-        x={field.x}
-      y={field.y}
-      width={field.width}
-      height={field.height}
-      opacity={dragOpacity}
-      // BUG 3 FIX: Signature fields are always draggable (never snapped)
-      draggable={field.type === "signature" ? true : !isSnapped}
-      onMouseEnter={() => onMouseEnter?.()}
-      onMouseLeave={() => onMouseLeave?.()}
-      onClick={(e) => {
-        e.cancelBubble = true;
-        onSelect();
-      }}
-      onDblClick={(e) => {
-        e.cancelBubble = true;
-        onDoubleClick();
-      }}
-      onDragStart={() => {
-        setDragOpacity(0.85);
-        onDragStart?.();
-      }}
-      onDragEnd={(e) => {
-        setDragOpacity(1);
-        onDragEnd(e.target.x(), e.target.y());
-      }}
-      onTransformStart={() => onTransformStart?.()}
-      onTransformEnd={(e) => {
-        const node = e.target;
-        const scaleX = node.scaleX();
-        const scaleY = node.scaleY();
-        node.scaleX(1);
-        node.scaleY(1);
-        onTransformEnd(
-          Math.max(40, node.width() * scaleX),
-          Math.max(20, node.height() * scaleY),
-          node.x(),
-          node.y()
-        );
-      }}
-      onContextMenu={(e) => {
-        e.evt.preventDefault();
-        onContextMenu?.(e, field.id);
-      }}
-    >
-      <Rect
-        // BUG FIX: Rect must match Group dimensions exactly - no padding subtraction
-        width={field.width}
-        height={field.height}
-        fill={
-          field.type === "signature"
-            ? (hasSignatureImage ? "transparent" : (isSelected || isHovered ? "rgba(79,142,247,0.06)" : "rgba(249,250,251,0.8)"))
-            : getFill()
-        }
-        stroke={
-          field.type === "signature"
-            ? (hasSignatureImage
-                ? (isSelected ? "rgba(59,130,246,0.4)" : isHovered ? "rgba(59,130,246,0.2)" : "transparent")
-                : (isSelected ? "#3b82f6" : isHovered ? "rgba(59,130,246,0.5)" : "rgba(79,142,247,0.35)"))
-            : getBorderColor()
-        }
-        strokeWidth={isSelected ? 1 : 0}
-        dash={field.type === "signature" && !hasSignatureImage ? [4, 3] : undefined}
-        cornerRadius={isSnapped ? 3 : 4}
-      />
-      {hasSignatureImage && sigImage ? (
-        (() => {
-          const pad = 4;
-          const maxW = field.width - pad;
-          const maxH = field.height - pad;
-          const scale = Math.min(maxW / sigImage.naturalWidth, maxH / sigImage.naturalHeight);
-          const drawW = sigImage.naturalWidth * scale;
-          const drawH = sigImage.naturalHeight * scale;
-          return (
-            <KonvaImage
-              image={sigImage}
-              x={(field.width - drawW) / 2}
-              y={(field.height - drawH) / 2}
-              width={drawW}
-              height={drawH}
-            />
+        x={stageX}
+        y={stageY}
+        width={stageW}
+        height={stageH}
+        opacity={dragOpacity}
+        // BUG 3 FIX: Signature fields are always draggable (never snapped)
+        draggable={field.type === "signature" ? true : !isSnapped}
+        onMouseEnter={() => onMouseEnter?.()}
+        onMouseLeave={() => onMouseLeave?.()}
+        onClick={(e) => {
+          e.cancelBubble = true;
+          onSelect();
+        }}
+        onDblClick={(e) => {
+          e.cancelBubble = true;
+          onDoubleClick();
+        }}
+        onDragStart={() => {
+          setDragOpacity(0.85);
+          onDragStart?.();
+        }}
+        onDragEnd={(e) => {
+          setDragOpacity(1);
+          onDragEnd(e.target.x(), e.target.y());
+        }}
+        onTransformStart={() => onTransformStart?.()}
+        onTransformEnd={(e) => {
+          const node = e.target;
+          const scaleX = node.scaleX();
+          const scaleY = node.scaleY();
+          node.scaleX(1);
+          node.scaleY(1);
+          onTransformEnd(
+            Math.max(40, node.width() * scaleX),
+            Math.max(20, node.height() * scaleY),
+            node.x(),
+            node.y()
           );
-        })()
-      ) : field.type === "signature" ? (
-        /* Unsigned, pen icon + "Click to sign" */
-        <Text
-          text="✎  Click to sign"
-          fontSize={Math.min(13, field.height * 0.38)}
-          fill="#9ca3af"
-          fontStyle="italic"
-          width={field.width}
-          height={field.height}
-          align="center"
-          verticalAlign="middle"
+        }}
+        onContextMenu={(e) => {
+          e.evt.preventDefault();
+          onContextMenu?.(e, field.id);
+        }}
+      >
+        <Rect
+          // BUG FIX: Rect must match Group dimensions exactly - no padding subtraction
+          width={stageW}
+          height={stageH}
+          fill={
+            field.type === "signature"
+              ? (hasSignatureImage ? "transparent" : (isSelected || isHovered ? "rgba(79,142,247,0.06)" : "rgba(249,250,251,0.8)"))
+              : getFill()
+          }
+          stroke={
+            field.type === "signature"
+              ? (hasSignatureImage
+                  ? (isSelected ? "rgba(59,130,246,0.4)" : isHovered ? "rgba(59,130,246,0.2)" : "transparent")
+                  : (isSelected ? "#3b82f6" : isHovered ? "rgba(59,130,246,0.5)" : "rgba(79,142,247,0.35)"))
+              : getBorderColor()
+          }
+          strokeWidth={isSelected ? 1 : 0}
+          dash={field.type === "signature" && !hasSignatureImage ? [4, 3] : undefined}
+          cornerRadius={isSnapped ? 3 : 4}
         />
-      ) : (
-        !isEditing && (
+        {hasSignatureImage && sigImage ? (
+          (() => {
+            const pad = 4;
+            const maxW = stageW - pad;
+            const maxH = stageH - pad;
+            const scale = Math.min(maxW / sigImage.naturalWidth, maxH / sigImage.naturalHeight);
+            const drawW = sigImage.naturalWidth * scale;
+            const drawH = sigImage.naturalHeight * scale;
+            return (
+              <KonvaImage
+                image={sigImage}
+                x={(stageW - drawW) / 2}
+                y={(stageH - drawH) / 2}
+                width={drawW}
+                height={drawH}
+              />
+            );
+          })()
+        ) : field.type === "signature" ? (
+          /* Unsigned, pen icon + "Click to sign" */
           <Text
-            text={displayValue}
-            fontSize={(field as { fontSize?: number }).fontSize ?? 14}
-            fill={isEmpty ? "#9ca3af" : "#1a1a2e"}
-            fontFamily="Arial"
-            // BUG FIX: Lock text width to field dimensions - prevent auto-resize on deselect
-            // Use exact field width minus padding, with ellipsis to prevent expansion
-            width={field.width - (isSnapped ? 4 : 8)}
-            height={field.height}
-            padding={isSnapped ? 2 : 4}
+            text="✎  Click to sign"
+            fontSize={Math.min(13, stageH * 0.38)}
+            fill="#9ca3af"
+            fontStyle="italic"
+            width={stageW}
+            height={stageH}
+            align="center"
             verticalAlign="middle"
-            align="left"
-            wrap="none"
-            ellipsis={true}
           />
-        )
-      )}
+        ) : (
+          !isEditing && (
+            <Text
+              text={displayValue}
+              fontSize={((field as { fontSize?: number }).fontSize ?? 14) * fitScale}
+              fill={isEmpty ? "#9ca3af" : "#1a1a2e"}
+              fontFamily="Arial"
+              // BUG FIX: Lock text width to field dimensions - prevent auto-resize on deselect
+              // Use exact field width minus padding, with ellipsis to prevent expansion
+              width={stageW - (isSnapped ? 4 : 8)}
+              height={stageH}
+              padding={isSnapped ? 2 : 4}
+              verticalAlign="middle"
+              align="left"
+              wrap="none"
+              ellipsis={true}
+            />
+          )
+        )}
       </Group>
     </>
   );

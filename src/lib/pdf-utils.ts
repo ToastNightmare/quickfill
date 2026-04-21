@@ -199,18 +199,19 @@ function dataUrlToBytes(dataUrl: string): Uint8Array {
 async function drawFieldOnPage(
   pdfDoc: PDFDocument,
   field: EditorField,
-  pageScales: Map<number, number>,
+  _pageScales: Map<number, number>,
   font: Awaited<ReturnType<PDFDocument["embedFont"]>>,
   signatureFont: Awaited<ReturnType<PDFDocument["embedFont"]>>
 ) {
   const page = pdfDoc.getPages()[field.page];
   if (!page) return;
 
-  const scale = pageScales.get(field.page) ?? 1;
-  const pdfX = field.x / scale;
-  const pdfY = page.getHeight() - field.y / scale - field.height / scale;
-  const pdfW = field.width / scale;
-  const pdfH = field.height / scale;
+  // Field coordinates are now stored in PDF point space directly
+  // No scaling needed - just flip Y axis (PDF origin is bottom-left)
+  const pdfX = field.x;
+  const pdfY = page.getHeight() - field.y - field.height;
+  const pdfW = field.width;
+  const pdfH = field.height;
 
   if (field.type === "signature" && field.signatureDataUrl) {
     try {
@@ -236,7 +237,7 @@ async function drawFieldOnPage(
         page.drawText(sanitize(field.value), {
           x: pdfX + 2,
           y: pdfY + 4,
-          size: (field.fontSize ?? 16) / scale,
+          size: field.fontSize ?? 16,
           font: signatureFont,
           color: rgb(0, 0, 0),
         });
@@ -244,7 +245,7 @@ async function drawFieldOnPage(
     }
   } else if (field.type === "text" || field.type === "date" || field.type === "signature") {
     if (field.value) {
-      const fontSize = (field.type === "signature" ? 16 : field.fontSize ?? 14) / scale;
+      const fontSize = field.type === "signature" ? 16 : field.fontSize ?? 14;
       const activeFont = field.type === "signature" ? signatureFont : font;
       page.drawText(sanitize(field.value), {
         x: pdfX + 2,
@@ -274,10 +275,11 @@ async function drawFieldOnPage(
     const combField = field as import("./types").CombField;
     const charCount = combField.charCount ?? 9;
     const slotWidth = combField.cellWidth ?? (pdfW / charCount);
-    const fontSize = pdfH * 0.6 / scale;
+    const fontSize = pdfH * 0.6;
     const value = combField.value || "";
-    const offsetX = (combField.offsetX ?? 0) / scale;
-    const charOffsetX = (combField.charOffsetX ?? 0) / scale;
+    // Coordinates are already in PDF points - no scaling needed
+    const offsetX = combField.offsetX ?? 0;
+    const charOffsetX = combField.charOffsetX ?? 0;
     // Non-uniform cell positions (for fields with gaps like DD/MM/YYYY)
     const cellPositions = combField.cellPositions;
     const cellWidthsArr = combField.cellWidths;
@@ -288,10 +290,10 @@ async function drawFieldOnPage(
         // Use detected cell positions if available, otherwise uniform spacing
         const hasCellPosition = cellPositions && cellPositions[i] !== undefined;
         const hasCellWidth = cellWidthsArr && cellWidthsArr[i] !== undefined;
-        const thisCellWidth = (hasCellWidth ? cellWidthsArr[i] : slotWidth) / scale;
+        const thisCellWidth = hasCellWidth ? cellWidthsArr[i] : slotWidth;
         const cellCenterX = hasCellPosition
-          ? cellPositions[i] / scale
-          : i * (slotWidth / scale) + (slotWidth / scale) * 0.5;
+          ? cellPositions[i]
+          : i * slotWidth + slotWidth * 0.5;
 
         // Center character in cell
         const charX = pdfX + offsetX + cellCenterX + charOffsetX - fontSize * 0.25;
