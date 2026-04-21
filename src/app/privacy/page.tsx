@@ -15,76 +15,89 @@ export default function PrivacyPage() {
 
       <div className="mt-10 space-y-8 text-sm leading-relaxed text-text-muted">
         <section>
-          <h2 className="text-lg font-semibold text-text">What we collect</h2>
+          <h2 className="text-lg font-semibold text-text">Document Processing</h2>
           <p className="mt-2">
-            When you create an account we store your email address and name
-            (provided via Clerk authentication). When you subscribe to a paid
-            plan we store billing identifiers provided by Stripe. We also record
-            basic usage data such as the number of documents you fill each month
-            and timestamps of those fills.
+            QuickFill processes PDFs in your browser and on our servers for download generation only.
+            PDF files are processed in memory and never stored on our servers. We do not read,
+            store, or share the contents of your documents. Your PDF data is used solely to
+            generate the filled PDF for immediate download.
           </p>
         </section>
 
         <section>
-          <h2 className="text-lg font-semibold text-text">How we use it</h2>
+          <h2 className="text-lg font-semibold text-text">Account Data</h2>
           <p className="mt-2">
-            We use your data to operate the service, enforcing usage
-            limits, processing payments, and showing your fill history. We do
-            not sell or rent your personal information to anyone.
+            Account data (email, profile information) is stored securely via Clerk authentication
+            service. Your profile information including name, address, and other personal details
+            are stored encrypted and are only accessible to you when logged in.
           </p>
         </section>
 
         <section>
-          <h2 className="text-lg font-semibold text-text">Data storage</h2>
+          <h2 className="text-lg font-semibold text-text">Usage Data</h2>
           <p className="mt-2">
-            Your PDF documents are processed entirely in your browser. We never
-            upload, store, or transmit your PDF files to our servers. Usage
-            metadata (fill counts, timestamps, field counts) is stored in
-            Upstash Redis.
+            Usage data (fill counts, timestamps) is stored via Upstash Redis to track your monthly
+            usage limits and provide usage analytics. This data is associated with your account
+            and is used solely for service operation and billing purposes.
           </p>
         </section>
 
         <section>
-          <h2 className="text-lg font-semibold text-text">Third parties</h2>
+          <h2 className="text-lg font-semibold text-text">Cookies</h2>
+          <p className="mt-2">
+            Cookies are used for authentication only. We use session cookies to maintain your
+            logged-in state. These cookies are securely managed by Clerk and contain no personal
+            information beyond a secure session identifier.
+          </p>
+        </section>
+
+        <section>
+          <h2 className="text-lg font-semibold text-text">Data Deletion</h2>
+          <p className="mt-2">
+            Users can delete their account and all associated data by contacting support. When
+            you delete your account, all stored profile information, usage data, and signatures
+            are permanently removed from our systems.
+          </p>
+        </section>
+
+        <section>
+          <h2 className="text-lg font-semibold text-text">Third-Party Services</h2>
           <ul className="mt-2 list-disc space-y-1 pl-5">
             <li>
-              <strong>Clerk</strong>, authentication and account
-              management.
+              <strong>Clerk</strong> - Authentication and account management
             </li>
             <li>
-              <strong>Stripe</strong>, payment processing. We never see
-              or store your full card number.
+              <strong>Stripe</strong> - Payment processing (we never see or store full card numbers)
             </li>
             <li>
-              <strong>Upstash</strong>, serverless data storage for usage
-              records.
+              <strong>Upstash</strong> - Serverless Redis for usage tracking
+            </li>
+            <li>
+              <strong>Vercel</strong> - Hosting and deployment infrastructure
             </li>
           </ul>
+        </section>
+
+        <section>
+          <h2 className="text-lg font-semibold text-text">Australian Privacy Act Compliance</h2>
           <p className="mt-2">
-            Each third party processes data under their own privacy policy. We
-            only share the minimum information required for each service to
-            function.
+            QuickFill is committed to compliance with the Australian Privacy Act 1988 and the
+            Australian Privacy Principles. We take reasonable steps to protect your personal
+            information from misuse, interference, loss, unauthorized access, modification, or
+            disclosure.
           </p>
         </section>
 
         <section>
-          <h2 className="text-lg font-semibold text-text">Your rights</h2>
+          <h2 className="text-lg font-semibold text-text">Contact Us</h2>
           <p className="mt-2">
-            You can request a copy of your data or ask us to delete your account
-            at any time. Deleting your account removes all stored usage data and
-            cancels any active subscription.
-          </p>
-        </section>
-
-        <section>
-          <h2 className="text-lg font-semibold text-text">Contact</h2>
-          <p className="mt-2">
-            If you have questions about this policy, email us at{" "}
+            If you have any questions about this privacy policy or our data practices, please
+            contact us at{" "}
             <a
-              href="mailto:hello@getquickfill.com"
+              href="mailto:support@getquickfill.com"
               className="text-accent hover:underline"
             >
-              hello@getquickfill.com
+              support@getquickfill.com
             </a>
             .
           </p>

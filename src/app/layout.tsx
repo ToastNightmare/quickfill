@@ -58,6 +58,24 @@ export default function RootLayout({
         <body className="min-h-full flex flex-col bg-surface text-text">
           <Navbar />
           <main className="flex-1">{children}</main>
+          <footer className="border-t border-border bg-surface py-6 mt-auto">
+            <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+              <div className="flex flex-col items-center justify-center gap-4 sm:flex-row sm:gap-6">
+                <a href="/privacy" className="text-sm text-text-muted hover:text-text transition-colors">
+                  Privacy Policy
+                </a>
+                <a href="/terms" className="text-sm text-text-muted hover:text-text transition-colors">
+                  Terms of Service
+                </a>
+                <a href="mailto:support@getquickfill.com" className="text-sm text-text-muted hover:text-text transition-colors">
+                  Contact
+                </a>
+                <p className="text-xs text-text-muted/60">
+                  (c) 2026 QuickFill. All rights reserved.
+                </p>
+              </div>
+            </div>
+          </footer>
         </body>
       </html>
     </ClerkProvider>
