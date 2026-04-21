@@ -209,7 +209,13 @@ export function ContextPanel({
                       onChange={(e) => {
                         const newCount = parseInt(e.target.value, 10);
                         if (!isNaN(newCount) && newCount > 0 && newCount <= 30) {
-                          onFieldUpdate(selectedField.id, { charCount: newCount } as Partial<EditorField>);
+                          // Clear detected cell positions when manually changing count
+                          // This forces uniform spacing based on the new count
+                          onFieldUpdate(selectedField.id, {
+                            charCount: newCount,
+                            cellPositions: undefined,
+                            cellWidths: undefined,
+                          } as Partial<EditorField>);
                         }
                       }}
                       className="w-full rounded-lg border border-border bg-surface-alt px-3 py-2 text-sm font-medium text-text focus:outline-none focus:ring-2 focus:ring-accent"
@@ -242,9 +248,13 @@ export function ContextPanel({
                     onChange={(e) => {
                       const newWidth = parseInt(e.target.value, 10);
                       const newTotalWidth = newWidth * charCount;
-                      onFieldUpdate(selectedField.id, { 
+                      // Clear detected cell positions when manually adjusting width
+                      // This forces uniform spacing based on the new cell width
+                      onFieldUpdate(selectedField.id, {
                         cellWidth: newWidth,
-                        width: newTotalWidth
+                        width: newTotalWidth,
+                        cellPositions: undefined,
+                        cellWidths: undefined,
                       } as Partial<EditorField>);
                     }}
                     className="flex-1 h-2 bg-surface-alt rounded-lg appearance-none cursor-pointer accent-accent"

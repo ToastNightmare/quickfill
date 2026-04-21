@@ -1250,17 +1250,18 @@ export function detectCombCells(
   const widths = allCells.map(c => c.width);
   widths.sort((a, b) => a - b);
   const medianWidth = widths[Math.floor(widths.length / 2)];
-  
-  // A gap is anything more than 1.5x the median width
-  const gapThreshold = medianWidth * 1.5;
-  
+
+  // A gap is anything 1.35x or more the median width (lowered from 1.5x)
+  // This catches small gaps like "/" separators in date fields (DD/MM/YYYY)
+  const gapThreshold = medianWidth * 1.35;
+
   const cellBoundaries: number[] = [];
   const cellCenters: number[] = [];
   const cellWidths: number[] = [];
-  
+
   for (const cell of allCells) {
-    // Skip gaps (cells that are too wide compared to typical cells)
-    if (cell.width > gapThreshold) continue;
+    // Skip gaps (cells at or above threshold are filtered)
+    if (cell.width >= gapThreshold) continue;
     
     cellBoundaries.push(cell.left);
     cellCenters.push(cell.center);

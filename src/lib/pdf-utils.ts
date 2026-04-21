@@ -258,17 +258,28 @@ async function drawFieldOnPage(
     // Box Field (comb): render each character in its own cell
     const combField = field as import("./types").CombField;
     const charCount = combField.charCount ?? 9;
-    const cellWidth = combField.cellWidth ?? (pdfW / charCount);
+    const slotWidth = combField.cellWidth ?? (pdfW / charCount);
     const fontSize = pdfH * 0.6 / scale;
     const value = combField.value || "";
     const offsetX = (combField.offsetX ?? 0) / scale;
     const charOffsetX = (combField.charOffsetX ?? 0) / scale;
+    // Non-uniform cell positions (for fields with gaps like DD/MM/YYYY)
+    const cellPositions = combField.cellPositions;
+    const cellWidthsArr = combField.cellWidths;
 
     for (let i = 0; i < charCount; i++) {
       const char = value[i] || "";
       if (char && char !== " ") {
+        // Use detected cell positions if available, otherwise uniform spacing
+        const hasCellPosition = cellPositions && cellPositions[i] !== undefined;
+        const hasCellWidth = cellWidthsArr && cellWidthsArr[i] !== undefined;
+        const thisCellWidth = (hasCellWidth ? cellWidthsArr[i] : slotWidth) / scale;
+        const cellCenterX = hasCellPosition
+          ? cellPositions[i] / scale
+          : i * (slotWidth / scale) + (slotWidth / scale) * 0.5;
+
         // Center character in cell
-        const charX = pdfX + offsetX + i * (cellWidth / scale) + (cellWidth / scale) * 0.5 + charOffsetX - fontSize * 0.25;
+        const charX = pdfX + offsetX + cellCenterX + charOffsetX - fontSize * 0.25;
         const charY = pdfY + pdfH - fontSize - (pdfH - fontSize) / 2;
         page.drawText(sanitize(char), {
           x: charX,
