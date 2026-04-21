@@ -334,6 +334,15 @@ export default function EditorPage() {
     async (file: File, bytes: ArrayBuffer) => {
       setIsLoading(true);
       try {
+        // Check file size limit (15MB max)
+        const MAX_SIZE = 15 * 1024 * 1024; // 15MB in bytes
+        if (bytes.byteLength > MAX_SIZE) {
+          setToast("This PDF is too large (max 15MB)");
+          setTimeout(() => setToast(null), 5000);
+          setIsLoading(false);
+          return;
+        }
+
         // BUG 1 FIX: Clear ALL state before loading new template
         // This ensures no fields from previous session bleed through
         reset([]);

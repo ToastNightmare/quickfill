@@ -31,6 +31,12 @@ export async function POST(request: NextRequest) {
     const pdfFile = formData.get("pdf") as File | null;
     if (!pdfFile) return NextResponse.json({ error: "Missing pdf file" }, { status: 400 });
 
+    // Check file size limit (15MB max)
+    const MAX_SIZE = 15 * 1024 * 1024; // 15MB in bytes
+    if (pdfFile.size > MAX_SIZE) {
+      return NextResponse.json({ error: "PDF too large (max 15MB)" }, { status: 413 });
+    }
+
     const fieldsJson = formData.get("fields") as string | null;
     const pageScalesJson = formData.get("pageScales") as string | null;
     const hasAcroForm = formData.get("hasAcroForm") === "true";
