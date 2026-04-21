@@ -91,6 +91,9 @@ export async function POST(request: NextRequest) {
             } catch {
               await drawFieldOnPage(pdfDoc, field, pageScales, font, signatureFont);
             }
+          } else if (field.type === "comb") {
+            // Comb fields are always user-placed, draw directly
+            await drawFieldOnPage(pdfDoc, field, pageScales, font, signatureFont);
           }
         } catch {
           await drawFieldOnPage(pdfDoc, field, pageScales, font, signatureFont);
@@ -237,5 +240,57 @@ async function drawFieldOnPage(pdfDoc: PDFDocument, field: EditorField, pageScal
   } else if (field.type === "checkbox" && field.checked) {
     const stamp = (field as { stamp?: string }).stamp ?? "tick";
     drawCheckmark(page, pdfX, pdfY, pdfW, pdfH, stamp);
+  } else if (field.type === "comb") {
+    const combField = field as import("@/lib/types").CombField;
+    const value = combField.value ?? "";
+    if (!value) return;
+
+    const fontSize = (combField.fontSize ?? 14) / scale;
+    const charCount = combField.charCount || 1;
+    const offsetX = (combField.offsetX ?? 0) / scale;
+    const charOffsetX = (combField.charOffsetX ?? 0) / scale;
+
+    // Calculate starting position with offset
+    const startX = pdfX + offsetX;
+
+    // Use non-uniform cell positions/widths if available, otherwise uniform spacing
+    const cellPositions = combField.cellPositions;
+    const cellWidths = combField.cellWidths;
+    const uniformCellWidth = (combField.cellWidth ?? (field.width / charCount)) / scale;
+
+    // Draw each character centered in its cell
+    for (let i = 0; i < value.length && i < charCount; i++) {
+      const char = value[i];
+      // Skip space characters (gaps between groups)
+      if (char === " ") continue;
+
+      let cellCenterX: number;
+      let cellW: number;
+
+      if (cellPositions && cellPositions[i] !== undefined) {
+        // Non-uniform: cellPositions are relative to field X
+        cellCenterX = startX + cellPositions[i] / scale;
+        cellW = (cellWidths && cellWidths[i] !== undefined) ? cellWidths[i] / scale : uniformCellWidth;
+      } else {
+        // Uniform spacing
+        cellW = uniformCellWidth;
+        cellCenterX = startX + (i + 0.5) * cellW;
+      }
+
+      // Measure character width for centering
+      const charWidth = font.widthOfTextAtSize(char, fontSize);
+      const charX = cellCenterX - charWidth / 2 + charOffsetX;
+
+      // Vertically center the character
+      const charY = pdfY + (pdfH - fontSize) / 2;
+
+      page.drawText(char, {
+        x: charX,
+        y: charY,
+        size: fontSize,
+        font: font,
+        color: rgb(0, 0, 0),
+      });
+    }
   }
 }
