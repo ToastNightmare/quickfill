@@ -35,6 +35,8 @@ interface PdfViewerProps {
   onPageChange?: (page: number) => void;
   snapEnabled: boolean;
   keepRatio?: boolean;
+  whiteoutColor?: string | null;
+  onWhiteoutColorChange?: (color: string | null) => void;
 }
 
 let nextFieldId = 1;
@@ -54,6 +56,42 @@ function inferFontSize(boxHeight: number): number {
   // Use ~65% of box height for tighter fill, clamped to 8-36px
   const raw = Math.round(boxHeight * 0.65);
   return Math.max(8, Math.min(36, raw));
+}
+
+/** Sample background color from canvas, with fallback to white for dark/transparent pixels */
+function sampleBackgroundColor(
+  ctx: CanvasRenderingContext2D,
+  canvasX: number,
+  canvasY: number,
+  canvasWidth: number,
+  canvasHeight: number
+): string {
+  // Bounds check
+  if (canvasX < 0 || canvasY < 0 || canvasX >= canvasWidth || canvasY >= canvasHeight) {
+    return "#ffffff";
+  }
+
+  try {
+    const pixel = ctx.getImageData(canvasX, canvasY, 1, 1).data;
+    const [r, g, b, a] = pixel;
+
+    // If transparent (alpha < 10), default to white
+    if (a < 10) {
+      return "#ffffff";
+    }
+
+    // Calculate brightness (simple luminance formula)
+    const brightness = (r * 299 + g * 587 + b * 114) / 1000;
+
+    // If too dark (brightness < 30), default to white since most form backgrounds are white
+    if (brightness < 30) {
+      return "#ffffff";
+    }
+
+    return `#${[r, g, b].map(c => c.toString(16).padStart(2, "0")).join("")}`;
+  } catch {
+    return "#ffffff";
+  }
 }
 
 export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function PdfViewer({
@@ -78,6 +116,8 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
   onPageChange,
   snapEnabled,
   keepRatio,
+  whiteoutColor: whiteoutColorProp,
+  onWhiteoutColorChange,
 }, ref) {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -93,7 +133,16 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
   const [cursorStyle, setCursorStyle] = useState("default");
   const [snapPreviewOpacity, setSnapPreviewOpacity] = useState(0);
   const [contextMenu, setContextMenu] = useState<{ x: number, y: number, fieldId: string } | null>(null);
-  const [whiteoutColor, setWhiteoutColor] = useState<string | null>(null); // Pre-sampled whiteout color
+  const [whiteoutColorInternal, setWhiteoutColorInternal] = useState<string | null>(null);
+  // Use controlled whiteout color if provided, otherwise use internal state
+  const whiteoutColor = whiteoutColorProp !== undefined ? whiteoutColorProp : whiteoutColorInternal;
+  const setWhiteoutColor = (color: string | null) => {
+    if (onWhiteoutColorChange) {
+      onWhiteoutColorChange(color);
+    } else {
+      setWhiteoutColorInternal(color);
+    }
+  };
   const precomputedBoxesRef = useRef<SnapResult[]>([]);
   const dragStartedRef = useRef(false);
   const mouseDownPos = useRef<{x: number, y: number} | null>(null);
@@ -734,18 +783,12 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
                 if (canvas) {
                   const ctx = canvas.getContext("2d");
                   if (ctx) {
-                    const canvasCx = Math.round((fieldX + fieldW / 2) * zoomFactor);
-                    const canvasCy = Math.round((fieldY + fieldH / 2) * zoomFactor);
-                    if (canvasCx >= 0 && canvasCy >= 0 && canvasCx < canvas.width && canvasCy < canvas.height) {
-                      try {
-                        const pixel = ctx.getImageData(canvasCx, canvasCy, 1, 1).data;
-                        fillColor = `#${[pixel[0], pixel[1], pixel[2]].map(c => c.toString(16).padStart(2, "0")).join("")}`;
-                        // Auto-save sampled color for subsequent whiteouts
-                        setWhiteoutColor(fillColor);
-                      } catch {
-                        fillColor = "#ffffff";
-                      }
-                    }
+                    // Use raw screen coordinates for sampling (center of drawn rectangle)
+                    const canvasCx = Math.round(x + absDx / 2);
+                    const canvasCy = Math.round(y + absDy / 2);
+                    fillColor = sampleBackgroundColor(ctx, canvasCx, canvasCy, canvas.width, canvas.height);
+                    // Auto-save sampled color for subsequent whiteouts
+                    setWhiteoutColor(fillColor);
                   }
                 }
               }
@@ -753,18 +796,21 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
               break;
             }
           }
-          
+
           onFieldAdd(field);
           // Keep whiteout tool active for multiple placements
           if (activeTool !== "whiteout") {
             onToolSelect(null);
           }
           setCursorStyle(activeTool === "whiteout" ? "crosshair" : "default");
-          onFieldSelect(id);
-          
+          // Don't select whiteout fields - they're non-interactive overlays
+          if (activeTool !== "whiteout") {
+            onFieldSelect(id);
+          }
+
           if (activeTool === "signature") {
             onSignatureFieldPlaced?.(field);
-          } else if (activeTool !== "checkbox") {
+          } else if (activeTool !== "checkbox" && activeTool !== "whiteout") {
             setEditingFieldId(id);
           }
         } else if (absDx <= 10 || absDy <= 10) {
@@ -970,17 +1016,11 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
                   if (canvas) {
                     const ctx = canvas.getContext("2d");
                     if (ctx) {
-                      const canvasCx = Math.round((fieldX + fieldW / 2) * zoomFactor);
-                      const canvasCy = Math.round((fieldY + fieldH / 2) * zoomFactor);
-                      if (canvasCx >= 0 && canvasCy >= 0 && canvasCx < canvas.width && canvasCy < canvas.height) {
-                        try {
-                          const pixel = ctx.getImageData(canvasCx, canvasCy, 1, 1).data;
-                          fillColor = `#${[pixel[0], pixel[1], pixel[2]].map(c => c.toString(16).padStart(2, "0")).join("")}`;
-                          setWhiteoutColor(fillColor);
-                        } catch {
-                          fillColor = "#ffffff";
-                        }
-                      }
+                      // Use raw screen coordinates for sampling
+                      const canvasCx = Math.round(pos.x);
+                      const canvasCy = Math.round(pos.y);
+                      fillColor = sampleBackgroundColor(ctx, canvasCx, canvasCy, canvas.width, canvas.height);
+                      setWhiteoutColor(fillColor);
                     }
                   }
                 }
@@ -995,11 +1035,14 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
               onToolSelect(null);
             }
             setCursorStyle(activeTool === "whiteout" ? "crosshair" : "default");
-            onFieldSelect(id);
+            // Don't select whiteout fields - they're non-interactive overlays
+            if (activeTool !== "whiteout") {
+              onFieldSelect(id);
+            }
 
             if (activeTool === "signature") {
               onSignatureFieldPlaced?.(field);
-            } else if (activeTool !== "checkbox") {
+            } else if (activeTool !== "checkbox" && activeTool !== "whiteout") {
               setEditingFieldId(id);
             }
 
@@ -1219,17 +1262,11 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
             if (canvas) {
               const ctx = canvas.getContext("2d");
               if (ctx) {
-                const canvasCx = Math.round(fieldX * zoomFactor + fieldW * zoomFactor / 2);
-                const canvasCy = Math.round(fieldY * zoomFactor + fieldH * zoomFactor / 2);
-                if (canvasCx >= 0 && canvasCy >= 0 && canvasCx < canvas.width && canvasCy < canvas.height) {
-                  try {
-                    const pixel = ctx.getImageData(canvasCx, canvasCy, 1, 1).data;
-                    fillColor = `#${[pixel[0], pixel[1], pixel[2]].map(c => c.toString(16).padStart(2, "0")).join("")}`;
-                    setWhiteoutColor(fillColor);
-                  } catch {
-                    fillColor = "#ffffff";
-                  }
-                }
+                // Use raw screen coordinates for sampling
+                const canvasCx = Math.round(posX);
+                const canvasCy = Math.round(posY);
+                fillColor = sampleBackgroundColor(ctx, canvasCx, canvasCy, canvas.width, canvas.height);
+                setWhiteoutColor(fillColor);
               }
             }
           }
@@ -1244,6 +1281,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
         onToolSelect(null);
       }
       setCursorStyle(activeTool === "whiteout" ? "crosshair" : "default");
+      // Don't select whiteout fields - they're non-interactive overlays
       if (activeTool !== "whiteout") {
         onFieldSelect(id);
       }
@@ -1251,7 +1289,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
       // For signature fields, trigger signature placement flow
       if (activeTool === "signature") {
         onSignatureFieldPlaced?.(field);
-      } else if (activeTool !== "checkbox") {
+      } else if (activeTool !== "checkbox" && activeTool !== "whiteout") {
         // Immediately enter edit mode for text-like fields
         setEditingFieldId(id);
       }
@@ -1317,17 +1355,15 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
                 (f) => f.x === parent.x() && f.y === parent.y()
               );
               if (matchedField) {
-                // Prevent selecting whiteout fields
+                onFieldSelect(matchedField.id);
+                onToolSelect(null);
+                // Reset cursor and skip transformer for whiteout fields
                 if (matchedField.type === "whiteout") {
-                  onFieldSelect(null);
-                  onToolSelect(null);
+                  setCursorStyle("default");
                   if (trRef.current) {
                     trRef.current.nodes([]);
                     trRef.current.getLayer()?.batchDraw();
                   }
-                } else {
-                  onFieldSelect(matchedField.id);
-                  onToolSelect(null);
                 }
                 break;
               }
@@ -1526,15 +1562,16 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
                 isHighlighted={field.id === snappedFieldId || (highlightFieldIds?.has(field.id) ?? false)}
                 isHovered={field.id === hoveredFieldId}
                 onSelect={() => {
-                  // Prevent selecting whiteout fields
-                  if (field.type === "whiteout") return;
                   onFieldSelect(field.id);
                   onToolSelect(null);
-                  if (!dragStartedRef.current && field.type !== "signature") {
+                  // Whiteout and signature fields don't enter edit mode
+                  if (!dragStartedRef.current && field.type !== "signature" && field.type !== "whiteout") {
                     setEditingFieldId(field.id);
                   }
-                  // Signature fields: clicking selects only.
-                  // Sign Now / Re-sign is triggered from the right panel.
+                  // Reset cursor for whiteout fields
+                  if (field.type === "whiteout") {
+                    setCursorStyle("default");
+                  }
                 }}
                 onMouseEnter={() => {
                   // Whiteout fields don't hover - skip

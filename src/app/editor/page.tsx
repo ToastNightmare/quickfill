@@ -109,6 +109,7 @@ export default function EditorPage() {
   const [fileName, setFileName] = useState<string>("");
   const [activeTool, setActiveTool] = useState<ToolType | null>(null);
   const [selectedFieldId, setSelectedFieldId] = useState<string | null>(null);
+  const [whiteoutColor, setWhiteoutColor] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(0);
   const [totalPages, setTotalPages] = useState(0);
   const [hasAcroForm, setHasAcroForm] = useState(false);
@@ -1269,6 +1270,8 @@ export default function EditorPage() {
             onPageChange={handlePageChange}
             snapEnabled={snapEnabled}
             keepRatio={selectedField?.type === "signature"}
+            whiteoutColor={whiteoutColor}
+            onWhiteoutColorChange={setWhiteoutColor}
           />
         </div>
 
@@ -1299,6 +1302,8 @@ export default function EditorPage() {
               setSignatureModalOpen(true);
             }
           }}
+          whiteoutColor={whiteoutColor}
+          onWhiteoutColorChange={setWhiteoutColor}
         />
 
       </div>

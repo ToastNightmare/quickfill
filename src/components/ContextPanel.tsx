@@ -7,7 +7,7 @@ import {
   Sparkles, UserCheck, Eraser, Copy,
   ChevronDown, ChevronUp, SquareSplitHorizontal,
 } from "lucide-react";
-import type { EditorField, ToolType, SignatureField } from "@/lib/types";
+import type { EditorField, ToolType, SignatureField, WhiteoutField } from "@/lib/types";
 import type { CheckboxStamp } from "@/lib/types";
 
 const FONT_SIZES = [8, 10, 11, 12, 14, 16, 18, 24, 36];
@@ -34,6 +34,8 @@ interface ContextPanelProps {
   onAutoFill: () => void;
   onDetectFields: () => void;
   isDetecting: boolean;
+  whiteoutColor?: string | null;
+  onWhiteoutColorChange?: (color: string) => void;
 }
 
 export function ContextPanel({
@@ -49,6 +51,8 @@ export function ContextPanel({
   onAutoFill,
   onDetectFields,
   isDetecting,
+  whiteoutColor,
+  onWhiteoutColorChange,
 }: ContextPanelProps) {
   const [sizeExpanded, setSizeExpanded] = useState(false);
   const [charCountExpanded, setCharCountExpanded] = useState(false);
@@ -101,6 +105,27 @@ export function ContextPanel({
                 <StampCard active={stamp === "tick"}  onClick={() => onStampChange("tick")}  char="✓" label="Tick" />
                 <StampCard active={stamp === "cross"} onClick={() => onStampChange("cross")} char="✕" label="Cross" />
                 <StampCard active={stamp === "none"}  onClick={() => onStampChange("none")}  char="○" label="None" />
+              </div>
+            </Section>
+          );
+        })()}
+
+        {/* Whiteout color picker */}
+        {fieldType === "whiteout" && (() => {
+          const whiteoutField = selectedField as WhiteoutField;
+          return (
+            <Section label="Fill Color">
+              <div className="flex items-center gap-3">
+                <input
+                  type="color"
+                  value={whiteoutField.fillColor}
+                  onChange={(e) => onFieldUpdate(selectedField.id, { fillColor: e.target.value } as Partial<EditorField>)}
+                  className="h-10 w-10 cursor-pointer rounded-lg border border-border bg-white p-1"
+                />
+                <div className="flex-1">
+                  <p className="text-xs font-medium text-text">{whiteoutField.fillColor}</p>
+                  <p className="text-[10px] text-text-muted">Click to pick a different color</p>
+                </div>
               </div>
             </Section>
           );
@@ -418,6 +443,27 @@ export function ContextPanel({
             <p className="mt-1.5 text-xs text-text-muted leading-relaxed">{hint}</p>
           </div>
         </Section>
+
+        {/* Whiteout color picker when tool is active */}
+        {activeTool === "whiteout" && onWhiteoutColorChange && (
+          <>
+            <Divider />
+            <Section label="Default Color">
+              <div className="flex items-center gap-3">
+                <input
+                  type="color"
+                  value={whiteoutColor || "#ffffff"}
+                  onChange={(e) => onWhiteoutColorChange(e.target.value)}
+                  className="h-10 w-10 cursor-pointer rounded-lg border border-border bg-white p-1"
+                />
+                <div className="flex-1">
+                  <p className="text-xs font-medium text-text">{whiteoutColor || "#ffffff"}</p>
+                  <p className="text-[10px] text-text-muted">Override auto-sampled color</p>
+                </div>
+              </div>
+            </Section>
+          </>
+        )}
 
         <Divider />
 
