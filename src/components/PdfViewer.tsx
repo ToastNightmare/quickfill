@@ -2205,10 +2205,32 @@ function FieldShape({
       for (const group of groups) {
         const groupEndIndex = group.startIndex + group.cellCount - 1;
         if (index === groupEndIndex) {
-          return Math.min(group.startIndex + group.cellCount, charCount - 1);
+          // Find the next group
+          const groupIndex = groups.indexOf(group);
+          if (groupIndex < groups.length - 1) {
+            return groups[groupIndex + 1].startIndex;
+          }
+          return Math.min(index + 1, charCount - 1);
         }
       }
       return index + 1;
+    };
+
+    // Helper: get the previous index before a group starts (for left arrow)
+    const getPrevIndexBeforeGroup = (index: number): number => {
+      if (!groups || groups.length === 0) return index - 1;
+      for (const group of groups) {
+        if (index === group.startIndex) {
+          // Find the previous group
+          const groupIndex = groups.indexOf(group);
+          if (groupIndex > 0) {
+            const prevGroup = groups[groupIndex - 1];
+            return prevGroup.startIndex + prevGroup.cellCount - 1;
+          }
+          return Math.max(index - 1, 0);
+        }
+      }
+      return index - 1;
     };
 
     // Define handleKeyDown using refs - updated every render for fresh closure
@@ -2249,18 +2271,14 @@ function FieldShape({
         }
       } else if (e.key === "ArrowLeft") {
         e.preventDefault();
-        if (currentIndex > 0) {
-          const newIndex = currentIndex - 1;
-          setActiveSlotIndex(newIndex);
-          activeSlotIndexRef.current = newIndex;
-        }
+        const newIndex = getPrevIndexBeforeGroup(currentIndex);
+        setActiveSlotIndex(newIndex);
+        activeSlotIndexRef.current = newIndex;
       } else if (e.key === "ArrowRight") {
         e.preventDefault();
-        if (currentIndex < charCount - 1) {
-          const newIndex = currentIndex + 1;
-          setActiveSlotIndex(newIndex);
-          activeSlotIndexRef.current = newIndex;
-        }
+        const newIndex = getNextIndexAfterGroup(currentIndex);
+        setActiveSlotIndex(newIndex);
+        activeSlotIndexRef.current = newIndex;
       } else if (e.key === "Enter" || e.key === "Escape") {
         e.preventDefault();
         onSelect();

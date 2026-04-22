@@ -6,8 +6,8 @@
 
 # Test info
 
-- Name: quickfill-qa.spec.ts >> Templates page — official badge exists
-- Location: tests/quickfill-qa.spec.ts:103:5
+- Name: quickfill-qa.spec.ts >> Templates page loads
+- Location: tests/quickfill-qa.spec.ts:29:5
 
 # Error details
 
@@ -21,6 +21,9 @@ Call log:
 # Test source
 
 ```ts
+  1   | import { test, expect } from '@playwright/test';
+  2   | 
+  3   | test('Homepage loads', async ({ page }) => {
   4   |   const errors: string[] = [];
   5   |   page.on('console', (msg) => {
   6   |     if (msg.type() === 'error') {
@@ -47,7 +50,8 @@ Call log:
   27  | });
   28  | 
   29  | test('Templates page loads', async ({ page }) => {
-  30  |   await page.goto('/templates');
+> 30  |   await page.goto('/templates');
+      |              ^ Error: page.goto: net::ERR_NETWORK_CHANGED at https://getquickfill.com/templates
   31  |   await page.waitForLoadState('networkidle');
   32  | 
   33  |   // Check 5+ "Fill This Form" buttons exist (reliable count without toHaveCount min syntax)
@@ -121,8 +125,7 @@ Call log:
   101 | });
   102 | 
   103 | test('Templates page — official badge exists', async ({ page }) => {
-> 104 |   await page.goto('/templates');
-      |              ^ Error: page.goto: net::ERR_NETWORK_CHANGED at https://getquickfill.com/templates
+  104 |   await page.goto('/templates');
   105 |   await page.waitForLoadState('networkidle');
   106 | 
   107 |   // Check at least one element with text "Official" is visible
@@ -149,58 +152,4 @@ Call log:
   128 |   } else {
   129 |     await expect(docuSignElement).toBeVisible();
   130 |   }
-  131 | });
-  132 | 
-  133 | test('Homepage — FAQ section exists', async ({ page }) => {
-  134 |   await page.goto('/');
-  135 |   await page.waitForLoadState('networkidle');
-  136 | 
-  137 |   // Check at least one FAQ question is visible
-  138 |   // Look for common FAQ patterns: accordion, question text, or FAQ heading
-  139 |   const faqQuestion = page.locator('button:text("What"), h3:text("What"), .faq-question, [role="button"]:has-text("How"), [role="button"]:has-text("What")').first();
-  140 |   
-  141 |   // If we find any FAQ-like element, it's good
-  142 |   const count = await faqQuestion.count();
-  143 |   expect(count).toBeGreaterThan(0);
-  144 |   
-  145 |   if (count > 0) {
-  146 |     await expect(faqQuestion).toBeVisible();
-  147 |   }
-  148 | });
-  149 | 
-  150 | test('Pricing — Free tier shown', async ({ page }) => {
-  151 |   await page.goto('/pricing');
-  152 |   await page.waitForLoadState('networkidle');
-  153 | 
-  154 |   // Check element with "Free" visible
-  155 |   const freeTier = page.locator('text=Free').first();
-  156 |   await expect(freeTier).toBeVisible();
-  157 |   
-  158 |   // Check for "3 documents" text (Free tier shows "3 documents per month")
-  159 |   const threeDocs = page.locator('text="3 documents per month"').first();
-  160 |   const threeDocsAlt = page.locator('text=3 documents').first();
-  161 |   
-  162 |   const hasThreeDocs = await threeDocs.count() > 0 || await threeDocsAlt.count() > 0;
-  163 |   expect(hasThreeDocs).toBe(true);
-  164 | });
-  165 | 
-  166 | test('Editor toolbar loads', async ({ page }) => {
-  167 |   await page.goto('/editor');
-  168 |   await page.waitForLoadState('networkidle');
-  169 | 
-  170 |   const url = page.url();
-  171 |   
-  172 |   // If redirected to sign-in, that's acceptable (editor requires auth)
-  173 |   if (url.includes('/sign-in')) {
-  174 |     // Sign-in page loaded, which is expected for unauthenticated users
-  175 |     // Test passes - editor correctly requires authentication
-  176 |     return;
-  177 |   }
-  178 |   
-  179 |   // If we're still on /editor, check that the page loaded without errors
-  180 |   // The editor may show an upload zone or other initial state
-  181 |   const title = await page.title();
-  182 |   expect(title).toContain('QuickFill');
-  183 | });
-  184 | 
 ```
