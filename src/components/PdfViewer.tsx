@@ -2350,16 +2350,6 @@ function FieldShape({
             onContextMenu?.(e, field.id);
           }}
         >
-          {/* Background - full field background */}
-          <Rect
-            width={stageW}
-            height={stageH}
-            fill={getFill()}
-            stroke={getBorderColor()}
-            strokeWidth={getBorderWidth()}
-            cornerRadius={3}
-          />
-          
           {/* Render cells grouped by detected groups with visual gaps between groups */}
           {groups && groups.length > 0 ? (
             // Group-based rendering: render each group separately with gaps between them
@@ -2370,13 +2360,13 @@ function FieldShape({
               
               return (
                 <Group key={`group-${groupIdx}`} x={groupX} y={0}>
-                  {/* Group background with rounded corners */}
+                  {/* Group background with rounded corners - only covers the group, not gaps */}
                   <Rect
                     width={groupWidth}
                     height={slotHeight}
-                    fill="transparent"
-                    stroke={isSelected ? "rgba(59,130,246,0.3)" : "transparent"}
-                    strokeWidth={isSelected ? 1 : 0}
+                    fill={getFill()}
+                    stroke={getBorderColor()}
+                    strokeWidth={getBorderWidth()}
                     cornerRadius={3}
                   />
                   {/* Individual character slots within this group */}
