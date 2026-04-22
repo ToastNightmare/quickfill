@@ -39,39 +39,42 @@ TypeError: clerkFrame.count is not a function
           - /url: /sign-up
   - main [ref=e13]:
     - generic [ref=e14]:
-      - generic [ref=e15]:
-        - img [ref=e16]
-        - generic [ref=e19]: Welcome to QuickFill!Upload any PDF form to get started, it takes less than 60 seconds.
-        - button [ref=e20]:
-          - img [ref=e21]
-      - generic [ref=e25] [cursor=pointer]:
-        - button "Choose File" [ref=e26]
-        - img "QuickFill" [ref=e27]
-        - paragraph [ref=e28]: Drag & drop your PDF here
-        - paragraph [ref=e29]: or click to browse
-        - paragraph [ref=e30]: PDF files only, up to 50MB
-      - generic [ref=e31]:
-        - generic [ref=e34]: or start with a template
-        - generic [ref=e36]:
-          - button "🏛️ TFN Declaration" [ref=e37]:
-            - generic [ref=e38]: 🏛️
-            - generic [ref=e39]: TFN Declaration
-          - button "🏦 Super Choice" [ref=e40]:
-            - generic [ref=e41]: 🏦
-            - generic [ref=e42]: Super Choice
-          - button "⚖️ Statutory Declaration" [ref=e43]:
-            - generic [ref=e44]: ⚖️
-            - generic [ref=e45]: Statutory Declaration
-          - button "🏠 Rental Application" [ref=e46]:
-            - generic [ref=e47]: 🏠
-            - generic [ref=e48]: Rental Application
-          - button "📄 Employment Separation" [ref=e49]:
-            - generic [ref=e50]: 📄
-            - generic [ref=e51]: Employment Separation
-          - button "♿ NDIS Agreement" [ref=e52]:
-            - generic [ref=e53]: ♿
-            - generic [ref=e54]: NDIS Agreement
-  - alert [ref=e55]
+      - generic [ref=e16] [cursor=pointer]:
+        - button "Choose File" [ref=e17]
+        - img "QuickFill" [ref=e18]
+        - paragraph [ref=e19]: Drag & drop your PDF here
+        - paragraph [ref=e20]: or click to browse
+        - paragraph [ref=e21]: PDF files only, up to 50MB
+      - generic [ref=e22]:
+        - generic [ref=e25]: or start with a template
+        - generic [ref=e27]:
+          - button "🏛️ TFN Declaration" [ref=e28]:
+            - generic [ref=e29]: 🏛️
+            - generic [ref=e30]: TFN Declaration
+          - button "🏦 Super Choice" [ref=e31]:
+            - generic [ref=e32]: 🏦
+            - generic [ref=e33]: Super Choice
+          - button "⚖️ Statutory Declaration" [ref=e34]:
+            - generic [ref=e35]: ⚖️
+            - generic [ref=e36]: Statutory Declaration
+          - button "🏠 Rental Application" [ref=e37]:
+            - generic [ref=e38]: 🏠
+            - generic [ref=e39]: Rental Application
+          - button "📄 Employment Separation" [ref=e40]:
+            - generic [ref=e41]: 📄
+            - generic [ref=e42]: Employment Separation
+          - button "♿ NDIS Agreement" [ref=e43]:
+            - generic [ref=e44]: ♿
+            - generic [ref=e45]: NDIS Agreement
+  - contentinfo [ref=e46]:
+    - generic [ref=e48]:
+      - link "Privacy Policy" [ref=e49] [cursor=pointer]:
+        - /url: /privacy
+      - link "Terms of Service" [ref=e50] [cursor=pointer]:
+        - /url: /terms
+      - link "Contact" [ref=e51] [cursor=pointer]:
+        - /url: mailto:support@getquickfill.com
+      - paragraph [ref=e52]: (c) 2026 QuickFill. All rights reserved.
 ```
 
 # Test source

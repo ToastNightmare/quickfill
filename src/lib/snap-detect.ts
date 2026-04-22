@@ -1303,23 +1303,58 @@ export function detectCombCells(
   }
   
   // Second pass: filter out gaps between groups
-  // Gaps are cells that are significantly wider than the typical cell
-  const widths = allCells.map(c => c.width);
-  widths.sort((a, b) => a - b);
-  const medianWidth = widths[Math.floor(widths.length / 2)];
-
-  // A gap is anything 1.35x or more the median width
-  // This catches small gaps like "/" separators in date fields (DD/MM/YYYY)
-  const gapThreshold = medianWidth * 1.35;
-
+  // A gap is empty space WITHOUT box boundary lines (just whitespace or slash separators)
+  // A cell group contains actual box lines even if narrow (like MM with 2 cells)
+  // 
+  // The original width-ratio filtering was too aggressive and incorrectly classified
+  // narrow cell groups (like 2-cell MM) as gaps. Instead, we check if the region
+  // has internal vertical box lines to determine if it is a cell group or a gap.
+  
   const cellBoundaries: number[] = [];
   const cellCenters: number[] = [];
   const cellWidths: number[] = [];
 
   for (const cell of allCells) {
-    // Skip gaps (cells at or above threshold are filtered)
-    if (cell.width >= gapThreshold) continue;
+    // Check if this region contains internal box lines (dividers between cells)
+    // by scanning for vertical dividers within the region boundaries
+    let hasInternalDivider = false;
+    for (const line of dividerLines) {
+      const lineX = x1 + line.x;
+      // Check for any divider strictly inside this region (not at the edges)
+      if (lineX > cell.left + 2 && lineX < cell.left + cell.width - 2) {
+        hasInternalDivider = true;
+        break;
+      }
+    }
     
+    // If region has internal dividers, it is definitely a cell group - keep it
+    if (hasInternalDivider) {
+      cellBoundaries.push(cell.left);
+      cellCenters.push(cell.center);
+      cellWidths.push(cell.width);
+      continue;
+    }
+    
+    // No internal divider found - this could be:
+    // 1. A single cell (normal case)
+    // 2. A gap between groups (empty space or slash separator area)
+    //
+    // To distinguish: check if the region width is consistent with typical cell widths
+    // Gaps tend to be either very narrow (<10px) or unusually wide compared to cells
+    // We use a more conservative threshold: only filter if width > 2x the median
+    // This prevents filtering out valid cell groups while still catching large gaps
+    
+    const widths = allCells.map(c => c.width);
+    widths.sort((a, b) => a - b);
+    const medianWidth = widths[Math.floor(widths.length / 2)];
+    
+    // Only filter out regions that are clearly gaps (more than 2x typical cell width)
+    // This is much more conservative than the original 1.35x threshold
+    if (cell.width > medianWidth * 2.0) {
+      continue; // Skip this gap
+    }
+    
+    // Keep this region as a cell
     cellBoundaries.push(cell.left);
     cellCenters.push(cell.center);
     cellWidths.push(cell.width);
