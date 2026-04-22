@@ -15,8 +15,8 @@
 Error: expect(received).toHaveLength(expected)
 
 Expected length: 0
-Received length: 10
-Received array:  ["Failed to load resource: net::ERR_NETWORK_CHANGED", "Failed to load resource: net::ERR_NETWORK_CHANGED", "Failed to load resource: net::ERR_NETWORK_CHANGED", "Failed to load resource: net::ERR_NETWORK_CHANGED", "Failed to load resource: net::ERR_NAME_NOT_RESOLVED", "Failed to load resource: net::ERR_NAME_NOT_RESOLVED", "Failed to load resource: net::ERR_NAME_NOT_RESOLVED", "Failed to load resource: net::ERR_NAME_NOT_RESOLVED", "Failed to load resource: net::ERR_NAME_NOT_RESOLVED", "Failed to load resource: net::ERR_NAME_NOT_RESOLVED"]
+Received length: 6
+Received array:  ["Failed to load resource: net::ERR_NETWORK_CHANGED", "Failed to load resource: net::ERR_NETWORK_CHANGED", "Failed to load resource: net::ERR_NETWORK_CHANGED", "Failed to load resource: net::ERR_NETWORK_CHANGED", "Failed to load resource: net::ERR_NETWORK_CHANGED", "Failed to load resource: net::ERR_NETWORK_CHANGED"]
 ```
 
 # Page snapshot

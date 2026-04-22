@@ -2358,6 +2358,9 @@ function FieldShape({
               const groupX = group.startX + offsetX;
               const groupWidth = group.totalWidth;
               
+              // Calculate uniform cell width within this group
+              const uniformCellWidth = groupWidth / group.cellCount;
+
               return (
                 <Group key={`group-${groupIdx}`} x={groupX} y={0}>
                   {/* Group background with rounded corners - only covers the group, not gaps */}
@@ -2369,28 +2372,21 @@ function FieldShape({
                     strokeWidth={getBorderWidth()}
                     cornerRadius={3}
                   />
-                  {/* Individual character slots within this group */}
+                  {/* Individual character slots within this group - uniform widths */}
                   {Array.from({ length: group.cellCount }).map((_, cellIdx) => {
                     const globalIndex = group.startIndex + cellIdx;
                     const char = value[globalIndex] || "";
-                    const isFilled = char !== "" && char !== " ";
                     const isCurrent = globalIndex === activeSlotIndex;
-                    
-                    // Use detected cell positions if available
-                    const hasCellPosition = cellPositions && cellPositions[globalIndex] !== undefined;
-                    const hasCellWidth = cellWidthsArr && cellWidthsArr[globalIndex] !== undefined;
-                    const thisCellWidth = hasCellWidth ? cellWidthsArr[globalIndex] : slotWidth;
-                    
-                    // Calculate cell position relative to group start
-                    const cellCenterX = hasCellPosition ? cellPositions[globalIndex] : (cellIdx * slotWidth + slotWidth / 2);
-                    const cellLeftX = cellCenterX - thisCellWidth / 2;
-                    
+
+                    // Uniform cell positioning within group: cellIdx * uniformCellWidth
+                    const cellLeftX = cellIdx * uniformCellWidth;
+
                     return (
                       <Group
                         key={globalIndex}
                         x={cellLeftX}
                         y={0}
-                        width={thisCellWidth}
+                        width={uniformCellWidth}
                         height={slotHeight}
                         onClick={(e) => {
                           e.cancelBubble = true;
@@ -2402,7 +2398,7 @@ function FieldShape({
                       >
                         {/* Slot border - only visible when selected or hovered */}
                         <Rect
-                          width={thisCellWidth - 1}
+                          width={uniformCellWidth - 1}
                           height={slotHeight}
                           fill={isCurrent && isSelected ? "rgba(59,130,246,0.18)" : isSelected ? "rgba(59,130,246,0.05)" : "transparent"}
                           stroke={isCurrent && isSelected ? "#3b82f6" : isSelected ? "rgba(59,130,246,0.4)" : "transparent"}
@@ -2416,7 +2412,7 @@ function FieldShape({
                             fontSize={slotHeight * 0.6}
                             fill="#1a1a2e"
                             fontFamily="Arial"
-                            width={thisCellWidth}
+                            width={uniformCellWidth}
                             height={slotHeight}
                             align="center"
                             verticalAlign="middle"
@@ -2425,7 +2421,7 @@ function FieldShape({
                         {/* Cursor indicator for active slot when selected */}
                         {isCurrent && isSelected && (
                           <Rect
-                            x={thisCellWidth / 2 - 1}
+                            x={uniformCellWidth / 2 - 1}
                             y={slotHeight * 0.15}
                             width={2}
                             height={slotHeight * 0.7}
