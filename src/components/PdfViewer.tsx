@@ -733,6 +733,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
               let cellPositions: number[] | undefined;
               let cellWidthsArr: number[] | undefined;
               let totalWidth = fieldW;
+              let groupsArr: { startIndex: number; cellCount: number; startX: number; totalWidth: number }[] | undefined;
 
               if (canvas) {
                 // Convert PDF points to canvas pixels for detection
@@ -762,6 +763,16 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
                       (combResult.cellWidths[combResult.cellWidths.length - 1] || combResult.cellWidth);
                     totalWidth = Math.round((lastCellRight - combResult.firstCellX) / effectiveScale);
                   }
+
+                  // Store group information for date fields (DD MM YYYY clusters)
+                  if (combResult.groups && combResult.groups.length > 0) {
+                    groupsArr = combResult.groups.map(g => ({
+                      startIndex: g.startIndex,
+                      cellCount: g.cellCount,
+                      startX: Math.round((g.startX / effectiveScale) - snapX),
+                      totalWidth: Math.round(g.totalWidth / effectiveScale),
+                    }));
+                  }
                 }
               }
 
@@ -780,6 +791,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
                 cellWidth: detectedCellWidth,
                 cellPositions: cellPositions,
                 cellWidths: cellWidthsArr,
+                groups: groupsArr,
               };
               break;
             }
@@ -978,6 +990,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
                 let combCellPositions: number[] | undefined;
                 let combCellWidthsArr: number[] | undefined;
                 let combTotalWidth = fieldW;
+                let combGroupsArr: { startIndex: number; cellCount: number; startX: number; totalWidth: number }[] | undefined;
 
                 if (combCanvas) {
                   // Convert PDF points to canvas pixels for detection
@@ -1003,6 +1016,16 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
                         (combResult.cellWidths[combResult.cellWidths.length - 1] || combResult.cellWidth);
                       combTotalWidth = Math.round((lastCellRight - combResult.firstCellX) / effectiveScale);
                     }
+
+                    // Store group information for date fields (DD MM YYYY clusters)
+                    if (combResult.groups && combResult.groups.length > 0) {
+                      combGroupsArr = combResult.groups.map(g => ({
+                        startIndex: g.startIndex,
+                        cellCount: g.cellCount,
+                        startX: Math.round((g.startX / effectiveScale) - combSnapX),
+                        totalWidth: Math.round(g.totalWidth / effectiveScale),
+                      }));
+                    }
                   }
                 }
 
@@ -1021,6 +1044,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
                   cellWidth: combDetectedCellWidth,
                   cellPositions: combCellPositions,
                   cellWidths: combCellWidthsArr,
+                  groups: combGroupsArr,
                 };
                 break;
               }
@@ -1232,6 +1256,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
           let combCellPositions3: number[] | undefined;
           let combCellWidthsArr3: number[] | undefined;
           let combTotalWidth3 = fieldW;
+          let combGroupsArr3: { startIndex: number; cellCount: number; startX: number; totalWidth: number }[] | undefined;
 
           if (combCanvas3) {
             // Convert PDF points to canvas pixels for detection
@@ -1257,6 +1282,16 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
                   (combResult3.cellWidths[combResult3.cellWidths.length - 1] || combResult3.cellWidth);
                 combTotalWidth3 = Math.round((lastCellRight3 - combResult3.firstCellX) / effectiveScale);
               }
+
+              // Store group information for date fields (DD MM YYYY clusters)
+              if (combResult3.groups && combResult3.groups.length > 0) {
+                combGroupsArr3 = combResult3.groups.map(g => ({
+                  startIndex: g.startIndex,
+                  cellCount: g.cellCount,
+                  startX: Math.round((g.startX / effectiveScale) - combSnapX3),
+                  totalWidth: Math.round(g.totalWidth / effectiveScale),
+                }));
+              }
             }
           }
 
@@ -1275,6 +1310,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
             cellWidth: combDetectedCellWidth3,
             cellPositions: combCellPositions3,
             cellWidths: combCellWidthsArr3,
+            groups: combGroupsArr3,
           };
           break;
         }
@@ -2104,7 +2140,7 @@ function FieldShape({
 
   // Grid/Comb field rendering - individual character slots with OTP-style input
   // MUST come before generic text field handling to avoid being swallowed by the default return
-  // Box Field (comb) rendering - individual character slots
+  // Box Field (comb) rendering - individual character slots with group-based rendering
   if (field.type === "comb") {
     const combField = field as CombField;
     const charCount = combField.charCount ?? 9;
@@ -2118,6 +2154,12 @@ function FieldShape({
     // Non-uniform cell positions (for TFN-style fields with gaps) - scale to Stage coords
     const cellPositions = combField.cellPositions?.map(p => p * fitScale);
     const cellWidthsArr = combField.cellWidths?.map(w => w * fitScale);
+    // Cell groups for date fields (DD MM YYYY) - scale startX to Stage coords
+    const groups = combField.groups?.map(g => ({
+      ...g,
+      startX: g.startX * fitScale,
+      totalWidth: g.totalWidth * fitScale,
+    }));
     
     // Use persisted cursor from field data, or default to end of current value
     const initialCursor = combField.cursorIndex ?? Math.min(value.replace(/ +$/, "").length, charCount - 1);
@@ -2147,6 +2189,28 @@ function FieldShape({
       }
     }, [isSelected]);
 
+    // Helper: check if an index is the last cell of a group
+    const isLastCellOfGroup = (index: number): boolean => {
+      if (!groups || groups.length === 0) return false;
+      for (const group of groups) {
+        const groupEndIndex = group.startIndex + group.cellCount - 1;
+        if (index === groupEndIndex) return true;
+      }
+      return false;
+    };
+
+    // Helper: get the next index after a group ends (for auto-advance)
+    const getNextIndexAfterGroup = (index: number): number => {
+      if (!groups || groups.length === 0) return index + 1;
+      for (const group of groups) {
+        const groupEndIndex = group.startIndex + group.cellCount - 1;
+        if (index === groupEndIndex) {
+          return Math.min(group.startIndex + group.cellCount, charCount - 1);
+        }
+      }
+      return index + 1;
+    };
+
     // Define handleKeyDown using refs - updated every render for fresh closure
     handleKeyDownRef.current = (e: KeyboardEvent) => {
       const currentIndex = activeSlotIndexRef.current;
@@ -2159,7 +2223,14 @@ function FieldShape({
           const paddedValue = currentValue.padEnd(charCount, " ");
           const newValue = paddedValue.slice(0, currentIndex) + e.key + paddedValue.slice(currentIndex + 1);
           onValueChange(newValue);
-          const nextIndex = Math.min(currentIndex + 1, charCount - 1);
+          // Auto-advance: if this is the last cell of a group, jump to next group
+          // Otherwise just move to next cell
+          let nextIndex;
+          if (isLastCellOfGroup(currentIndex)) {
+            nextIndex = getNextIndexAfterGroup(currentIndex);
+          } else {
+            nextIndex = Math.min(currentIndex + 1, charCount - 1);
+          }
           setActiveSlotIndex(nextIndex);
           activeSlotIndexRef.current = nextIndex;
         }
@@ -2261,7 +2332,7 @@ function FieldShape({
             onContextMenu?.(e, field.id);
           }}
         >
-          {/* Background */}
+          {/* Background - full field background */}
           <Rect
             width={stageW}
             height={stageH}
@@ -2271,73 +2342,155 @@ function FieldShape({
             cornerRadius={3}
           />
           
-          {/* Individual character slots */}
-          {Array.from({ length: charCount }).map((_, i) => {
-            const char = value[i] || "";
-            const isFilled = char !== "" && char !== " ";
-            const isCurrent = i === activeSlotIndex;
-            
-            // Use detected cell positions if available (non-uniform spacing)
-            // cellPositions stores the CENTER of each cell relative to field X
-            // We need to calculate the left edge for the Group position
-            // Use cellPositions for this specific index if it exists
-            const hasCellPosition = cellPositions && cellPositions[i] !== undefined;
-            const hasCellWidth = cellWidthsArr && cellWidthsArr[i] !== undefined;
-            const thisCellWidth = hasCellWidth ? cellWidthsArr[i] : slotWidth;
-            const cellCenterX = hasCellPosition ? cellPositions[i] : (i * slotWidth + slotWidth / 2);
-            const cellLeftX = cellCenterX - thisCellWidth / 2;
-            
-            return (
-              <Group
-                key={i}
-                x={cellLeftX + offsetX}
-                y={0}
-                width={thisCellWidth}
-                height={slotHeight}
-                onClick={(e) => {
-                  e.cancelBubble = true;
-                  handleSlotClick(i);
-                  // Also select the field if not already selected
-                  if (!isSelected) {
-                    onSelect();
-                  }
-                }}
-              >
-                {/* Slot border - only visible when selected or hovered */}
-                <Rect
-                  width={thisCellWidth - 1}
-                  height={slotHeight}
-                  fill={isCurrent && isSelected ? "rgba(59,130,246,0.18)" : isSelected ? "rgba(59,130,246,0.05)" : "transparent"}
-                  stroke={isCurrent && isSelected ? "#3b82f6" : isSelected ? "rgba(59,130,246,0.4)" : "transparent"}
-                  strokeWidth={isCurrent && isSelected ? 2.5 : isSelected ? 1 : 0}
-                />
-                {/* Character centered in slot */}
-                {char && char !== " " && (
-                  <Text
-                    text={char}
-                    x={charOffsetX}
-                    fontSize={slotHeight * 0.6}
-                    fill="#1a1a2e"
-                    fontFamily="Arial"
-                    width={thisCellWidth}
-                    height={slotHeight}
-                    align="center"
-                    verticalAlign="middle"
-                  />
-                )}
-                {/* Cursor indicator for active slot when selected */}
-                {isCurrent && isSelected && (
+          {/* Render cells grouped by detected groups with visual gaps between groups */}
+          {groups && groups.length > 0 ? (
+            // Group-based rendering: render each group separately with gaps between them
+            groups.map((group, groupIdx) => {
+              // Calculate group position and width
+              const groupX = group.startX + offsetX;
+              const groupWidth = group.totalWidth;
+              
+              return (
+                <Group key={`group-${groupIdx}`} x={groupX} y={0}>
+                  {/* Group background with rounded corners */}
                   <Rect
-                    x={thisCellWidth / 2 - 1}
-                    y={slotHeight * 0.15}
-                    width={2}
-                    height={slotHeight * 0.7}
-                    fill="#3b82f6"
+                    width={groupWidth}
+                    height={slotHeight}
+                    fill="transparent"
+                    stroke={isSelected ? "rgba(59,130,246,0.3)" : "transparent"}
+                    strokeWidth={isSelected ? 1 : 0}
+                    cornerRadius={3}
                   />
-                )}
-              </Group>
-            );
-          })}
+                  {/* Individual character slots within this group */}
+                  {Array.from({ length: group.cellCount }).map((_, cellIdx) => {
+                    const globalIndex = group.startIndex + cellIdx;
+                    const char = value[globalIndex] || "";
+                    const isFilled = char !== "" && char !== " ";
+                    const isCurrent = globalIndex === activeSlotIndex;
+                    
+                    // Use detected cell positions if available
+                    const hasCellPosition = cellPositions && cellPositions[globalIndex] !== undefined;
+                    const hasCellWidth = cellWidthsArr && cellWidthsArr[globalIndex] !== undefined;
+                    const thisCellWidth = hasCellWidth ? cellWidthsArr[globalIndex] : slotWidth;
+                    
+                    // Calculate cell position relative to group start
+                    const cellCenterX = hasCellPosition ? cellPositions[globalIndex] : (cellIdx * slotWidth + slotWidth / 2);
+                    const cellLeftX = cellCenterX - thisCellWidth / 2;
+                    
+                    return (
+                      <Group
+                        key={globalIndex}
+                        x={cellLeftX}
+                        y={0}
+                        width={thisCellWidth}
+                        height={slotHeight}
+                        onClick={(e) => {
+                          e.cancelBubble = true;
+                          handleSlotClick(globalIndex);
+                          if (!isSelected) {
+                            onSelect();
+                          }
+                        }}
+                      >
+                        {/* Slot border - only visible when selected or hovered */}
+                        <Rect
+                          width={thisCellWidth - 1}
+                          height={slotHeight}
+                          fill={isCurrent && isSelected ? "rgba(59,130,246,0.18)" : isSelected ? "rgba(59,130,246,0.05)" : "transparent"}
+                          stroke={isCurrent && isSelected ? "#3b82f6" : isSelected ? "rgba(59,130,246,0.4)" : "transparent"}
+                          strokeWidth={isCurrent && isSelected ? 2.5 : isSelected ? 1 : 0}
+                        />
+                        {/* Character centered in slot */}
+                        {char && char !== " " && (
+                          <Text
+                            text={char}
+                            x={charOffsetX}
+                            fontSize={slotHeight * 0.6}
+                            fill="#1a1a2e"
+                            fontFamily="Arial"
+                            width={thisCellWidth}
+                            height={slotHeight}
+                            align="center"
+                            verticalAlign="middle"
+                          />
+                        )}
+                        {/* Cursor indicator for active slot when selected */}
+                        {isCurrent && isSelected && (
+                          <Rect
+                            x={thisCellWidth / 2 - 1}
+                            y={slotHeight * 0.15}
+                            width={2}
+                            height={slotHeight * 0.7}
+                            fill="#3b82f6"
+                          />
+                        )}
+                      </Group>
+                    );
+                  })}
+                </Group>
+              );
+            })
+          ) : (
+            // Fallback: uniform rendering without groups (original behavior)
+            Array.from({ length: charCount }).map((_, i) => {
+              const char = value[i] || "";
+              const isFilled = char !== "" && char !== " ";
+              const isCurrent = i === activeSlotIndex;
+              
+              const hasCellPosition = cellPositions && cellPositions[i] !== undefined;
+              const hasCellWidth = cellWidthsArr && cellWidthsArr[i] !== undefined;
+              const thisCellWidth = hasCellWidth ? cellWidthsArr[i] : slotWidth;
+              const cellCenterX = hasCellPosition ? cellPositions[i] : (i * slotWidth + slotWidth / 2);
+              const cellLeftX = cellCenterX - thisCellWidth / 2;
+              
+              return (
+                <Group
+                  key={i}
+                  x={cellLeftX + offsetX}
+                  y={0}
+                  width={thisCellWidth}
+                  height={slotHeight}
+                  onClick={(e) => {
+                    e.cancelBubble = true;
+                    handleSlotClick(i);
+                    if (!isSelected) {
+                      onSelect();
+                    }
+                  }}
+                >
+                  <Rect
+                    width={thisCellWidth - 1}
+                    height={slotHeight}
+                    fill={isCurrent && isSelected ? "rgba(59,130,246,0.18)" : isSelected ? "rgba(59,130,246,0.05)" : "transparent"}
+                    stroke={isCurrent && isSelected ? "#3b82f6" : isSelected ? "rgba(59,130,246,0.4)" : "transparent"}
+                    strokeWidth={isCurrent && isSelected ? 2.5 : isSelected ? 1 : 0}
+                  />
+                  {char && char !== " " && (
+                    <Text
+                      text={char}
+                      x={charOffsetX}
+                      fontSize={slotHeight * 0.6}
+                      fill="#1a1a2e"
+                      fontFamily="Arial"
+                      width={thisCellWidth}
+                      height={slotHeight}
+                      align="center"
+                      verticalAlign="middle"
+                    />
+                  )}
+                  {isCurrent && isSelected && (
+                    <Rect
+                      x={thisCellWidth / 2 - 1}
+                      y={slotHeight * 0.15}
+                      width={2}
+                      height={slotHeight * 0.7}
+                      fill="#3b82f6"
+                    />
+                  )}
+                </Group>
+              );
+            })
+          )}
         </Group>
       </>
     );

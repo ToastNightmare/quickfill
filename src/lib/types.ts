@@ -45,6 +45,13 @@ export interface WhiteoutField extends FieldBase {
   fillColor: string; // CSS hex or rgba, sampled from PDF background
 }
 
+export interface CombGroup {
+  startIndex: number; // Index of first cell in this group (0-based)
+  cellCount: number; // Number of cells in this group
+  startX: number; // X position of first cell's left edge relative to field X (PDF points)
+  totalWidth: number; // Total width of this group including all cells (PDF points)
+}
+
 export interface CombField extends FieldBase {
   type: "comb";
   value: string; // concatenated value of all cells
@@ -55,6 +62,7 @@ export interface CombField extends FieldBase {
   charOffsetX?: number; // character offset within each cell for centering (-10 to +10px)
   cellPositions?: number[]; // X positions of each cell center relative to field X (for non-uniform spacing)
   cellWidths?: number[]; // Width of each individual cell (for non-uniform spacing like TFN)
+  groups?: CombGroup[]; // Cell groups with gaps between them (for date fields like DD MM YYYY)
 }
 
 export type EditorField = TextField | CheckboxField | SignatureField | DateField | WhiteoutField | CombField;

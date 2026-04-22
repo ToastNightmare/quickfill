@@ -1088,6 +1088,16 @@ function deduplicateBoxes(boxes: SnapResult[]): SnapResult[] {
 }
 
 /**
+ * Represents a group of cells (e.g., DD group, MM group, YYYY group)
+ */
+export interface CellGroup {
+  startIndex: number; // Index of first cell in this group (0-based)
+  cellCount: number; // Number of cells in this group
+  startX: number; // X position of first cell's left edge (canvas coords)
+  totalWidth: number; // Total width of this group including all cells
+}
+
+/**
  * Detect comb cell spacing from a region of the PDF.
  * Scans for a row of equally-spaced vertical dividers and returns:
  * - cellWidth: the average width of each cell
@@ -1097,6 +1107,7 @@ function deduplicateBoxes(boxes: SnapResult[]): SnapResult[] {
  * - cellBoundaries: array of X positions for each cell's left edge
  * - cellCenters: array of X positions for each cell's center (for character placement)
  * - cellWidths: array of individual cell widths (for non-uniform spacing like TFN)
+ * - groups: array of cell groups (for date fields with DD MM YYYY clusters)
  * 
  * Returns null if no comb pattern is detected.
  */
@@ -1111,6 +1122,7 @@ export interface CombDetectResult {
   cellBoundaries: number[]; // X positions of each cell's left edge
   cellCenters: number[]; // X positions of each cell's center for character placement
   cellWidths: number[]; // Width of each individual cell (handles gaps)
+  groups: CellGroup[]; // Cell groups with gaps between them (for date fields)
 }
 
 export function detectCombCells(
@@ -1366,6 +1378,64 @@ export function detectCombCells(
     ? cellWidths.reduce((a, b) => a + b, 0) / cellWidths.length 
     : bestGap;
 
+  // Detect groups by finding large gaps between consecutive cells
+  // A gap is considered a "group separator" if it is significantly larger than typical cell width
+  // For date fields (DD MM YYYY), we expect 3 groups with gaps between them
+  const groups: CellGroup[] = [];
+  
+  if (cellBoundaries.length > 0) {
+    // Calculate gaps between consecutive cells
+    const cellGaps: number[] = [];
+    for (let i = 1; i < cellCenters.length; i++) {
+      const gap = cellCenters[i] - cellCenters[i - 1];
+      cellGaps.push(gap);
+    }
+    
+    // Find the median gap (typical cell width including spacing)
+    const sortedGaps = [...cellGaps].sort((a, b) => a - b);
+    const medianGap = sortedGaps.length > 0 
+      ? sortedGaps[Math.floor(sortedGaps.length / 2)]
+      : avgCellWidth;
+    
+    // A group separator gap is typically 2x or more the median gap
+    // This catches the visual gaps between DD, MM, and YYYY groups
+    const GROUP_GAP_THRESHOLD = medianGap * 1.8;
+    
+    // Build groups by clustering cells with small gaps between them
+    let groupStartIndex = 0;
+    let groupStartX = cellBoundaries[0];
+    let groupTotalWidth = cellWidths[0];
+    
+    for (let i = 1; i < cellBoundaries.length; i++) {
+      const gap = cellCenters[i] - cellCenters[i - 1];
+      
+      if (gap > GROUP_GAP_THRESHOLD) {
+        // End of current group, start a new one
+        groups.push({
+          startIndex: groupStartIndex,
+          cellCount: i - groupStartIndex,
+          startX: groupStartX,
+          totalWidth: groupTotalWidth
+        });
+        
+        groupStartIndex = i;
+        groupStartX = cellBoundaries[i];
+        groupTotalWidth = cellWidths[i];
+      } else {
+        // Continue current group
+        groupTotalWidth += cellWidths[i] + (gap - cellWidths[i - 1]);
+      }
+    }
+    
+    // Don't forget the last group
+    groups.push({
+      startIndex: groupStartIndex,
+      cellCount: cellBoundaries.length - groupStartIndex,
+      startX: groupStartX,
+      totalWidth: groupTotalWidth
+    });
+  }
+
   return {
     cellWidth: avgCellWidth,
     cellCount: finalCellCount,
@@ -1377,5 +1447,6 @@ export function detectCombCells(
     cellBoundaries: cellBoundaries,
     cellCenters: cellCenters,
     cellWidths: cellWidths,
+    groups: groups,
   };
 }
