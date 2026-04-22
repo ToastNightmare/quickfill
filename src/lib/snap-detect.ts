@@ -1420,22 +1420,12 @@ export function detectCombCells(
     const groupRightX = x1 + dividerLines[lastDividerIdx].x;
     const groupPixelWidth = groupRightX - groupLeftX;
 
-    // Count valid cells within this cluster (cells with reasonable width)
-    let validCellCount = 0;
-    for (let j = 0; j < cluster.length - 1; j++) {
-      const dividerIdx = cluster[j];
-      const nextDividerIdx = cluster[j + 1];
-      const rawWidth = dividerLines[nextDividerIdx].x - dividerLines[dividerIdx].x;
-      // Only count cells with width close to median (within 50% tolerance)
-      if (rawWidth >= medianCellWidth * 0.5 && rawWidth <= medianCellWidth * 1.5) {
-        validCellCount++;
-      }
-    }
-
-    // If no valid cells found, use raw count
-    if (validCellCount === 0) {
-      validCellCount = cluster.length - 1;
-    }
+    // Cell count = number of gaps between consecutive dividers in this cluster.
+    // Each consecutive pair of dividers forms exactly one cell.
+    // We no longer filter by width here - the clustering step already handles
+    // grouping dividers properly. Width filtering was discarding valid cells
+    // when divider positions were slightly off due to anti-aliasing.
+    const validCellCount = cluster.length - 1;
 
     if (validCellCount < 1 || groupPixelWidth < 8) continue;
 
