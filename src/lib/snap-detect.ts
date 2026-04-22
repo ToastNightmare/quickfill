@@ -1311,6 +1311,7 @@ export function detectCombCells(
       cellBoundaries,
       cellCenters,
       cellWidths,
+      groups: [],
     };
   }
   
