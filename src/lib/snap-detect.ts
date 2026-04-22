@@ -1229,8 +1229,8 @@ export function detectCombCells(
 
   // FILTER OUT OUTER BORDERS: Exclude divider lines that are at or near the outer edges
   // of the scanned region. These are the box borders, not internal cell dividers.
-  // Use a 4px tolerance from the left (0) or right (w) edge.
-  const EDGE_TOLERANCE = 4;
+  // Use an 8px tolerance from the left (0) or right (w) edge to catch anti-aliased borders.
+  const EDGE_TOLERANCE = 8;
   const filteredDividerLines = dividerLines.filter((line) => {
     const distFromLeft = line.x;
     const distFromRight = w - line.x;
@@ -1355,9 +1355,10 @@ export function detectCombCells(
     ? sortedDividerGaps[Math.floor(sortedDividerGaps.length / 2)]
     : bestGap;
   
-  // A gap between divider clusters is typically 1.5x or more the median gap
+  // A gap between divider clusters is typically 1.3x or more the median gap
   // This detects the empty space between ABN groups like [XX] and [XXX]
-  const DIVIDER_CLUSTER_GAP_THRESHOLD = medianDividerGap * 1.5;
+  // Lowered from 1.5 to 1.3 to catch smaller gaps between groups
+  const DIVIDER_CLUSTER_GAP_THRESHOLD = medianDividerGap * 1.3;
   
   // Identify which divider lines belong to which cluster
   const dividerClusters: number[][] = [];
@@ -1425,9 +1426,10 @@ export function detectCombCells(
       ? sortedGaps[Math.floor(sortedGaps.length / 2)]
       : avgCellWidth;
     
-    // A group separator gap is typically 2x or more the median gap
+    // A group separator gap is typically 1.5x or more the median gap
     // This catches the visual gaps between DD, MM, and YYYY groups
-    const GROUP_GAP_THRESHOLD = medianGap * 1.8;
+    // Lowered from 1.8 to 1.5 to catch smaller gaps between groups
+    const GROUP_GAP_THRESHOLD = medianGap * 1.5;
     
     // Build groups by clustering cells with small gaps between them
     let groupStartIndex = 0;
