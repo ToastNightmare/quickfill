@@ -1425,8 +1425,12 @@ export function detectCombCells(
   dividerClusters.push(currentCluster);
   
   // Build groups from divider clusters, then generate UNIFORM cells within each group.
-  // Raw divider positions are noisy; we use them only to COUNT cells per group,
-  // then distribute cells evenly across the group's pixel width.
+  //
+  // KEY INSIGHT: Dividers mark boundaries BETWEEN cells. The box edges are also boundaries.
+  // For N internal dividers, there are N+1 cells (edges included as implicit boundaries).
+  //
+  // For single-group fields (phone): region edges are the box edges
+  // For multi-group fields (ABN): each cluster's box extends from gap midpoint to gap midpoint
 
   let groups: CellGroup[] = [];
   const cellBoundaries: number[] = [];
@@ -1450,23 +1454,76 @@ export function detectCombCells(
     ? sortedRawWidths[Math.floor(sortedRawWidths.length / 2)]
     : bestGap;
 
+  // Calculate group box edges - these are the ACTUAL visual box boundaries,
+  // not the divider center positions.
+  //
+  // For single-group: use region edges (x1 and x1+w)
+  // For multi-group: use midpoints between clusters as boundaries
+
+  const isSingleGroup = dividerClusters.length === 1;
+
   // Process each divider cluster as a group
   let globalCellIndex = 0;
-  for (const cluster of dividerClusters) {
-    if (cluster.length < 2) continue; // Need at least 2 dividers to form cells
+  for (let clusterIdx = 0; clusterIdx < dividerClusters.length; clusterIdx++) {
+    const cluster = dividerClusters[clusterIdx];
+    if (cluster.length < 1) continue; // Need at least 1 divider
 
     const firstDividerIdx = cluster[0];
     const lastDividerIdx = cluster[cluster.length - 1];
-    const groupLeftX = x1 + dividerLines[firstDividerIdx].x;
-    const groupRightX = x1 + dividerLines[lastDividerIdx].x;
+    const firstDividerX = dividerLines[firstDividerIdx].x;
+    const lastDividerX = dividerLines[lastDividerIdx].x;
+
+    // Determine the actual box edges for this group
+    let groupLeftEdge: number;  // Left EDGE of the group's box (not divider center)
+    let groupRightEdge: number; // Right EDGE of the group's box (not divider center)
+
+    if (isSingleGroup) {
+      // Single-group field (phone): use region edges as box edges
+      // Add small inset to avoid including the outer border pixels
+      const BORDER_INSET = 2;
+      groupLeftEdge = BORDER_INSET;
+      groupRightEdge = w - BORDER_INSET;
+    } else {
+      // Multi-group field (ABN, DOB): calculate box edges from inter-cluster gaps
+
+      // Left edge of this group's box
+      if (clusterIdx === 0) {
+        // First group: left edge is region left (with small inset)
+        groupLeftEdge = 2;
+      } else {
+        // Not first group: left edge is midpoint of gap with previous cluster
+        const prevCluster = dividerClusters[clusterIdx - 1];
+        const prevLastDividerX = dividerLines[prevCluster[prevCluster.length - 1]].x;
+        const gapMidpoint = (prevLastDividerX + firstDividerX) / 2;
+        // Estimate the box edge as slightly past the midpoint toward this cluster
+        // (gap between boxes is smaller than the visual gap appears)
+        const gapWidth = firstDividerX - prevLastDividerX;
+        groupLeftEdge = gapMidpoint + gapWidth * 0.15;
+      }
+
+      // Right edge of this group's box
+      if (clusterIdx === dividerClusters.length - 1) {
+        // Last group: right edge is region right (with small inset)
+        groupRightEdge = w - 2;
+      } else {
+        // Not last group: right edge is midpoint of gap with next cluster
+        const nextCluster = dividerClusters[clusterIdx + 1];
+        const nextFirstDividerX = dividerLines[nextCluster[0]].x;
+        const gapMidpoint = (lastDividerX + nextFirstDividerX) / 2;
+        // Estimate the box edge as slightly before the midpoint
+        const gapWidth = nextFirstDividerX - lastDividerX;
+        groupRightEdge = gapMidpoint - gapWidth * 0.15;
+      }
+    }
+
+    // Convert to canvas coordinates
+    const groupLeftX = x1 + groupLeftEdge;
+    const groupRightX = x1 + groupRightEdge;
     const groupPixelWidth = groupRightX - groupLeftX;
 
-    // Cell count = number of gaps between consecutive dividers in this cluster.
-    // Each consecutive pair of dividers forms exactly one cell.
-    // We no longer filter by width here - the clustering step already handles
-    // grouping dividers properly. Width filtering was discarding valid cells
-    // when divider positions were slightly off due to anti-aliasing.
-    const validCellCount = cluster.length - 1;
+    // Cell count = internal dividers in this cluster + 1 (for the edge boundaries)
+    // This is the key fix: N dividers create N+1 cells when edges are boundaries
+    const validCellCount = cluster.length + 1;
 
     if (validCellCount < 1 || groupPixelWidth < 8) continue;
 
@@ -1474,7 +1531,8 @@ export function detectCombCells(
     const uniformCellWidth = groupPixelWidth / validCellCount;
 
     // Validate: if uniform width is way off median, something is wrong
-    if (uniformCellWidth < medianCellWidth * 0.4 || uniformCellWidth > medianCellWidth * 2.5) {
+    // (relaxed threshold since we're now using full box width)
+    if (uniformCellWidth < medianCellWidth * 0.3 || uniformCellWidth > medianCellWidth * 3.0) {
       continue;
     }
 
@@ -1487,7 +1545,7 @@ export function detectCombCells(
       totalWidth: groupPixelWidth,
     });
 
-    // Generate uniform cells within this group
+    // Generate uniform cells within this group - cells FILL the entire group width
     for (let c = 0; c < validCellCount; c++) {
       const cellLeftX = groupLeftX + c * uniformCellWidth;
       const cellCenterX = cellLeftX + uniformCellWidth / 2;
@@ -1560,55 +1618,19 @@ export function detectCombCells(
     return null;
   }
 
-  // PROBLEM 2 FIX: For single-group phone fields, ensure uniform cell widths
-  // Calculate comb width from actual cells, not from full drawn region
-  // This prevents stretching when user draws slightly wider than actual boxes
+  // Calculate final comb dimensions from the uniformly-distributed cells
+  // Cells are now already distributed across the full box width by the fix above
   let combFirstCellX: number;
   let combWidth: number;
   let combCellWidth: number;
 
   if (cellBoundaries.length > 0 && cellWidths.length > 0) {
-    // Use actual detected cell positions and widths
+    // Use the uniform cell positions calculated above
     combFirstCellX = cellBoundaries[0];
     const lastCellLeft = cellBoundaries[cellBoundaries.length - 1];
     const lastCellWidth = cellWidths[cellWidths.length - 1];
     combWidth = (lastCellLeft + lastCellWidth) - combFirstCellX;
     combCellWidth = cellWidths.reduce((a, b) => a + b, 0) / cellWidths.length;
-
-    // For single-group fields (phone numbers), enforce uniform cell width
-    // based on median spacing to prevent edge cell stretching
-    if (groups.length === 1 && cellWidths.length >= 2) {
-      const sortedWidths = [...cellWidths].sort((a, b) => a - b);
-      const medianWidth = sortedWidths[Math.floor(sortedWidths.length / 2)];
-
-      // Rebuild cells with uniform median-based width, centered on detected cells
-      const uniformWidth = medianWidth;
-      const totalUniformWidth = uniformWidth * cellWidths.length;
-      const centerX = combFirstCellX + combWidth / 2;
-      const uniformStartX = centerX - totalUniformWidth / 2;
-
-      // Rebuild cell arrays with uniform spacing
-      cellBoundaries.length = 0;
-      cellCenters.length = 0;
-      cellWidths.length = 0;
-
-      for (let i = 0; i < actualCellCount; i++) {
-        const cellLeft = uniformStartX + i * uniformWidth;
-        cellBoundaries.push(cellLeft);
-        cellCenters.push(cellLeft + uniformWidth / 2);
-        cellWidths.push(uniformWidth);
-      }
-
-      // Update group info
-      if (groups.length === 1) {
-        groups[0].startX = uniformStartX;
-        groups[0].totalWidth = totalUniformWidth;
-      }
-
-      combFirstCellX = uniformStartX;
-      combWidth = totalUniformWidth;
-      combCellWidth = uniformWidth;
-    }
   } else {
     // Fallback to original calculation
     combFirstCellX = x1 + firstX;
