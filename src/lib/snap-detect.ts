@@ -1283,7 +1283,7 @@ export function detectCombCells(
   // Build arrays of cell boundaries, centers, and widths
   // This handles non-uniform spacing (like TFN fields with gaps between groups)
   
-  // First pass: collect all potential cells
+  // First pass: collect all potential cells from consecutive divider lines
   const allCells: { left: number; center: number; width: number }[] = [];
   for (let i = 0; i < dividerLines.length - 1; i++) {
     const leftEdge = x1 + dividerLines[i].x;
@@ -1315,62 +1315,70 @@ export function detectCombCells(
     };
   }
   
-  // Second pass: filter out gaps between groups
-  // A gap is empty space WITHOUT box boundary lines (just whitespace or slash separators)
-  // A cell group contains actual box lines even if narrow (like MM with 2 cells)
-  // 
-  // The original width-ratio filtering was too aggressive and incorrectly classified
-  // narrow cell groups (like 2-cell MM) as gaps. Instead, we check if the region
-  // has internal vertical box lines to determine if it is a cell group or a gap.
+  // Second pass: detect group clusters by analyzing divider line spacing
+  // For ABN fields [XX] [XXX] [XXX] [XXX], dividers are clustered within groups
+  // with larger gaps between clusters. We need to detect these cluster boundaries.
+  //
+  // Strategy:
+  // 1. Calculate gaps between consecutive divider lines
+  // 2. Find the median gap (typical cell width within a group)
+  // 3. Gaps significantly larger than median indicate group boundaries
+  // 4. Only create cells within divider clusters, skip the large gaps between groups
   
+  const dividerGaps: number[] = [];
+  for (let i = 1; i < dividerLines.length; i++) {
+    dividerGaps.push(dividerLines[i].x - dividerLines[i - 1].x);
+  }
+  
+  // Find median divider gap (typical cell width within groups)
+  const sortedDividerGaps = [...dividerGaps].sort((a, b) => a - b);
+  const medianDividerGap = sortedDividerGaps.length > 0
+    ? sortedDividerGaps[Math.floor(sortedDividerGaps.length / 2)]
+    : bestGap;
+  
+  // A gap between divider clusters is typically 1.5x or more the median gap
+  // This detects the empty space between ABN groups like [XX] and [XXX]
+  const DIVIDER_CLUSTER_GAP_THRESHOLD = medianDividerGap * 1.5;
+  
+  // Identify which divider lines belong to which cluster
+  const dividerClusters: number[][] = [];
+  let currentCluster: number[] = [0]; // Start with first divider index
+  
+  for (let i = 1; i < dividerLines.length; i++) {
+    const gap = dividerLines[i].x - dividerLines[i - 1].x;
+    
+    if (gap > DIVIDER_CLUSTER_GAP_THRESHOLD) {
+      // End of current cluster, start a new one
+      dividerClusters.push(currentCluster);
+      currentCluster = [i];
+    } else {
+      // Continue current cluster
+      currentCluster.push(i);
+    }
+  }
+  // Don't forget the last cluster
+  dividerClusters.push(currentCluster);
+  
+  // Now build cells only from within divider clusters
+  // Each cluster represents a group of cells (like XX or XXX)
   const cellBoundaries: number[] = [];
   const cellCenters: number[] = [];
   const cellWidths: number[] = [];
 
-  for (const cell of allCells) {
-    // Check if this region contains internal box lines (dividers between cells)
-    // by scanning for vertical dividers within the region boundaries
-    let hasInternalDivider = false;
-    for (const line of dividerLines) {
-      const lineX = x1 + line.x;
-      // Check for any divider strictly inside this region (not at the edges)
-      if (lineX > cell.left + 2 && lineX < cell.left + cell.width - 2) {
-        hasInternalDivider = true;
-        break;
+  for (const cluster of dividerClusters) {
+    // Create cells from consecutive dividers within this cluster
+    for (let j = 0; j < cluster.length - 1; j++) {
+      const dividerIndex = cluster[j];
+      const leftEdge = x1 + dividerLines[dividerIndex].x;
+      const rightEdge = x1 + dividerLines[dividerIndex + 1].x;
+      const width = rightEdge - leftEdge;
+      
+      if (width >= 8 && width <= 80) {
+        cellBoundaries.push(leftEdge);
+        cellCenters.push(leftEdge + width / 2);
+        cellWidths.push(width);
       }
     }
-    
-    // If region has internal dividers, it is definitely a cell group - keep it
-    if (hasInternalDivider) {
-      cellBoundaries.push(cell.left);
-      cellCenters.push(cell.center);
-      cellWidths.push(cell.width);
-      continue;
-    }
-    
-    // No internal divider found - this could be:
-    // 1. A single cell (normal case)
-    // 2. A gap between groups (empty space or slash separator area)
-    //
-    // To distinguish: check if the region width is consistent with typical cell widths
-    // Gaps tend to be either very narrow (<10px) or unusually wide compared to cells
-    // We use a more conservative threshold: only filter if width > 2x the median
-    // This prevents filtering out valid cell groups while still catching large gaps
-    
-    const widths = allCells.map(c => c.width);
-    widths.sort((a, b) => a - b);
-    const medianWidth = widths[Math.floor(widths.length / 2)];
-    
-    // Only filter out regions that are clearly gaps (more than 2x typical cell width)
-    // This is much more conservative than the original 1.35x threshold
-    if (cell.width > medianWidth * 2.0) {
-      continue; // Skip this gap
-    }
-    
-    // Keep this region as a cell
-    cellBoundaries.push(cell.left);
-    cellCenters.push(cell.center);
-    cellWidths.push(cell.width);
   }
   
   // If we found individual cells, use those; otherwise fall back to uniform detection
