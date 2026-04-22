@@ -1142,31 +1142,83 @@ export function detectCombCells(
 
   const { data } = imageData;
 
-  // Find vertical lines in the region
-  const vLines = findVerticalLines(data, w, h, isDark);
-  if (vLines.length < 2) {
-    // Try with medium threshold
-    const vLinesMedium = findVerticalLines(data, w, h, isMedium);
-    if (vLinesMedium.length < 2) return null;
-    vLines.push(...vLinesMedium);
+  // NEW: Scan vertical columns to find potential cell dividers
+  // This catches short dividers, "/" separators, or any dark pixels that indicate cell boundaries
+  const columnDarkness: number[] = new Array(w).fill(0);
+  const columnDarkCount: number[] = new Array(w).fill(0);
+  
+  for (let x = 0; x < w; x++) {
+    let darkPixels = 0;
+    let totalPixels = 0;
+    for (let y = 0; y < h; y++) {
+      const idx = (y * w + x) * 4;
+      const brightness = (data[idx] + data[idx + 1] + data[idx + 2]) / 3;
+      if (brightness < 180) { // Dark pixel threshold
+        darkPixels++;
+      }
+      totalPixels++;
+    }
+    columnDarkness[x] = darkPixels / totalPixels;
+    columnDarkCount[x] = darkPixels;
   }
-
-  // Merge nearby vertical lines
-  const merged = mergeVLines(vLines);
-  if (merged.length < 2) return null;
-
-  // Sort by x position
-  merged.sort((a, b) => a.x - b.x);
-
-  // Filter to lines that span most of the region height (actual cell dividers)
-  const minSpan = h * 0.5;
-  const tallLines = merged.filter((v) => v.y2 - v.y1 >= minSpan);
-  if (tallLines.length < 2) return null;
+  
+  // Find vertical dividers by looking for columns with significant dark pixels
+  // A divider should have dark pixels spanning a reasonable portion of the height
+  const potentialDividers: number[] = [];
+  const dividerMinHeight = h * 0.25; // At least 25% of height
+  let inDivider = false;
+  let dividerStart = 0;
+  
+  for (let x = 0; x < w; x++) {
+    if (columnDarkCount[x] >= dividerMinHeight && columnDarkness[x] > 0.3) {
+      if (!inDivider) {
+        inDivider = true;
+        dividerStart = x;
+      }
+    } else if (inDivider) {
+      // End of divider - record the center
+      const dividerEnd = x;
+      const dividerCenter = Math.floor((dividerStart + dividerEnd) / 2);
+      potentialDividers.push(dividerCenter);
+      inDivider = false;
+    }
+  }
+  // Handle divider at the end
+  if (inDivider) {
+    const dividerCenter = Math.floor((dividerStart + w) / 2);
+    potentialDividers.push(dividerCenter);
+  }
+  
+  // Also find vertical lines using the standard method
+  const vLines = findVerticalLines(data, w, h, isDark);
+  let dividerLines: VLine[];
+  
+  if (vLines.length >= 2) {
+    // Use standard vertical lines if we found enough
+    const merged = mergeVLines(vLines);
+    merged.sort((a, b) => a.x - b.x);
+    
+    // Filter to lines that span at least 25% of the region height
+    const minSpan = h * 0.25;
+    dividerLines = merged.filter((v) => v.y2 - v.y1 >= minSpan);
+  } else {
+    // Fall back to column-based dividers
+    dividerLines = potentialDividers.map(x => ({
+      x,
+      y1: Math.floor(h * 0.2),
+      y2: Math.floor(h * 0.8),
+    }));
+  }
+  
+  if (dividerLines.length < 2) {
+    // Not enough dividers to detect cells
+    return null;
+  }
 
   // Calculate gaps between consecutive vertical lines
   const gaps: number[] = [];
-  for (let i = 1; i < tallLines.length; i++) {
-    gaps.push(tallLines[i].x - tallLines[i - 1].x);
+  for (let i = 1; i < dividerLines.length; i++) {
+    gaps.push(dividerLines[i].x - dividerLines[i - 1].x);
   }
 
   if (gaps.length === 0) return null;
@@ -1188,25 +1240,30 @@ export function detectCombCells(
     }
   }
 
-  if (bestGap === 0 || bestCount < 2) return null;
+  if (bestGap === 0 || bestCount < 2) {
+    // No consistent cell width found - might be irregular spacing
+    // Fall back to using average gap
+    bestGap = gaps.reduce((a, b) => a + b, 0) / gaps.length;
+    bestCount = dividerLines.length - 1;
+  }
 
   // Count cells with this gap width (tolerance of 4px)
   let cellCount = 1;
-  let firstX = tallLines[0].x;
-  let lastX = tallLines[0].x;
+  let firstX = dividerLines[0].x;
+  let lastX = dividerLines[0].x;
 
-  for (let i = 1; i < tallLines.length; i++) {
-    const gap = tallLines[i].x - tallLines[i - 1].x;
+  for (let i = 1; i < dividerLines.length; i++) {
+    const gap = dividerLines[i].x - dividerLines[i - 1].x;
     if (Math.abs(gap - bestGap) <= 4) {
       cellCount++;
-      lastX = tallLines[i].x;
+      lastX = dividerLines[i].x;
     }
   }
 
   // Find the vertical extent of the cells
   let minY = h;
   let maxY = 0;
-  for (const line of tallLines) {
+  for (const line of dividerLines) {
     minY = Math.min(minY, line.y1);
     maxY = Math.max(maxY, line.y2);
   }
@@ -1216,9 +1273,9 @@ export function detectCombCells(
   
   // First pass: collect all potential cells
   const allCells: { left: number; center: number; width: number }[] = [];
-  for (let i = 0; i < tallLines.length - 1; i++) {
-    const leftEdge = x1 + tallLines[i].x;
-    const rightEdge = x1 + tallLines[i + 1].x;
+  for (let i = 0; i < dividerLines.length - 1; i++) {
+    const leftEdge = x1 + dividerLines[i].x;
+    const rightEdge = x1 + dividerLines[i + 1].x;
     const width = rightEdge - leftEdge;
     
     if (width >= 8 && width <= 80) {
@@ -1251,7 +1308,7 @@ export function detectCombCells(
   widths.sort((a, b) => a - b);
   const medianWidth = widths[Math.floor(widths.length / 2)];
 
-  // A gap is anything 1.35x or more the median width (lowered from 1.5x)
+  // A gap is anything 1.35x or more the median width
   // This catches small gaps like "/" separators in date fields (DD/MM/YYYY)
   const gapThreshold = medianWidth * 1.35;
 
