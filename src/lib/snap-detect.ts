@@ -1229,8 +1229,8 @@ export function detectCombCells(
 
   // FILTER OUT OUTER BORDERS: Exclude divider lines that are at or near the outer edges
   // of the scanned region. These are the box borders, not internal cell dividers.
-  // Use an 8px tolerance from the left (0) or right (w) edge to catch anti-aliased borders.
-  const EDGE_TOLERANCE = 8;
+  // Use a 12px tolerance from the left (0) or right (w) edge to catch anti-aliased borders.
+  const EDGE_TOLERANCE = 12;
   const filteredDividerLines = dividerLines.filter((line) => {
     const distFromLeft = line.x;
     const distFromRight = w - line.x;
@@ -1355,10 +1355,14 @@ export function detectCombCells(
     ? sortedDividerGaps[Math.floor(sortedDividerGaps.length / 2)]
     : bestGap;
   
-  // A gap between divider clusters is typically 1.3x or more the median gap
+  // A gap between divider clusters is typically 1.15x or more the median gap
   // This detects the empty space between ABN groups like [XX] and [XXX]
-  // Lowered from 1.5 to 1.3 to catch smaller gaps between groups
-  const DIVIDER_CLUSTER_GAP_THRESHOLD = medianDividerGap * 1.3;
+  // Use both a relative threshold (1.15x median) and an absolute minimum (median + 6px)
+  // The lower 1.15x catches ABN's tight inter-group gaps reliably
+  const DIVIDER_CLUSTER_GAP_THRESHOLD = Math.min(
+    medianDividerGap * 1.15,
+    medianDividerGap + 6
+  );
   
   // Identify which divider lines belong to which cluster
   const dividerClusters: number[][] = [];
@@ -1379,144 +1383,144 @@ export function detectCombCells(
   // Don't forget the last cluster
   dividerClusters.push(currentCluster);
   
-  // Now build cells only from within divider clusters
-  // Each cluster represents a group of cells (like XX or XXX)
+  // Build groups from divider clusters, then generate UNIFORM cells within each group.
+  // Raw divider positions are noisy; we use them only to COUNT cells per group,
+  // then distribute cells evenly across the group's pixel width.
+
+  let groups: CellGroup[] = [];
   const cellBoundaries: number[] = [];
   const cellCenters: number[] = [];
   const cellWidths: number[] = [];
 
+  // First, calculate median cell width from all raw gaps to validate final cells
+  const rawCellWidths: number[] = [];
   for (const cluster of dividerClusters) {
-    // Create cells from consecutive dividers within this cluster
     for (let j = 0; j < cluster.length - 1; j++) {
-      const dividerIndex = cluster[j];
-      const leftEdge = x1 + dividerLines[dividerIndex].x;
-      const rightEdge = x1 + dividerLines[dividerIndex + 1].x;
-      const width = rightEdge - leftEdge;
-      
+      const dividerIdx = cluster[j];
+      const nextDividerIdx = cluster[j + 1];
+      const width = dividerLines[nextDividerIdx].x - dividerLines[dividerIdx].x;
       if (width >= 8 && width <= 80) {
-        cellBoundaries.push(leftEdge);
-        cellCenters.push(leftEdge + width / 2);
-        cellWidths.push(width);
+        rawCellWidths.push(width);
       }
     }
   }
-  
-  // If we found individual cells, use those; otherwise fall back to uniform detection
-  const finalCellCount = cellBoundaries.length > 0 ? cellBoundaries.length : cellCount;
-  const avgCellWidth = cellWidths.length > 0 
-    ? cellWidths.reduce((a, b) => a + b, 0) / cellWidths.length 
+  const sortedRawWidths = [...rawCellWidths].sort((a, b) => a - b);
+  const medianCellWidth = sortedRawWidths.length > 0
+    ? sortedRawWidths[Math.floor(sortedRawWidths.length / 2)]
     : bestGap;
 
-  // Detect groups by finding large gaps between consecutive cells
-  // A gap is considered a "group separator" if it is significantly larger than typical cell width
-  // For date fields (DD MM YYYY), we expect 3 groups with gaps between them
-  let groups: CellGroup[] = [];
-  
-  if (cellBoundaries.length > 0) {
-    // Calculate gaps between consecutive cells
-    const cellGaps: number[] = [];
-    for (let i = 1; i < cellCenters.length; i++) {
-      const gap = cellCenters[i] - cellCenters[i - 1];
-      cellGaps.push(gap);
-    }
-    
-    // Find the median gap (typical cell width including spacing)
-    const sortedGaps = [...cellGaps].sort((a, b) => a - b);
-    const medianGap = sortedGaps.length > 0 
-      ? sortedGaps[Math.floor(sortedGaps.length / 2)]
-      : avgCellWidth;
-    
-    // A group separator gap is typically 1.5x or more the median gap
-    // This catches the visual gaps between DD, MM, and YYYY groups
-    // Lowered from 1.8 to 1.5 to catch smaller gaps between groups
-    const GROUP_GAP_THRESHOLD = medianGap * 1.5;
-    
-    // Build groups by clustering cells with small gaps between them
-    let groupStartIndex = 0;
-    let groupStartX = cellBoundaries[0];
-    let groupTotalWidth = cellWidths[0];
-    
-    for (let i = 1; i < cellBoundaries.length; i++) {
-      const gap = cellCenters[i] - cellCenters[i - 1];
-      
-      if (gap > GROUP_GAP_THRESHOLD) {
-        // End of current group, start a new one
-        groups.push({
-          startIndex: groupStartIndex,
-          cellCount: i - groupStartIndex,
-          startX: groupStartX,
-          totalWidth: groupTotalWidth
-        });
-        
-        groupStartIndex = i;
-        groupStartX = cellBoundaries[i];
-        groupTotalWidth = cellWidths[i];
-      } else {
-        // Continue current group
-        groupTotalWidth += cellWidths[i] + (gap - cellWidths[i - 1]);
+  // Process each divider cluster as a group
+  let globalCellIndex = 0;
+  for (const cluster of dividerClusters) {
+    if (cluster.length < 2) continue; // Need at least 2 dividers to form cells
+
+    const firstDividerIdx = cluster[0];
+    const lastDividerIdx = cluster[cluster.length - 1];
+    const groupLeftX = x1 + dividerLines[firstDividerIdx].x;
+    const groupRightX = x1 + dividerLines[lastDividerIdx].x;
+    const groupPixelWidth = groupRightX - groupLeftX;
+
+    // Count valid cells within this cluster (cells with reasonable width)
+    let validCellCount = 0;
+    for (let j = 0; j < cluster.length - 1; j++) {
+      const dividerIdx = cluster[j];
+      const nextDividerIdx = cluster[j + 1];
+      const rawWidth = dividerLines[nextDividerIdx].x - dividerLines[dividerIdx].x;
+      // Only count cells with width close to median (within 50% tolerance)
+      if (rawWidth >= medianCellWidth * 0.5 && rawWidth <= medianCellWidth * 1.5) {
+        validCellCount++;
       }
     }
-    
-    // Don't forget the last group
+
+    // If no valid cells found, use raw count
+    if (validCellCount === 0) {
+      validCellCount = cluster.length - 1;
+    }
+
+    if (validCellCount < 1 || groupPixelWidth < 8) continue;
+
+    // Calculate uniform cell width for this group
+    const uniformCellWidth = groupPixelWidth / validCellCount;
+
+    // Validate: if uniform width is way off median, something is wrong
+    if (uniformCellWidth < medianCellWidth * 0.4 || uniformCellWidth > medianCellWidth * 2.5) {
+      continue;
+    }
+
+    // Create group entry
+    const groupStartIndex = globalCellIndex;
     groups.push({
       startIndex: groupStartIndex,
-      cellCount: cellBoundaries.length - groupStartIndex,
-      startX: groupStartX,
-      totalWidth: groupTotalWidth
+      cellCount: validCellCount,
+      startX: groupLeftX,
+      totalWidth: groupPixelWidth,
     });
-    
-    // FILTER OUT SINGLE-CELL ARTIFACT GROUPS
-    // A group with only 1 cell at the start (with no neighbour on the left) is likely a detection artifact.
-    // Real groups have at least 2 cells, UNLESS it is the last group in a multi-group field
-    // (e.g. Medicare's last digit group has 1 cell).
-    if (groups.length > 1) {
-      const filteredGroups: CellGroup[] = [];
-      
-      for (let i = 0; i < groups.length; i++) {
-        const group = groups[i];
-        const isLastGroup = i === groups.length - 1;
-        const isFirstGroup = i === 0;
-        
-        // Keep the group if:
-        // 1. It has at least 2 cells, OR
-        // 2. It is the last group in a multi-group field (single cell allowed)
-        if (group.cellCount >= 2) {
-          filteredGroups.push(group);
-        } else if (group.cellCount === 1 && isLastGroup) {
-          // Single cell but it's the last group - this is allowed (e.g., Medicare last digit)
-          filteredGroups.push(group);
-        }
-        // Otherwise, discard this single-cell group as an artifact
-      }
-      
-      // If filtering removed all groups, treat all cells as one uniform group
-      if (filteredGroups.length === 0 && cellBoundaries.length >= 2) {
-        const totalWidth = cellWidths.reduce((a, b) => a + b, 0);
-        groups = [{
-          startIndex: 0,
-          cellCount: cellBoundaries.length,
-          startX: cellBoundaries[0],
-          totalWidth: totalWidth
-        }];
-      } else if (filteredGroups.length > 0) {
-        groups = filteredGroups;
-      }
+
+    // Generate uniform cells within this group
+    for (let c = 0; c < validCellCount; c++) {
+      const cellLeftX = groupLeftX + c * uniformCellWidth;
+      const cellCenterX = cellLeftX + uniformCellWidth / 2;
+
+      cellBoundaries.push(cellLeftX);
+      cellCenters.push(cellCenterX);
+      cellWidths.push(uniformCellWidth);
+      globalCellIndex++;
     }
   }
 
-  // SINGLE-GROUP FIELD HANDLING
-  // If after filtering there is only 1 group detected, render it as a simple uniform comb
-  // across the full box width. No phantom gaps.
-  if (groups.length === 1 && cellBoundaries.length > 0) {
-    const singleGroup = groups[0];
-    // Recalculate the group to span all detected cells uniformly
-    const totalWidth = cellWidths.reduce((a, b) => a + b, 0);
-    groups[0] = {
-      startIndex: 0,
-      cellCount: cellBoundaries.length,
-      startX: cellBoundaries[0],
-      totalWidth: totalWidth
-    };
+  // If we found cells, use them; otherwise fall back to uniform detection
+  const finalCellCount = cellBoundaries.length > 0 ? cellBoundaries.length : cellCount;
+  const avgCellWidth = cellWidths.length > 0
+    ? cellWidths.reduce((a, b) => a + b, 0) / cellWidths.length
+    : bestGap;
+
+  // FILTER OUT SINGLE-CELL ARTIFACT GROUPS
+  // A group with only 1 cell at the start (with no neighbour on the left) is likely a detection artifact.
+  // Real groups have at least 2 cells, UNLESS it is the last group in a multi-group field
+  // (e.g. Medicare's last digit group has 1 cell).
+  // When filtering groups, we must also rebuild the cell arrays.
+  if (groups.length > 1) {
+    const filteredGroups: CellGroup[] = [];
+    const filteredBoundaries: number[] = [];
+    const filteredCenters: number[] = [];
+    const filteredWidths: number[] = [];
+
+    for (let i = 0; i < groups.length; i++) {
+      const group = groups[i];
+      const isLastGroup = i === groups.length - 1;
+
+      // Keep the group if:
+      // 1. It has at least 2 cells, OR
+      // 2. It is the last group in a multi-group field (single cell allowed)
+      const keepGroup = group.cellCount >= 2 || (group.cellCount === 1 && isLastGroup);
+
+      if (keepGroup) {
+        // Update group's startIndex to match new cell array position
+        const newStartIndex = filteredBoundaries.length;
+        filteredGroups.push({
+          ...group,
+          startIndex: newStartIndex,
+        });
+
+        // Copy this group's cells to filtered arrays
+        for (let c = 0; c < group.cellCount; c++) {
+          const oldIdx = group.startIndex + c;
+          filteredBoundaries.push(cellBoundaries[oldIdx]);
+          filteredCenters.push(cellCenters[oldIdx]);
+          filteredWidths.push(cellWidths[oldIdx]);
+        }
+      }
+    }
+
+    if (filteredGroups.length > 0) {
+      groups = filteredGroups;
+      cellBoundaries.length = 0;
+      cellCenters.length = 0;
+      cellWidths.length = 0;
+      cellBoundaries.push(...filteredBoundaries);
+      cellCenters.push(...filteredCenters);
+      cellWidths.push(...filteredWidths);
+    }
   }
 
   return {

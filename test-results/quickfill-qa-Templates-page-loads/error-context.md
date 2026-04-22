@@ -6,15 +6,15 @@
 
 # Test info
 
-- Name: quickfill-qa.spec.ts >> Homepage loads
-- Location: tests/quickfill-qa.spec.ts:3:5
+- Name: quickfill-qa.spec.ts >> Templates page loads
+- Location: tests/quickfill-qa.spec.ts:29:5
 
 # Error details
 
 ```
-Error: page.goto: net::ERR_NETWORK_CHANGED at https://getquickfill.com/
+Error: page.goto: net::ERR_NETWORK_CHANGED at https://getquickfill.com/templates
 Call log:
-  - navigating to "https://getquickfill.com/", waiting until "load"
+  - navigating to "https://getquickfill.com/templates", waiting until "load"
 
 ```
 
@@ -31,8 +31,7 @@ Call log:
   8   |     }
   9   |   });
   10  | 
-> 11  |   await page.goto('/');
-      |              ^ Error: page.goto: net::ERR_NETWORK_CHANGED at https://getquickfill.com/
+  11  |   await page.goto('/');
   12  |   await page.waitForLoadState('networkidle');
   13  | 
   14  |   // Check title contains "QuickFill"
@@ -51,7 +50,8 @@ Call log:
   27  | });
   28  | 
   29  | test('Templates page loads', async ({ page }) => {
-  30  |   await page.goto('/templates');
+> 30  |   await page.goto('/templates');
+      |              ^ Error: page.goto: net::ERR_NETWORK_CHANGED at https://getquickfill.com/templates
   31  |   await page.waitForLoadState('networkidle');
   32  | 
   33  |   // Check 5+ "Fill This Form" buttons exist (reliable count without toHaveCount min syntax)
@@ -133,4 +133,23 @@ Call log:
   109 |   await expect(officialBadge).toBeVisible();
   110 | });
   111 | 
+  112 | test('Homepage — comparison table exists', async ({ page }) => {
+  113 |   await page.goto('/');
+  114 |   await page.waitForLoadState('networkidle');
+  115 | 
+  116 |   // Check element containing "Adobe" or "DocuSign" is visible
+  117 |   const adoeElement = page.locator('text=Adobe').first();
+  118 |   const docuSignElement = page.locator('text=DocuSign').first();
+  119 |   
+  120 |   // At least one should be visible
+  121 |   const adobeVisible = await adoeElement.count() > 0;
+  122 |   const docuSignVisible = await docuSignElement.count() > 0;
+  123 |   
+  124 |   expect(adobeVisible || docuSignVisible).toBe(true);
+  125 |   
+  126 |   if (adobeVisible) {
+  127 |     await expect(adoeElement).toBeVisible();
+  128 |   } else {
+  129 |     await expect(docuSignElement).toBeVisible();
+  130 |   }
 ```

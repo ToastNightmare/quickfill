@@ -6,15 +6,15 @@
 
 # Test info
 
-- Name: quickfill-qa.spec.ts >> Homepage loads
-- Location: tests/quickfill-qa.spec.ts:3:5
+- Name: quickfill-qa.spec.ts >> Template opens in editor
+- Location: tests/quickfill-qa.spec.ts:65:5
 
 # Error details
 
 ```
-Error: page.goto: net::ERR_NETWORK_CHANGED at https://getquickfill.com/
+Error: page.goto: net::ERR_NETWORK_CHANGED at https://getquickfill.com/templates
 Call log:
-  - navigating to "https://getquickfill.com/", waiting until "load"
+  - navigating to "https://getquickfill.com/templates", waiting until "load"
 
 ```
 
@@ -31,8 +31,7 @@ Call log:
   8   |     }
   9   |   });
   10  | 
-> 11  |   await page.goto('/');
-      |              ^ Error: page.goto: net::ERR_NETWORK_CHANGED at https://getquickfill.com/
+  11  |   await page.goto('/');
   12  |   await page.waitForLoadState('networkidle');
   13  | 
   14  |   // Check title contains "QuickFill"
@@ -88,7 +87,8 @@ Call log:
   64  | 
   65  | test('Template opens in editor', async ({ page }) => {
   66  |   // Navigate to templates listing
-  67  |   await page.goto('/templates');
+> 67  |   await page.goto('/templates');
+      |              ^ Error: page.goto: net::ERR_NETWORK_CHANGED at https://getquickfill.com/templates
   68  |   await page.waitForLoadState('networkidle');
   69  | 
   70  |   // Click first Fill This Form button
@@ -133,4 +133,60 @@ Call log:
   109 |   await expect(officialBadge).toBeVisible();
   110 | });
   111 | 
+  112 | test('Homepage — comparison table exists', async ({ page }) => {
+  113 |   await page.goto('/');
+  114 |   await page.waitForLoadState('networkidle');
+  115 | 
+  116 |   // Check element containing "Adobe" or "DocuSign" is visible
+  117 |   const adoeElement = page.locator('text=Adobe').first();
+  118 |   const docuSignElement = page.locator('text=DocuSign').first();
+  119 |   
+  120 |   // At least one should be visible
+  121 |   const adobeVisible = await adoeElement.count() > 0;
+  122 |   const docuSignVisible = await docuSignElement.count() > 0;
+  123 |   
+  124 |   expect(adobeVisible || docuSignVisible).toBe(true);
+  125 |   
+  126 |   if (adobeVisible) {
+  127 |     await expect(adoeElement).toBeVisible();
+  128 |   } else {
+  129 |     await expect(docuSignElement).toBeVisible();
+  130 |   }
+  131 | });
+  132 | 
+  133 | test('Homepage — FAQ section exists', async ({ page }) => {
+  134 |   await page.goto('/');
+  135 |   await page.waitForLoadState('networkidle');
+  136 | 
+  137 |   // Check at least one FAQ question is visible
+  138 |   // Look for common FAQ patterns: accordion, question text, or FAQ heading
+  139 |   const faqQuestion = page.locator('button:text("What"), h3:text("What"), .faq-question, [role="button"]:has-text("How"), [role="button"]:has-text("What")').first();
+  140 |   
+  141 |   // If we find any FAQ-like element, it's good
+  142 |   const count = await faqQuestion.count();
+  143 |   expect(count).toBeGreaterThan(0);
+  144 |   
+  145 |   if (count > 0) {
+  146 |     await expect(faqQuestion).toBeVisible();
+  147 |   }
+  148 | });
+  149 | 
+  150 | test('Pricing — Free tier shown', async ({ page }) => {
+  151 |   await page.goto('/pricing');
+  152 |   await page.waitForLoadState('networkidle');
+  153 | 
+  154 |   // Check element with "Free" visible
+  155 |   const freeTier = page.locator('text=Free').first();
+  156 |   await expect(freeTier).toBeVisible();
+  157 |   
+  158 |   // Check for "3 documents" text (Free tier shows "3 documents per month")
+  159 |   const threeDocs = page.locator('text="3 documents per month"').first();
+  160 |   const threeDocsAlt = page.locator('text=3 documents').first();
+  161 |   
+  162 |   const hasThreeDocs = await threeDocs.count() > 0 || await threeDocsAlt.count() > 0;
+  163 |   expect(hasThreeDocs).toBe(true);
+  164 | });
+  165 | 
+  166 | test('Editor toolbar loads', async ({ page }) => {
+  167 |   await page.goto('/editor');
 ```

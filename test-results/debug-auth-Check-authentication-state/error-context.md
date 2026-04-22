@@ -12,75 +12,10 @@
 # Error details
 
 ```
-TypeError: clerkFrame.count is not a function
-```
+Error: page.goto: net::ERR_NETWORK_CHANGED at https://getquickfill.com/editor
+Call log:
+  - navigating to "https://getquickfill.com/editor", waiting until "load"
 
-# Page snapshot
-
-```yaml
-- generic [active] [ref=e1]:
-  - navigation [ref=e2]:
-    - generic [ref=e3]:
-      - link "QuickFill" [ref=e4] [cursor=pointer]:
-        - /url: /
-        - img "QuickFill" [ref=e5]
-      - generic [ref=e6]:
-        - link "How It Works" [ref=e7] [cursor=pointer]:
-          - /url: /how-it-works
-        - link "Templates" [ref=e8] [cursor=pointer]:
-          - /url: /templates
-        - link "Fill a PDF" [ref=e9] [cursor=pointer]:
-          - /url: /editor
-        - link "Pricing" [ref=e10] [cursor=pointer]:
-          - /url: /pricing
-        - link "Sign In" [ref=e11] [cursor=pointer]:
-          - /url: /sign-in
-        - link "Try Free" [ref=e12] [cursor=pointer]:
-          - /url: /sign-up
-  - main [ref=e13]:
-    - generic [ref=e14]:
-      - generic [ref=e15]:
-        - img [ref=e16]
-        - generic [ref=e19]: Welcome to QuickFill!Upload any PDF form to get started, it takes less than 60 seconds.
-        - button [ref=e20]:
-          - img [ref=e21]
-      - generic [ref=e25] [cursor=pointer]:
-        - button "Choose File" [ref=e26]
-        - img "QuickFill" [ref=e27]
-        - paragraph [ref=e28]: Drag & drop your PDF here
-        - paragraph [ref=e29]: or click to browse
-        - paragraph [ref=e30]: PDF files only, up to 50MB
-      - generic [ref=e31]:
-        - generic [ref=e34]: or start with a template
-        - generic [ref=e36]:
-          - button "🏛️ TFN Declaration" [ref=e37]:
-            - generic [ref=e38]: 🏛️
-            - generic [ref=e39]: TFN Declaration
-          - button "🏦 Super Choice" [ref=e40]:
-            - generic [ref=e41]: 🏦
-            - generic [ref=e42]: Super Choice
-          - button "⚖️ Statutory Declaration" [ref=e43]:
-            - generic [ref=e44]: ⚖️
-            - generic [ref=e45]: Statutory Declaration
-          - button "🏠 Rental Application" [ref=e46]:
-            - generic [ref=e47]: 🏠
-            - generic [ref=e48]: Rental Application
-          - button "📄 Employment Separation" [ref=e49]:
-            - generic [ref=e50]: 📄
-            - generic [ref=e51]: Employment Separation
-          - button "♿ NDIS Agreement" [ref=e52]:
-            - generic [ref=e53]: ♿
-            - generic [ref=e54]: NDIS Agreement
-  - contentinfo [ref=e55]:
-    - generic [ref=e57]:
-      - link "Privacy Policy" [ref=e58] [cursor=pointer]:
-        - /url: /privacy
-      - link "Terms of Service" [ref=e59] [cursor=pointer]:
-        - /url: /terms
-      - link "Contact" [ref=e60] [cursor=pointer]:
-        - /url: mailto:support@getquickfill.com
-      - paragraph [ref=e61]: (c) 2026 QuickFill. All rights reserved.
-  - alert [ref=e62]
 ```
 
 # Test source
@@ -90,15 +25,15 @@ TypeError: clerkFrame.count is not a function
   2   | 
   3   | test('Check authentication state', async ({ page }) => {
   4   |   console.log('Navigating to https://getquickfill.com/editor');
-  5   |   await page.goto('https://getquickfill.com/editor');
+> 5   |   await page.goto('https://getquickfill.com/editor');
+      |              ^ Error: page.goto: net::ERR_NETWORK_CHANGED at https://getquickfill.com/editor
   6   |   await page.waitForLoadState('networkidle');
   7   |   
   8   |   console.log('URL:', page.url());
   9   |   
   10  |   // Check for Clerk frame
   11  |   const clerkFrame = page.frameLocator('iframe[src*="clerk"]').first();
-> 12  |   const hasClerkFrame = await clerkFrame.count() > 0;
-      |                                          ^ TypeError: clerkFrame.count is not a function
+  12  |   const hasClerkFrame = await clerkFrame.count() > 0;
   13  |   console.log('Has Clerk iframe:', hasClerkFrame);
   14  |   
   15  |   if (hasClerkFrame) {
@@ -192,11 +127,4 @@ TypeError: clerkFrame.count is not a function
   103 |   
   104 |   if (hasClerkFrame) {
   105 |     console.log('RESULT: Clerk authentication active - requires sign-in');
-  106 |   } else if (hasUpload && authKeys.length === 0 && authCookies.length === 0) {
-  107 |     console.log('RESULT: Not authenticated - shows upload page with sign-in options');
-  108 |   } else if (authKeys.length > 0 || authCookies.length > 0) {
-  109 |     console.log('RESULT: Has auth tokens but still shows upload page - may need upload first');
-  110 |   } else {
-  111 |     console.log('RESULT: Unknown authentication state');
-  112 |   }
 ```
