@@ -1227,6 +1227,25 @@ export function detectCombCells(
     return null;
   }
 
+  // FILTER OUT OUTER BORDERS: Exclude divider lines that are at or near the outer edges
+  // of the scanned region. These are the box borders, not internal cell dividers.
+  // Use a 4px tolerance from the left (0) or right (w) edge.
+  const EDGE_TOLERANCE = 4;
+  const filteredDividerLines = dividerLines.filter((line) => {
+    const distFromLeft = line.x;
+    const distFromRight = w - line.x;
+    // Keep only lines that are NOT near the outer edges
+    return distFromLeft > EDGE_TOLERANCE && distFromRight > EDGE_TOLERANCE;
+  });
+
+  // If filtering removed all dividers, we can't detect cells
+  if (filteredDividerLines.length < 1) {
+    return null;
+  }
+
+  // Use filtered dividers for all subsequent calculations
+  dividerLines = filteredDividerLines;
+
   // Calculate gaps between consecutive vertical lines
   const gaps: number[] = [];
   for (let i = 1; i < dividerLines.length; i++) {
@@ -1390,7 +1409,7 @@ export function detectCombCells(
   // Detect groups by finding large gaps between consecutive cells
   // A gap is considered a "group separator" if it is significantly larger than typical cell width
   // For date fields (DD MM YYYY), we expect 3 groups with gaps between them
-  const groups: CellGroup[] = [];
+  let groups: CellGroup[] = [];
   
   if (cellBoundaries.length > 0) {
     // Calculate gaps between consecutive cells
@@ -1443,6 +1462,59 @@ export function detectCombCells(
       startX: groupStartX,
       totalWidth: groupTotalWidth
     });
+    
+    // FILTER OUT SINGLE-CELL ARTIFACT GROUPS
+    // A group with only 1 cell at the start (with no neighbour on the left) is likely a detection artifact.
+    // Real groups have at least 2 cells, UNLESS it is the last group in a multi-group field
+    // (e.g. Medicare's last digit group has 1 cell).
+    if (groups.length > 1) {
+      const filteredGroups: CellGroup[] = [];
+      
+      for (let i = 0; i < groups.length; i++) {
+        const group = groups[i];
+        const isLastGroup = i === groups.length - 1;
+        const isFirstGroup = i === 0;
+        
+        // Keep the group if:
+        // 1. It has at least 2 cells, OR
+        // 2. It is the last group in a multi-group field (single cell allowed)
+        if (group.cellCount >= 2) {
+          filteredGroups.push(group);
+        } else if (group.cellCount === 1 && isLastGroup) {
+          // Single cell but it's the last group - this is allowed (e.g., Medicare last digit)
+          filteredGroups.push(group);
+        }
+        // Otherwise, discard this single-cell group as an artifact
+      }
+      
+      // If filtering removed all groups, treat all cells as one uniform group
+      if (filteredGroups.length === 0 && cellBoundaries.length >= 2) {
+        const totalWidth = cellWidths.reduce((a, b) => a + b, 0);
+        groups = [{
+          startIndex: 0,
+          cellCount: cellBoundaries.length,
+          startX: cellBoundaries[0],
+          totalWidth: totalWidth
+        }];
+      } else if (filteredGroups.length > 0) {
+        groups = filteredGroups;
+      }
+    }
+  }
+
+  // SINGLE-GROUP FIELD HANDLING
+  // If after filtering there is only 1 group detected, render it as a simple uniform comb
+  // across the full box width. No phantom gaps.
+  if (groups.length === 1 && cellBoundaries.length > 0) {
+    const singleGroup = groups[0];
+    // Recalculate the group to span all detected cells uniformly
+    const totalWidth = cellWidths.reduce((a, b) => a + b, 0);
+    groups[0] = {
+      startIndex: 0,
+      cellCount: cellBoundaries.length,
+      startX: cellBoundaries[0],
+      totalWidth: totalWidth
+    };
   }
 
   return {
