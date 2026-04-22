@@ -1154,11 +1154,11 @@ export function detectCombCells(
 
   const { data } = imageData;
 
-  // NEW: Scan vertical columns to find potential cell dividers
+  // Scan vertical columns to find potential cell dividers
   // This catches short dividers, "/" separators, or any dark pixels that indicate cell boundaries
   const columnDarkness: number[] = new Array(w).fill(0);
   const columnDarkCount: number[] = new Array(w).fill(0);
-  
+
   for (let x = 0; x < w; x++) {
     let darkPixels = 0;
     let totalPixels = 0;
@@ -1173,14 +1173,14 @@ export function detectCombCells(
     columnDarkness[x] = darkPixels / totalPixels;
     columnDarkCount[x] = darkPixels;
   }
-  
+
   // Find vertical dividers by looking for columns with significant dark pixels
   // A divider should have dark pixels spanning a reasonable portion of the height
   const potentialDividers: number[] = [];
   const dividerMinHeight = h * 0.25; // At least 25% of height
   let inDivider = false;
   let dividerStart = 0;
-  
+
   for (let x = 0; x < w; x++) {
     if (columnDarkCount[x] >= dividerMinHeight && columnDarkness[x] > 0.3) {
       if (!inDivider) {
@@ -1200,16 +1200,16 @@ export function detectCombCells(
     const dividerCenter = Math.floor((dividerStart + w) / 2);
     potentialDividers.push(dividerCenter);
   }
-  
+
   // Also find vertical lines using the standard method
   const vLines = findVerticalLines(data, w, h, isDark);
   let dividerLines: VLine[];
-  
+
   if (vLines.length >= 2) {
     // Use standard vertical lines if we found enough
     const merged = mergeVLines(vLines);
     merged.sort((a, b) => a.x - b.x);
-    
+
     // Filter to lines that span at least 25% of the region height
     const minSpan = h * 0.25;
     dividerLines = merged.filter((v) => v.y2 - v.y1 >= minSpan);
@@ -1221,7 +1221,7 @@ export function detectCombCells(
       y2: Math.floor(h * 0.8),
     }));
   }
-  
+
   if (dividerLines.length < 2) {
     // Not enough dividers to detect cells
     return null;
@@ -1245,6 +1245,47 @@ export function detectCombCells(
 
   // Use filtered dividers for all subsequent calculations
   dividerLines = filteredDividerLines;
+
+  // PROBLEM 1 & 3 FIX: Filter out irregular edge dividers that don't match regular cell spacing
+  // This handles dollar fields ($_____.00) where $ and .00 create irregular spacing at edges
+  // and handles cases where user draws slightly outside the actual box area
+  if (dividerLines.length >= 3) {
+    // Calculate all gaps between consecutive dividers
+    const allGaps: { gap: number; leftIdx: number; rightIdx: number }[] = [];
+    for (let i = 1; i < dividerLines.length; i++) {
+      allGaps.push({
+        gap: dividerLines[i].x - dividerLines[i - 1].x,
+        leftIdx: i - 1,
+        rightIdx: i,
+      });
+    }
+
+    // Find the median gap (most likely the true cell width)
+    const sortedGaps = [...allGaps].map(g => g.gap).sort((a, b) => a - b);
+    const medianGap = sortedGaps[Math.floor(sortedGaps.length / 2)];
+
+    // Identify dividers that are part of regular spacing (within 25% of median)
+    // Start from the most consistent cluster and expand
+    const gapTolerance = medianGap * 0.25;
+    const consistentGapIndices = new Set<number>();
+
+    for (const g of allGaps) {
+      if (Math.abs(g.gap - medianGap) <= gapTolerance) {
+        consistentGapIndices.add(g.leftIdx);
+        consistentGapIndices.add(g.rightIdx);
+      }
+    }
+
+    // If we found a consistent cluster, filter to only those dividers
+    if (consistentGapIndices.size >= 2) {
+      const consistentIndices = [...consistentGapIndices].sort((a, b) => a - b);
+      const minIdx = consistentIndices[0];
+      const maxIdx = consistentIndices[consistentIndices.length - 1];
+
+      // Keep only dividers within the consistent range (snaps inward to actual boxes)
+      dividerLines = dividerLines.slice(minIdx, maxIdx + 1);
+    }
+  }
 
   // Calculate gaps between consecutive vertical lines
   const gaps: number[] = [];
@@ -1513,14 +1554,76 @@ export function detectCombCells(
     }
   }
 
+  // PROBLEM 3 FIX: Return null for < 2 cells - fall back to regular text field
+  const actualCellCount = cellBoundaries.length > 0 ? cellBoundaries.length : cellCount;
+  if (actualCellCount < 2) {
+    return null;
+  }
+
+  // PROBLEM 2 FIX: For single-group phone fields, ensure uniform cell widths
+  // Calculate comb width from actual cells, not from full drawn region
+  // This prevents stretching when user draws slightly wider than actual boxes
+  let combFirstCellX: number;
+  let combWidth: number;
+  let combCellWidth: number;
+
+  if (cellBoundaries.length > 0 && cellWidths.length > 0) {
+    // Use actual detected cell positions and widths
+    combFirstCellX = cellBoundaries[0];
+    const lastCellLeft = cellBoundaries[cellBoundaries.length - 1];
+    const lastCellWidth = cellWidths[cellWidths.length - 1];
+    combWidth = (lastCellLeft + lastCellWidth) - combFirstCellX;
+    combCellWidth = cellWidths.reduce((a, b) => a + b, 0) / cellWidths.length;
+
+    // For single-group fields (phone numbers), enforce uniform cell width
+    // based on median spacing to prevent edge cell stretching
+    if (groups.length === 1 && cellWidths.length >= 2) {
+      const sortedWidths = [...cellWidths].sort((a, b) => a - b);
+      const medianWidth = sortedWidths[Math.floor(sortedWidths.length / 2)];
+
+      // Rebuild cells with uniform median-based width, centered on detected cells
+      const uniformWidth = medianWidth;
+      const totalUniformWidth = uniformWidth * cellWidths.length;
+      const centerX = combFirstCellX + combWidth / 2;
+      const uniformStartX = centerX - totalUniformWidth / 2;
+
+      // Rebuild cell arrays with uniform spacing
+      cellBoundaries.length = 0;
+      cellCenters.length = 0;
+      cellWidths.length = 0;
+
+      for (let i = 0; i < actualCellCount; i++) {
+        const cellLeft = uniformStartX + i * uniformWidth;
+        cellBoundaries.push(cellLeft);
+        cellCenters.push(cellLeft + uniformWidth / 2);
+        cellWidths.push(uniformWidth);
+      }
+
+      // Update group info
+      if (groups.length === 1) {
+        groups[0].startX = uniformStartX;
+        groups[0].totalWidth = totalUniformWidth;
+      }
+
+      combFirstCellX = uniformStartX;
+      combWidth = totalUniformWidth;
+      combCellWidth = uniformWidth;
+    }
+  } else {
+    // Fallback to original calculation
+    combFirstCellX = x1 + firstX;
+    combWidth = lastX - firstX;
+    combCellWidth = avgCellWidth;
+  }
+
   return {
-    cellWidth: avgCellWidth,
-    cellCount: finalCellCount,
+    cellWidth: combCellWidth,
+    cellCount: actualCellCount,
     x: x1 + firstX,
     y: y1 + minY,
-    width: lastX - firstX,
+    width: combWidth,
     height: maxY - minY,
-    firstCellX: cellBoundaries.length > 0 ? cellBoundaries[0] : x1 + firstX,
+    firstCellX: combFirstCellX,
     cellBoundaries: cellBoundaries,
     cellCenters: cellCenters,
     cellWidths: cellWidths,
