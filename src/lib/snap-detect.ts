@@ -1228,7 +1228,46 @@ export function detectCombCells(
   }
 
   // Step 5: Filter outer borders (within 10px of edges)
-  const dividers = dividerClusters.filter((x) => x > 10 && x < w - 10);
+  let dividers = dividerClusters.filter((x) => x > 10 && x < w - 10);
+
+  if (dividers.length < 1) return null;
+
+  // Step 5b: Trim outlier dividers
+  // Calculate gaps between consecutive dividers.
+  // Find the median gap (typical cell width).
+  // Starting from the RIGHT end, if the rightmost gap is > 2x the median gap,
+  // drop the rightmost divider. Repeat until stable.
+  // Do the same from the LEFT end.
+  // This trims dividers that belong to adjacent form elements.
+  if (dividers.length >= 2) {
+    // Calculate gaps
+    const gaps: number[] = [];
+    for (let i = 1; i < dividers.length; i++) {
+      gaps.push(dividers[i] - dividers[i - 1]);
+    }
+    const sortedGaps = [...gaps].sort((a, b) => a - b);
+    const medianGap = sortedGaps[Math.floor(sortedGaps.length / 2)];
+
+    // Trim from the RIGHT end
+    while (dividers.length >= 2) {
+      const rightmostGap = dividers[dividers.length - 1] - dividers[dividers.length - 2];
+      if (rightmostGap > medianGap * 2) {
+        dividers = dividers.slice(0, dividers.length - 1);
+      } else {
+        break;
+      }
+    }
+
+    // Trim from the LEFT end
+    while (dividers.length >= 2) {
+      const leftmostGap = dividers[1] - dividers[0];
+      if (leftmostGap > medianGap * 2) {
+        dividers = dividers.slice(1);
+      } else {
+        break;
+      }
+    }
+  }
 
   if (dividers.length < 1) return null;
 
