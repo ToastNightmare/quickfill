@@ -1154,501 +1154,138 @@ export function detectCombCells(
 
   const { data } = imageData;
 
-  // Scan vertical columns to find potential cell dividers
-  // This catches short dividers, "/" separators, or any dark pixels that indicate cell boundaries
-  const columnDarkness: number[] = new Array(w).fill(0);
-  const columnDarkCount: number[] = new Array(w).fill(0);
-
-  for (let x = 0; x < w; x++) {
-    let darkPixels = 0;
-    let totalPixels = 0;
-    for (let y = 0; y < h; y++) {
-      const idx = (y * w + x) * 4;
-      const brightness = (data[idx] + data[idx + 1] + data[idx + 2]) / 3;
-      if (brightness < 180) { // Dark pixel threshold
-        darkPixels++;
-      }
-      totalPixels++;
-    }
-    columnDarkness[x] = darkPixels / totalPixels;
-    columnDarkCount[x] = darkPixels;
-  }
-
-  // Find vertical dividers by looking for columns with significant dark pixels
-  // A divider should have dark pixels spanning a reasonable portion of the height
-  const potentialDividers: number[] = [];
-  const dividerMinHeight = h * 0.25; // At least 25% of height
-  let inDivider = false;
-  let dividerStart = 0;
-
-  for (let x = 0; x < w; x++) {
-    if (columnDarkCount[x] >= dividerMinHeight && columnDarkness[x] > 0.3) {
-      if (!inDivider) {
-        inDivider = true;
-        dividerStart = x;
-      }
-    } else if (inDivider) {
-      // End of divider - record the center
-      const dividerEnd = x;
-      const dividerCenter = Math.floor((dividerStart + dividerEnd) / 2);
-      potentialDividers.push(dividerCenter);
-      inDivider = false;
-    }
-  }
-  // Handle divider at the end
-  if (inDivider) {
-    const dividerCenter = Math.floor((dividerStart + w) / 2);
-    potentialDividers.push(dividerCenter);
-  }
-
-  // Also find vertical lines using the standard method
+  // STEP 1: Find internal vertical dividers
+  // Scan for dark vertical lines that span at least 40% of region height
+  const minSpan = h * 0.4;
   const vLines = findVerticalLines(data, w, h, isDark);
-  let dividerLines: VLine[];
+  let dividers = mergeVLines(vLines).filter((v) => v.y2 - v.y1 >= minSpan);
+  dividers.sort((a, b) => a.x - b.x);
 
-  if (vLines.length >= 2) {
-    // Use standard vertical lines if we found enough
-    const merged = mergeVLines(vLines);
-    merged.sort((a, b) => a.x - b.x);
+  if (dividers.length === 0) return null;
 
-    // Filter to lines that span at least 25% of the region height
-    const minSpan = h * 0.25;
-    dividerLines = merged.filter((v) => v.y2 - v.y1 >= minSpan);
-  } else {
-    // Fall back to column-based dividers
-    dividerLines = potentialDividers.map(x => ({
-      x,
-      y1: Math.floor(h * 0.2),
-      y2: Math.floor(h * 0.8),
-    }));
-  }
+  // STEP 2: Filter out outer border lines (within 15px of region edges)
+  const EDGE_TOLERANCE = 15;
+  dividers = dividers.filter((d) => d.x > EDGE_TOLERANCE && d.x < w - EDGE_TOLERANCE);
 
-  if (dividerLines.length < 2) {
-    // Not enough dividers to detect cells
-    return null;
-  }
+  // Need at least 1 internal divider to create 2+ cells
+  if (dividers.length < 1) return null;
 
-  // FILTER OUT OUTER BORDERS: Exclude divider lines that are at or near the outer edges
-  // of the scanned region. These are the box borders, not internal cell dividers.
-  // Use a 12px tolerance from the left (0) or right (w) edge to catch anti-aliased borders.
-  const EDGE_TOLERANCE = 12;
-  const filteredDividerLines = dividerLines.filter((line) => {
-    const distFromLeft = line.x;
-    const distFromRight = w - line.x;
-    // Keep only lines that are NOT near the outer edges
-    return distFromLeft > EDGE_TOLERANCE && distFromRight > EDGE_TOLERANCE;
-  });
+  // STEP 3: Calculate cell count - N internal dividers = N+1 cells
+  // The outer box edges are the first and last cell boundaries
+  const numCells = dividers.length + 1;
 
-  // If filtering removed all dividers, we can't detect cells
-  if (filteredDividerLines.length < 1) {
-    return null;
-  }
+  if (numCells < 2) return null;
 
-  // Use filtered dividers for all subsequent calculations
-  dividerLines = filteredDividerLines;
-
-  // PROBLEM 1 & 3 FIX: Filter out irregular edge dividers that don't match regular cell spacing
-  // This handles dollar fields ($_____.00) where $ and .00 create irregular spacing at edges
-  // and handles cases where user draws slightly outside the actual box area
-  if (dividerLines.length >= 3) {
-    // Calculate all gaps between consecutive dividers
-    const allGaps: { gap: number; leftIdx: number; rightIdx: number }[] = [];
-    for (let i = 1; i < dividerLines.length; i++) {
-      allGaps.push({
-        gap: dividerLines[i].x - dividerLines[i - 1].x,
-        leftIdx: i - 1,
-        rightIdx: i,
-      });
-    }
-
-    // Find the median gap (most likely the true cell width)
-    const sortedGaps = [...allGaps].map(g => g.gap).sort((a, b) => a - b);
-    const medianGap = sortedGaps[Math.floor(sortedGaps.length / 2)];
-
-    // Identify dividers that are part of regular spacing (within 25% of median)
-    // Start from the most consistent cluster and expand
-    const gapTolerance = medianGap * 0.25;
-    const consistentGapIndices = new Set<number>();
-
-    for (const g of allGaps) {
-      if (Math.abs(g.gap - medianGap) <= gapTolerance) {
-        consistentGapIndices.add(g.leftIdx);
-        consistentGapIndices.add(g.rightIdx);
-      }
-    }
-
-    // If we found a consistent cluster, filter to only those dividers
-    if (consistentGapIndices.size >= 2) {
-      const consistentIndices = [...consistentGapIndices].sort((a, b) => a - b);
-      const minIdx = consistentIndices[0];
-      const maxIdx = consistentIndices[consistentIndices.length - 1];
-
-      // Keep only dividers within the consistent range (snaps inward to actual boxes)
-      dividerLines = dividerLines.slice(minIdx, maxIdx + 1);
-    }
-  }
-
-  // Calculate gaps between consecutive vertical lines
+  // STEP 4: Detect groups by finding gaps larger than 1.5x median gap
   const gaps: number[] = [];
-  for (let i = 1; i < dividerLines.length; i++) {
-    gaps.push(dividerLines[i].x - dividerLines[i - 1].x);
+  for (let i = 1; i < dividers.length; i++) {
+    gaps.push(dividers[i].x - dividers[i - 1].x);
   }
 
-  if (gaps.length === 0) return null;
+  // Add gaps from edges to first/last divider
+  const edgeGaps = [dividers[0].x, w - dividers[dividers.length - 1].x];
+  const allGaps = [...edgeGaps, ...gaps];
 
-  // Find the most common gap (cell width) - allow 3px tolerance
-  const gapCounts = new Map<number, number>();
-  for (const gap of gaps) {
-    // Round to nearest 2px for grouping
-    const rounded = Math.round(gap / 2) * 2;
-    gapCounts.set(rounded, (gapCounts.get(rounded) || 0) + 1);
-  }
+  const sortedGaps = [...allGaps].sort((a, b) => a - b);
+  const medianGap = sortedGaps[Math.floor(sortedGaps.length / 2)];
 
-  let bestGap = 0;
-  let bestCount = 0;
-  for (const [gap, count] of gapCounts) {
-    if (count > bestCount && gap >= 10 && gap <= 60) {
-      bestGap = gap;
-      bestCount = count;
-    }
-  }
+  // Cluster dividers: gaps > 1.5x median indicate group boundaries
+  const groupGapThreshold = medianGap * 1.5;
+  const clusters: number[][] = [[0]];
 
-  if (bestGap === 0 || bestCount < 2) {
-    // No consistent cell width found - might be irregular spacing
-    // Fall back to using average gap
-    bestGap = gaps.reduce((a, b) => a + b, 0) / gaps.length;
-    bestCount = dividerLines.length - 1;
-  }
-
-  // Count cells with this gap width (tolerance of 4px)
-  let cellCount = 1;
-  let firstX = dividerLines[0].x;
-  let lastX = dividerLines[0].x;
-
-  for (let i = 1; i < dividerLines.length; i++) {
-    const gap = dividerLines[i].x - dividerLines[i - 1].x;
-    if (Math.abs(gap - bestGap) <= 4) {
-      cellCount++;
-      lastX = dividerLines[i].x;
-    }
-  }
-
-  // Find the vertical extent of the cells
-  let minY = h;
-  let maxY = 0;
-  for (const line of dividerLines) {
-    minY = Math.min(minY, line.y1);
-    maxY = Math.max(maxY, line.y2);
-  }
-
-  // Build arrays of cell boundaries, centers, and widths
-  // This handles non-uniform spacing (like TFN fields with gaps between groups)
-  
-  // First pass: collect all potential cells from consecutive divider lines
-  const allCells: { left: number; center: number; width: number }[] = [];
-  for (let i = 0; i < dividerLines.length - 1; i++) {
-    const leftEdge = x1 + dividerLines[i].x;
-    const rightEdge = x1 + dividerLines[i + 1].x;
-    const width = rightEdge - leftEdge;
-    
-    if (width >= 8 && width <= 80) {
-      allCells.push({ left: leftEdge, center: leftEdge + width / 2, width });
-    }
-  }
-  
-  if (allCells.length === 0) {
-    // Fall back to uniform spacing
-    const cellBoundaries: number[] = [];
-    const cellCenters: number[] = [];
-    const cellWidths: number[] = [];
-    return {
-      cellWidth: bestGap,
-      cellCount: cellCount,
-      x: x1 + firstX,
-      y: y1 + minY,
-      width: lastX - firstX,
-      height: maxY - minY,
-      firstCellX: x1 + firstX,
-      cellBoundaries,
-      cellCenters,
-      cellWidths,
-      groups: [],
-    };
-  }
-  
-  // Second pass: detect group clusters by analyzing divider line spacing
-  // For ABN fields [XX] [XXX] [XXX] [XXX], dividers are clustered within groups
-  // with larger gaps between clusters. We need to detect these cluster boundaries.
-  //
-  // Strategy:
-  // 1. Calculate gaps between consecutive divider lines
-  // 2. Find the median gap (typical cell width within a group)
-  // 3. Gaps significantly larger than median indicate group boundaries
-  // 4. Only create cells within divider clusters, skip the large gaps between groups
-  
-  const dividerGaps: number[] = [];
-  for (let i = 1; i < dividerLines.length; i++) {
-    dividerGaps.push(dividerLines[i].x - dividerLines[i - 1].x);
-  }
-  
-  // Find median divider gap (typical cell width within groups)
-  const sortedDividerGaps = [...dividerGaps].sort((a, b) => a - b);
-  const medianDividerGap = sortedDividerGaps.length > 0
-    ? sortedDividerGaps[Math.floor(sortedDividerGaps.length / 2)]
-    : bestGap;
-  
-  // A gap between divider clusters is typically 1.15x or more the median gap
-  // This detects the empty space between ABN groups like [XX] and [XXX]
-  // Use both a relative threshold (1.15x median) and an absolute minimum (median + 6px)
-  // The lower 1.15x catches ABN's tight inter-group gaps reliably
-  const DIVIDER_CLUSTER_GAP_THRESHOLD = Math.min(
-    medianDividerGap * 1.15,
-    medianDividerGap + 6
-  );
-  
-  // Identify which divider lines belong to which cluster
-  const dividerClusters: number[][] = [];
-  let currentCluster: number[] = [0]; // Start with first divider index
-  
-  for (let i = 1; i < dividerLines.length; i++) {
-    const gap = dividerLines[i].x - dividerLines[i - 1].x;
-    
-    if (gap > DIVIDER_CLUSTER_GAP_THRESHOLD) {
-      // End of current cluster, start a new one
-      dividerClusters.push(currentCluster);
-      currentCluster = [i];
+  for (let i = 1; i < dividers.length; i++) {
+    const gap = dividers[i].x - dividers[i - 1].x;
+    if (gap > groupGapThreshold) {
+      clusters.push([i]);
     } else {
-      // Continue current cluster
-      currentCluster.push(i);
+      clusters[clusters.length - 1].push(i);
     }
   }
-  // Don't forget the last cluster
-  dividerClusters.push(currentCluster);
-  
-  // Build groups from divider clusters, then generate UNIFORM cells within each group.
-  //
-  // KEY INSIGHT: Dividers mark boundaries BETWEEN cells. The box edges are also boundaries.
-  // For N internal dividers, there are N+1 cells (edges included as implicit boundaries).
-  //
-  // For single-group fields (phone): region edges are the box edges
-  // For multi-group fields (ABN): each cluster's box extends from gap midpoint to gap midpoint
 
-  let groups: CellGroup[] = [];
+  // STEP 5: Build cells with uniform width within each group
   const cellBoundaries: number[] = [];
   const cellCenters: number[] = [];
   const cellWidths: number[] = [];
+  const groups: CellGroup[] = [];
 
-  // First, calculate median cell width from all raw gaps to validate final cells
-  const rawCellWidths: number[] = [];
-  for (const cluster of dividerClusters) {
-    for (let j = 0; j < cluster.length - 1; j++) {
-      const dividerIdx = cluster[j];
-      const nextDividerIdx = cluster[j + 1];
-      const width = dividerLines[nextDividerIdx].x - dividerLines[dividerIdx].x;
-      if (width >= 8 && width <= 80) {
-        rawCellWidths.push(width);
-      }
-    }
-  }
-  const sortedRawWidths = [...rawCellWidths].sort((a, b) => a - b);
-  const medianCellWidth = sortedRawWidths.length > 0
-    ? sortedRawWidths[Math.floor(sortedRawWidths.length / 2)]
-    : bestGap;
+  let globalIndex = 0;
+  let minY = Infinity;
+  let maxY = 0;
 
-  // Calculate group box edges - these are the ACTUAL visual box boundaries,
-  // not the divider center positions.
-  //
-  // For single-group: use region edges (x1 and x1+w)
-  // For multi-group: use midpoints between clusters as boundaries
+  for (let ci = 0; ci < clusters.length; ci++) {
+    const cluster = clusters[ci];
+    const firstDividerX = dividers[cluster[0]].x;
+    const lastDividerX = dividers[cluster[cluster.length - 1]].x;
 
-  const isSingleGroup = dividerClusters.length === 1;
+    // Calculate group box edges
+    let groupLeft: number;
+    let groupRight: number;
 
-  // Process each divider cluster as a group
-  let globalCellIndex = 0;
-  for (let clusterIdx = 0; clusterIdx < dividerClusters.length; clusterIdx++) {
-    const cluster = dividerClusters[clusterIdx];
-    if (cluster.length < 1) continue; // Need at least 1 divider
-
-    const firstDividerIdx = cluster[0];
-    const lastDividerIdx = cluster[cluster.length - 1];
-    const firstDividerX = dividerLines[firstDividerIdx].x;
-    const lastDividerX = dividerLines[lastDividerIdx].x;
-
-    // Determine the actual box edges for this group
-    let groupLeftEdge: number;  // Left EDGE of the group's box (not divider center)
-    let groupRightEdge: number; // Right EDGE of the group's box (not divider center)
-
-    if (isSingleGroup) {
-      // Single-group field (phone): use region edges as box edges
-      // Add small inset to avoid including the outer border pixels
-      const BORDER_INSET = 2;
-      groupLeftEdge = BORDER_INSET;
-      groupRightEdge = w - BORDER_INSET;
+    if (clusters.length === 1) {
+      // Single group: use region edges
+      groupLeft = 0;
+      groupRight = w;
     } else {
-      // Multi-group field (ABN, DOB): calculate box edges from inter-cluster gaps
-
-      // Left edge of this group's box
-      if (clusterIdx === 0) {
-        // First group: left edge is region left (with small inset)
-        groupLeftEdge = 2;
+      // Multi-group: use midpoints between clusters
+      if (ci === 0) {
+        groupLeft = 0;
       } else {
-        // Not first group: left edge is midpoint of gap with previous cluster
-        const prevCluster = dividerClusters[clusterIdx - 1];
-        const prevLastDividerX = dividerLines[prevCluster[prevCluster.length - 1]].x;
-        const gapMidpoint = (prevLastDividerX + firstDividerX) / 2;
-        // Estimate the box edge as slightly past the midpoint toward this cluster
-        // (gap between boxes is smaller than the visual gap appears)
-        const gapWidth = firstDividerX - prevLastDividerX;
-        groupLeftEdge = gapMidpoint + gapWidth * 0.15;
+        const prevLastX = dividers[clusters[ci - 1][clusters[ci - 1].length - 1]].x;
+        groupLeft = (prevLastX + firstDividerX) / 2;
       }
 
-      // Right edge of this group's box
-      if (clusterIdx === dividerClusters.length - 1) {
-        // Last group: right edge is region right (with small inset)
-        groupRightEdge = w - 2;
+      if (ci === clusters.length - 1) {
+        groupRight = w;
       } else {
-        // Not last group: right edge is midpoint of gap with next cluster
-        const nextCluster = dividerClusters[clusterIdx + 1];
-        const nextFirstDividerX = dividerLines[nextCluster[0]].x;
-        const gapMidpoint = (lastDividerX + nextFirstDividerX) / 2;
-        // Estimate the box edge as slightly before the midpoint
-        const gapWidth = nextFirstDividerX - lastDividerX;
-        groupRightEdge = gapMidpoint - gapWidth * 0.15;
+        const nextFirstX = dividers[clusters[ci + 1][0]].x;
+        groupRight = (lastDividerX + nextFirstX) / 2;
       }
     }
 
-    // Convert to canvas coordinates
-    const groupLeftX = x1 + groupLeftEdge;
-    const groupRightX = x1 + groupRightEdge;
-    const groupPixelWidth = groupRightX - groupLeftX;
+    const groupWidth = groupRight - groupLeft;
+    const cellCountInGroup = cluster.length + 1;
+    const cellWidth = groupWidth / cellCountInGroup;
 
-    // Cell count = internal dividers in this cluster + 1 (for the edge boundaries)
-    // This is the key fix: N dividers create N+1 cells when edges are boundaries
-    const validCellCount = cluster.length + 1;
-
-    if (validCellCount < 1 || groupPixelWidth < 8) continue;
-
-    // Calculate uniform cell width for this group
-    const uniformCellWidth = groupPixelWidth / validCellCount;
-
-    // Validate: if uniform width is way off median, something is wrong
-    // (relaxed threshold since we're now using full box width)
-    if (uniformCellWidth < medianCellWidth * 0.3 || uniformCellWidth > medianCellWidth * 3.0) {
-      continue;
+    // Update vertical bounds
+    for (const idx of cluster) {
+      minY = Math.min(minY, dividers[idx].y1);
+      maxY = Math.max(maxY, dividers[idx].y2);
     }
 
-    // Create group entry
-    const groupStartIndex = globalCellIndex;
+    // Create group
+    const groupStartX = x1 + groupLeft;
     groups.push({
-      startIndex: groupStartIndex,
-      cellCount: validCellCount,
-      startX: groupLeftX,
-      totalWidth: groupPixelWidth,
+      startIndex: globalIndex,
+      cellCount: cellCountInGroup,
+      startX: groupStartX,
+      totalWidth: groupWidth,
     });
 
-    // Generate uniform cells within this group - cells FILL the entire group width
-    for (let c = 0; c < validCellCount; c++) {
-      const cellLeftX = groupLeftX + c * uniformCellWidth;
-      const cellCenterX = cellLeftX + uniformCellWidth / 2;
-
-      cellBoundaries.push(cellLeftX);
-      cellCenters.push(cellCenterX);
-      cellWidths.push(uniformCellWidth);
-      globalCellIndex++;
+    // Generate uniform cells
+    for (let c = 0; c < cellCountInGroup; c++) {
+      const cellX = groupStartX + c * cellWidth;
+      cellBoundaries.push(cellX);
+      cellCenters.push(cellX + cellWidth / 2);
+      cellWidths.push(cellWidth);
+      globalIndex++;
     }
   }
 
-  // If we found cells, use them; otherwise fall back to uniform detection
-  const finalCellCount = cellBoundaries.length > 0 ? cellBoundaries.length : cellCount;
-  const avgCellWidth = cellWidths.length > 0
-    ? cellWidths.reduce((a, b) => a + b, 0) / cellWidths.length
-    : bestGap;
+  if (cellBoundaries.length < 2) return null;
 
-  // FILTER OUT SINGLE-CELL ARTIFACT GROUPS
-  // A group with only 1 cell at the start (with no neighbour on the left) is likely a detection artifact.
-  // Real groups have at least 2 cells, UNLESS it is the last group in a multi-group field
-  // (e.g. Medicare's last digit group has 1 cell).
-  // When filtering groups, we must also rebuild the cell arrays.
-  if (groups.length > 1) {
-    const filteredGroups: CellGroup[] = [];
-    const filteredBoundaries: number[] = [];
-    const filteredCenters: number[] = [];
-    const filteredWidths: number[] = [];
-
-    for (let i = 0; i < groups.length; i++) {
-      const group = groups[i];
-      const isLastGroup = i === groups.length - 1;
-
-      // Keep the group if:
-      // 1. It has at least 2 cells, OR
-      // 2. It is the last group in a multi-group field (single cell allowed)
-      const keepGroup = group.cellCount >= 2 || (group.cellCount === 1 && isLastGroup);
-
-      if (keepGroup) {
-        // Update group's startIndex to match new cell array position
-        const newStartIndex = filteredBoundaries.length;
-        filteredGroups.push({
-          ...group,
-          startIndex: newStartIndex,
-        });
-
-        // Copy this group's cells to filtered arrays
-        for (let c = 0; c < group.cellCount; c++) {
-          const oldIdx = group.startIndex + c;
-          filteredBoundaries.push(cellBoundaries[oldIdx]);
-          filteredCenters.push(cellCenters[oldIdx]);
-          filteredWidths.push(cellWidths[oldIdx]);
-        }
-      }
-    }
-
-    if (filteredGroups.length > 0) {
-      groups = filteredGroups;
-      cellBoundaries.length = 0;
-      cellCenters.length = 0;
-      cellWidths.length = 0;
-      cellBoundaries.push(...filteredBoundaries);
-      cellCenters.push(...filteredCenters);
-      cellWidths.push(...filteredWidths);
-    }
-  }
-
-  // PROBLEM 3 FIX: Return null for < 2 cells - fall back to regular text field
-  const actualCellCount = cellBoundaries.length > 0 ? cellBoundaries.length : cellCount;
-  if (actualCellCount < 2) {
-    return null;
-  }
-
-  // Calculate final comb dimensions from the uniformly-distributed cells
-  // Cells are now already distributed across the full box width by the fix above
-  let combFirstCellX: number;
-  let combWidth: number;
-  let combCellWidth: number;
-
-  if (cellBoundaries.length > 0 && cellWidths.length > 0) {
-    // Use the uniform cell positions calculated above
-    combFirstCellX = cellBoundaries[0];
-    const lastCellLeft = cellBoundaries[cellBoundaries.length - 1];
-    const lastCellWidth = cellWidths[cellWidths.length - 1];
-    combWidth = (lastCellLeft + lastCellWidth) - combFirstCellX;
-    combCellWidth = cellWidths.reduce((a, b) => a + b, 0) / cellWidths.length;
-  } else {
-    // Fallback to original calculation
-    combFirstCellX = x1 + firstX;
-    combWidth = lastX - firstX;
-    combCellWidth = avgCellWidth;
-  }
+  const avgCellWidth = cellWidths.reduce((a, b) => a + b, 0) / cellWidths.length;
 
   return {
-    cellWidth: combCellWidth,
-    cellCount: actualCellCount,
-    x: x1 + firstX,
+    cellWidth: avgCellWidth,
+    cellCount: cellBoundaries.length,
+    x: x1,
     y: y1 + minY,
-    width: combWidth,
+    width: cellBoundaries[cellBoundaries.length - 1] - cellBoundaries[0] + cellWidths[cellWidths.length - 1],
     height: maxY - minY,
-    firstCellX: combFirstCellX,
-    cellBoundaries: cellBoundaries,
-    cellCenters: cellCenters,
-    cellWidths: cellWidths,
-    groups: groups,
+    firstCellX: cellBoundaries[0],
+    cellBoundaries,
+    cellCenters,
+    cellWidths,
+    groups,
   };
 }
