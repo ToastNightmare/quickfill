@@ -1294,7 +1294,7 @@ export function detectCombCells(
     }
   }
 
-  // Build cells with uniform width within each group
+  // Build cells using actual divider positions as boundaries
   const cellBoundaries: number[] = [];
   const cellCenters: number[] = [];
   const cellWidthsArr: number[] = [];
@@ -1323,50 +1323,57 @@ export function detectCombCells(
 
   for (let ci = 0; ci < clusters.length; ci++) {
     const cluster = clusters[ci];
-    const firstDividerX = dividers[cluster[0]];
-    const lastDividerX = dividers[cluster[cluster.length - 1]];
+    const dividerPositions = cluster.map((idx) => dividers[idx]);
+    const firstDividerX = dividerPositions[0];
+    const lastDividerX = dividerPositions[dividerPositions.length - 1];
 
-    let groupLeft: number;
-    let groupRight: number;
-
-    if (clusters.length === 1) {
-      groupLeft = 2;
-      groupRight = w - 2;
-    } else {
-      if (ci === 0) {
-        groupLeft = 2;
-      } else {
-        const prevLastX = dividers[clusters[ci - 1][clusters[ci - 1].length - 1]];
-        groupLeft = (prevLastX + firstDividerX) / 2;
-      }
-
-      if (ci === clusters.length - 1) {
-        groupRight = w - 2;
-      } else {
-        const nextFirstX = dividers[clusters[ci + 1][0]];
-        groupRight = (lastDividerX + nextFirstX) / 2;
-      }
+    // Calculate median cell width from inter-divider gaps within this cluster
+    const clusterGaps: number[] = [];
+    for (let i = 1; i < dividerPositions.length; i++) {
+      clusterGaps.push(dividerPositions[i] - dividerPositions[i - 1]);
     }
+    const sortedClusterGaps = [...clusterGaps].sort((a, b) => a - b);
+    const medianCellWidth = sortedClusterGaps[Math.floor(sortedClusterGaps.length / 2)];
 
-    const groupWidth = groupRight - groupLeft;
+    // Infer outer edges using median cell width
+    const groupLeftEdge = firstDividerX - medianCellWidth;
+    const groupRightEdge = lastDividerX + medianCellWidth;
+
+    const groupStartX = x1 + groupLeftEdge;
     const cellCountInGroup = cluster.length + 1;
-    const cellWidth = groupWidth / cellCountInGroup;
 
-    const groupStartX = x1 + groupLeft;
     groups.push({
       startIndex: globalIndex,
       cellCount: cellCountInGroup,
       startX: groupStartX,
-      totalWidth: groupWidth,
+      totalWidth: groupRightEdge - groupLeftEdge,
     });
 
-    for (let c = 0; c < cellCountInGroup; c++) {
-      const cellX = groupStartX + c * cellWidth;
-      cellBoundaries.push(cellX);
-      cellCenters.push(cellX + cellWidth / 2);
+    // Build cells using actual divider positions
+    // Cell 0: left edge to first divider
+    const firstCellWidth = firstDividerX - groupLeftEdge;
+    cellBoundaries.push(groupStartX);
+    cellCenters.push(groupStartX + firstCellWidth / 2);
+    cellWidthsArr.push(firstCellWidth);
+    globalIndex++;
+
+    // Middle cells: divider[i-1] to divider[i]
+    for (let i = 1; i < dividerPositions.length; i++) {
+      const cellBoundary = x1 + dividerPositions[i - 1];
+      const cellWidth = dividerPositions[i] - dividerPositions[i - 1];
+      cellBoundaries.push(cellBoundary);
+      cellCenters.push(cellBoundary + cellWidth / 2);
       cellWidthsArr.push(cellWidth);
       globalIndex++;
     }
+
+    // Last cell: last divider to right edge
+    const lastCellBoundary = x1 + lastDividerX;
+    const lastCellWidth = groupRightEdge - lastDividerX;
+    cellBoundaries.push(lastCellBoundary);
+    cellCenters.push(lastCellBoundary + lastCellWidth / 2);
+    cellWidthsArr.push(lastCellWidth);
+    globalIndex++;
   }
 
   if (cellBoundaries.length < 2) return null;
