@@ -1170,23 +1170,52 @@ export function detectCombCells(
   // Need at least 1 internal divider to create 2+ cells
   if (dividers.length < 1) return null;
 
-  // STEP 3: Calculate cell count - N internal dividers = N+1 cells
+  // STEP 3: Filter outlier dividers at start/end that create inconsistent gaps
+  // Calculate median inter-divider gap and drop dividers with gaps > 2x median
+  let stable = false;
+  while (!stable && dividers.length >= 2) {
+    const gaps: number[] = [];
+    for (let i = 1; i < dividers.length; i++) {
+      gaps.push(dividers[i].x - dividers[i - 1].x);
+    }
+    const sortedGaps = [...gaps].sort((a, b) => a - b);
+    const medianGap = sortedGaps[Math.floor(sortedGaps.length / 2)];
+
+    if (medianGap <= 0) break;
+
+    // Check first gap
+    const firstGap = dividers[1].x - dividers[0].x;
+    if (firstGap > 2 * medianGap) {
+      dividers = dividers.slice(1);
+      continue;
+    }
+
+    // Check last gap
+    const lastGap = dividers[dividers.length - 1].x - dividers[dividers.length - 2].x;
+    if (lastGap > 2 * medianGap) {
+      dividers = dividers.slice(0, dividers.length - 1);
+      continue;
+    }
+
+    stable = true;
+  }
+
+  if (dividers.length < 1) return null;
+
+  // Calculate cell count - N internal dividers = N+1 cells
   // The outer box edges are the first and last cell boundaries
   const numCells = dividers.length + 1;
 
   if (numCells < 2) return null;
 
   // STEP 4: Detect groups by finding gaps larger than 1.5x median gap
+  // Calculate median ONLY from inter-divider gaps (not edge gaps)
   const gaps: number[] = [];
   for (let i = 1; i < dividers.length; i++) {
     gaps.push(dividers[i].x - dividers[i - 1].x);
   }
 
-  // Add gaps from edges to first/last divider
-  const edgeGaps = [dividers[0].x, w - dividers[dividers.length - 1].x];
-  const allGaps = [...edgeGaps, ...gaps];
-
-  const sortedGaps = [...allGaps].sort((a, b) => a - b);
+  const sortedGaps = [...gaps].sort((a, b) => a - b);
   const medianGap = sortedGaps[Math.floor(sortedGaps.length / 2)];
 
   // Cluster dividers: gaps > 1.5x median indicate group boundaries
