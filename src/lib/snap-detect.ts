@@ -1135,7 +1135,6 @@ export function detectCombCells(
   const ctx = canvas.getContext("2d");
   if (!ctx) return null;
 
-  // Clamp region to canvas bounds
   const x1 = Math.max(0, Math.floor(regionX));
   const y1 = Math.max(0, Math.floor(regionY));
   const x2 = Math.min(canvas.width, Math.ceil(regionX + regionWidth));
@@ -1154,76 +1153,101 @@ export function detectCombCells(
 
   const { data } = imageData;
 
-  // STEP 1: Find internal vertical dividers
-  // Scan for dark vertical lines that span at least 40% of region height
-  const minSpan = h * 0.4;
-  const vLines = findVerticalLines(data, w, h, isDark);
-  let dividers = mergeVLines(vLines).filter((v) => v.y2 - v.y1 >= minSpan);
-  dividers.sort((a, b) => a.x - b.x);
-
-  if (dividers.length === 0) return null;
-
-  // STEP 2: Filter out outer border lines (within 15px of region edges)
-  const EDGE_TOLERANCE = 15;
-  dividers = dividers.filter((d) => d.x > EDGE_TOLERANCE && d.x < w - EDGE_TOLERANCE);
-
-  // Need at least 1 internal divider to create 2+ cells
-  if (dividers.length < 1) return null;
-
-  // STEP 3: Filter outlier dividers at start/end that create inconsistent gaps
-  // Calculate median inter-divider gap and drop dividers with gaps > 2x median
-  let stable = false;
-  while (!stable && dividers.length >= 2) {
-    const gaps: number[] = [];
-    for (let i = 1; i < dividers.length; i++) {
-      gaps.push(dividers[i].x - dividers[i - 1].x);
+  // Step 1: Binarize - dark pixels (brightness < 160) = 1, else = 0
+  const binary = new Uint8Array(w * h);
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const idx = (y * w + x) * 4;
+      const brightness = (data[idx] + data[idx + 1] + data[idx + 2]) / 3;
+      binary[y * w + x] = brightness < 160 ? 1 : 0;
     }
-    const sortedGaps = [...gaps].sort((a, b) => a - b);
-    const medianGap = sortedGaps[Math.floor(sortedGaps.length / 2)];
-
-    if (medianGap <= 0) break;
-
-    // Check first gap
-    const firstGap = dividers[1].x - dividers[0].x;
-    if (firstGap > 2 * medianGap) {
-      dividers = dividers.slice(1);
-      continue;
-    }
-
-    // Check last gap
-    const lastGap = dividers[dividers.length - 1].x - dividers[dividers.length - 2].x;
-    if (lastGap > 2 * medianGap) {
-      dividers = dividers.slice(0, dividers.length - 1);
-      continue;
-    }
-
-    stable = true;
   }
 
+  // Step 2: Morphological erosion with vertical kernel
+  // Kernel height = 60% of region height (must be odd for symmetric kernel)
+  const kernelHeight = Math.max(3, Math.floor(h * 0.6));
+  const kernelHalf = Math.floor(kernelHeight / 2);
+  const eroded = new Uint8Array(w * h);
+
+  for (let x = 0; x < w; x++) {
+    for (let y = kernelHalf; y < h - kernelHalf; y++) {
+      let allDark = 1;
+      for (let k = -kernelHalf; k <= kernelHalf; k++) {
+        if (binary[(y + k) * w + x] === 0) {
+          allDark = 0;
+          break;
+        }
+      }
+      eroded[y * w + x] = allDark;
+    }
+  }
+
+  // Step 3: Morphological dilation to restore line width
+  const dilated = new Uint8Array(w * h);
+  for (let x = 0; x < w; x++) {
+    for (let y = kernelHalf; y < h - kernelHalf; y++) {
+      let anyDark = 0;
+      for (let k = -kernelHalf; k <= kernelHalf; k++) {
+        if (eroded[(y + k) * w + x] === 1) {
+          anyDark = 1;
+          break;
+        }
+      }
+      dilated[y * w + x] = anyDark;
+    }
+  }
+
+  // Step 4: Column projection to find divider X positions
+  const columnSum = new Array(w).fill(0);
+  for (let x = 0; x < w; x++) {
+    for (let y = 0; y < h; y++) {
+      columnSum[x] += dilated[y * w + x];
+    }
+  }
+
+  // Find columns with surviving pixels and merge adjacent ones (within 4px)
+  const dividerClusters: number[] = [];
+  let clusterStart = -1;
+  for (let x = 0; x < w; x++) {
+    if (columnSum[x] > 0) {
+      if (clusterStart === -1) {
+        clusterStart = x;
+      }
+    } else if (clusterStart !== -1) {
+      const clusterEnd = x - 1;
+      if (clusterEnd - clusterStart <= 4) {
+        dividerClusters.push(Math.floor((clusterStart + clusterEnd) / 2));
+      } else {
+        dividerClusters.push(Math.floor((clusterStart + clusterEnd) / 2));
+      }
+      clusterStart = -1;
+    }
+  }
+  if (clusterStart !== -1) {
+    dividerClusters.push(Math.floor((clusterStart + (w - 1)) / 2));
+  }
+
+  // Step 5: Filter outer borders (within 10px of edges)
+  const dividers = dividerClusters.filter((x) => x > 10 && x < w - 10);
+
   if (dividers.length < 1) return null;
 
-  // Calculate cell count - N internal dividers = N+1 cells
-  // The outer box edges are the first and last cell boundaries
+  // Step 6: Calculate cells and groups
   const numCells = dividers.length + 1;
-
   if (numCells < 2) return null;
 
-  // STEP 4: Detect groups by finding gaps larger than 1.5x median gap
-  // Calculate median ONLY from inter-divider gaps (not edge gaps)
+  // Detect groups by finding gaps larger than 1.5x median gap
   const gaps: number[] = [];
   for (let i = 1; i < dividers.length; i++) {
-    gaps.push(dividers[i].x - dividers[i - 1].x);
+    gaps.push(dividers[i] - dividers[i - 1]);
   }
-
   const sortedGaps = [...gaps].sort((a, b) => a - b);
   const medianGap = sortedGaps[Math.floor(sortedGaps.length / 2)];
-
-  // Cluster dividers: gaps > 1.5x median indicate group boundaries
   const groupGapThreshold = medianGap * 1.5;
-  const clusters: number[][] = [[0]];
 
+  const clusters: number[][] = [[0]];
   for (let i = 1; i < dividers.length; i++) {
-    const gap = dividers[i].x - dividers[i - 1].x;
+    const gap = dividers[i] - dividers[i - 1];
     if (gap > groupGapThreshold) {
       clusters.push([i]);
     } else {
@@ -1231,42 +1255,56 @@ export function detectCombCells(
     }
   }
 
-  // STEP 5: Build cells with uniform width within each group
+  // Build cells with uniform width within each group
   const cellBoundaries: number[] = [];
   const cellCenters: number[] = [];
-  const cellWidths: number[] = [];
+  const cellWidthsArr: number[] = [];
   const groups: CellGroup[] = [];
 
   let globalIndex = 0;
-  let minY = Infinity;
+  let minY = h;
   let maxY = 0;
+
+  // Estimate line Y bounds from dilated image
+  for (const divX of dividers) {
+    for (let y = 0; y < h; y++) {
+      if (dilated[y * w + divX] === 1) {
+        minY = Math.min(minY, y);
+        maxY = Math.max(maxY, y);
+        break;
+      }
+    }
+    for (let y = h - 1; y >= 0; y--) {
+      if (dilated[y * w + divX] === 1) {
+        maxY = Math.max(maxY, y);
+        break;
+      }
+    }
+  }
 
   for (let ci = 0; ci < clusters.length; ci++) {
     const cluster = clusters[ci];
-    const firstDividerX = dividers[cluster[0]].x;
-    const lastDividerX = dividers[cluster[cluster.length - 1]].x;
+    const firstDividerX = dividers[cluster[0]];
+    const lastDividerX = dividers[cluster[cluster.length - 1]];
 
-    // Calculate group box edges
     let groupLeft: number;
     let groupRight: number;
 
     if (clusters.length === 1) {
-      // Single group: use region edges
-      groupLeft = 0;
-      groupRight = w;
+      groupLeft = 2;
+      groupRight = w - 2;
     } else {
-      // Multi-group: use midpoints between clusters
       if (ci === 0) {
-        groupLeft = 0;
+        groupLeft = 2;
       } else {
-        const prevLastX = dividers[clusters[ci - 1][clusters[ci - 1].length - 1]].x;
+        const prevLastX = dividers[clusters[ci - 1][clusters[ci - 1].length - 1]];
         groupLeft = (prevLastX + firstDividerX) / 2;
       }
 
       if (ci === clusters.length - 1) {
-        groupRight = w;
+        groupRight = w - 2;
       } else {
-        const nextFirstX = dividers[clusters[ci + 1][0]].x;
+        const nextFirstX = dividers[clusters[ci + 1][0]];
         groupRight = (lastDividerX + nextFirstX) / 2;
       }
     }
@@ -1275,13 +1313,6 @@ export function detectCombCells(
     const cellCountInGroup = cluster.length + 1;
     const cellWidth = groupWidth / cellCountInGroup;
 
-    // Update vertical bounds
-    for (const idx of cluster) {
-      minY = Math.min(minY, dividers[idx].y1);
-      maxY = Math.max(maxY, dividers[idx].y2);
-    }
-
-    // Create group
     const groupStartX = x1 + groupLeft;
     groups.push({
       startIndex: globalIndex,
@@ -1290,31 +1321,30 @@ export function detectCombCells(
       totalWidth: groupWidth,
     });
 
-    // Generate uniform cells
     for (let c = 0; c < cellCountInGroup; c++) {
       const cellX = groupStartX + c * cellWidth;
       cellBoundaries.push(cellX);
       cellCenters.push(cellX + cellWidth / 2);
-      cellWidths.push(cellWidth);
+      cellWidthsArr.push(cellWidth);
       globalIndex++;
     }
   }
 
   if (cellBoundaries.length < 2) return null;
 
-  const avgCellWidth = cellWidths.reduce((a, b) => a + b, 0) / cellWidths.length;
+  const avgCellWidth = cellWidthsArr.reduce((a, b) => a + b, 0) / cellWidthsArr.length;
 
   return {
     cellWidth: avgCellWidth,
     cellCount: cellBoundaries.length,
     x: x1,
     y: y1 + minY,
-    width: cellBoundaries[cellBoundaries.length - 1] - cellBoundaries[0] + cellWidths[cellWidths.length - 1],
-    height: maxY - minY,
+    width: cellBoundaries[cellBoundaries.length - 1] - cellBoundaries[0] + cellWidthsArr[cellWidthsArr.length - 1],
+    height: Math.max(1, maxY - minY),
     firstCellX: cellBoundaries[0],
     cellBoundaries,
     cellCenters,
-    cellWidths,
+    cellWidths: cellWidthsArr,
     groups,
   };
 }
