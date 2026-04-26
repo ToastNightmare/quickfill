@@ -1088,16 +1088,6 @@ function deduplicateBoxes(boxes: SnapResult[]): SnapResult[] {
 }
 
 /**
- * Represents a group of cells (e.g., DD group, MM group, YYYY group)
- */
-export interface CellGroup {
-  startIndex: number; // Index of first cell in this group (0-based)
-  cellCount: number; // Number of cells in this group
-  startX: number; // X position of first cell's left edge (canvas coords)
-  totalWidth: number; // Total width of this group including all cells
-}
-
-/**
  * Detect comb cell spacing from a region of the PDF.
  * Scans for a row of equally-spaced vertical dividers and returns:
  * - cellWidth: the average width of each cell
@@ -1107,7 +1097,6 @@ export interface CellGroup {
  * - cellBoundaries: array of X positions for each cell's left edge
  * - cellCenters: array of X positions for each cell's center (for character placement)
  * - cellWidths: array of individual cell widths (for non-uniform spacing like TFN)
- * - groups: array of cell groups (for date fields with DD MM YYYY clusters)
  * 
  * Returns null if no comb pattern is detected.
  */
@@ -1122,7 +1111,6 @@ export interface CombDetectResult {
   cellBoundaries: number[]; // X positions of each cell's left edge
   cellCenters: number[]; // X positions of each cell's center for character placement
   cellWidths: number[]; // Width of each individual cell (handles gaps)
-  groups: CellGroup[]; // Cell groups with gaps between them (for date fields)
 }
 
 export function detectCombCells(
@@ -1135,6 +1123,7 @@ export function detectCombCells(
   const ctx = canvas.getContext("2d");
   if (!ctx) return null;
 
+  // Clamp region to canvas bounds
   const x1 = Math.max(0, Math.floor(regionX));
   const y1 = Math.max(0, Math.floor(regionY));
   const x2 = Math.min(canvas.width, Math.ceil(regionX + regionWidth));
@@ -1153,244 +1142,148 @@ export function detectCombCells(
 
   const { data } = imageData;
 
-  // Step 1: Binarize - dark pixels (brightness < 160) = 1, else = 0
-  const binary = new Uint8Array(w * h);
-  for (let y = 0; y < h; y++) {
-    for (let x = 0; x < w; x++) {
-      const idx = (y * w + x) * 4;
-      const brightness = (data[idx] + data[idx + 1] + data[idx + 2]) / 3;
-      binary[y * w + x] = brightness < 160 ? 1 : 0;
-    }
+  // Find vertical lines in the region
+  const vLines = findVerticalLines(data, w, h, isDark);
+  if (vLines.length < 2) {
+    // Try with medium threshold
+    const vLinesMedium = findVerticalLines(data, w, h, isMedium);
+    if (vLinesMedium.length < 2) return null;
+    vLines.push(...vLinesMedium);
   }
 
-  // Step 2: Morphological erosion with vertical kernel
-  // Kernel height = 60% of region height (must be odd for symmetric kernel)
-  const kernelHeight = Math.max(3, Math.floor(h * 0.6));
-  const kernelHalf = Math.floor(kernelHeight / 2);
-  const eroded = new Uint8Array(w * h);
+  // Merge nearby vertical lines
+  const merged = mergeVLines(vLines);
+  if (merged.length < 2) return null;
 
-  for (let x = 0; x < w; x++) {
-    for (let y = kernelHalf; y < h - kernelHalf; y++) {
-      let allDark = 1;
-      for (let k = -kernelHalf; k <= kernelHalf; k++) {
-        if (binary[(y + k) * w + x] === 0) {
-          allDark = 0;
-          break;
-        }
-      }
-      eroded[y * w + x] = allDark;
-    }
-  }
+  // Sort by x position
+  merged.sort((a, b) => a.x - b.x);
 
-  // Step 3: Morphological dilation to restore line width
-  const dilated = new Uint8Array(w * h);
-  for (let x = 0; x < w; x++) {
-    for (let y = kernelHalf; y < h - kernelHalf; y++) {
-      let anyDark = 0;
-      for (let k = -kernelHalf; k <= kernelHalf; k++) {
-        if (eroded[(y + k) * w + x] === 1) {
-          anyDark = 1;
-          break;
-        }
-      }
-      dilated[y * w + x] = anyDark;
-    }
-  }
+  // Filter to lines that span most of the region height (actual cell dividers)
+  const minSpan = h * 0.5;
+  const tallLines = merged.filter((v) => v.y2 - v.y1 >= minSpan);
+  if (tallLines.length < 2) return null;
 
-  // Step 4: Column projection to find divider X positions
-  const columnSum = new Array(w).fill(0);
-  for (let x = 0; x < w; x++) {
-    for (let y = 0; y < h; y++) {
-      columnSum[x] += dilated[y * w + x];
-    }
-  }
-
-  // Find columns with surviving pixels and merge adjacent ones (within 4px)
-  const dividerClusters: number[] = [];
-  let clusterStart = -1;
-  for (let x = 0; x < w; x++) {
-    if (columnSum[x] > 0) {
-      if (clusterStart === -1) {
-        clusterStart = x;
-      }
-    } else if (clusterStart !== -1) {
-      const clusterEnd = x - 1;
-      if (clusterEnd - clusterStart <= 4) {
-        dividerClusters.push(Math.floor((clusterStart + clusterEnd) / 2));
-      } else {
-        dividerClusters.push(Math.floor((clusterStart + clusterEnd) / 2));
-      }
-      clusterStart = -1;
-    }
-  }
-  if (clusterStart !== -1) {
-    dividerClusters.push(Math.floor((clusterStart + (w - 1)) / 2));
-  }
-
-  // Step 5: Filter outer borders (within 10px of edges)
-  let dividers = dividerClusters.filter((x) => x > 10 && x < w - 10);
-
-  if (dividers.length < 1) return null;
-
-  // Step 5b: Trim outlier dividers
-  // Calculate gaps between consecutive dividers.
-  // Find the median gap (typical cell width).
-  // Starting from the RIGHT end, if the rightmost gap is > 2x the median gap,
-  // drop the rightmost divider. Repeat until stable.
-  // Do the same from the LEFT end.
-  // This trims dividers that belong to adjacent form elements.
-  if (dividers.length >= 2) {
-    // Calculate gaps
-    const gaps: number[] = [];
-    for (let i = 1; i < dividers.length; i++) {
-      gaps.push(dividers[i] - dividers[i - 1]);
-    }
-    const sortedGaps = [...gaps].sort((a, b) => a - b);
-    const medianGap = sortedGaps[Math.floor(sortedGaps.length / 2)];
-
-    // Trim from the RIGHT end
-    while (dividers.length >= 2) {
-      const rightmostGap = dividers[dividers.length - 1] - dividers[dividers.length - 2];
-      if (rightmostGap > medianGap * 2) {
-        dividers = dividers.slice(0, dividers.length - 1);
-      } else {
-        break;
-      }
-    }
-
-    // Trim from the LEFT end
-    while (dividers.length >= 2) {
-      const leftmostGap = dividers[1] - dividers[0];
-      if (leftmostGap > medianGap * 2) {
-        dividers = dividers.slice(1);
-      } else {
-        break;
-      }
-    }
-  }
-
-  if (dividers.length < 1) return null;
-
-  // Step 6: Calculate cells and groups
-  const numCells = dividers.length + 1;
-  if (numCells < 2) return null;
-
-  // Detect groups by finding gaps larger than 1.5x median gap
+  // Calculate gaps between consecutive vertical lines
   const gaps: number[] = [];
-  for (let i = 1; i < dividers.length; i++) {
-    gaps.push(dividers[i] - dividers[i - 1]);
+  for (let i = 1; i < tallLines.length; i++) {
+    gaps.push(tallLines[i].x - tallLines[i - 1].x);
   }
-  const sortedGaps = [...gaps].sort((a, b) => a - b);
-  const medianGap = sortedGaps[Math.floor(sortedGaps.length / 2)];
-  const groupGapThreshold = medianGap * 1.5;
 
-  const clusters: number[][] = [[0]];
-  for (let i = 1; i < dividers.length; i++) {
-    const gap = dividers[i] - dividers[i - 1];
-    if (gap > groupGapThreshold) {
-      clusters.push([i]);
-    } else {
-      clusters[clusters.length - 1].push(i);
+  if (gaps.length === 0) return null;
+
+  // Find the most common gap (cell width) - allow 3px tolerance
+  const gapCounts = new Map<number, number>();
+  for (const gap of gaps) {
+    // Round to nearest 2px for grouping
+    const rounded = Math.round(gap / 2) * 2;
+    gapCounts.set(rounded, (gapCounts.get(rounded) || 0) + 1);
+  }
+
+  let bestGap = 0;
+  let bestCount = 0;
+  for (const [gap, count] of gapCounts) {
+    if (count > bestCount && gap >= 10 && gap <= 60) {
+      bestGap = gap;
+      bestCount = count;
     }
   }
 
-  // Build cells using actual divider positions as boundaries
-  const cellBoundaries: number[] = [];
-  const cellCenters: number[] = [];
-  const cellWidthsArr: number[] = [];
-  const groups: CellGroup[] = [];
+  if (bestGap === 0 || bestCount < 2) return null;
 
-  let globalIndex = 0;
+  // Count cells with this gap width (tolerance of 4px)
+  let cellCount = 1;
+  let firstX = tallLines[0].x;
+  let lastX = tallLines[0].x;
+
+  for (let i = 1; i < tallLines.length; i++) {
+    const gap = tallLines[i].x - tallLines[i - 1].x;
+    if (Math.abs(gap - bestGap) <= 4) {
+      cellCount++;
+      lastX = tallLines[i].x;
+    }
+  }
+
+  // Find the vertical extent of the cells
   let minY = h;
   let maxY = 0;
-
-  // Estimate line Y bounds from dilated image
-  for (const divX of dividers) {
-    for (let y = 0; y < h; y++) {
-      if (dilated[y * w + divX] === 1) {
-        minY = Math.min(minY, y);
-        maxY = Math.max(maxY, y);
-        break;
-      }
-    }
-    for (let y = h - 1; y >= 0; y--) {
-      if (dilated[y * w + divX] === 1) {
-        maxY = Math.max(maxY, y);
-        break;
-      }
-    }
+  for (const line of tallLines) {
+    minY = Math.min(minY, line.y1);
+    maxY = Math.max(maxY, line.y2);
   }
 
-  for (let ci = 0; ci < clusters.length; ci++) {
-    const cluster = clusters[ci];
-    const dividerPositions = cluster.map((idx) => dividers[idx]);
-    const firstDividerX = dividerPositions[0];
-    const lastDividerX = dividerPositions[dividerPositions.length - 1];
-
-    // Calculate median cell width from inter-divider gaps within this cluster
-    const clusterGaps: number[] = [];
-    for (let i = 1; i < dividerPositions.length; i++) {
-      clusterGaps.push(dividerPositions[i] - dividerPositions[i - 1]);
+  // Build arrays of cell boundaries, centers, and widths
+  // This handles non-uniform spacing (like TFN fields with gaps between groups)
+  
+  // First pass: collect all potential cells
+  const allCells: { left: number; center: number; width: number }[] = [];
+  for (let i = 0; i < tallLines.length - 1; i++) {
+    const leftEdge = x1 + tallLines[i].x;
+    const rightEdge = x1 + tallLines[i + 1].x;
+    const width = rightEdge - leftEdge;
+    
+    if (width >= 8 && width <= 80) {
+      allCells.push({ left: leftEdge, center: leftEdge + width / 2, width });
     }
-    const sortedClusterGaps = [...clusterGaps].sort((a, b) => a - b);
-    const medianCellWidth = sortedClusterGaps[Math.floor(sortedClusterGaps.length / 2)];
-
-    // Infer outer edges using median cell width
-    const groupLeftEdge = firstDividerX - medianCellWidth;
-    const groupRightEdge = lastDividerX + medianCellWidth;
-
-    const groupStartX = x1 + groupLeftEdge;
-    const cellCountInGroup = cluster.length + 1;
-
-    groups.push({
-      startIndex: globalIndex,
-      cellCount: cellCountInGroup,
-      startX: groupStartX,
-      totalWidth: groupRightEdge - groupLeftEdge,
-    });
-
-    // Build cells using actual divider positions
-    // Cell 0: left edge to first divider
-    const firstCellWidth = firstDividerX - groupLeftEdge;
-    cellBoundaries.push(groupStartX);
-    cellCenters.push(groupStartX + firstCellWidth / 2);
-    cellWidthsArr.push(firstCellWidth);
-    globalIndex++;
-
-    // Middle cells: divider[i-1] to divider[i]
-    for (let i = 1; i < dividerPositions.length; i++) {
-      const cellBoundary = x1 + dividerPositions[i - 1];
-      const cellWidth = dividerPositions[i] - dividerPositions[i - 1];
-      cellBoundaries.push(cellBoundary);
-      cellCenters.push(cellBoundary + cellWidth / 2);
-      cellWidthsArr.push(cellWidth);
-      globalIndex++;
-    }
-
-    // Last cell: last divider to right edge
-    const lastCellBoundary = x1 + lastDividerX;
-    const lastCellWidth = groupRightEdge - lastDividerX;
-    cellBoundaries.push(lastCellBoundary);
-    cellCenters.push(lastCellBoundary + lastCellWidth / 2);
-    cellWidthsArr.push(lastCellWidth);
-    globalIndex++;
   }
+  
+  if (allCells.length === 0) {
+    // Fall back to uniform spacing
+    const cellBoundaries: number[] = [];
+    const cellCenters: number[] = [];
+    const cellWidths: number[] = [];
+    return {
+      cellWidth: bestGap,
+      cellCount: cellCount,
+      x: x1 + firstX,
+      y: y1 + minY,
+      width: lastX - firstX,
+      height: maxY - minY,
+      firstCellX: x1 + firstX,
+      cellBoundaries,
+      cellCenters,
+      cellWidths,
+    };
+  }
+  
+  // Second pass: filter out gaps between groups
+  // Gaps are cells that are significantly wider than the typical cell
+  const widths = allCells.map(c => c.width);
+  widths.sort((a, b) => a - b);
+  const medianWidth = widths[Math.floor(widths.length / 2)];
 
-  if (cellBoundaries.length < 2) return null;
+  // A gap is anything 1.35x or more the median width (lowered from 1.5x)
+  // This catches small gaps like "/" separators in date fields (DD/MM/YYYY)
+  const gapThreshold = medianWidth * 1.35;
 
-  const avgCellWidth = cellWidthsArr.reduce((a, b) => a + b, 0) / cellWidthsArr.length;
+  const cellBoundaries: number[] = [];
+  const cellCenters: number[] = [];
+  const cellWidths: number[] = [];
+
+  for (const cell of allCells) {
+    // Skip gaps (cells at or above threshold are filtered)
+    if (cell.width >= gapThreshold) continue;
+    
+    cellBoundaries.push(cell.left);
+    cellCenters.push(cell.center);
+    cellWidths.push(cell.width);
+  }
+  
+  // If we found individual cells, use those; otherwise fall back to uniform detection
+  const finalCellCount = cellBoundaries.length > 0 ? cellBoundaries.length : cellCount;
+  const avgCellWidth = cellWidths.length > 0 
+    ? cellWidths.reduce((a, b) => a + b, 0) / cellWidths.length 
+    : bestGap;
 
   return {
     cellWidth: avgCellWidth,
-    cellCount: cellBoundaries.length,
-    x: x1,
+    cellCount: finalCellCount,
+    x: x1 + firstX,
     y: y1 + minY,
-    width: cellBoundaries[cellBoundaries.length - 1] - cellBoundaries[0] + cellWidthsArr[cellWidthsArr.length - 1],
-    height: Math.max(1, maxY - minY),
-    firstCellX: cellBoundaries[0],
-    cellBoundaries,
-    cellCenters,
-    cellWidths: cellWidthsArr,
-    groups,
+    width: lastX - firstX,
+    height: maxY - minY,
+    firstCellX: cellBoundaries.length > 0 ? cellBoundaries[0] : x1 + firstX,
+    cellBoundaries: cellBoundaries,
+    cellCenters: cellCenters,
+    cellWidths: cellWidths,
   };
 }
