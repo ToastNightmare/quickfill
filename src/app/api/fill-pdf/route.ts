@@ -51,6 +51,7 @@ export async function POST(request: NextRequest) {
 
     const fieldsJson = formData.get("fields") as string | null;
     const pageScalesJson = formData.get("pageScales") as string | null;
+    const viewportDimsJson = formData.get("viewportDims") as string | null;
     const hasAcroForm = formData.get("hasAcroForm") === "true";
     const isPro = formData.get("isPro") === "true";
 
@@ -61,6 +62,17 @@ export async function POST(request: NextRequest) {
     const editorFields: EditorField[] = JSON.parse(fieldsJson);
     const pageScaleEntries: [number, number][] = JSON.parse(pageScalesJson);
     const pageScales = new Map(pageScaleEntries);
+    
+    // Parse viewport dimensions if provided (for coordinate transformation)
+    let viewportDims: Map<number, { width: number; height: number }> | null = null;
+    if (viewportDimsJson) {
+      try {
+        const viewportEntries: [number, { width: number; height: number }][] = JSON.parse(viewportDimsJson);
+        viewportDims = new Map(viewportEntries);
+      } catch {
+        viewportDims = null;
+      }
+    }
 
     const pdfBytes = await pdfFile.arrayBuffer();
     const pdfDoc = await PDFDocument.load(pdfBytes, { ignoreEncryption: true });
@@ -86,7 +98,7 @@ export async function POST(request: NextRequest) {
         try {
           if (field.type === "whiteout") {
             // Whiteout fields are drawn directly on the page
-            await drawFieldOnPage(pdfDoc, field, pageScales, font, signatureFont);
+            await drawFieldOnPage(pdfDoc, field, pageScales, font, signatureFont, viewportDims);
           } else if (field.type === "signature" && field.signatureDataUrl) {
             const widget = findWidget(pdfDoc, form, field.id);
             if (widget) {
@@ -94,27 +106,27 @@ export async function POST(request: NextRequest) {
               if (page) await drawSignatureImage(pdfDoc, page, field.signatureDataUrl,
                 widget.x, widget.y, widget.width, widget.height, field.value, signatureFont, 14);
             } else {
-              await drawFieldOnPage(pdfDoc, field, pageScales, font, signatureFont);
+              await drawFieldOnPage(pdfDoc, field, pageScales, font, signatureFont, viewportDims);
             }
           } else if (field.type === "text" || field.type === "date" || field.type === "signature") {
             try {
               form.getTextField(field.id).setText(sanitize(field.value ?? ""));
             } catch {
-              await drawFieldOnPage(pdfDoc, field, pageScales, font, signatureFont);
+              await drawFieldOnPage(pdfDoc, field, pageScales, font, signatureFont, viewportDims);
             }
           } else if (field.type === "checkbox") {
             try {
               const cb = form.getCheckBox(field.id);
               if (field.checked) cb.check(); else cb.uncheck();
             } catch {
-              await drawFieldOnPage(pdfDoc, field, pageScales, font, signatureFont);
+              await drawFieldOnPage(pdfDoc, field, pageScales, font, signatureFont, viewportDims);
             }
           } else if (field.type === "comb") {
             // Comb fields are always user-placed, draw directly
-            await drawFieldOnPage(pdfDoc, field, pageScales, font, signatureFont);
+            await drawFieldOnPage(pdfDoc, field, pageScales, font, signatureFont, viewportDims);
           }
         } catch {
-          await drawFieldOnPage(pdfDoc, field, pageScales, font, signatureFont);
+          await drawFieldOnPage(pdfDoc, field, pageScales, font, signatureFont, viewportDims);
         }
       }
 
@@ -143,7 +155,7 @@ export async function POST(request: NextRequest) {
       }
     } else {
       for (const field of editorFields) {
-        await drawFieldOnPage(pdfDoc, field, pageScales, font, signatureFont);
+        await drawFieldOnPage(pdfDoc, field, pageScales, font, signatureFont, viewportDims);
       }
     }
 
@@ -235,19 +247,42 @@ function drawCheckmark(page: PDFPage, pdfX: number, pdfY: number, pdfW: number, 
   }
 }
 
-async function drawFieldOnPage(pdfDoc: PDFDocument, field: EditorField, _pageScales: Map<number, number>, font: PDFFont, signatureFont: PDFFont) {
+async function drawFieldOnPage(pdfDoc: PDFDocument, field: EditorField, _pageScales: Map<number, number>, font: PDFFont, signatureFont: PDFFont, viewportDims: Map<number, { width: number; height: number }> | null = null) {
   const page = pdfDoc.getPages()[field.page];
   if (!page) return;
 
-  // Field coordinates are now stored in PDF point space directly
-  // No scaling needed - just flip Y axis (PDF origin is bottom-left)
-  const pdfX = field.x;
-  const pdfY = page.getHeight() - field.y - field.height;
-  const pdfW = field.width;
-  const pdfH = field.height;
+  // Field coordinates are stored in pdf.js viewport-at-scale-1 space
+  // For PDFs with content transforms (like IronPdf templates with 0.24 scale + Y-flip),
+  // the viewport dimensions differ from the MediaBox dimensions.
+  // We need to scale field coordinates to match the MediaBox coordinate system.
+  
+  let pdfX = field.x;
+  let pdfY = field.y;
+  let pdfW = field.width;
+  let pdfH = field.height;
+
+  // If viewport dimensions provided, compute scale factor to convert from viewport space to MediaBox space
+  if (viewportDims && viewportDims.has(field.page)) {
+    const viewport = viewportDims.get(field.page)!;
+    const pageWidth = page.getWidth();
+    const pageHeight = page.getHeight();
+    
+    // Compute scale factors (for simple PDFs without transforms, these will be 1.0)
+    const scaleX = pageWidth / viewport.width;
+    const scaleY = pageHeight / viewport.height;
+    
+    // Apply scale to field coordinates
+    pdfX = field.x * scaleX;
+    pdfY = field.y * scaleY;
+    pdfW = field.width * scaleX;
+    pdfH = field.height * scaleY;
+  }
+
+  // Flip Y axis (PDF origin is bottom-left, viewport origin is top-left)
+  const finalPdfY = page.getHeight() - pdfY - pdfH;
 
   // Debug logging for coordinate calculation
-  console.log(`[drawFieldOnPage] field.id=${field.id} field.x=${field.x} field.y=${field.y} pdfX=${pdfX} pdfY=${pdfY} pageHeight=${page.getHeight()}`);
+  console.log(`[drawFieldOnPage] field.id=${field.id} field.x=${field.x} field.y=${field.y} pdfX=${pdfX} pdfY=${finalPdfY} pageHeight=${page.getHeight()}`);
 
   if (field.type === "whiteout") {
     // Draw a filled rectangle with the sampled background color
@@ -262,22 +297,22 @@ async function drawFieldOnPage(pdfDoc: PDFDocument, field: EditorField, _pageSca
     }
     page.drawRectangle({
       x: pdfX,
-      y: pdfY,
+      y: finalPdfY,
       width: pdfW,
       height: pdfH,
       color: rgb(r, g, b),
     });
   } else if (field.type === "signature" && field.signatureDataUrl) {
-    await drawSignatureImage(pdfDoc, page, field.signatureDataUrl, pdfX, pdfY, pdfW, pdfH, field.value, signatureFont, field.fontSize ?? 16);
+    await drawSignatureImage(pdfDoc, page, field.signatureDataUrl, pdfX, finalPdfY, pdfW, pdfH, field.value, signatureFont, field.fontSize ?? 16);
   } else if (field.type === "text" || field.type === "date" || field.type === "signature") {
     if (field.value) {
       const fontSize = field.type === "signature" ? 16 : field.fontSize ?? 14;
       const activeFont = field.type === "signature" ? signatureFont : font;
-      drawMultilineText(page, field.value, pdfX + 2, pdfY + pdfH - fontSize - 2, fontSize, activeFont);
+      drawMultilineText(page, field.value, pdfX + 2, finalPdfY + pdfH - fontSize - 2, fontSize, activeFont);
     }
   } else if (field.type === "checkbox" && field.checked) {
     const stamp = (field as { stamp?: string }).stamp ?? "tick";
-    drawCheckmark(page, pdfX, pdfY, pdfW, pdfH, stamp);
+    drawCheckmark(page, pdfX, finalPdfY, pdfW, pdfH, stamp);
   } else if (field.type === "comb") {
     const combField = field as import("@/lib/types").CombField;
     const value = combField.value ?? "";
@@ -295,7 +330,7 @@ async function drawFieldOnPage(pdfDoc: PDFDocument, field: EditorField, _pageSca
     // Use non-uniform cell positions/widths if available, otherwise uniform spacing
     const cellPositions = combField.cellPositions;
     const cellWidths = combField.cellWidths;
-    const uniformCellWidth = combField.cellWidth ?? (field.width / charCount);
+    const uniformCellWidth = combField.cellWidth ?? (field.width * (viewportDims && viewportDims.has(field.page) ? (page.getWidth() / viewportDims.get(field.page)!.width) : 1));
 
     // Draw each character centered in its cell
     for (let i = 0; i < value.length && i < charCount; i++) {
@@ -307,9 +342,9 @@ async function drawFieldOnPage(pdfDoc: PDFDocument, field: EditorField, _pageSca
       let cellW: number;
 
       if (cellPositions && cellPositions[i] !== undefined) {
-        // Non-uniform: cellPositions are relative to field X (already in PDF points)
-        cellCenterX = startX + cellPositions[i];
-        cellW = (cellWidths && cellWidths[i] !== undefined) ? cellWidths[i] : uniformCellWidth;
+        // Non-uniform: cellPositions are relative to field X (already scaled to PDF points)
+        cellCenterX = startX + cellPositions[i] * (viewportDims && viewportDims.has(field.page) ? (page.getWidth() / viewportDims.get(field.page)!.width) : 1);
+        cellW = (cellWidths && cellWidths[i] !== undefined) ? cellWidths[i] * (viewportDims && viewportDims.has(field.page) ? (page.getWidth() / viewportDims.get(field.page)!.width) : 1) : uniformCellWidth;
       } else {
         // Uniform spacing
         cellW = uniformCellWidth;
@@ -318,10 +353,10 @@ async function drawFieldOnPage(pdfDoc: PDFDocument, field: EditorField, _pageSca
 
       // Measure character width for centering
       const charWidth = font.widthOfTextAtSize(char, fontSize);
-      const charX = cellCenterX - charWidth / 2 + charOffsetX;
+      const charX = cellCenterX - charWidth / 2 + charOffsetX * (viewportDims && viewportDims.has(field.page) ? (page.getWidth() / viewportDims.get(field.page)!.width) : 1);
 
       // Vertically center the character
-      const charY = pdfY + (pdfH - fontSize) / 2;
+      const charY = finalPdfY + (pdfH - fontSize) / 2;
 
       page.drawText(char, {
         x: charX,

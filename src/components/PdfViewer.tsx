@@ -11,6 +11,7 @@ export interface PdfViewerHandle {
   getCanvasDataURL: () => string | null;
   getCanvasDimensions: () => { width: number; height: number };
   getCanvas: () => HTMLCanvasElement | null;
+  getViewportDims: () => { width: number; height: number } | null;
 }
 
 interface PdfViewerProps {
@@ -127,6 +128,8 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
   const [fitScale, setFitScale] = useState(1);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // Store viewport dimensions at scale 1 for coordinate transformation
+  const [viewportAtScale1, setViewportAtScale1] = useState<{ width: number; height: number } | null>(null);
   const [editingFieldId, setEditingFieldId] = useState<string | null>(null);
   const [snappedFieldId, setSnappedFieldId] = useState<string | null>(null);
   const [hoveredFieldId, setHoveredFieldId] = useState<string | null>(null);
@@ -163,6 +166,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
     getCanvasDataURL: () => canvasRef.current?.toDataURL("image/png") ?? null,
     getCanvasDimensions: () => dimensions,
     getCanvas: () => canvasRef.current,
+    getViewportDims: () => viewportAtScale1,
   }));
 
   const zoomFactor = zoom / 100;
@@ -225,6 +229,10 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
 
         const containerWidth = containerRef.current?.clientWidth ?? 800;
         const viewport = page.getViewport({ scale: 1 });
+        
+        // Store viewport dimensions at scale 1 for coordinate transformation
+        setViewportAtScale1({ width: viewport.width, height: viewport.height });
+        
         const newFitScale = Math.min((containerWidth - 32) / viewport.width, 1.5);
         const effectiveScale = newFitScale * zoomFactor;
         const scaledViewport = page.getViewport({ scale: effectiveScale });

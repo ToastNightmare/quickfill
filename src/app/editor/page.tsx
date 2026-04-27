@@ -123,6 +123,7 @@ export default function EditorPage() {
   const [unlockFeatureName, setUnlockFeatureName] = useState<string | undefined>(undefined);
   const [zoom, setZoom] = useState(100);
   const [pageScales] = useState(() => new Map<number, number>());
+  const [viewportDims] = useState(() => new Map<number, { width: number; height: number }>());
   const [isDetecting, setIsDetecting] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
@@ -734,6 +735,28 @@ export default function EditorPage() {
       fd.append("pdf", new Blob([pdfBytes], { type: "application/pdf" }), "input.pdf");
       fd.append("fields", JSON.stringify(fields));
       fd.append("pageScales", JSON.stringify(Array.from(pageScales.entries())));
+      
+      // Collect viewport dimensions for each page from PdfViewer
+      const pageViewportDims = new Map<number, { width: number; height: number }>();
+      if (pdfViewerRef.current) {
+        // We need viewport dims for all pages, not just current
+        // Since we can only access current page's viewport, we'll fetch all pages' viewports
+        // by temporarily rendering each page (this is done client-side, so it's acceptable)
+        try {
+          const pdfjsLib = await import("pdfjs-dist");
+          pdfjsLib.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs";
+          const pdf = await pdfjsLib.getDocument({ data: pdfBytes.slice(0) }).promise;
+          for (let i = 0; i < pdf.numPages; i++) {
+            const page = await pdf.getPage(i + 1);
+            const viewport = page.getViewport({ scale: 1 });
+            pageViewportDims.set(i, { width: viewport.width, height: viewport.height });
+          }
+        } catch (err) {
+          console.error("Failed to get viewport dimensions:", err);
+        }
+      }
+      
+      fd.append("viewportDims", JSON.stringify(Array.from(pageViewportDims.entries())));
       fd.append("hasAcroForm", String(hasAcroForm));
       fd.append("isPro", String(isPro));
 
