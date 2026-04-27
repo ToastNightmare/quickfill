@@ -313,23 +313,21 @@ function preparePageForDrawing(page: PDFPage, pdfDoc: PDFDocument) {
   const QMatches = text.match(/(?:^|\s)Q(?:\s|$)/g) || [];
   const unbalanced = qMatches.length - QMatches.length;
   
-  // Find the first transform matrix (cm operator)
-  const lines = text.split('\n');
+  // Find the first transform matrix (cm operator) - look for any cm operator in the content
   let firstCm: { a: number; b: number; c: number; d: number; e: number; f: number } | null = null;
-  for (const line of lines) {
-    const trimmed = line.trim();
-    const match = trimmed.match(/^([\d.e+-]+)\s+([\d.e+-]+)\s+([\d.e+-]+)\s+([\d.e+-]+)\s+([\d.e+-]+)\s+([\d.e+-]+)\s+cm$/);
-    if (match) {
-      firstCm = {
-        a: parseFloat(match[1]),
-        b: parseFloat(match[2]),
-        c: parseFloat(match[3]),
-        d: parseFloat(match[4]),
-        e: parseFloat(match[5]),
-        f: parseFloat(match[6]),
-      };
-      break;
-    }
+  // Match cm operator with 6 numbers before it (more flexible pattern)
+  const cmRegex = /([\d.e+-]+)\s+([\d.e+-]+)\s+([\d.e+-]+)\s+([\d.e+-]+)\s+([\d.e+-]+)\s+([\d.e+-]+)\s*cm/g;
+  let match;
+  while ((match = cmRegex.exec(text)) !== null) {
+    firstCm = {
+      a: parseFloat(match[1]),
+      b: parseFloat(match[2]),
+      c: parseFloat(match[3]),
+      d: parseFloat(match[4]),
+      e: parseFloat(match[5]),
+      f: parseFloat(match[6]),
+    };
+    break; // Take the first cm operator
   }
   
   // Build bridge operators
@@ -431,17 +429,12 @@ async function drawFieldOnPage(pdfDoc: PDFDocument, field: EditorField, _pageSca
 
     const fontSize = (combField as unknown as { fontSize?: number }).fontSize ?? 14;
     const charCount = combField.charCount || 1;
-    // Coordinates are already in PDF points - no scaling needed
-    const offsetX = combField.offsetX ?? 0;
     const charOffsetX = combField.charOffsetX ?? 0;
-
-    // Calculate starting position with offset
-    const startX = pdfX + offsetX;
 
     // Use non-uniform cell positions/widths if available, otherwise uniform spacing
     const cellPositions = combField.cellPositions;
     const cellWidths = combField.cellWidths;
-    const uniformCellWidth = combField.cellWidth ?? field.width;
+    const uniformCellWidth = combField.cellWidth ?? (field.width / charCount);
 
     // Draw each character centered in its cell
     for (let i = 0; i < value.length && i < charCount; i++) {
@@ -453,13 +446,14 @@ async function drawFieldOnPage(pdfDoc: PDFDocument, field: EditorField, _pageSca
       let cellW: number;
 
       if (cellPositions && cellPositions[i] !== undefined) {
-        // Non-uniform: cellPositions are relative to field X (already in PDF points)
-        cellCenterX = startX + cellPositions[i];
+        // Non-uniform: cellPositions are absolute positions in PDF points (relative to field.x)
+        // cellPositions[i] is the center of cell i relative to field.x
+        cellCenterX = pdfX + cellPositions[i];
         cellW = (cellWidths && cellWidths[i] !== undefined) ? cellWidths[i] : uniformCellWidth;
       } else {
-        // Uniform spacing
+        // Uniform spacing: divide field width by charCount
         cellW = uniformCellWidth;
-        cellCenterX = startX + (i + 0.5) * cellW;
+        cellCenterX = pdfX + (i + 0.5) * cellW;
       }
 
       // Measure character width for centering
