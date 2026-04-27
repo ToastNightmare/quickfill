@@ -3,7 +3,7 @@
 export const runtime = "nodejs";
 
 import { NextRequest, NextResponse } from "next/server";
-import { PDFDocument, rgb, StandardFonts, degrees, PDFName } from "pdf-lib";
+import { PDFDocument, rgb, StandardFonts, degrees, PDFName, PDFArray } from "pdf-lib";
 import type { EditorField } from "@/lib/types";
 import { APP_CONFIG } from "@/lib/config";
 import { applyBorderWatermark } from "@/lib/watermark";
@@ -247,42 +247,55 @@ function drawCheckmark(page: PDFPage, pdfX: number, pdfY: number, pdfW: number, 
   }
 }
 
-async function drawFieldOnPage(pdfDoc: PDFDocument, field: EditorField, _pageScales: Map<number, number>, font: PDFFont, signatureFont: PDFFont, viewportDims: Map<number, { width: number; height: number }> | null = null) {
+// Wrap page content in graphics state to isolate any existing transforms
+// This ensures our drawing operations are in clean page coordinate space
+function wrapPageContentInGraphicsState(page: PDFPage, pdfDoc: PDFDocument) {
+  const node = page.node;
+  const contentsRef = node.get(PDFName.of("Contents"));
+  
+  if (!contentsRef) return;
+  
+  const context = pdfDoc.context;
+  
+  // Create a new stream with just "q\n" (push graphics state)
+  const qStream = context.stream(new Uint8Array([113, 10]));
+  const qRef = context.register(qStream);
+  
+  // Create a new stream with just "\nQ\n" (pop graphics state)
+  const QStream = context.stream(new Uint8Array([10, 81, 10]));
+  const QRef = context.register(QStream);
+  
+  // Wrap: Contents becomes [qRef, ...existingContents, QRef]
+  const existingContents = node.Contents();
+  
+  if (existingContents instanceof PDFArray) {
+    // Already an array of streams
+    const newArray = context.obj([qRef, ...existingContents.asArray(), QRef]);
+    node.set(PDFName.of("Contents"), newArray);
+  } else if (existingContents) {
+    // Single stream reference
+    const newArray = context.obj([qRef, existingContents, QRef]);
+    node.set(PDFName.of("Contents"), newArray);
+  }
+}
+
+async function drawFieldOnPage(pdfDoc: PDFDocument, field: EditorField, _pageScales: Map<number, number>, font: PDFFont, signatureFont: PDFFont, _viewportDims: Map<number, { width: number; height: number }> | null = null) {
   const page = pdfDoc.getPages()[field.page];
   if (!page) return;
 
-  // Field coordinates are stored in pdf.js viewport-at-scale-1 space
-  // For PDFs with content transforms (like IronPdf templates with 0.24 scale + Y-flip),
-  // the viewport dimensions differ from the MediaBox dimensions.
-  // We need to scale field coordinates to match the MediaBox coordinate system.
-  
-  let pdfX = field.x;
-  let pdfY = field.y;
-  let pdfW = field.width;
-  let pdfH = field.height;
+  // Wrap page content in graphics state to isolate any existing transforms
+  // This must be done once per page, but calling it multiple times is harmless
+  wrapPageContentInGraphicsState(page, pdfDoc);
 
-  // If viewport dimensions provided, compute scale factor to convert from viewport space to MediaBox space
-  if (viewportDims && viewportDims.has(field.page)) {
-    const viewport = viewportDims.get(field.page)!;
-    const pageWidth = page.getWidth();
-    const pageHeight = page.getHeight();
-    
-    // Compute scale factors (for simple PDFs without transforms, these will be 1.0)
-    const scaleX = pageWidth / viewport.width;
-    const scaleY = pageHeight / viewport.height;
-    
-    // Apply scale to field coordinates
-    pdfX = field.x * scaleX;
-    pdfY = field.y * scaleY;
-    pdfW = field.width * scaleX;
-    pdfH = field.height * scaleY;
-  }
+  // Field coordinates are now in clean PDF page coordinate space
+  // No scaling needed - the graphics state isolation handles any transforms
+  const pdfX = field.x;
+  const pdfY = field.y;
+  const pdfW = field.width;
+  const pdfH = field.height;
 
   // Flip Y axis (PDF origin is bottom-left, viewport origin is top-left)
   const finalPdfY = page.getHeight() - pdfY - pdfH;
-
-  // Debug logging for coordinate calculation
-  console.log(`[drawFieldOnPage] field.id=${field.id} field.x=${field.x} field.y=${field.y} pdfX=${pdfX} pdfY=${finalPdfY} pageHeight=${page.getHeight()}`);
 
   if (field.type === "whiteout") {
     // Draw a filled rectangle with the sampled background color
@@ -330,7 +343,7 @@ async function drawFieldOnPage(pdfDoc: PDFDocument, field: EditorField, _pageSca
     // Use non-uniform cell positions/widths if available, otherwise uniform spacing
     const cellPositions = combField.cellPositions;
     const cellWidths = combField.cellWidths;
-    const uniformCellWidth = combField.cellWidth ?? (field.width * (viewportDims && viewportDims.has(field.page) ? (page.getWidth() / viewportDims.get(field.page)!.width) : 1));
+    const uniformCellWidth = combField.cellWidth ?? field.width;
 
     // Draw each character centered in its cell
     for (let i = 0; i < value.length && i < charCount; i++) {
@@ -342,9 +355,9 @@ async function drawFieldOnPage(pdfDoc: PDFDocument, field: EditorField, _pageSca
       let cellW: number;
 
       if (cellPositions && cellPositions[i] !== undefined) {
-        // Non-uniform: cellPositions are relative to field X (already scaled to PDF points)
-        cellCenterX = startX + cellPositions[i] * (viewportDims && viewportDims.has(field.page) ? (page.getWidth() / viewportDims.get(field.page)!.width) : 1);
-        cellW = (cellWidths && cellWidths[i] !== undefined) ? cellWidths[i] * (viewportDims && viewportDims.has(field.page) ? (page.getWidth() / viewportDims.get(field.page)!.width) : 1) : uniformCellWidth;
+        // Non-uniform: cellPositions are relative to field X (already in PDF points)
+        cellCenterX = startX + cellPositions[i];
+        cellW = (cellWidths && cellWidths[i] !== undefined) ? cellWidths[i] : uniformCellWidth;
       } else {
         // Uniform spacing
         cellW = uniformCellWidth;
@@ -353,7 +366,7 @@ async function drawFieldOnPage(pdfDoc: PDFDocument, field: EditorField, _pageSca
 
       // Measure character width for centering
       const charWidth = font.widthOfTextAtSize(char, fontSize);
-      const charX = cellCenterX - charWidth / 2 + charOffsetX * (viewportDims && viewportDims.has(field.page) ? (page.getWidth() / viewportDims.get(field.page)!.width) : 1);
+      const charX = cellCenterX - charWidth / 2 + charOffsetX;
 
       // Vertically center the character
       const charY = finalPdfY + (pdfH - fontSize) / 2;
