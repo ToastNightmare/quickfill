@@ -265,8 +265,10 @@ function drawCheckmark(page: PDFPage, pdfX: number, pdfY: number, pdfW: number, 
   }
 }
 
-// Prepare page for drawing by popping all unbalanced graphics states
-// This resets the CTM to identity so our drawings use clean page coordinates
+// Prepare page for drawing by detecting and compensating for leaked transforms.
+// We detect the initial transform matrix from the content stream, then append
+// operators that pop unbalanced q/Q states and apply the inverse transform
+// to restore page coordinate space for our drawings.
 function preparePageForDrawing(page: PDFPage, pdfDoc: PDFDocument) {
   const node = page.node;
   const context = pdfDoc.context;
@@ -311,14 +313,56 @@ function preparePageForDrawing(page: PDFPage, pdfDoc: PDFDocument) {
   const QMatches = text.match(/(?:^|\s)Q(?:\s|$)/g) || [];
   const unbalanced = qMatches.length - QMatches.length;
   
-  if (unbalanced <= 0) return; // No leaked state, page is clean
-  
-  // Build bridge operators: close all unbalanced states, then save a clean one
-  let bridgeOps = '\n';
-  for (let i = 0; i < unbalanced + 1; i++) { // +1 for the implicit base state with the cm
-    bridgeOps += 'Q\n';
+  // Find the first transform matrix (cm operator)
+  const lines = text.split('\n');
+  let firstCm: { a: number; b: number; c: number; d: number; e: number; f: number } | null = null;
+  for (const line of lines) {
+    const trimmed = line.trim();
+    const match = trimmed.match(/^([\d.e+-]+)\s+([\d.e+-]+)\s+([\d.e+-]+)\s+([\d.e+-]+)\s+([\d.e+-]+)\s+([\d.e+-]+)\s+cm$/);
+    if (match) {
+      firstCm = {
+        a: parseFloat(match[1]),
+        b: parseFloat(match[2]),
+        c: parseFloat(match[3]),
+        d: parseFloat(match[4]),
+        e: parseFloat(match[5]),
+        f: parseFloat(match[6]),
+      };
+      break;
+    }
   }
-  bridgeOps += 'q\n'; // Save clean state for our drawings
+  
+  // Build bridge operators
+  let bridgeOps = '\n';
+  
+  if (unbalanced > 0) {
+    // Pop unbalanced states
+    for (let i = 0; i < unbalanced; i++) {
+      bridgeOps += 'Q\n';
+    }
+  }
+  
+  // Save a clean state
+  bridgeOps += 'q\n';
+  
+  // If there was an initial transform, apply its inverse to restore page coordinates
+  if (firstCm) {
+    // Inverse of [a b c d e f] is:
+    // inv = 1/(ad-bc)
+    // [ d/inv  -b/inv  -c/inv  a/inv  (ce-df)/inv  (bf-ae)/inv ]
+    const { a, b, c, d, e, f } = firstCm;
+    const det = a * d - b * c;
+    if (Math.abs(det) > 0.0001) {
+      const inv = 1 / det;
+      const ia = d * inv;
+      const ib = -b * inv;
+      const ic = -c * inv;
+      const id = a * inv;
+      const ie = (c * f - d * e) * inv;
+      const if_ = (b * e - a * f) * inv;
+      bridgeOps += `${ia} ${ib} ${ic} ${id} ${ie} ${if_} cm\n`;
+    }
+  }
   
   // Create and append bridge stream
   const bridgeStream = context.stream(new TextEncoder().encode(bridgeOps));
