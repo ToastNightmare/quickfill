@@ -82,6 +82,9 @@ export async function POST(request: NextRequest) {
     if (hasAcroForm) {
       const form = pdfDoc.getForm();
 
+      // Track which pages have been wrapped to avoid duplicate wrapping
+      const wrappedPages = new Set<number>();
+
       // Sanitize all existing AcroForm text field values, prevents WinAnsi crash on flatten
       for (const af of form.getFields()) {
         if (af.constructor.name === "PDFTextField") {
@@ -95,6 +98,13 @@ export async function POST(request: NextRequest) {
 
       // Set user-filled values
       for (const field of editorFields) {
+        // Wrap page content in graphics state once per page
+        if (!wrappedPages.has(field.page)) {
+          const page = pdfDoc.getPages()[field.page];
+          if (page) wrapPageContentInGraphicsState(page, pdfDoc);
+          wrappedPages.add(field.page);
+        }
+
         try {
           if (field.type === "whiteout") {
             // Whiteout fields are drawn directly on the page
@@ -154,7 +164,15 @@ export async function POST(request: NextRequest) {
         // AcroForm removal not critical - read-only fields are still protected
       }
     } else {
+      // Track which pages have been wrapped to avoid duplicate wrapping
+      const wrappedPages = new Set<number>();
       for (const field of editorFields) {
+        // Wrap page content in graphics state once per page
+        if (!wrappedPages.has(field.page)) {
+          const page = pdfDoc.getPages()[field.page];
+          if (page) wrapPageContentInGraphicsState(page, pdfDoc);
+          wrappedPages.add(field.page);
+        }
         await drawFieldOnPage(pdfDoc, field, pageScales, font, signatureFont, viewportDims);
       }
     }
@@ -283,10 +301,6 @@ async function drawFieldOnPage(pdfDoc: PDFDocument, field: EditorField, _pageSca
   const page = pdfDoc.getPages()[field.page];
   if (!page) return;
 
-  // Wrap page content in graphics state to isolate any existing transforms
-  // This must be done once per page, but calling it multiple times is harmless
-  wrapPageContentInGraphicsState(page, pdfDoc);
-
   // Field coordinates are now in clean PDF page coordinate space
   // No scaling needed - the graphics state isolation handles any transforms
   const pdfX = field.x;
@@ -321,7 +335,15 @@ async function drawFieldOnPage(pdfDoc: PDFDocument, field: EditorField, _pageSca
     if (field.value) {
       const fontSize = field.type === "signature" ? 16 : field.fontSize ?? 14;
       const activeFont = field.type === "signature" ? signatureFont : font;
-      drawMultilineText(page, field.value, pdfX + 2, finalPdfY + pdfH - fontSize - 2, fontSize, activeFont);
+      // Vertically center text in the field box (matching editor's verticalAlign: "middle")
+      const textY = finalPdfY + (pdfH - fontSize) / 2;
+      page.drawText(sanitize(field.value), {
+        x: pdfX + 2,
+        y: textY,
+        size: fontSize,
+        font: activeFont,
+        color: rgb(0, 0, 0),
+      });
     }
   } else if (field.type === "checkbox" && field.checked) {
     const stamp = (field as { stamp?: string }).stamp ?? "tick";
