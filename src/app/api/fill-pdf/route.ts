@@ -98,10 +98,10 @@ export async function POST(request: NextRequest) {
 
       // Set user-filled values
       for (const field of editorFields) {
-        // Wrap page content in graphics state once per page
+        // Prepare page for drawing by popping unbalanced graphics states once per page
         if (!wrappedPages.has(field.page)) {
           const page = pdfDoc.getPages()[field.page];
-          if (page) wrapPageContentInGraphicsState(page, pdfDoc);
+          if (page) preparePageForDrawing(page, pdfDoc);
           wrappedPages.add(field.page);
         }
 
@@ -167,10 +167,10 @@ export async function POST(request: NextRequest) {
       // Track which pages have been wrapped to avoid duplicate wrapping
       const wrappedPages = new Set<number>();
       for (const field of editorFields) {
-        // Wrap page content in graphics state once per page
+        // Prepare page for drawing by popping unbalanced graphics states once per page
         if (!wrappedPages.has(field.page)) {
           const page = pdfDoc.getPages()[field.page];
-          if (page) wrapPageContentInGraphicsState(page, pdfDoc);
+          if (page) preparePageForDrawing(page, pdfDoc);
           wrappedPages.add(field.page);
         }
         await drawFieldOnPage(pdfDoc, field, pageScales, font, signatureFont, viewportDims);
@@ -265,36 +265,68 @@ function drawCheckmark(page: PDFPage, pdfX: number, pdfY: number, pdfW: number, 
   }
 }
 
-// Wrap page content in graphics state to isolate any existing transforms
-// This ensures our drawing operations are in clean page coordinate space
-function wrapPageContentInGraphicsState(page: PDFPage, pdfDoc: PDFDocument) {
+// Prepare page for drawing by popping all unbalanced graphics states
+// This resets the CTM to identity so our drawings use clean page coordinates
+function preparePageForDrawing(page: PDFPage, pdfDoc: PDFDocument) {
   const node = page.node;
-  const contentsRef = node.get(PDFName.of("Contents"));
-  
-  if (!contentsRef) return;
-  
   const context = pdfDoc.context;
+  const contents = node.Contents();
   
-  // Create a new stream with just "q\n" (push graphics state)
-  const qStream = context.stream(new Uint8Array([113, 10]));
-  const qRef = context.register(qStream);
+  if (!contents) return;
   
-  // Create a new stream with just "\nQ\n" (pop graphics state)
-  const QStream = context.stream(new Uint8Array([10, 81, 10]));
-  const QRef = context.register(QStream);
+  // Gather all existing content bytes
+  let allBytes: Uint8Array;
+  const contentRefs: any[] = [];
   
-  // Wrap: Contents becomes [qRef, ...existingContents, QRef]
-  const existingContents = node.Contents();
-  
-  if (existingContents instanceof PDFArray) {
-    // Already an array of streams
-    const newArray = context.obj([qRef, ...existingContents.asArray(), QRef]);
-    node.set(PDFName.of("Contents"), newArray);
-  } else if (existingContents) {
-    // Single stream reference
-    const newArray = context.obj([qRef, existingContents, QRef]);
-    node.set(PDFName.of("Contents"), newArray);
+  if (contents instanceof PDFArray) {
+    const chunks: Uint8Array[] = [];
+    for (const ref of contents.asArray()) {
+      contentRefs.push(ref);
+      const stream = context.lookup(ref);
+      if (stream && typeof (stream as any).getContents === 'function') {
+        chunks.push((stream as any).getContents());
+      }
+    }
+    const totalLen = chunks.reduce((s, c) => s + c.length, 0);
+    if (totalLen === 0) return;
+    allBytes = new Uint8Array(totalLen);
+    let offset = 0;
+    for (const c of chunks) {
+      allBytes.set(c, offset);
+      offset += c.length;
+    }
+  } else {
+    contentRefs.push(contents);
+    if (typeof (contents as any).getContents === 'function') {
+      allBytes = (contents as any).getContents();
+    } else {
+      return;
+    }
   }
+  
+  const text = new TextDecoder('latin1').decode(allBytes);
+  
+  // Count q/Q imbalance
+  const qMatches = text.match(/(?:^|\s)q(?:\s|$)/g) || [];
+  const QMatches = text.match(/(?:^|\s)Q(?:\s|$)/g) || [];
+  const unbalanced = qMatches.length - QMatches.length;
+  
+  if (unbalanced <= 0) return; // No leaked state, page is clean
+  
+  // Build bridge operators: close all unbalanced states, then save a clean one
+  let bridgeOps = '\n';
+  for (let i = 0; i < unbalanced + 1; i++) { // +1 for the implicit base state with the cm
+    bridgeOps += 'Q\n';
+  }
+  bridgeOps += 'q\n'; // Save clean state for our drawings
+  
+  // Create and append bridge stream
+  const bridgeStream = context.stream(new TextEncoder().encode(bridgeOps));
+  const bridgeRef = context.register(bridgeStream);
+  
+  // Append bridge stream after existing content
+  const newArray = context.obj([...contentRefs, bridgeRef]);
+  node.set(PDFName.of("Contents"), newArray);
 }
 
 async function drawFieldOnPage(pdfDoc: PDFDocument, field: EditorField, _pageScales: Map<number, number>, font: PDFFont, signatureFont: PDFFont, _viewportDims: Map<number, { width: number; height: number }> | null = null) {
