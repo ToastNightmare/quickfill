@@ -265,10 +265,10 @@ function drawCheckmark(page: PDFPage, pdfX: number, pdfY: number, pdfW: number, 
   }
 }
 
-// Prepare page for drawing by detecting and compensating for leaked transforms.
-// We detect the initial transform matrix from the content stream, then append
-// operators that pop unbalanced q/Q states and apply the inverse transform
-// to restore page coordinate space for our drawings.
+// Isolate existing page content so new drawings use clean page coordinates.
+// Some source PDFs leave transforms or q states open at the end of a content stream.
+// Wrapping the original streams and closing any leaked states prevents those
+// transforms from scaling our field text, comb spacing, and positions.
 function preparePageForDrawing(page: PDFPage, pdfDoc: PDFDocument) {
   const node = page.node;
   const context = pdfDoc.context;
@@ -312,62 +312,22 @@ function preparePageForDrawing(page: PDFPage, pdfDoc: PDFDocument) {
   const qMatches = text.match(/(?:^|\s)q(?:\s|$)/g) || [];
   const QMatches = text.match(/(?:^|\s)Q(?:\s|$)/g) || [];
   const unbalanced = qMatches.length - QMatches.length;
-  
-  // Find the first transform matrix (cm operator) - look for any cm operator in the content
-  let firstCm: { a: number; b: number; c: number; d: number; e: number; f: number } | null = null;
-  // Match cm operator with 6 numbers before it (more flexible pattern)
-  const cmRegex = /([\d.e+-]+)\s+([\d.e+-]+)\s+([\d.e+-]+)\s+([\d.e+-]+)\s+([\d.e+-]+)\s+([\d.e+-]+)\s*cm/g;
-  let match;
-  while ((match = cmRegex.exec(text)) !== null) {
-    firstCm = {
-      a: parseFloat(match[1]),
-      b: parseFloat(match[2]),
-      c: parseFloat(match[3]),
-      d: parseFloat(match[4]),
-      e: parseFloat(match[5]),
-      f: parseFloat(match[6]),
-    };
-    break; // Take the first cm operator
-  }
-  
-  // Build bridge operators
+
+  // Save the original graphics state before existing content runs.
+  const qStream = context.stream(new TextEncoder().encode("q\n"));
+  const qRef = context.register(qStream);
+
+  // Close the wrapper plus any leaked states from the original content.
   let bridgeOps = '\n';
-  
-  if (unbalanced > 0) {
-    // Pop unbalanced states
-    for (let i = 0; i < unbalanced; i++) {
-      bridgeOps += 'Q\n';
-    }
+  for (let i = 0; i < Math.max(1, unbalanced + 1); i++) {
+    bridgeOps += 'Q\n';
   }
   
-  // Save a clean state
-  bridgeOps += 'q\n';
-  
-  // If there was an initial transform, apply its inverse to restore page coordinates
-  if (firstCm) {
-    // Inverse of [a b c d e f] is:
-    // inv = 1/(ad-bc)
-    // [ d/inv  -b/inv  -c/inv  a/inv  (ce-df)/inv  (bf-ae)/inv ]
-    const { a, b, c, d, e, f } = firstCm;
-    const det = a * d - b * c;
-    if (Math.abs(det) > 0.0001) {
-      const inv = 1 / det;
-      const ia = d * inv;
-      const ib = -b * inv;
-      const ic = -c * inv;
-      const id = a * inv;
-      const ie = (c * f - d * e) * inv;
-      const if_ = (b * e - a * f) * inv;
-      bridgeOps += `${ia} ${ib} ${ic} ${id} ${ie} ${if_} cm\n`;
-    }
-  }
-  
-  // Create and append bridge stream
+  // Append the bridge after existing content, leaving following draws clean.
   const bridgeStream = context.stream(new TextEncoder().encode(bridgeOps));
   const bridgeRef = context.register(bridgeStream);
   
-  // Append bridge stream after existing content
-  const newArray = context.obj([...contentRefs, bridgeRef]);
+  const newArray = context.obj([qRef, ...contentRefs, bridgeRef]);
   node.set(PDFName.of("Contents"), newArray);
 }
 
@@ -427,8 +387,9 @@ async function drawFieldOnPage(pdfDoc: PDFDocument, field: EditorField, _pageSca
     const value = combField.value ?? "";
     if (!value) return;
 
-    const fontSize = (combField as unknown as { fontSize?: number }).fontSize ?? 14;
+    const fontSize = (combField as unknown as { fontSize?: number }).fontSize ?? pdfH * 0.6;
     const charCount = combField.charCount || 1;
+    const offsetX = combField.offsetX ?? 0;
     const charOffsetX = combField.charOffsetX ?? 0;
 
     // Use non-uniform cell positions/widths if available, otherwise uniform spacing
@@ -446,14 +407,14 @@ async function drawFieldOnPage(pdfDoc: PDFDocument, field: EditorField, _pageSca
       let cellW: number;
 
       if (cellPositions && cellPositions[i] !== undefined) {
-        // Non-uniform: cellPositions are absolute positions in PDF points (relative to field.x)
+        // Non-uniform: cellPositions are cell centers in PDF points, relative to field.x
         // cellPositions[i] is the center of cell i relative to field.x
-        cellCenterX = pdfX + cellPositions[i];
+        cellCenterX = pdfX + offsetX + cellPositions[i];
         cellW = (cellWidths && cellWidths[i] !== undefined) ? cellWidths[i] : uniformCellWidth;
       } else {
         // Uniform spacing: divide field width by charCount
         cellW = uniformCellWidth;
-        cellCenterX = pdfX + (i + 0.5) * cellW;
+        cellCenterX = pdfX + offsetX + (i + 0.5) * cellW;
       }
 
       // Measure character width for centering
