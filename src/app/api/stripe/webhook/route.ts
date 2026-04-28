@@ -4,11 +4,21 @@ import { getRedis } from "@/lib/redis";
 import { Resend } from "resend";
 import type Stripe from "stripe";
 
-const TTL_SECONDS = 35 * 24 * 60 * 60; // 35 days
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? "https://getquickfill.com";
 
 function getResend() {
+  if (!process.env.RESEND_API_KEY) return null;
   return new Resend(process.env.RESEND_API_KEY);
+}
+
+async function sendEmail(message: { from: string; to: string; subject: string; html: string }) {
+  const resend = getResend();
+  if (!resend) return;
+  try {
+    await resend.emails.send(message);
+  } catch {
+    // Email failures should not block Stripe webhook processing.
+  }
 }
 
 function tierFromPriceId(priceId: string): "pro" | "business" | null {
@@ -25,6 +35,17 @@ async function getEmailForCustomer(customerId: string): Promise<string | null> {
   } catch {
     return null;
   }
+}
+
+async function getUserIdForCustomer(customerId: string): Promise<string | null> {
+  return getRedis().get<string>(`stripe_customer_user:${customerId}`);
+}
+
+async function getUserIdForSubscription(subscription: Stripe.Subscription): Promise<string | null> {
+  const metaUserId = subscription.metadata?.userId;
+  if (metaUserId) return metaUserId;
+  if (!subscription.customer) return null;
+  return getUserIdForCustomer(subscription.customer as string);
 }
 
 function emailWrapper(content: string) {
@@ -120,10 +141,26 @@ export async function POST(req: NextRequest) {
       }
 
       // Setting Redis subscription key
-      await getRedis().set(`sub:${userId}`, tier, { ex: TTL_SECONDS });
+      await getRedis().set(`sub:${userId}`, tier);
 
       if (session.customer) {
-        await getRedis().set(`stripe_customer:${userId}`, session.customer as string);
+        const customerId = session.customer as string;
+        await getRedis().set(`stripe_customer:${userId}`, customerId);
+        await getRedis().set(`stripe_customer_user:${customerId}`, userId);
+      }
+
+      if (session.subscription) {
+        try {
+          await getStripe().subscriptions.update(session.subscription as string, {
+            metadata: {
+              userId,
+              plan: tier,
+              billing: session.metadata?.billing ?? "monthly",
+            },
+          });
+        } catch {
+          // The reverse customer lookup still lets later subscription events find the user.
+        }
       }
 
       // Send Pro welcome email
@@ -145,7 +182,7 @@ export async function POST(req: NextRequest) {
 
       if (email) {
         // Sending Pro welcome email
-        await getResend().emails.send({
+        await sendEmail({
           from: "QuickFill <noreply@getquickfill.com>",
           to: email,
           subject: "Welcome to QuickFill Pro 🎉",
@@ -160,7 +197,7 @@ export async function POST(req: NextRequest) {
   // ── Subscription updated ───────────────────────────────────────────────────
   if (event.type === "customer.subscription.updated") {
     const subscription = event.data.object as Stripe.Subscription;
-    const userId = subscription.metadata?.userId;
+    const userId = await getUserIdForSubscription(subscription);
 
     if (userId) {
       const status = subscription.status;
@@ -168,14 +205,14 @@ export async function POST(req: NextRequest) {
       if (status === "active") {
         const priceId = subscription.items.data[0]?.price?.id;
         const tier = priceId ? tierFromPriceId(priceId) : null;
-        await getRedis().set(`sub:${userId}`, tier ?? "pro", { ex: TTL_SECONDS });
+        await getRedis().set(`sub:${userId}`, tier ?? "pro");
       } else if (status === "past_due" || status === "unpaid") {
         await getRedis().del(`sub:${userId}`);
 
         // Send payment failed email
         const email = subscription.customer ? await getEmailForCustomer(subscription.customer as string) : null;
         if (email) {
-          await getResend().emails.send({
+          await sendEmail({
             from: "QuickFill <hello@getquickfill.com>",
             to: email,
             subject: "Action needed, QuickFill payment failed",
@@ -199,7 +236,7 @@ export async function POST(req: NextRequest) {
   // ── Subscription cancelled ─────────────────────────────────────────────────
   if (event.type === "customer.subscription.deleted") {
     const subscription = event.data.object as Stripe.Subscription;
-    const userId = subscription.metadata?.userId;
+    const userId = await getUserIdForSubscription(subscription);
 
     if (userId) {
       await getRedis().del(`sub:${userId}`);
@@ -207,7 +244,7 @@ export async function POST(req: NextRequest) {
       // Send cancellation confirmation email
       const email = subscription.customer ? await getEmailForCustomer(subscription.customer as string) : null;
       if (email) {
-        await getResend().emails.send({
+        await sendEmail({
           from: "QuickFill <hello@getquickfill.com>",
           to: email,
           subject: "Your QuickFill Pro subscription has ended",

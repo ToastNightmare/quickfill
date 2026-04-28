@@ -100,7 +100,7 @@ test('Navigation links work', async ({ page }) => {
   await expect(page).toHaveURL('/pricing');
 });
 
-test('Templates page — official badge exists', async ({ page }) => {
+test('Templates page  -  official badge exists', async ({ page }) => {
   await page.goto('/templates');
   await page.waitForLoadState('networkidle');
 
@@ -109,7 +109,7 @@ test('Templates page — official badge exists', async ({ page }) => {
   await expect(officialBadge).toBeVisible();
 });
 
-test('Homepage — comparison table exists', async ({ page }) => {
+test('Homepage  -  comparison table exists', async ({ page }) => {
   await page.goto('/');
   await page.waitForLoadState('networkidle');
 
@@ -130,7 +130,7 @@ test('Homepage — comparison table exists', async ({ page }) => {
   }
 });
 
-test('Homepage — FAQ section exists', async ({ page }) => {
+test('Homepage  -  FAQ section exists', async ({ page }) => {
   await page.goto('/');
   await page.waitForLoadState('networkidle');
 
@@ -147,7 +147,7 @@ test('Homepage — FAQ section exists', async ({ page }) => {
   }
 });
 
-test('Pricing — Free tier shown', async ({ page }) => {
+test('Pricing  -  Free tier shown', async ({ page }) => {
   await page.goto('/pricing');
   await page.waitForLoadState('networkidle');
 

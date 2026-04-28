@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { checkRateLimit } from "@/lib/rate-limit";
 
-// Lazy singleton OpenAI client — only instantiated at request time
+// Lazy singleton OpenAI client  -  only instantiated at request time
 let _openaiClient: OpenAI | null = null;
 
 function getOpenAIClient(): OpenAI {

@@ -415,12 +415,12 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
     }
     const node = nodeMapRef.current.get(selectedFieldId);
     if (node) {
-      // Node is already mounted — attach now
+      // Node is already mounted  -  attach now
       tr.nodes([]);
       tr.nodes([node]);
       tr.getLayer()?.batchDraw();
     }
-    // If node not found yet, do nothing — registerNode will attach when it mounts
+    // If node not found yet, do nothing  -  registerNode will attach when it mounts
   }, [selectedFieldId, fields]);
 
   // Animate snap preview opacity

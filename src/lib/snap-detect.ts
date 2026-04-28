@@ -636,7 +636,7 @@ export function floodFillCell(
   }
   if (brSamples > 0 && avgBr / brSamples < 234) return null;
 
-  // Border threshold — catches both solid and anti-aliased lines
+  // Border threshold  -  catches both solid and anti-aliased lines
   const BORDER = 175;
 
   // Scan a single line from a point outward until hitting a dark pixel.
@@ -699,7 +699,7 @@ export function floodFillCell(
   }
 
   // Sort measurements and pick the MEDIAN value.
-  // Median is robust — phantom lines that stop a minority of scans early
+  // Median is robust  -  phantom lines that stop a minority of scans early
   // get outvoted by the majority that reach the real border.
   const median = (arr: number[]) => {
     if (arr.length === 0) return maxHoriz;
@@ -725,7 +725,7 @@ export function floodFillCell(
     }
     const darkFraction = checked > 0 ? darkInRow / checked : 1;
     if (darkFraction < 0.4) {
-      // Phantom line — use the maximum boundary (widest scan)
+      // Phantom line  -  use the maximum boundary (widest scan)
       const maxMeasure = direction === 1
         ? Math.max(...rightMeasures)
         : Math.max(...leftMeasures);
@@ -854,7 +854,7 @@ export function detectSnapBox(
     const whiteOnly = (boxes: SnapResult[]) =>
       boxes.filter((b) => isWhiteInterior(data, sw, b, 0, 0));
 
-    // Helper: full segmentation — vertical then horizontal
+    // Helper: full segmentation  -  vertical then horizontal
     const segment = (boxes: SnapResult[]) =>
       segmentByInternalHorizontalDividers(
         segmentByInternalDividers(boxes, vLines),
@@ -998,7 +998,7 @@ export function detectAllBoxes(canvas: HTMLCanvasElement): SnapResult[] {
     const whiteOnly = (boxes: SnapResult[]) =>
       boxes.filter((b) => isWhiteInterior(data, w, b, 0, 0));
 
-    // Helper: full segmentation — vertical then horizontal
+    // Helper: full segmentation  -  vertical then horizontal
     const segment = (boxes: SnapResult[]) =>
       segmentByInternalHorizontalDividers(
         segmentByInternalDividers(boxes, vLines),

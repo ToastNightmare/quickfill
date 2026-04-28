@@ -35,7 +35,7 @@ export function ContextBar({
   onStampChange,
 }: ContextBarProps) {
 
-  // Nothing happening — hide
+  // Nothing happening  -  hide
   if (!activeTool && !selectedField) return null;
 
   // ── Tool active ──────────────────────────────────────────────────────────

@@ -3,11 +3,14 @@
 export const runtime = "nodejs";
 
 import { NextRequest, NextResponse } from "next/server";
+import { auth } from "@clerk/nextjs/server";
+import crypto from "crypto";
 import { PDFDocument, rgb, StandardFonts, degrees, PDFName, PDFArray } from "pdf-lib";
 import type { EditorField } from "@/lib/types";
 import { APP_CONFIG } from "@/lib/config";
 import { applyBorderWatermark } from "@/lib/watermark";
 import { checkRateLimit } from "@/lib/rate-limit";
+import { getRedis } from "@/lib/redis";
 
 /** Replace control characters (including newlines) with a space */
 function sanitize(text: string): string {
@@ -17,6 +20,57 @@ function sanitize(text: string): string {
 /** Check if a string has characters outside WinAnsi range */
 function hasNonWinAnsi(text: string): boolean {
   return /[^\x00-\xff]/.test(text) || /[\x00-\x09\x0b-\x1f\x7f]/.test(text);
+}
+
+const FREE_FILL_LIMIT = 3;
+const USAGE_TTL_SECONDS = 35 * 24 * 60 * 60;
+const GUEST_TTL_SECONDS = 30 * 24 * 60 * 60;
+
+type DownloadAccess = {
+  isPro: boolean;
+  used: number;
+  limit: number;
+  key: string | null;
+};
+
+function usageKey(userId: string) {
+  const now = new Date();
+  const month = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  return `usage:${userId}:${month}`;
+}
+
+function getGuestIdentifier(request: NextRequest): string {
+  const forwarded = request.headers.get("x-forwarded-for");
+  const realIp = request.headers.get("x-real-ip");
+  const ip = forwarded?.split(",")[0] || realIp || "unknown";
+  const hash = crypto.createHash("sha256").update(ip).digest("hex");
+  return `guest:fills:${hash}`;
+}
+
+async function getDownloadAccess(request: NextRequest): Promise<DownloadAccess> {
+  const { userId } = await auth();
+
+  if (!userId) {
+    const key = getGuestIdentifier(request);
+    const used = await getRedis().get<number>(key);
+    return { isPro: false, used: used ?? 0, limit: FREE_FILL_LIMIT, key };
+  }
+
+  const [used, sub] = await Promise.all([
+    getRedis().get<number>(usageKey(userId)),
+    getRedis().get<string>(`sub:${userId}`),
+  ]);
+  const isPro = sub === "pro" || sub === "business";
+  return { isPro, used: used ?? 0, limit: FREE_FILL_LIMIT, key: isPro ? null : usageKey(userId) };
+}
+
+async function incrementDownloadUsage(access: DownloadAccess) {
+  if (access.isPro || !access.key) return;
+  const newCount = await getRedis().incr(access.key);
+  if (newCount === 1) {
+    const ttl = access.key.startsWith("guest:") ? GUEST_TTL_SECONDS : USAGE_TTL_SECONDS;
+    await getRedis().expire(access.key, ttl);
+  }
 }
 
 /** Decode a base64 data URL to raw bytes */
@@ -38,6 +92,11 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Too many requests, try again in a minute" }, { status: 429 });
     }
 
+    const access = await getDownloadAccess(request);
+    if (!access.isPro && access.used >= access.limit) {
+      return NextResponse.json({ error: "Free fill limit reached. Upgrade to Pro for unlimited downloads." }, { status: 402 });
+    }
+
     const formData = await request.formData();
 
     const pdfFile = formData.get("pdf") as File | null;
@@ -53,7 +112,6 @@ export async function POST(request: NextRequest) {
     const pageScalesJson = formData.get("pageScales") as string | null;
     const viewportDimsJson = formData.get("viewportDims") as string | null;
     const hasAcroForm = formData.get("hasAcroForm") === "true";
-    const isPro = formData.get("isPro") === "true";
 
     if (!fieldsJson || !pageScalesJson) {
       return NextResponse.json({ error: "Missing fields or pageScales" }, { status: 400 });
@@ -180,9 +238,11 @@ export async function POST(request: NextRequest) {
     // Apply border watermark for free/guest users (skip for Pro)
     const pages = pdfDoc.getPages();
     const watermarkFont = await pdfDoc.embedFont(StandardFonts.Helvetica);
-    applyBorderWatermark(pages, watermarkFont, isPro);
+    applyBorderWatermark(pages, watermarkFont, access.isPro);
 
     const resultBytes = await pdfDoc.save();
+    await incrementDownloadUsage(access);
+
     return new NextResponse(Buffer.from(resultBytes), {
       status: 200,
       headers: { "Content-Type": "application/pdf", "Content-Disposition": "inline" },

@@ -9,7 +9,7 @@ interface SavedSession {
   currentPage: number;
 }
 
-// GET /api/session?filename=xyz — load saved session
+// GET /api/session?filename=xyz  -  load saved session
 export async function GET(req: Request) {
   const { userId } = await auth();
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -19,7 +19,7 @@ export async function GET(req: Request) {
   return NextResponse.json(session ?? null);
 }
 
-// POST /api/session — save current session
+// POST /api/session  -  save current session
 export async function POST(req: Request) {
   const { userId } = await auth();
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -35,7 +35,7 @@ export async function POST(req: Request) {
   return NextResponse.json({ ok: true });
 }
 
-// DELETE /api/session?filename=xyz — clear saved session
+// DELETE /api/session?filename=xyz  -  clear saved session
 export async function DELETE(req: Request) {
   const { userId } = await auth();
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

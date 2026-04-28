@@ -68,7 +68,7 @@ const faqs = [
 
 export default function PricingPage() {
   const { isSignedIn } = useAuth();
-  const [annual, setAnnual] = useState(true);
+  const [annual, setAnnual] = useState(false);
   const [upgrading, setUpgrading] = useState(false);
   const [usage, setUsage] = useState<{ tier: string; isPro: boolean } | null>(null);
 
@@ -125,7 +125,7 @@ export default function PricingPage() {
               Simple, transparent pricing
             </h1>
             <p className="mx-auto mt-4 max-w-xl text-lg text-gray-300">
-              Start free. Upgrade when you need more.
+              Start free. Upgrade when the watermark or monthly limit gets in your way.
             </p>
             <div className="mt-6 flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-sm text-gray-400">
               <span>✓ No credit card required</span>
@@ -349,7 +349,7 @@ export default function PricingPage() {
                   </ul>
                   <div className="mt-auto pt-8">
                     <div className="h-11 w-full" />
-                    <p className="mt-3 text-xs">placeholder</p>
+                    <p className="mt-3 text-xs">Spacer</p>
                   </div>
                 </div>
               </div>

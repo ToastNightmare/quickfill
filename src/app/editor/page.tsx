@@ -435,14 +435,14 @@ export default function EditorPage() {
     [reset, pageScales]
   );
 
-  // Load template from URL param — reset state when template changes
+  // Load template from URL param  -  reset state when template changes
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const templateParam = params.get("template");
     if (!templateParam) return;
     if (templateParam === activeTemplate) return;
 
-    // New template selected — clear previous session
+    // New template selected  -  clear previous session
     clearEditorState().then(() => {
       reset([]);
       setPdfBytes(null);
@@ -758,11 +758,14 @@ export default function EditorPage() {
       
       fd.append("viewportDims", JSON.stringify(Array.from(pageViewportDims.entries())));
       fd.append("hasAcroForm", String(hasAcroForm));
-      fd.append("isPro", String(isPro));
-
       const fillRes = await fetch("/api/fill-pdf", { method: "POST", body: fd });
       if (!fillRes.ok) {
         const errBody = await fillRes.json().catch(() => ({ error: "Server error" }));
+        if (fillRes.status === 402) {
+          if (isGuest) setShowGuestUpsellModal(true);
+          else setShowUpgradeModal(true);
+          return;
+        }
         throw new Error(errBody.error || `Server responded ${fillRes.status}`);
       }
       const resultBuf = await fillRes.arrayBuffer();
@@ -774,10 +777,6 @@ export default function EditorPage() {
       a.download = fileName.replace(/\.pdf$/i, "") + "-filled.pdf";
       a.click();
       URL.revokeObjectURL(url);
-
-      // Increment usage after successful download
-      // For guest users, this is tracked server-side by IP hash
-      await fetch("/api/usage", { method: "POST" });
 
       // Save fill history
       try {

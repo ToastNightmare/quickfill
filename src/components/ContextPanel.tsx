@@ -349,7 +349,7 @@ export function ContextPanel({
           );
         })()}
 
-        {/* Size inputs — not for checkbox or whiteout */}
+        {/* Size inputs  -  not for checkbox or whiteout */}
         {selectedField.type !== "checkbox" && selectedField.type !== "whiteout" && (
           <>
             <Section>
