@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 
-test('Grid field keyboard input', async ({ page }) => {
+test('Box field keyboard input', async ({ page }) => {
   const errors: string[] = [];
   page.on('console', msg => { if (msg.type() === 'error') errors.push(msg.text()); });
 
@@ -34,14 +34,19 @@ test('Grid field keyboard input', async ({ page }) => {
     await page.waitForTimeout(2000);
   }
 
-  // Click Grid tool (label "Grid" in sidebar)
-  const gridTool = page.locator('button:has-text("Grid"), [aria-label*="Grid"], [title*="Grid"], [title*="grid"]').first();
-  await expect(gridTool).toBeVisible({ timeout: 5000 });
-  await gridTool.click();
-  console.log('Grid tool selected');
+  // Click Box Field tool.
+  const boxFieldTool = page.locator([
+    'button:has-text("Box Field")',
+    '[aria-label*="Box Field"]',
+    '[title*="Box field"]',
+    '[title*="character boxes"]',
+  ].join(', ')).first();
+  await expect(boxFieldTool).toBeVisible({ timeout: 5000 });
+  await boxFieldTool.click();
+  console.log('Box Field tool selected');
   await page.waitForTimeout(500);
 
-  // Draw a grid field on canvas
+  // Draw a box field on canvas
   const canvas = page.locator('canvas').first();
   const box = await canvas.boundingBox();
   if (!box) throw new Error('No canvas');
@@ -53,10 +58,10 @@ test('Grid field keyboard input', async ({ page }) => {
   await page.mouse.move(sx + 220, sy + 35);
   await page.mouse.up();
   await page.waitForTimeout(1200);
-  console.log('Grid field drawn');
+  console.log('Box field drawn');
   await page.screenshot({ path: '/tmp/grid-drawn.png' });
 
-  // Click to focus/select the grid field
+  // Click to focus/select the box field
   await page.mouse.click(sx + 110, sy + 17);
   await page.waitForTimeout(800);
 

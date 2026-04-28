@@ -8,8 +8,9 @@ test('Check authentication state', async ({ page }) => {
   console.log('URL:', page.url());
   
   // Check for Clerk frame
+  const clerkIframe = page.locator('iframe[src*="clerk"]');
+  const hasClerkFrame = await clerkIframe.count() > 0;
   const clerkFrame = page.frameLocator('iframe[src*="clerk"]').first();
-  const hasClerkFrame = await clerkFrame.count() > 0;
   console.log('Has Clerk iframe:', hasClerkFrame);
   
   if (hasClerkFrame) {
@@ -20,8 +21,9 @@ test('Check authentication state', async ({ page }) => {
     try {
       const clerkText = await clerkFrame.locator('body').textContent();
       console.log('Clerk frame text preview:', clerkText?.substring(0, 500));
-    } catch (e) {
-      console.log('Cannot access Clerk frame:', e.message);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.log('Cannot access Clerk frame:', message);
     }
   }
   
@@ -51,7 +53,7 @@ test('Check authentication state', async ({ page }) => {
       await page.waitForTimeout(2000);
       
       // Check for Clerk again
-      const clerkFrame2 = page.frameLocator('iframe[src*="clerk"]').first();
+      const clerkFrame2 = page.locator('iframe[src*="clerk"]');
       console.log('After sign-in click, has Clerk iframe:', await clerkFrame2.count() > 0);
       
       // Take screenshot
@@ -62,11 +64,11 @@ test('Check authentication state', async ({ page }) => {
   
   // Check localStorage for auth tokens
   console.log('\nChecking localStorage for auth clues...');
-  const storage = await page.evaluate(() => {
-    const items = {};
+  const storage = await page.evaluate((): Record<string, string | null> => {
+    const items: Record<string, string | null> = {};
     for (let i = 0; i < localStorage.length; i++) {
       const key = localStorage.key(i);
-      items[key] = localStorage.getItem(key);
+      if (key) items[key] = localStorage.getItem(key);
     }
     return items;
   });
