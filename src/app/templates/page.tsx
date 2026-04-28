@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { FileText } from "lucide-react";
+import { FileText, ShieldCheck } from "lucide-react";
 
 export const metadata: Metadata = {
   title: "PDF Form Templates | QuickFill",
@@ -19,42 +19,42 @@ const officialTemplates: Template[] = [
   {
     file: "ato-tfn-declaration.pdf",
     title: "Tax File Number Declaration",
-    description: "Official ATO form (NAT 3092). Required when starting a new job so your employer can withhold the correct amount of tax.",
+    description: "Public ATO form (NAT 3092). Required when starting a new job so your employer can withhold the correct amount of tax.",
     emoji: "🏛️",
-    category: "ATO Official",
-    badge: "Official",
+    category: "ATO",
+    badge: "Public Form",
   },
   {
     file: "ato-super-choice.pdf",
     title: "Superannuation Standard Choice",
-    description: "Official ATO form (NAT 13080). Tell your employer which super fund to pay your contributions into.",
+    description: "Public ATO form (NAT 13080). Tell your employer which super fund to pay your contributions into.",
     emoji: "🏦",
-    category: "ATO Official",
-    badge: "Official",
+    category: "ATO",
+    badge: "Public Form",
   },
   {
     file: "ato-withholding-declaration.pdf",
     title: "Withholding Declaration",
-    description: "Official ATO form (NAT 3093). Advise your employer of changes to your tax withholding: HELP debt, Medicare levy, tax offsets.",
+    description: "Public ATO form (NAT 3093). Advise your employer of changes to your tax withholding: HELP debt, Medicare levy, tax offsets.",
     emoji: "📋",
-    category: "ATO: Official",
-    badge: "Official",
+    category: "ATO",
+    badge: "Public Form",
   },
   {
     file: "employment-separation.pdf",
     title: "Employment Separation Certificate",
-    description: "Official Services Australia form (SU001). Required by Centrelink when you leave a job to claim income support.",
+    description: "Public Services Australia form (SU001). Required by Centrelink when you leave a job to claim income support.",
     emoji: "📄",
-    category: "Services Australia Official",
-    badge: "Official",
+    category: "Services Australia",
+    badge: "Public Form",
   },
   {
     file: "medicare-enrolment.pdf",
     title: "Medicare Enrolment",
-    description: "Official Services Australia form (MS004). Apply for a Medicare card as a new resident or Australian citizen.",
+    description: "Public Services Australia form (MS004). Apply for a Medicare card as a new resident or Australian citizen.",
     emoji: "🏥",
-    category: "Services Australia: Official",
-    badge: "Official",
+    category: "Services Australia",
+    badge: "Public Form",
   },
 ];
 
@@ -62,7 +62,7 @@ const legalTemplates: Template[] = [
   {
     file: "statutory-declaration.pdf",
     title: "Statutory Declaration",
-    description: "Official statutory declaration form for making legal declarations. Includes witness section and criminal offence warning.",
+    description: "Public statutory declaration form for making legal declarations. Includes witness section and criminal offence warning.",
     emoji: "⚖️",
     category: "Legal",
   },
@@ -236,9 +236,16 @@ export default function TemplatesPage() {
         </p>
       </div>
 
-      {/* Official Government Forms Section */}
+      <div className="mx-auto mt-8 flex max-w-3xl items-start gap-3 rounded-xl border border-border bg-surface-alt p-4 text-left">
+        <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-accent" />
+        <p className="text-sm leading-relaxed text-text-muted">
+          QuickFill is independent and is not affiliated with the ATO, Services Australia, NDIS or state agencies. We help you fill publicly available forms faster.
+        </p>
+      </div>
+
+      {/* Government Forms Section */}
       <div className="mt-12">
-        <h2 className="text-xl font-bold text-text mb-6">Official Government Forms</h2>
+        <h2 className="text-xl font-bold text-text mb-6">Government Forms</h2>
         <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
           {officialTemplates.map((t) => (
             <TemplateCard key={t.file} template={t} />

@@ -63,7 +63,7 @@ export default function HowItWorksPage() {
             </h1>
             <p className="mx-auto mt-6 max-w-2xl text-lg text-gray-300">
               No software to install. Free account, no credit card required. Fill any PDF
-              form, ATO tax returns, Medicare, Centrelink, rental apps, in your browser in under a minute.
+              form, ATO tax returns, Medicare, Centrelink and rental applications without printing or scanning.
             </p>
           </div>
         </section>

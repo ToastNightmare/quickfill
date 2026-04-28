@@ -100,13 +100,13 @@ test('Navigation links work', async ({ page }) => {
   await expect(page).toHaveURL('/pricing');
 });
 
-test('Templates page  -  official badge exists', async ({ page }) => {
+test('Templates page shows public form badge', async ({ page }) => {
   await page.goto('/templates');
   await page.waitForLoadState('networkidle');
 
-  // Check at least one element with text "Official" is visible
-  const officialBadge = page.locator('text=Official').first();
-  await expect(officialBadge).toBeVisible();
+  // Check at least one public form badge is visible
+  const publicFormBadge = page.locator('text=Public Form').first();
+  await expect(publicFormBadge).toBeVisible();
 });
 
 test('Homepage  -  comparison table exists', async ({ page }) => {

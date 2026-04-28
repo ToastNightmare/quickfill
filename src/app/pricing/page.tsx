@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, X, Sparkles, Loader2 } from "lucide-react";
+import { Check, X, Sparkles, Loader2, ShieldCheck, LockKeyhole, CreditCard } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useAuth } from "@clerk/nextjs";
 import Link from "next/link";
@@ -54,7 +54,7 @@ const faqs = [
   },
   {
     q: "Is my data secure?",
-    a: "Your PDFs are processed entirely in your browser. We never upload or store your documents on our servers.",
+    a: "PDFs are processed securely in memory for download generation and are not stored on our servers.",
   },
   {
     q: "What does Pro include?",
@@ -128,9 +128,16 @@ export default function PricingPage() {
               Start free. Upgrade when the watermark or monthly limit gets in your way.
             </p>
             <div className="mt-6 flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-sm text-gray-400">
-              <span>✓ No credit card required</span>
-              <span>✓ Cancel any time</span>
-              <span>✓ Instant access</span>
+              {[
+                { icon: Check, text: "No credit card required" },
+                { icon: CreditCard, text: "Cancel any time" },
+                { icon: ShieldCheck, text: "Secure checkout by Stripe" },
+              ].map((item) => (
+                <span key={item.text} className="inline-flex items-center gap-2">
+                  <item.icon className="h-4 w-4 text-accent" />
+                  {item.text}
+                </span>
+              ))}
             </div>
           </div>
         </section>
@@ -391,10 +398,20 @@ export default function PricingPage() {
             )}
           </div>
         </section>
-
         {/* Trust strip */}
-        <div className="bg-surface border-y border-border px-4 py-5 text-center text-sm text-text-muted">
-          🔒 Secure checkout via Stripe · Cancel any time · No setup fees · Instant access
+        <div className="bg-surface border-y border-border px-4 py-5 text-sm text-text-muted">
+          <div className="mx-auto flex max-w-3xl flex-wrap items-center justify-center gap-x-6 gap-y-2">
+            {[
+              { icon: ShieldCheck, text: "Secure checkout by Stripe" },
+              { icon: CreditCard, text: "Cancel any time" },
+              { icon: LockKeyhole, text: "PDFs are not stored" },
+            ].map((item) => (
+              <span key={item.text} className="inline-flex items-center gap-2">
+                <item.icon className="h-4 w-4 text-accent" />
+                {item.text}
+              </span>
+            ))}
+          </div>
         </div>
 
         {/* FAQ */}

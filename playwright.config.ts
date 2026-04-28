@@ -4,7 +4,7 @@ export default defineConfig({
   testDir: './tests',
   timeout: 30000,
   use: {
-    baseURL: 'https://getquickfill.com',
+    baseURL: process.env.PLAYWRIGHT_BASE_URL ?? 'https://getquickfill.com',
     headless: true,
     screenshot: 'only-on-failure',
     video: 'retain-on-failure',

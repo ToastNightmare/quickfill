@@ -37,9 +37,10 @@ export default function TermsPage() {
             Payments and refunds
           </h2>
           <p className="mt-2">
-            Paid subscriptions are billed monthly via Stripe. You can cancel at
-            any time from your dashboard, access continues until the end
-            of the current billing period. Refund requests made within 7 days of
+            Paid subscriptions are billed monthly or annually via Stripe, depending
+            on the plan you choose. You can cancel at any time from your
+            dashboard, and access continues until the end of the current
+            billing period. Refund requests made within 7 days of
             a charge will be honoured. After 7 days, no refunds are issued.
           </p>
         </section>
@@ -47,9 +48,9 @@ export default function TermsPage() {
         <section>
           <h2 className="text-lg font-semibold text-text">Data and privacy</h2>
           <p className="mt-2">
-            Your PDF documents are processed entirely in your browser. We do not
-            upload, store, or access your files. For details on what data we do
-            collect, see our{" "}
+            Your PDF documents are processed in your browser and on our servers for
+            download generation only. Files are processed in memory and are not
+            stored on our servers. For details on what data we do collect, see our{" "}
             <a href="/privacy" className="text-accent hover:underline">
               Privacy Policy
             </a>

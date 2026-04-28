@@ -17,6 +17,9 @@ import {
   CreditCard,
   Sparkles,
   Loader2,
+  ShieldCheck,
+  LockKeyhole,
+  BadgeCheck,
 } from "lucide-react";
 import { useAuth } from "@clerk/nextjs";
 import { APP_CONFIG } from "@/lib/config";
@@ -255,7 +258,7 @@ const features = [
 
 const steps = [
   { number: "1", title: "Upload", description: "Drop your PDF into the editor" },
-  { number: "2", title: "Fill", description: "Type, check, sign , right on the form" },
+  { number: "2", title: "Fill", description: "Type, check, sign, right on the form" },
   { number: "3", title: "Download", description: "Get your completed PDF instantly" },
 ];
 
@@ -270,7 +273,7 @@ const verticals = [
     emoji: "\ud83d\udccb",
     title: "Bookkeepers & Sole Traders",
     description:
-      "ATO BAS forms, tax declarations, and business registrations , done fast.",
+      "ATO BAS forms, tax declarations, and business registrations, done fast.",
   },
   {
     emoji: "\u26ea",
@@ -283,6 +286,30 @@ const verticals = [
     title: "Healthcare & Community Services",
     description:
       "Medicare, Centrelink, and client intake forms filled accurately every time.",
+  },
+];
+
+const heroTrustPills = [
+  { icon: Check, text: "Fill any PDF without locked fields stopping you" },
+  { icon: CreditCard, text: "Free plan, Pro is $12/month" },
+  { icon: BadgeCheck, text: "Built for Australian forms: TFN, Centrelink, rentals, NDIS" },
+];
+
+const securitySignals = [
+  {
+    icon: LockKeyhole,
+    title: "No PDF storage",
+    body: "PDFs are processed securely in memory for download generation and are not stored on our servers.",
+  },
+  {
+    icon: ShieldCheck,
+    title: "Private by design",
+    body: "Your form data stays focused on the task: fill the PDF, download it, and keep moving.",
+  },
+  {
+    icon: BadgeCheck,
+    title: "Made for Australian forms",
+    body: "ATO, Medicare, Centrelink, council forms, rentals and NDIS paperwork are the forms QuickFill is built around.",
   },
 ];
 
@@ -337,7 +364,7 @@ export default function Home() {
             applicationCategory: "BusinessApplication",
             operatingSystem: "Any",
             description:
-              "Fill PDF forms online free. Upload any PDF , ATO tax forms, Medicare, Centrelink, rental applications, council forms , and fill it in seconds. Smart field detection and instant download.",
+              "Fill PDF forms online free. Upload any PDF, ATO tax forms, Medicare, Centrelink, rental applications, council forms, and fill it in seconds. Smart field detection and instant download.",
             offers: [
               {
                 "@type": "Offer",
@@ -379,16 +406,19 @@ export default function Home() {
           </p>
           {/* Feature pills */}
           <div className="mt-6 flex flex-wrap items-center justify-center gap-3 text-sm text-gray-300">
-            <span className="inline-flex items-center gap-1">✏️ Fill any PDF: no locked fields stopping you</span>
-            <span className="inline-flex items-center gap-1">💰 Half the price of Adobe Acrobat</span>
-            <span className="inline-flex items-center gap-1">🇦🇺 Built for Australian forms: TFN, Centrelink, rental apps, NDIS</span>
+            {heroTrustPills.map(({ icon: Icon, text }) => (
+              <span key={text} className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1.5">
+                <Icon className="h-4 w-4 text-accent" />
+                {text}
+              </span>
+            ))}
           </div>
           <div className="mt-10 flex flex-col items-center gap-4 sm:flex-row sm:justify-center">
             <Link
-              href={isSignedIn ? "/editor" : "/sign-up"}
+              href="/editor"
               className="flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-accent px-6 text-base font-semibold text-white shadow-lg shadow-accent/25 hover:bg-accent-hover transition-colors sm:w-auto"
             >
-              {isSignedIn ? "Fill a PDF" : "Start filling forms free"}
+              Fill a PDF Free
               <ArrowRight className="h-4 w-4" />
             </Link>
             <a
@@ -451,40 +481,40 @@ export default function Home() {
                 <thead className="bg-surface">
                   <tr>
                     <th className="px-6 py-4 text-left font-semibold text-gray-900">Feature</th>
-                    <th className="px-6 py-4 text-left font-semibold text-gray-900">Adobe Acrobat ($24/mo)</th>
-                    <th className="px-6 py-4 text-left font-semibold text-gray-900">DocuSign ($25/mo)</th>
+                    <th className="px-6 py-4 text-left font-semibold text-gray-900">General PDF suites</th>
+                    <th className="px-6 py-4 text-left font-semibold text-gray-900">E-signature tools</th>
                     <th className="px-6 py-4 text-left font-semibold text-accent bg-accent/10">QuickFill ($12/mo)</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
                   <tr className="bg-white">
                     <td className="px-6 py-4 font-medium text-gray-900">Fill PDFs online</td>
-                    <td className="px-6 py-4 text-red-500">❌ Desktop only</td>
-                    <td className="px-6 py-4 text-red-500">❌ Envelopes only</td>
-                    <td className="px-6 py-4 font-semibold text-green-600 bg-accent/5">✅ Yes</td>
+                    <td className="px-6 py-4 text-gray-700">Often broader than needed</td>
+                    <td className="px-6 py-4 text-gray-700">Built around signing flows</td>
+                    <td className="px-6 py-4 font-semibold text-green-600 bg-accent/5">Yes</td>
                   </tr>
                   <tr className="bg-surface-alt">
                     <td className="px-6 py-4 font-medium text-gray-900">Australian templates</td>
-                    <td className="px-6 py-4 text-red-500">❌ None</td>
-                    <td className="px-6 py-4 text-red-500">❌ None</td>
-                    <td className="px-6 py-4 font-semibold text-green-600 bg-accent/5">✅ 15+ built-in</td>
+                    <td className="px-6 py-4 text-gray-700">Not Australia-first</td>
+                    <td className="px-6 py-4 text-gray-700">Not Australia-first</td>
+                    <td className="px-6 py-4 font-semibold text-green-600 bg-accent/5">15+ built-in</td>
                   </tr>
                   <tr className="bg-white">
                     <td className="px-6 py-4 font-medium text-gray-900">Works on locked fields</td>
-                    <td className="px-6 py-4 text-red-500">❌ No</td>
-                    <td className="px-6 py-4 text-red-500">❌ No</td>
+                    <td className="px-6 py-4 text-gray-700">Can be fiddly</td>
+                    <td className="px-6 py-4 text-gray-700">Setup required</td>
                     <td className="px-6 py-4 font-semibold text-green-600 bg-accent/5">✅ Yes</td>
                   </tr>
                   <tr className="bg-surface-alt">
                     <td className="px-6 py-4 font-medium text-gray-900">No printing needed</td>
-                    <td className="px-6 py-4 text-red-500">❌ Exports only</td>
-                    <td className="px-6 py-4 text-gray-500">➖ N/A</td>
-                    <td className="px-6 py-4 font-semibold text-green-600 bg-accent/5">✅ Download instantly</td>
+                    <td className="px-6 py-4 text-gray-700">Yes, with the right tool</td>
+                    <td className="px-6 py-4 text-gray-700">Yes, for signing flows</td>
+                    <td className="px-6 py-4 font-semibold text-green-600 bg-accent/5">Download instantly</td>
                   </tr>
                   <tr className="bg-white">
                     <td className="px-6 py-4 font-medium text-gray-900">Price</td>
-                    <td className="px-6 py-4 text-gray-900">$24/mo</td>
-                    <td className="px-6 py-4 text-gray-900">$25/mo</td>
+                    <td className="px-6 py-4 text-gray-900">$20+/mo</td>
+                    <td className="px-6 py-4 text-gray-900">$20+/mo</td>
                     <td className="px-6 py-4 font-semibold text-accent bg-accent/5">$12/mo</td>
                   </tr>
                 </tbody>
@@ -538,7 +568,7 @@ export default function Home() {
               {
                 emoji: "🔒",
                 title: "Private by Design",
-                description: "Your PDFs are processed in your browser. We never upload or store your documents on our servers.",
+                description: "PDFs are processed securely in memory for download generation and are not stored on our servers.",
               },
             ].map((f) => (
               <div key={f.title} className="rounded-xl border border-border bg-surface p-6 shadow-sm">
@@ -576,20 +606,17 @@ export default function Home() {
           </div>
         </div>
       </section>
-
       {/* Trust signals */}
       <section className="bg-surface px-4 py-16 sm:px-6 lg:px-8">
         <div className="mx-auto max-w-4xl">
           <div className="grid gap-6 sm:grid-cols-3">
-            {[
-              { emoji: "🔒", title: "Your files stay private", body: "PDFs are processed entirely in your browser. We never upload or store your documents on our servers." },
-              { emoji: "⚡", title: "Ready in under 60 seconds", body: "Upload, fill, and download. No software to install. Sign up free and get started in under 60 seconds." },
-              { emoji: "🇦🇺", title: "Built for Australia", body: "ATO, Medicare, Centrelink, council forms, QuickFill works with the forms Australians fill every day." },
-            ].map((t) => (
-              <div key={t.title} className="rounded-xl border border-border bg-surface-alt p-6">
-                <div className="text-3xl mb-3">{t.emoji}</div>
-                <h3 className="font-semibold text-base mb-1">{t.title}</h3>
-                <p className="text-sm text-text-muted leading-relaxed">{t.body}</p>
+            {securitySignals.map((signal) => (
+              <div key={signal.title} className="rounded-xl border border-border bg-surface-alt p-6">
+                <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-accent/10">
+                  <signal.icon className="h-5 w-5 text-accent" />
+                </div>
+                <h3 className="mt-4 font-semibold text-base">{signal.title}</h3>
+                <p className="mt-2 text-sm text-text-muted leading-relaxed">{signal.body}</p>
               </div>
             ))}
           </div>
@@ -667,7 +694,7 @@ export default function Home() {
             </div>
             <div className="rounded-xl border border-border bg-surface-alt p-6">
               <h3 className="font-semibold text-base">Is it secure?</h3>
-              <p className="mt-2 text-sm text-text-muted">Your data never leaves your browser. Forms are filled locally and downloaded directly to you. We never upload or store your documents.</p>
+              <p className="mt-2 text-sm text-text-muted">PDFs are processed securely in memory for download generation and are not stored on our servers.</p>
             </div>
             <div className="rounded-xl border border-border bg-surface-alt p-6">
               <h3 className="font-semibold text-base">Does it work on my phone?</h3>

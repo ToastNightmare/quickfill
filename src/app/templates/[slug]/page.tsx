@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getTemplateBySlug, getRelatedTemplates } from "@/lib/templates-config";
-import { FileText, ArrowRight, CheckCircle, XCircle, HelpCircle } from "lucide-react";
+import { FileText, ArrowRight, CheckCircle, XCircle, HelpCircle, ShieldCheck } from "lucide-react";
 
 interface PageProps {
   params: Promise<{ slug: string }>;
@@ -68,6 +68,12 @@ export default async function TemplatePage({ params }: PageProps) {
           <FileText className="h-5 w-5" />
           Fill This Form Free
         </Link>
+        <div className="mx-auto mt-5 flex max-w-2xl items-start gap-3 rounded-xl border border-border bg-surface-alt p-4 text-left">
+          <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-accent" />
+          <p className="text-sm leading-relaxed text-text-muted">
+            QuickFill is independent and is not affiliated with government agencies. Use this tool to fill publicly available forms faster, then check the final PDF before submitting it.
+          </p>
+        </div>
       </div>
 
       {/* What is this form? */}

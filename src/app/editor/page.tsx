@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useCallback, useEffect, useRef, useMemo } from "react";
-import { ChevronLeft, ChevronRight, Sparkles, X, RotateCcw, Minus, Plus, Download, Zap } from "lucide-react";
+import { ChevronLeft, ChevronRight, Sparkles, X, RotateCcw, Minus, Plus, Download, Zap, ShieldCheck, LockKeyhole, BadgeCheck } from "lucide-react";
 import { UploadZone } from "@/components/UploadZone";
 import { MobileFiller } from "@/components/MobileFiller";
 import { Toolbar } from "@/components/Toolbar";
@@ -997,7 +997,7 @@ export default function EditorPage() {
               <Sparkles className="mt-0.5 h-5 w-5 shrink-0 text-accent" />
               <div className="flex-1 text-sm">
                 <span className="font-semibold text-accent">Welcome to QuickFill!</span>
-                <span className="ml-1 text-text-muted">Upload any PDF form to get started, it takes less than 60 seconds.</span>
+                <span className="ml-1 text-text-muted">Upload any PDF form to get started. PDFs are processed securely and not stored.</span>
               </div>
               <button onClick={dismissWelcome} className="shrink-0 text-text-muted hover:text-text transition-colors">
                 <X className="h-4 w-4" />
@@ -1005,6 +1005,22 @@ export default function EditorPage() {
             </div>
           )}
           <UploadZone onFileLoad={handleFileLoad} />
+
+          <div className="mx-8 -mt-2 mb-8 grid gap-3 lg:grid-cols-3">
+            {[
+              { icon: LockKeyhole, title: "No PDF storage", body: "Processed in memory for download generation." },
+              { icon: ShieldCheck, title: "Free to start", body: "Three free fills each month, with watermark." },
+              { icon: BadgeCheck, title: "Pro removes friction", body: "Unlimited fills, no watermark, full history." },
+            ].map((item) => (
+              <div key={item.title} className="flex items-start gap-3 rounded-xl border border-border bg-surface-alt px-4 py-3">
+                <item.icon className="mt-0.5 h-5 w-5 shrink-0 text-accent" />
+                <div>
+                  <p className="text-sm font-semibold">{item.title}</p>
+                  <p className="mt-0.5 text-xs leading-relaxed text-text-muted">{item.body}</p>
+                </div>
+              </div>
+            ))}
+          </div>
 
           {/* Template starter cards */}
           <div className="px-8 pb-8">
