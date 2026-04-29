@@ -2046,7 +2046,7 @@ function FieldShape({
         onMouseLeave={() => onMouseLeave?.()}
         onClick={(e) => {
           e.cancelBubble = true;
-          // Single click cycles: none → tick → cross → delete
+          // Single click cycles: none to tick to cross to delete
           const current: CheckboxStamp = (field as { stamp?: CheckboxStamp }).stamp ?? (field.checked ? "tick" : "none");
           if (current === "cross") {
             // Third click = delete the field entirely

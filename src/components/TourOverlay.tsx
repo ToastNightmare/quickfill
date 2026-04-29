@@ -271,7 +271,7 @@ export function TourOverlay({ steps, onComplete, onSkip }: TourOverlayProps) {
             onClick={handleNext}
             className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-lg transition-colors"
           >
-            {isLastStep ? "Done ✓" : "Next →"}
+            {isLastStep ? "Done" : "Next"}
           </button>
         </div>
       </div>

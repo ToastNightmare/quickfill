@@ -254,7 +254,7 @@ export function Toolbar({
           <Undo2 className="h-4 w-4 shrink-0" />
           <span className="hidden sm:flex sm:flex-1 sm:items-center sm:justify-between">
             Undo
-            <kbd className="text-[10px] text-text-muted/60 font-mono bg-surface-alt px-1 py-0.5 rounded">⌃Z</kbd>
+            <kbd className="text-[10px] text-text-muted/60 font-mono bg-surface-alt px-1 py-0.5 rounded">Ctrl+Z</kbd>
           </span>
         </button>
         <button
@@ -266,7 +266,7 @@ export function Toolbar({
           <Redo2 className="h-4 w-4 shrink-0" />
           <span className="hidden sm:flex sm:flex-1 sm:items-center sm:justify-between">
             Redo
-            <kbd className="text-[10px] text-text-muted/60 font-mono bg-surface-alt px-1 py-0.5 rounded">⌃⇧Z</kbd>
+            <kbd className="text-[10px] text-text-muted/60 font-mono bg-surface-alt px-1 py-0.5 rounded">Ctrl+Shift+Z</kbd>
           </span>
         </button>
         <button

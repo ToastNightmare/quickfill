@@ -69,7 +69,7 @@ export function WelcomeModal({ onComplete }: WelcomeModalProps) {
             onClick={handleComplete}
             className="w-full py-3 px-4 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl transition-colors"
           >
-            Let's go →
+            Let's go
           </button>
         </div>
       </div>

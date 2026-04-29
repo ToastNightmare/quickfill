@@ -3,7 +3,12 @@ import Link from "next/link";
 import { FileText, ShieldCheck } from "lucide-react";
 
 export const metadata: Metadata = {
-  title: "PDF Form Templates | QuickFill",
+  title: "Australian PDF Form Templates | QuickFill",
+  description:
+    "Fill common Australian PDF form templates online, including ATO, Services Australia, rental, NDIS, invoice, and consent forms.",
+  alternates: {
+    canonical: "/templates",
+  },
 };
 
 interface Template {
@@ -217,7 +222,7 @@ export default function TemplatesPage() {
     <div className="mx-auto max-w-5xl px-4 py-12 sm:px-6 lg:px-8">
       <div className="text-center">
         <span className="inline-flex items-center gap-2 rounded-full bg-accent/10 px-4 py-1.5 text-sm font-semibold text-accent">
-          🇦🇺 Australian Forms
+          Australian Forms
         </span>
         <h1 className="mt-4 text-3xl font-bold tracking-tight sm:text-4xl">Form Templates</h1>
         <p className="mx-auto mt-4 max-w-2xl text-text-muted">

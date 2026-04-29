@@ -217,12 +217,11 @@ export async function POST(req: NextRequest) {
             to: email,
             subject: "Action needed, QuickFill payment failed",
             html: emailWrapper(`
-              <h1 style="font-size: 24px; font-weight: 800; margin: 0 0 8px 0;">Payment failed ⚠️</h1>
+              <h1 style="font-size: 24px; font-weight: 800; margin: 0 0 8px 0;">Payment failed</h1>
               <p style="color: #6b7280; margin: 0 0 24px 0;">We couldn't process your QuickFill Pro payment. Your account has been moved to the free plan.</p>
               <p style="font-size: 14px; color: #6b7280; margin: 0 0 24px 0;">Update your payment details to restore Pro access:</p>
               <a href="${APP_URL}/dashboard" style="display: inline-block; background: #2d8ef7; color: white; font-weight: 600; padding: 14px 28px; border-radius: 10px; text-decoration: none; margin-bottom: 24px; font-size: 15px;">
-                Update payment details →
-              </a>
+                Update payment details</a>
               <p style="font-size: 13px; color: #9ca3af; margin: 0;">If you have any questions, reply to this email and we'll help you out.</p>
             `),
           });
@@ -259,8 +258,7 @@ export async function POST(req: NextRequest) {
             <p style="font-size: 14px; color: #6b7280; margin: 0 0 24px 0;">Changed your mind? You can resubscribe any time.</p>
 
             <a href="${APP_URL}/pricing" style="display: inline-block; background: #2d8ef7; color: white; font-weight: 600; padding: 14px 28px; border-radius: 10px; text-decoration: none; margin-bottom: 24px; font-size: 15px;">
-              Resubscribe to Pro →
-            </a>
+              Resubscribe to Pro</a>
 
             <p style="font-size: 13px; color: #9ca3af; margin: 0;">Thanks for trying QuickFill Pro. We'd love to have you back.</p>
           `),

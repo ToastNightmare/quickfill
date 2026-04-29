@@ -1125,13 +1125,13 @@ export default function EditorPage() {
               {zoom}%
             </span>
             {zoom < 125 && (
-              <span className="hidden sm:inline text-[10px] text-amber-500 font-medium">↑snap</span>
+              <span className="hidden sm:inline text-[10px] text-amber-500 font-medium">too small</span>
             )}
             {zoom >= 125 && zoom <= 175 && (
-              <span className="hidden sm:inline text-[10px] text-green-500 font-medium">✓snap</span>
+              <span className="hidden sm:inline text-[10px] text-green-500 font-medium">too small</span>
             )}
             {zoom > 175 && (
-              <span className="hidden sm:inline text-[10px] text-amber-500 font-medium">↓snap</span>
+              <span className="hidden sm:inline text-[10px] text-amber-500 font-medium">too small</span>
             )}
             <button
               onClick={handleZoomIn}

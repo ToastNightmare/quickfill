@@ -32,7 +32,7 @@ function catmullRomPath(
     const p2 = pts[i + 1];
     const p3 = pts[Math.min(pts.length - 1, i + 2)];
 
-    // Catmull-Rom → cubic bezier control points
+    // Catmull-Rom to cubic bezier control points
     const cp1x = p1.x + (p2.x - p0.x) * tension / 2;
     const cp1y = p1.y + (p2.y - p0.y) * tension / 2;
     const cp2x = p2.x - (p3.x - p1.x) * tension / 2;
