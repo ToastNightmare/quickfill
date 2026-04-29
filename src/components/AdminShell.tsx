@@ -2,13 +2,17 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { BarChart3, ExternalLink, Home, ShieldCheck } from "lucide-react";
+import { AlertTriangle, BarChart3, CreditCard, ExternalLink, Home, Inbox, ShieldCheck, Users } from "lucide-react";
 import { UserButton } from "@clerk/nextjs";
 import { Logo } from "@/components/Logo";
 
 const adminLinks = [
   { href: "/admin", label: "Overview", icon: Home },
   { href: "/admin/analytics", label: "Analytics", icon: BarChart3 },
+  { href: "/admin/users", label: "Users", icon: Users },
+  { href: "/admin/support", label: "Support", icon: Inbox },
+  { href: "/admin/failures", label: "Failures", icon: AlertTriangle },
+  { href: "/admin/revenue", label: "Revenue", icon: CreditCard },
 ];
 
 export function AdminShell({ children }: { children: React.ReactNode }) {

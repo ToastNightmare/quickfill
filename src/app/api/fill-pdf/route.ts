@@ -11,6 +11,7 @@ import { APP_CONFIG } from "@/lib/config";
 import { applyBorderWatermark } from "@/lib/watermark";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { getRedis } from "@/lib/redis";
+import { recordDownloadLog } from "@/lib/admin-logs";
 
 /** Replace control characters (including newlines) with a space */
 function sanitize(text: string): string {
@@ -31,6 +32,8 @@ type DownloadAccess = {
   used: number;
   limit: number;
   key: string | null;
+  userId: string | null;
+  guest: boolean;
   isQaBypass?: boolean;
 };
 
@@ -62,7 +65,7 @@ function hasValidQaToken(request: NextRequest): boolean {
 
 async function getDownloadAccess(request: NextRequest): Promise<DownloadAccess> {
   if (hasValidQaToken(request)) {
-    return { isPro: true, used: 0, limit: FREE_FILL_LIMIT, key: null, isQaBypass: true };
+    return { isPro: true, used: 0, limit: FREE_FILL_LIMIT, key: null, userId: null, guest: false, isQaBypass: true };
   }
 
   const { userId } = await auth();
@@ -70,7 +73,7 @@ async function getDownloadAccess(request: NextRequest): Promise<DownloadAccess> 
   if (!userId) {
     const key = getGuestIdentifier(request);
     const used = await getRedis().get<number>(key);
-    return { isPro: false, used: used ?? 0, limit: FREE_FILL_LIMIT, key };
+    return { isPro: false, used: used ?? 0, limit: FREE_FILL_LIMIT, key, userId: null, guest: true };
   }
 
   const [used, sub] = await Promise.all([
@@ -78,7 +81,7 @@ async function getDownloadAccess(request: NextRequest): Promise<DownloadAccess> 
     getRedis().get<string>(`sub:${userId}`),
   ]);
   const isPro = sub === "pro" || sub === "business";
-  return { isPro, used: used ?? 0, limit: FREE_FILL_LIMIT, key: isPro ? null : usageKey(userId) };
+  return { isPro, used: used ?? 0, limit: FREE_FILL_LIMIT, key: isPro ? null : usageKey(userId), userId, guest: false };
 }
 
 async function incrementDownloadUsage(access: DownloadAccess) {
@@ -99,6 +102,12 @@ function dataUrlToBytes(dataUrl: string): Uint8Array {
 }
 
 export async function POST(request: NextRequest) {
+  let accessForLog: DownloadAccess | null = null;
+  let fileForLog: { name?: string; size?: number } | null = null;
+  let fieldsForLog: EditorField[] = [];
+  let pageCountForLog = 0;
+  let hasAcroFormForLog = false;
+
   try {
     const qaBypass = hasValidQaToken(request);
 
@@ -113,7 +122,15 @@ export async function POST(request: NextRequest) {
     }
 
     const access = await getDownloadAccess(request);
+    accessForLog = access;
     if (!access.isPro && access.used >= access.limit) {
+      await recordDownloadLog({
+        status: "blocked",
+        userId: access.userId,
+        guest: access.guest,
+        reason: "free_limit",
+        message: "Free fill limit reached",
+      });
       return NextResponse.json({ error: "Free fill limit reached. Upgrade to Pro for unlimited downloads." }, { status: 402 });
     }
 
@@ -121,10 +138,20 @@ export async function POST(request: NextRequest) {
 
     const pdfFile = formData.get("pdf") as File | null;
     if (!pdfFile) return NextResponse.json({ error: "Missing pdf file" }, { status: 400 });
+    fileForLog = { name: pdfFile.name, size: pdfFile.size };
 
     // Check file size limit (15MB max)
     const MAX_SIZE = 15 * 1024 * 1024; // 15MB in bytes
     if (pdfFile.size > MAX_SIZE) {
+      await recordDownloadLog({
+        status: "blocked",
+        userId: accessForLog?.userId,
+        guest: accessForLog?.guest,
+        filename: fileForLog?.name,
+        fileSizeKb: Math.round((fileForLog?.size ?? 0) / 1024),
+        reason: "file_too_large",
+        message: "PDF too large",
+      });
       return NextResponse.json({ error: "PDF too large (max 15MB)" }, { status: 413 });
     }
 
@@ -132,12 +159,14 @@ export async function POST(request: NextRequest) {
     const pageScalesJson = formData.get("pageScales") as string | null;
     const viewportDimsJson = formData.get("viewportDims") as string | null;
     const hasAcroForm = formData.get("hasAcroForm") === "true";
+    hasAcroFormForLog = hasAcroForm;
 
     if (!fieldsJson || !pageScalesJson) {
       return NextResponse.json({ error: "Missing fields or pageScales" }, { status: 400 });
     }
 
     const editorFields: EditorField[] = JSON.parse(fieldsJson);
+    fieldsForLog = editorFields;
     const pageScaleEntries: [number, number][] = JSON.parse(pageScalesJson);
     const pageScales = new Map(pageScaleEntries);
     
@@ -154,6 +183,7 @@ export async function POST(request: NextRequest) {
 
     const pdfBytes = await pdfFile.arrayBuffer();
     const pdfDoc = await PDFDocument.load(pdfBytes, { ignoreEncryption: true });
+    pageCountForLog = pdfDoc.getPageCount();
     const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
     const signatureFont = await pdfDoc.embedFont(StandardFonts.HelveticaOblique);
 
@@ -213,6 +243,16 @@ export async function POST(request: NextRequest) {
 
     const resultBytes = await pdfDoc.save();
     await incrementDownloadUsage(access);
+    await recordDownloadLog({
+      status: "success",
+      userId: access.userId,
+      guest: access.guest,
+      filename: fileForLog?.name,
+      fileSizeKb: Math.round((fileForLog?.size ?? 0) / 1024),
+      fieldCount: editorFields.length,
+      pageCount: pageCountForLog,
+      hasAcroForm,
+    });
 
     return new NextResponse(Buffer.from(resultBytes), {
       status: 200,
@@ -221,6 +261,18 @@ export async function POST(request: NextRequest) {
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     console.error("fill-pdf error:", message);
+    await recordDownloadLog({
+      status: "failed",
+      userId: accessForLog?.userId,
+      guest: accessForLog?.guest,
+      filename: fileForLog?.name,
+      fileSizeKb: Math.round((fileForLog?.size ?? 0) / 1024),
+      fieldCount: fieldsForLog.length,
+      pageCount: pageCountForLog,
+      hasAcroForm: hasAcroFormForLog,
+      reason: "server_error",
+      message,
+    }).catch(() => {});
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
