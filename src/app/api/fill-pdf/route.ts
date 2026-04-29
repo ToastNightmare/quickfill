@@ -140,7 +140,26 @@ export async function POST(request: NextRequest) {
     if (hasAcroForm) {
       const form = pdfDoc.getForm();
 
-      removeFilledAreaWidgets(pdfDoc, form, editorFields);
+      try {
+        for (const acroField of form.getFields()) {
+          if (acroField.constructor.name === "PDFTextField") {
+            try {
+              const textField = form.getTextField(acroField.getName());
+              const raw = textField.getText() ?? "";
+              if (raw) textField.setText(sanitize(raw));
+            } catch { /* skip unreadable text fields */ }
+          }
+        }
+        form.flatten({ updateFieldAppearances: false });
+      } catch (flattenErr) {
+        console.warn("blank form flatten failed, removing filled-area widgets:", flattenErr instanceof Error ? flattenErr.message : flattenErr);
+        removeFilledAreaWidgets(pdfDoc, form, editorFields);
+        try {
+          for (const remainingField of form.getFields()) remainingField.enableReadOnly();
+        } catch {
+          // Form cleanup is best-effort; drawn output remains static.
+        }
+      }
 
       const wrappedPages = new Set<number>();
       for (const field of editorFields) {
@@ -150,13 +169,6 @@ export async function POST(request: NextRequest) {
           wrappedPages.add(field.page);
         }
         await drawFieldOnPage(pdfDoc, field, pageScales, font, signatureFont, viewportDims);
-      }
-
-      try {
-        for (const remainingField of form.getFields()) remainingField.enableReadOnly();
-        if (form.getFields().length === 0) pdfDoc.catalog.delete(PDFName.of("AcroForm"));
-      } catch {
-        // Form cleanup is best-effort; drawn output remains static.
       }
     } else {
       // Track which pages have been wrapped to avoid duplicate wrapping
