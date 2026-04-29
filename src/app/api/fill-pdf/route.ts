@@ -290,11 +290,20 @@ function removeWidgetAnnotations(pdfDoc: PDFDocument) {
     const keptAnnots = PDFArray.withContext(pdfDoc.context);
     for (let i = 0; i < annots.size(); i++) {
       const annotRef = annots.get(i);
-      const annot = pdfDoc.context.lookup(annotRef);
+      let annot: PDFDict | undefined;
+      try {
+        annot = pdfDoc.context.lookup(annotRef, PDFDict);
+      } catch {
+        continue;
+      }
+
+      if (!annot) continue;
+
       if (annot instanceof PDFDict) {
         const subtype = annot.get(PDFName.of("Subtype"));
         if (subtype?.toString() === "/Widget") continue;
       }
+
       keptAnnots.push(annotRef);
     }
 
