@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 import { useAuth } from "@clerk/nextjs";
 import { APP_CONFIG } from "@/lib/config";
+import { trackEvent } from "@/lib/analytics";
 
 interface FillEntry {
   filename: string;
@@ -320,6 +321,7 @@ export default function Home() {
   const [upgradingPlan, setUpgradingPlan] = useState<string | null>(null);
 
   const handleUpgrade = async (plan: "pro") => {
+    trackEvent("checkout_start", { source: "home_pricing", plan });
     setUpgradingPlan(plan);
     try {
       const res = await fetch("/api/stripe/checkout", {
@@ -408,6 +410,7 @@ export default function Home() {
           <div className="mt-10 flex flex-col items-center gap-4 sm:flex-row sm:justify-center">
             <Link
               href="/editor"
+              onClick={() => trackEvent("home_cta_click", { cta: "hero_fill_pdf" })}
               className="flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-accent px-6 text-base font-semibold text-white shadow-lg shadow-accent/25 hover:bg-accent-hover transition-colors sm:w-auto"
             >
               Fill a PDF Free
@@ -699,7 +702,7 @@ export default function Home() {
               <p className="mt-2 text-sm text-text-muted">Yes. QuickFill includes real Australian government forms: TFN declarations, Centrelink income forms, Medicare enrolment, NDIS service agreements, and more.</p>
             </div>
             <div className="rounded-xl border border-border bg-surface-alt p-6">
-              <h3 className="font-semibold text-base">What's the difference between free and Pro?</h3>
+              <h3 className="font-semibold text-base">What&apos;s the difference between free and Pro?</h3>
               <p className="mt-2 text-sm text-text-muted">Free gives 3 fills per month. Pro ($12/month) gives unlimited fills and access to all Australian templates.</p>
             </div>
           </div>
@@ -751,6 +754,7 @@ export default function Home() {
               <div className="mt-auto pt-8">
                 <Link
                   href="/sign-up"
+                  onClick={() => trackEvent("home_cta_click", { cta: "pricing_free" })}
                   className="flex h-11 items-center justify-center rounded-xl border-2 border-accent text-sm font-semibold text-accent hover:bg-accent/10 transition-colors"
                 >
                   Get Started Free
@@ -810,7 +814,7 @@ export default function Home() {
                   )}
                 </button>
                 <p className="mt-3 text-center text-xs text-gray-500">
-                  Or <Link href="/pricing" className="text-accent hover:underline">pay $12/month</Link> · <Link href="/pricing" className="text-accent hover:underline">See full pricing</Link>
+                  Or <Link href="/pricing" onClick={() => trackEvent("home_cta_click", { cta: "monthly_pricing" })} className="text-accent hover:underline">pay $12/month</Link> or <Link href="/pricing" onClick={() => trackEvent("home_cta_click", { cta: "full_pricing" })} className="text-accent hover:underline">see full pricing</Link>
                 </p>
               </div>
             </div>

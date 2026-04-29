@@ -4,6 +4,7 @@ import { Check, X, Sparkles, Loader2, ShieldCheck, LockKeyhole, CreditCard } fro
 import { useState, useEffect } from "react";
 import { useAuth } from "@clerk/nextjs";
 import Link from "next/link";
+import { trackEvent } from "@/lib/analytics";
 
 const proFeatures = [
   "Unlimited documents",
@@ -84,6 +85,7 @@ export default function PricingPage() {
   const isPro = usage?.isPro ?? false;
 
   const handleUpgrade = async () => {
+    trackEvent("checkout_start", { source: "pricing", plan: annual ? "annual" : "monthly" });
     setUpgrading(true);
     try {
       const res = await fetch("/api/stripe/checkout", {
@@ -152,7 +154,7 @@ export default function PricingPage() {
                 <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-accent">
                   <Check className="h-6 w-6 text-white" />
                 </div>
-                <h2 className="text-xl font-bold text-accent">You're already on Pro</h2>
+                <h2 className="text-xl font-bold text-accent">You&apos;re already on Pro</h2>
                 <p className="mt-2 text-sm text-text-muted">
                   You have unlimited fills, no watermarks, and priority support.
                 </p>
@@ -193,17 +195,17 @@ export default function PricingPage() {
                       <Loader2 className="h-4 w-4 animate-spin text-text-muted" />
                     </div>
                   ) : !isSignedIn ? (
-                    <a href="/sign-up" className="flex h-11 items-center justify-center rounded-xl border-2 border-accent text-sm font-semibold text-accent hover:bg-accent/10 transition-colors">
+                    <Link href="/sign-up" className="flex h-11 items-center justify-center rounded-xl border-2 border-accent text-sm font-semibold text-accent hover:bg-accent/10 transition-colors">
                       Get Started Free
-                    </a>
+                    </Link>
                   ) : !isPro ? (
                     <div className="flex h-11 items-center justify-center rounded-xl bg-slate-100 text-sm font-semibold text-slate-500 cursor-default">
                       Current Plan
                     </div>
                   ) : (
-                    <a href="/editor" className="flex h-11 items-center justify-center rounded-xl border-2 border-accent text-sm font-semibold text-accent hover:bg-accent/10 transition-colors">
+                    <Link href="/editor" className="flex h-11 items-center justify-center rounded-xl border-2 border-accent text-sm font-semibold text-accent hover:bg-accent/10 transition-colors">
                       Open Editor
-                    </a>
+                    </Link>
                   )}
                 </div>
               </div>
@@ -247,7 +249,7 @@ export default function PricingPage() {
                         <span className="text-gray-400 text-xs leading-none pb-0.5">/month</span>
                       </div>
                       <div className="mt-2 h-7 flex items-center">
-                        <button onClick={() => setAnnual(true)} className="text-xs text-accent font-semibold hover:underline">
+                        <button onClick={() => { trackEvent("home_cta_click", { cta: "pricing_switch_annual" }); setAnnual(true); }} className="text-xs text-accent font-semibold hover:underline">
 Switch to annual and save A$44
                         </button>
                       </div>

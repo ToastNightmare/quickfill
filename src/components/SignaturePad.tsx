@@ -45,7 +45,7 @@ function catmullRomPath(
 }
 
 // ── Lightweight point simplification (Douglas-Peucker lite) ──────────────────
-// Removes points that are too close together  -  reduces noise without losing shape
+// Removes points that are too close together - reduces noise without losing shape
 function simplifyPoints(
   pts: { x: number; y: number }[],
   minDist = 2
@@ -68,7 +68,7 @@ export function useSignaturePad({
   height = 180,
 }: UseSignaturePadOptions = {}) {
   const canvasRef     = useRef<HTMLCanvasElement>(null);
-  // All strokes stored  -  array of point arrays
+  // All strokes stored - array of point arrays
   const strokesRef    = useRef<{ x: number; y: number }[][]>([]);
   const currentRef    = useRef<{ x: number; y: number }[]>([]);
   const isDrawingRef  = useRef(false);
@@ -102,8 +102,8 @@ export function useSignaturePad({
     setHasContent(false);
   }, [initCtx]);
 
-  // ── Redraw everything from stored strokes ─────────────────────────────────
-  // This is the key  -  we redraw the full smooth path on every point added
+  // Redraw everything from stored strokes
+  // This is the key - we redraw the full smooth path on every point added
   // instead of appending raw segments, giving perfectly smooth curves.
   const redraw = useCallback(() => {
     const canvas = canvasRef.current;
@@ -129,7 +129,7 @@ export function useSignaturePad({
       catmullRomPath(ctx, pts);
     }
 
-    // Draw current stroke in progress  -  pressure simulation via avg speed
+    // Draw current stroke in progress - pressure simulation via avg speed
     const current = currentRef.current;
     if (current.length >= 2) {
       const pts = simplifyPoints(current, 1.0);
@@ -201,7 +201,7 @@ export function useSignaturePad({
     }
   }, [redraw]);
 
-  // ── Event handlers ─────────────────────────────────────────────────────────
+  // Event handlers
   const onMouseDown  = useCallback((e: MouseEvent)  => { e.preventDefault(); e.stopPropagation(); startStroke(getPoint(e)); },    [startStroke, getPoint]);
   const onMouseMove  = useCallback((e: MouseEvent)  => { e.preventDefault(); continueStroke(getPoint(e)); },                      [continueStroke, getPoint]);
   const onMouseUp    = useCallback(()               => endStroke(),                                                                [endStroke]);
@@ -209,7 +209,7 @@ export function useSignaturePad({
   const onTouchMove  = useCallback((e: TouchEvent)  => { e.preventDefault(); if (e.touches.length === 1) continueStroke(getPoint(e.touches[0])); },                     [continueStroke, getPoint]);
   const onTouchEnd   = useCallback((e: TouchEvent)  => { e.preventDefault(); endStroke(); },                                      [endStroke]);
 
-  // ── Attach events via callback ref ─────────────────────────────────────────
+  // Attach events via callback ref
   // Using a callback ref ensures events attach every time the canvas DOM element
   // mounts, even if width/height have not changed between re-opens.
   const cleanupRef = useRef<(() => void) | null>(null);
@@ -296,7 +296,7 @@ export function useSignaturePad({
 
     const trimW = maxX - minX + 1;
     const trimH = maxY - minY + 1;
-    // HiDPI 3x export  -  redraw all strokes onto a 3x canvas for crisp output
+    // HiDPI 3x export - redraw all strokes onto a 3x canvas for crisp output
     const scale = 3;
     const out = document.createElement("canvas");
     out.width  = trimW * scale;

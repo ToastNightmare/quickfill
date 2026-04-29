@@ -31,6 +31,7 @@ import {
 import type { EditorField, ToolType } from "@/lib/types";
 import { useAuth } from "@clerk/nextjs";
 import Link from "next/link";
+import { trackEvent } from "@/lib/analytics";
 
 const ZOOM_LEVELS = [50, 75, 100, 125, 150, 175, 200];
 const SNAP_MIN = 125;
@@ -435,14 +436,15 @@ export default function EditorPage() {
     [reset, pageScales]
   );
 
-  // Load template from URL param  -  reset state when template changes
+  // Load template from URL param - reset state when template changes
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const templateParam = params.get("template");
     if (!templateParam) return;
     if (templateParam === activeTemplate) return;
+    trackEvent("template_start", { source: "url", template: templateParam });
 
-    // New template selected  -  clear previous session
+    // New template selected - clear previous session
     clearEditorState().then(() => {
       reset([]);
       setPdfBytes(null);
@@ -604,7 +606,7 @@ export default function EditorPage() {
       }
       const profile = await res.json();
       if (!profile || !profile.fullName) {
-        showToast("No profile saved yet  -  go to your Profile page to set one up");
+        showToast("No profile saved yet - go to your Profile page to set one up");
         return;
       }
 
@@ -624,7 +626,7 @@ export default function EditorPage() {
       if (matched > 0) {
         showToast(`Auto-filled ${matched} field${matched > 1 ? "s" : ""} from your profile`);
       } else {
-        showToast("No matching fields found  -  try filling manually");
+        showToast("No matching fields found - try filling manually");
       }
     } catch {
       showToast("Failed to load profile");
@@ -699,6 +701,11 @@ export default function EditorPage() {
 
   const handleDownload = useCallback(async () => {
     if (!pdfBytes) return;
+    trackEvent("download_attempt", {
+      fieldCount: fields.length,
+      pageCount: totalPages || 1,
+      hasAcroForm,
+    });
     setIsDownloading(true);
     try {
       // Check usage before downloading
@@ -717,6 +724,7 @@ export default function EditorPage() {
           // If this would be the 3rd fill, show upsell modal BEFORE download
           // Pro users never see this modal
           if (serverFillCount >= 3) {
+            trackEvent("free_limit_hit", { source: "guest_precheck", used: serverFillCount });
             setShowGuestUpsellModal(true);
             setIsDownloading(false);
             return;
@@ -724,6 +732,7 @@ export default function EditorPage() {
         }
         
         if (!isPro && !isGuest && usage.used >= usage.limit) {
+          trackEvent("free_limit_hit", { source: "user_precheck", used: usage.used, limit: usage.limit });
           setShowUpgradeModal(true);
           setIsDownloading(false);
           return;
@@ -762,6 +771,7 @@ export default function EditorPage() {
       if (!fillRes.ok) {
         const errBody = await fillRes.json().catch(() => ({ error: "Server error" }));
         if (fillRes.status === 402) {
+          trackEvent("free_limit_hit", { source: "api_402", guest: isGuest });
           if (isGuest) setShowGuestUpsellModal(true);
           else setShowUpgradeModal(true);
           return;
@@ -791,8 +801,15 @@ export default function EditorPage() {
           }),
         });
       } catch {
-        // silent  -  non-critical
+        // silent - non-critical
       }
+
+      trackEvent("download_success", {
+        fieldCount: fields.length,
+        pageCount: totalPages || 1,
+        guest: isGuest,
+        pro: isPro,
+      });
 
       if (!isPro) {
         showToast("Download includes QuickFill watermark. Upgrade to Pro to remove it.", 5000);
@@ -814,6 +831,7 @@ export default function EditorPage() {
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       console.error("Download failed:", msg, err);
+      trackEvent("download_failed", { message: msg.slice(0, 120) });
       showToast(`Failed to generate PDF: ${msg}`);
     } finally {
       setIsDownloading(false);
@@ -1041,6 +1059,7 @@ export default function EditorPage() {
                 <button
                   key={file}
                   onClick={() => {
+                    trackEvent("template_start", { source: "editor_card", template: file });
                     setIsLoading(true);
                     fetch(`/templates/${file}`)
                       .then(r => r.arrayBuffer())
@@ -1099,14 +1118,14 @@ export default function EditorPage() {
       <div className="flex items-center justify-between gap-2 border-b border-border bg-surface px-4 py-2 flex-shrink-0">
           {/* Left: browse templates + filename */}
           <div className="flex items-center gap-2 min-w-0">
-            <a
+            <Link
               href="/templates"
               className="flex shrink-0 items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-text-muted hover:bg-surface-alt hover:text-text transition-colors"
               title="Browse all templates"
             >
               <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
               <span className="hidden sm:inline">Templates</span>
-            </a>
+            </Link>
             <span className="hidden sm:inline text-text-muted/30 text-xs">/</span>
             <p className="truncate text-sm font-medium text-text-muted">{fileName}</p>
           </div>
@@ -1407,7 +1426,7 @@ export default function EditorPage() {
             <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-yellow-500/20 mb-4">
               <Zap className="h-8 w-8 text-yellow-500" />
             </div>
-            <h2 className="text-2xl font-bold mb-2">You've used your 3 free fills</h2>
+            <h2 className="text-2xl font-bold mb-2">You&apos;ve used your 3 free fills</h2>
             <p className="text-text-muted text-sm mb-6">
               Upgrade to QuickFill Pro for unlimited fills with no watermarks.
             </p>
@@ -1426,12 +1445,12 @@ export default function EditorPage() {
             </div>
             
             <div className="flex flex-col gap-3">
-              <a
+              <Link
                 href="/pricing"
                 className="flex h-11 w-full items-center justify-center rounded-xl bg-accent text-sm font-semibold text-white hover:bg-accent-hover transition-colors"
               >
                 Upgrade to Pro: $12/month
-              </a>
+              </Link>
               <button
                 onClick={() => setShowGuestUpsellModal(false)}
                 className="text-sm text-text-muted hover:text-text transition-colors"
@@ -1456,12 +1475,12 @@ export default function EditorPage() {
                 You have used all 3 of your free fills this month. Upgrade to Pro for unlimited fills with no watermarks.
               </p>
               <div className="mt-6 flex flex-col gap-3">
-                <a
+                <Link
                   href="/pricing"
                   className="flex h-11 w-full items-center justify-center rounded-xl bg-accent text-sm font-semibold text-white hover:bg-accent-hover transition-colors"
                 >
                   Upgrade to Pro, $12/month
-                </a>
+                </Link>
                 <button
                   onClick={() => setShowUpgradeModal(false)}
                   className="flex h-11 w-full items-center justify-center rounded-xl border border-border text-sm font-semibold hover:bg-surface-alt transition-colors"

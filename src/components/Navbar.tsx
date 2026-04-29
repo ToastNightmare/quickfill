@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useState, useEffect } from "react";
-import { Menu, X } from "lucide-react";
+import { LayoutDashboard, Menu, User, X } from "lucide-react";
 import { Logo } from "@/components/Logo";
 import { useAuth, UserButton } from "@clerk/nextjs";
 
@@ -85,8 +85,8 @@ export function Navbar() {
               )}
               <UserButton appearance={{ elements: { avatarBox: "h-9 w-9" } }}>
                 <UserButton.MenuItems>
-                  <UserButton.Link label="Dashboard" labelIcon={<span>📋</span>} href="/dashboard" />
-                  <UserButton.Link label="Profile" labelIcon={<span>👤</span>} href="/profile" />
+                  <UserButton.Link label="Dashboard" labelIcon={<LayoutDashboard className="h-4 w-4" />} href="/dashboard" />
+                  <UserButton.Link label="Profile" labelIcon={<User className="h-4 w-4" />} href="/profile" />
                 </UserButton.MenuItems>
               </UserButton>
             </>
