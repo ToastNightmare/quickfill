@@ -8,7 +8,6 @@ export interface TemplateConfig {
   seoDescription: string;
   whatIsThis: string;
   keywords: string[];
-  emoji: string;
   whoNeedsThis: string;
   howToComplete: string[];
   commonMistakes: string[];
@@ -26,7 +25,6 @@ export const templates: TemplateConfig[] = [
     seoDescription: "Fill your TFN Declaration form (NAT 3092) online for free. Public ATO form for new employees. No signup required.",
     whatIsThis: "The Tax File Number (TFN) Declaration is an ATO form that you must complete when starting a new job. It tells your employer how much tax to withhold from your pay based on your tax circumstances.",
     keywords: ["tfn declaration", "tfn form", "ato tfn", "NAT 3092", "tax file number declaration"],
-    emoji: "🏛️",
     whoNeedsThis: "You need to complete a TFN Declaration whenever you start a new job in Australia. Your employer requires this form to set up your payroll and withhold the correct amount of tax from your wages. Students, part-time workers, and full-time employees all need to submit this form to their employer.",
     howToComplete: [
       "Enter your full legal name exactly as it appears on your official documents",
@@ -65,7 +63,6 @@ export const templates: TemplateConfig[] = [
     seoDescription: "Fill your Superannuation Standard Choice form (NAT 13080) online for free. Tell your employer which super fund to use.",
     whatIsThis: "The Superannuation Standard Choice form allows you to nominate which superannuation fund you want your employer to pay your super contributions into. This is your right under Australian law.",
     keywords: ["super choice form", "superannuation choice", "NAT 13080", "choose super fund", "super nomination"],
-    emoji: "🏦",
     whoNeedsThis: "All Australian employees aged 18 or older who want to choose their own superannuation fund need to complete this form. If you do not choose a fund, your employer will pay your super into their default nominated fund, which may have higher fees or not suit your needs. This form is essential for anyone starting a new job or wanting to consolidate their super.",
     howToComplete: [
       "Enter your personal details including full name, date of birth, and TFN (essential for your fund to identify you)",
@@ -104,7 +101,6 @@ export const templates: TemplateConfig[] = [
     seoDescription: "Download and fill the Employment Separation Certificate (SU001) online. Required by Centrelink when claiming income support after leaving a job.",
     whatIsThis: "An Employment Separation Certificate is required by Centrelink when you leave a job and want to claim income support. Your employer must complete this form to verify your employment details and reason for leaving.",
     keywords: ["employment separation certificate", "centrelink separation", "SU001", "separation form", "leave job centrelink"],
-    emoji: "📄",
     whoNeedsThis: "You need an Employment Separation Certificate when you have left a job and are planning to claim income support payments from Centrelink. This includes JobSeeker Payment, Youth Allowance, and Austudy. The certificate must be completed by your employer and provides Centrelink with the information needed to assess your eligibility and any waiting periods.",
     howToComplete: [
       "Request the certificate from your employer as soon as possible after leaving your job",
@@ -143,7 +139,6 @@ export const templates: TemplateConfig[] = [
     seoDescription: "Apply for a Medicare card online with the MS004 enrolment form. For new residents and Australian citizens.",
     whatIsThis: "The Medicare Enrolment form is used to apply for a Medicare card if you're a new Australian resident or citizen. Medicare provides access to subsidised healthcare services across Australia.",
     keywords: ["medicare enrolment", "medicare card application", "MS004", "medicare form", "apply medicare"],
-    emoji: "🏥",
     whoNeedsThis: "You need to complete a Medicare enrolment form if you are a new Australian citizen, permanent resident, or eligible temporary resident who wants access to Australia's public healthcare system. This includes people who have recently arrived in Australia, newborn babies, and those who have never been enrolled before. Enrolment gives you access to subsidised medical services and public hospital treatment.",
     howToComplete: [
       "Gather required documents including proof of identity, citizenship or residency status, and proof of address",
@@ -182,7 +177,6 @@ export const templates: TemplateConfig[] = [
     seoDescription: "Fill and download a statutory declaration form online for free. Australian format with witness section.",
     whatIsThis: "A statutory declaration is a written statement of fact that you declare to be true. It must be signed in the presence of an authorised witness such as a justice of the peace, lawyer, or police officer.",
     keywords: ["statutory declaration", "stat dec", "legal declaration", "witness declaration", "australian statutory declaration"],
-    emoji: "⚖️",
     whoNeedsThis: "You need a statutory declaration when you must formally declare facts for legal or official purposes in Australia. Common uses include confirming identity documents, declaring marital status, confirming residency, or providing evidence for visa applications. Government agencies, courts, and organisations often require statutory declarations as formal proof of statements.",
     howToComplete: [
       "Write your declaration in the first person using clear and specific language",
@@ -221,7 +215,6 @@ export const templates: TemplateConfig[] = [
     seoDescription: "Complete the SU415 income and assets declaration form online. Required for Centrelink payment assessments and reviews.",
     whatIsThis: "The SU415 form is used by Centrelink to assess your income and assets for payment eligibility. You'll need to provide details about your employment, other income, bank accounts, investments, and property.",
     keywords: ["SU415", "centrelink income assets", "income declaration", "assets form", "centrelink assessment"],
-    emoji: "💼",
     whoNeedsThis: "You need to complete the SU415 income and assets form when Centrelink requests it for payment assessment, review, or renewal. This includes people claiming JobSeeker, Youth Allowance, Age Pension, Disability Support Pension, and other income support payments. The form helps Services Australia determine your payment rate and eligibility based on your financial circumstances.",
     howToComplete: [
       "Gather all financial documents including bank statements, investment accounts, and payslips",
@@ -260,7 +253,6 @@ export const templates: TemplateConfig[] = [
     seoDescription: "Complete your NSW rental application form online. Standard residential tenancy application for New South Wales properties.",
     whatIsThis: "This is the standard rental application form used by landlords and property managers in New South Wales. It collects information about your identity, employment, rental history, and references to assess your tenancy application.",
     keywords: ["rental application nsw", "tenancy application nsw", "rental form nsw", "nsw lease application", "rent application"],
-    emoji: "🏠",
     whoNeedsThis: "You need to complete a rental application when seeking to rent a residential property in New South Wales. Landlords and property managers require this form to assess your suitability as a tenant. This applies whether you are a first-time renter, moving from another state, or looking for your next rental home in NSW.",
     howToComplete: [
       "Provide accurate personal details including full name, date of birth, and current address",
@@ -299,7 +291,6 @@ export const templates: TemplateConfig[] = [
     seoDescription: "Complete your Victorian rental application form online. Standard residential tenancy application for Victoria properties.",
     whatIsThis: "This is the standard rental application form used by landlords and property managers in Victoria. It collects information about your identity, employment, rental history, and references in accordance with Victorian tenancy laws.",
     keywords: ["rental application vic", "tenancy application vic", "rental form victoria", "vic lease application", "rent application victoria"],
-    emoji: "🏡",
     whoNeedsThis: "You need to complete a rental application when seeking to rent a residential property in Victoria. Landlords and property managers use this form to assess your suitability as a tenant under Victorian tenancy legislation. This applies to all prospective tenants regardless of whether you are renting for the first time or moving from another property.",
     howToComplete: [
       "Enter your full legal name and current contact details including phone and email",
@@ -338,7 +329,6 @@ export const templates: TemplateConfig[] = [
     seoDescription: "Apply for early release of your superannuation due to financial hardship. Complete the application form online.",
     whatIsThis: "This form allows you to apply for early release of your superannuation on the grounds of financial hardship. You must meet specific criteria set by the Australian Prudential Regulation Authority (APRA) and provide evidence of your financial situation.",
     keywords: ["super hardship", "early release super", "financial hardship super", "superannuation release", "compassionate grounds"],
-    emoji: "📥",
     whoNeedsThis: "You may apply for early release of super on financial hardship grounds if you have been receiving eligible government income support payments for 26 weeks continuously and cannot meet reasonable and immediate family living expenses. This assistance is designed for Australians experiencing genuine financial hardship who have exhausted other options for financial support.",
     howToComplete: [
       "Confirm you have received eligible Centrelink payments for at least 26 weeks continuously",
@@ -377,7 +367,6 @@ export const templates: TemplateConfig[] = [
     seoDescription: "Create professional Australian tax invoices online. Includes ABN, GST breakdown, and payment details. Free to use.",
     whatIsThis: "A tax invoice is a legal document required for GST-registered businesses in Australia. It must include specific information such as your ABN, the words 'Tax Invoice', itemised goods or services, and GST amounts if applicable.",
     keywords: ["tax invoice", "australian invoice", "gst invoice", "business invoice", "invoice template australia"],
-    emoji: "🧾",
     whoNeedsThis: "You need to issue a tax invoice if you are registered for GST in Australia and have made a taxable sale of goods or services. Your customer requires a valid tax invoice to claim GST credits on their tax return. This applies to all GST-registered businesses regardless of size, from sole traders to large corporations.",
     howToComplete: [
       "Include the words 'Tax Invoice' prominently at the top of the document",
@@ -416,7 +405,6 @@ export const templates: TemplateConfig[] = [
     seoDescription: "Collect new employee details including TFN, bank account, and super fund. Essential for payroll setup in Australia.",
     whatIsThis: "This form collects essential information from new employees including their Tax File Number, bank account details, superannuation fund, and emergency contact information. It's required for setting up payroll and ensuring compliance with Australian employment laws.",
     keywords: ["employee details form", "new employee form", "staff onboarding", "employee registration", "payroll setup form"],
-    emoji: "👤",
     whoNeedsThis: "Employers need to collect employee details from all new staff members before their first payday. This information is essential for payroll processing, superannuation contributions, tax withholding, and emergency contact purposes. The form ensures compliance with Australian workplace laws and tax requirements.",
     howToComplete: [
       "Have the employee complete their personal details including full name, address, and date of birth",
@@ -455,7 +443,6 @@ export const templates: TemplateConfig[] = [
     seoDescription: "Complete NDIS service agreement between participant and provider. Includes support schedule, rates, and signatures.",
     whatIsThis: "An NDIS Service Agreement is a formal agreement between an NDIS participant and their service provider. It outlines the supports and services to be provided, including schedules, costs, and responsibilities of both parties. This is a requirement under NDIS quality and safety standards.",
     keywords: ["ndis service agreement", "ndis provider agreement", "ndis support plan", "disability service agreement", "ndis contract"],
-    emoji: "♿",
     whoNeedsThis: "NDIS participants and providers must have a service agreement before supports begin. This applies to all NDIS-funded services regardless of whether the provider is registered or unregistered. The agreement ensures both parties understand their rights and responsibilities and is required for NDIS compliance and quality standards.",
     howToComplete: [
       "Clearly describe the supports and services to be provided including frequency and duration",
@@ -494,7 +481,6 @@ export const templates: TemplateConfig[] = [
     seoDescription: "Complete a medical consent form online. Patient consent for procedures and treatments with Medicare details and emergency contact.",
     whatIsThis: "A medical consent form is used to document a patient's informed consent to medical procedures or treatments. It includes important medical information such as allergies, current medications, and emergency contact details to ensure safe and appropriate care.",
     keywords: ["medical consent form", "patient consent", "health consent", "medical procedure consent", "treatment consent australia"],
-    emoji: "⚕️",
     whoNeedsThis: "Patients need to complete a medical consent form before undergoing medical procedures, treatments, or surgeries. Healthcare providers require this form to document that you understand the procedure, its risks, and have given informed consent. This applies to both minor procedures and major surgical interventions.",
     howToComplete: [
       "Provide your personal details including full name, date of birth, and Medicare number",

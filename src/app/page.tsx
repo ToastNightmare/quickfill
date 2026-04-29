@@ -264,25 +264,25 @@ const steps = [
 
 const verticals = [
   {
-    emoji: "\ud83c\udfe0",
+    icon: FileText,
     title: "Real Estate Agents",
     description:
       "Fill tenancy applications, lease agreements, and property documents in seconds.",
   },
   {
-    emoji: "\ud83d\udccb",
+    icon: FileText,
     title: "Bookkeepers & Sole Traders",
     description:
       "ATO BAS forms, tax declarations, and business registrations, done fast.",
   },
   {
-    emoji: "\u26ea",
+    icon: ShieldCheck,
     title: "Churches & Community Orgs",
     description:
       "Membership forms, event registrations, and grant applications sorted easily.",
   },
   {
-    emoji: "\ud83c\udfe5",
+    icon: BadgeCheck,
     title: "Healthcare & Community Services",
     description:
       "Medicare, Centrelink, and client intake forms filled accurately every time.",
@@ -503,7 +503,7 @@ export default function Home() {
                     <td className="px-6 py-4 font-medium text-gray-900">Works on locked fields</td>
                     <td className="px-6 py-4 text-gray-700">Can be fiddly</td>
                     <td className="px-6 py-4 text-gray-700">Setup required</td>
-                    <td className="px-6 py-4 font-semibold text-green-600 bg-accent/5">✅ Yes</td>
+                    <td className="px-6 py-4 font-semibold text-green-600 bg-accent/5">Yes</td>
                   </tr>
                   <tr className="bg-surface-alt">
                     <td className="px-6 py-4 font-medium text-gray-900">No printing needed</td>
@@ -528,9 +528,7 @@ export default function Home() {
       <section className="bg-surface-alt px-4 py-20 sm:px-6 lg:px-8">
         <div className="mx-auto max-w-4xl">
           <div className="text-center">
-            <span className="inline-flex items-center gap-2 rounded-full bg-accent/10 px-4 py-1.5 text-sm font-semibold text-accent">
-              🇦🇺 Built for Australian forms
-            </span>
+            <span className="inline-flex items-center gap-2 rounded-full bg-accent/10 px-4 py-1.5 text-sm font-semibold text-accent">Built for Australian forms</span>
             <h2 className="mt-4 text-3xl font-bold tracking-tight sm:text-4xl">
               Features made for Australia
             </h2>
@@ -541,38 +539,40 @@ export default function Home() {
           <div className="mt-12 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
             {[
               {
-                emoji: "🔍",
+                icon: ScanSearch,
                 title: "ABN Lookup",
                 description: "Type your ABN and we instantly verify it against the Australian Business Register and auto-fill your business name.",
               },
               {
-                emoji: "🪪",
+                icon: BadgeCheck,
                 title: "TFN & Medicare Validation",
                 description: "Real-time format validation for Tax File Numbers and Medicare cards so you never submit an error again.",
               },
               {
-                emoji: "📋",
+                icon: User,
                 title: "Australian Profile Auto-fill",
                 description: "Save your TFN, Medicare number, ABN, address, and driver licence once. QuickFill fills matching fields across any form.",
               },
               {
-                emoji: "💾",
+                icon: Clock,
                 title: "Save & Resume",
                 description: "Start filling a form, close the tab, come back later. Your progress is automatically saved for 30 days.",
               },
               {
-                emoji: "🔄",
+                icon: Sparkles,
                 title: "Re-fill Previous Forms",
                 description: "Filled this form before? One click to re-fill it with the same details: great for monthly BAS and invoices.",
               },
               {
-                emoji: "🔒",
+                icon: LockKeyhole,
                 title: "Private by Design",
                 description: "PDFs are processed securely in memory for download generation and are not stored on our servers.",
               },
             ].map((f) => (
               <div key={f.title} className="rounded-xl border border-border bg-surface p-6 shadow-sm">
-                <div className="text-3xl mb-3">{f.emoji}</div>
+                <div className="mb-3 flex h-11 w-11 items-center justify-center rounded-lg bg-accent/10">
+                  <f.icon className="h-5 w-5 text-accent" />
+                </div>
                 <h3 className="font-semibold text-base mb-1">{f.title}</h3>
                 <p className="text-sm text-text-muted leading-relaxed">{f.description}</p>
               </div>
@@ -596,7 +596,9 @@ export default function Home() {
                 key={v.title}
                 className="min-h-[180px] rounded-xl border border-border bg-surface p-6"
               >
-                <div className="text-3xl">{v.emoji}</div>
+                <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-accent/10">
+                  <v.icon className="h-5 w-5 text-accent" />
+                </div>
                 <h3 className="mt-3 text-lg font-bold">{v.title}</h3>
                 <p className="mt-2 text-sm leading-relaxed text-text-muted">
                   {v.description}
@@ -780,7 +782,7 @@ export default function Home() {
                 </div>
                 <div className="mt-2 h-7 flex items-center">
                   <div className="inline-flex items-center rounded-full bg-green-500/15 border border-green-500/25 px-3 py-1">
-                    <span className="text-xs font-semibold text-green-400">🎉 Billed $100/year, save $44</span>
+                    <span className="text-xs font-semibold text-green-400">Billed A$100/year, save A$44</span>
                   </div>
                 </div>
               </div>

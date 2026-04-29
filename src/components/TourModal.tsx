@@ -1,9 +1,11 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { Download, Eraser, FileText, Grid3X3, Keyboard, MousePointer2 } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 
 type Step = {
-  emoji: string;
+  icon: LucideIcon;
   title: string;
   description: string;
 };
@@ -15,32 +17,32 @@ interface TourModalProps {
 
 const steps: Step[] = [
   {
-    emoji: "📄",
+    icon: FileText,
     title: "Upload or pick a template",
     description: "Start by uploading any PDF from your computer, or choose from our library of real Australian government forms and professional templates.",
   },
   {
-    emoji: "✏️",
+    icon: MousePointer2,
     title: "Draw fields anywhere",
     description: "Select a tool from the left sidebar: Text, Date, Signature, Checkbox, or Whiteout. Then click and drag directly on the PDF to draw the field exactly where you need it.",
   },
   {
-    emoji: "🧲",
+    icon: Grid3X3,
     title: "Snap to form boxes",
     description: "Turn Snap on (top toolbar) to automatically detect and snap into printed form boxes. Great for structured government forms. Leave it off for free placement.",
   },
   {
-    emoji: "⬜",
+    icon: Eraser,
     title: "Cover unwanted text",
     description: "Use the Whiteout tool to draw over any pre-printed text you want to hide: like instructions or old content. It samples the background colour so it blends right in.",
   },
   {
-    emoji: "⌨️",
+    icon: Keyboard,
     title: "Keyboard shortcuts",
     description: "Use arrow keys to nudge fields into position. Delete or Backspace removes the selected field. Ctrl+Z to undo. Escape drops the current tool.",
   },
   {
-    emoji: "⬇️",
+    icon: Download,
     title: "Download your filled PDF",
     description: "When you're done, hit Download PDF in the left sidebar. Your completed form downloads instantly: ready to print, email, or lodge.",
   },
@@ -68,6 +70,7 @@ export function TourModal({ isOpen, onClose }: TourModalProps) {
   };
 
   const isLastStep = currentStep === steps.length - 1;
+  const StepIcon = steps[currentStep].icon;
 
   // Escape key to dismiss
   useEffect(() => {
@@ -88,7 +91,9 @@ export function TourModal({ isOpen, onClose }: TourModalProps) {
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 overflow-hidden">
         {/* Step illustration */}
         <div className="bg-gradient-to-br from-blue-50 to-blue-100 p-8 flex items-center justify-center min-h-[160px]">
-          <span className="text-7xl">{steps[currentStep].emoji}</span>
+          <div className="flex h-20 w-20 items-center justify-center rounded-2xl bg-white shadow-sm">
+            <StepIcon className="h-10 w-10 text-blue-600" />
+          </div>
         </div>
         
         {/* Content */}
@@ -124,7 +129,7 @@ export function TourModal({ isOpen, onClose }: TourModalProps) {
             onClick={handleNext}
             className="flex items-center gap-2 bg-blue-600 text-white text-sm font-semibold px-5 py-2 rounded-lg hover:bg-blue-700 transition-colors"
           >
-            {isLastStep ? "Get started ✓" : "Next →"}
+            {isLastStep ? "Get started" : "Next"}
           </button>
         </div>
       </div>

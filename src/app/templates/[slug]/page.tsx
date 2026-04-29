@@ -53,12 +53,54 @@ export default async function TemplatePage({ params }: PageProps) {
   }
 
   const relatedTemplates = getRelatedTemplates(slug, 3);
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "https://getquickfill.com";
+  const pageUrl = `${baseUrl}/templates/${slug}`;
+  const structuredData = [
+    {
+      "@context": "https://schema.org",
+      "@type": "WebPage",
+      name: template.seoTitle,
+      description: template.seoDescription,
+      url: pageUrl,
+      isPartOf: {
+        "@type": "WebSite",
+        name: "QuickFill",
+        url: baseUrl,
+      },
+    },
+    {
+      "@context": "https://schema.org",
+      "@type": "FAQPage",
+      mainEntity: template.faqs.map((faq) => ({
+        "@type": "Question",
+        name: faq.q,
+        acceptedAnswer: {
+          "@type": "Answer",
+          text: faq.a,
+        },
+      })),
+    },
+    {
+      "@context": "https://schema.org",
+      "@type": "BreadcrumbList",
+      itemListElement: [
+        { "@type": "ListItem", position: 1, name: "Templates", item: `${baseUrl}/templates` },
+        { "@type": "ListItem", position: 2, name: template.title, item: pageUrl },
+      ],
+    },
+  ];
 
   return (
     <div className="mx-auto max-w-4xl px-4 py-12 sm:px-6 lg:px-8">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }}
+      />
       {/* Hero Section */}
       <div className="text-center mb-12">
-        <div className="text-6xl mb-4">{template.emoji}</div>
+        <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-xl bg-accent/10">
+          <FileText className="h-8 w-8 text-accent" />
+        </div>
         <h1 className="text-4xl font-bold tracking-tight mb-4">{template.title}</h1>
         <p className="text-xl text-text-muted mb-8 max-w-2xl mx-auto">{template.description}</p>
         <Link
@@ -170,7 +212,9 @@ export default async function TemplatePage({ params }: PageProps) {
                 className="block group"
               >
                 <div className="bg-surface rounded-xl p-6 border border-border hover:border-accent transition-colors">
-                  <div className="text-4xl mb-3">{related.emoji}</div>
+                  <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-lg bg-accent/10">
+                    <FileText className="h-6 w-6 text-accent" />
+                  </div>
                   <h3 className="font-semibold mb-2 group-hover:text-accent transition-colors">{related.title}</h3>
                   <p className="text-sm text-text-muted mb-4">{related.description}</p>
                   <div className="inline-flex items-center gap-1 text-accent text-sm font-medium">

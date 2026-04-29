@@ -10,7 +10,6 @@ interface Template {
   file: string;
   title: string;
   description: string;
-  emoji: string;
   category: string;
   badge?: string;
 }
@@ -20,7 +19,6 @@ const officialTemplates: Template[] = [
     file: "ato-tfn-declaration.pdf",
     title: "Tax File Number Declaration",
     description: "Public ATO form (NAT 3092). Required when starting a new job so your employer can withhold the correct amount of tax.",
-    emoji: "🏛️",
     category: "ATO",
     badge: "Public Form",
   },
@@ -28,7 +26,6 @@ const officialTemplates: Template[] = [
     file: "ato-super-choice.pdf",
     title: "Superannuation Standard Choice",
     description: "Public ATO form (NAT 13080). Tell your employer which super fund to pay your contributions into.",
-    emoji: "🏦",
     category: "ATO",
     badge: "Public Form",
   },
@@ -36,7 +33,6 @@ const officialTemplates: Template[] = [
     file: "ato-withholding-declaration.pdf",
     title: "Withholding Declaration",
     description: "Public ATO form (NAT 3093). Advise your employer of changes to your tax withholding: HELP debt, Medicare levy, tax offsets.",
-    emoji: "📋",
     category: "ATO",
     badge: "Public Form",
   },
@@ -44,7 +40,6 @@ const officialTemplates: Template[] = [
     file: "employment-separation.pdf",
     title: "Employment Separation Certificate",
     description: "Public Services Australia form (SU001). Required by Centrelink when you leave a job to claim income support.",
-    emoji: "📄",
     category: "Services Australia",
     badge: "Public Form",
   },
@@ -52,7 +47,6 @@ const officialTemplates: Template[] = [
     file: "medicare-enrolment.pdf",
     title: "Medicare Enrolment",
     description: "Public Services Australia form (MS004). Apply for a Medicare card as a new resident or Australian citizen.",
-    emoji: "🏥",
     category: "Services Australia",
     badge: "Public Form",
   },
@@ -63,7 +57,6 @@ const legalTemplates: Template[] = [
     file: "statutory-declaration.pdf",
     title: "Statutory Declaration",
     description: "Public statutory declaration form for making legal declarations. Includes witness section and criminal offence warning.",
-    emoji: "⚖️",
     category: "Legal",
   },
 ];
@@ -73,7 +66,6 @@ const centrelinkTemplates: Template[] = [
     file: "centrelink-su415.pdf",
     title: "Centrelink Income & Assets (SU415)",
     description: "Services Australia form for declaring income and assets. Sections for employment, other income, assets, and partner details.",
-    emoji: "💼",
     category: "Centrelink",
   },
 ];
@@ -83,21 +75,18 @@ const realEstateTemplates: Template[] = [
     file: "tenancy-application-nsw.pdf",
     title: "Rental Application (NSW)",
     description: "New South Wales rental application with sections for applicant, employment, rental history, references, ID, occupants, pets, and vehicles.",
-    emoji: "🏠",
     category: "Real Estate",
   },
   {
     file: "tenancy-application-vic.pdf",
     title: "Rental Application (VIC)",
     description: "Victoria rental application with Victorian requirements including bond/rent fields and privacy notice.",
-    emoji: "🏡",
     category: "Real Estate",
   },
   {
     file: "rental-application.pdf",
     title: "Rental Application",
     description: "Standard residential rental application for Australian properties. Covers personal details, employment, references, and ID.",
-    emoji: "🏘️",
     category: "Real Estate",
   },
 ];
@@ -107,7 +96,6 @@ const superTemplates: Template[] = [
     file: "superannuation-hardship.pdf",
     title: "Superannuation Hardship Release",
     description: "Early release of superannuation on compassionate/financial hardship grounds. Sections for member details, grounds, financial details, and supporting documents.",
-    emoji: "📥",
     category: "Superannuation",
   },
 ];
@@ -117,52 +105,53 @@ const professionalTemplates: Template[] = [
     file: "employee-details.pdf",
     title: "New Employee Details Form",
     description: "Collect TFN, bank details, super fund, and emergency contact from new staff. Ready for payroll setup.",
-    emoji: "👤",
     category: "Employment",
   },
   {
     file: "australian-invoice.pdf",
     title: "Tax Invoice",
     description: "Professional Australian tax invoice with ABN, GST breakdown, line items, and payment details.",
-    emoji: "🧾",
     category: "Business",
   },
   {
     file: "consent-form.pdf",
     title: "General Consent Form",
     description: "A clear, signed consent and authority form suitable for community, business, and personal use.",
-    emoji: "✅",
     category: "General",
   },
   {
     file: "medical-consent.pdf",
     title: "Medical Consent Form",
     description: "Patient consent for procedures and treatments. Includes Medicare number, allergies, emergency contact, and signatures.",
-    emoji: "⚕️",
     category: "Healthcare",
   },
   {
     file: "bank-account-change.pdf",
     title: "Bank Account Update Request",
     description: "Update your bank account details with an employer, super fund, or government agency. Signed declaration included.",
-    emoji: "💳",
     category: "Finance",
   },
   {
     file: "insurance-claim.pdf",
     title: "Insurance Claim Form",
     description: "General insurance claim covering home, motor, and personal property. Works with most Australian insurers.",
-    emoji: "🛡️",
     category: "Insurance",
   },
   {
     file: "ndis-service-agreement.pdf",
     title: "NDIS Service Agreement",
     description: "Compliant NDIS service agreement between participant and provider. Includes support schedule, rates, and signatures.",
-    emoji: "♿",
     category: "NDIS",
   },
 ];
+
+function TemplateIcon() {
+  return (
+    <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-lg bg-accent/10">
+      <FileText className="h-6 w-6 text-accent" />
+    </div>
+  );
+}
 
 function TemplateCard({ template }: { template: Template }) {
   // Map file to slug
@@ -199,14 +188,14 @@ function TemplateCard({ template }: { template: Template }) {
       )}
       {hasDetailPage ? (
         <Link href={`/templates/${slug}`} className="block hover:opacity-80 transition-opacity">
-          <div className="text-4xl mb-3">{template.emoji}</div>
+          <TemplateIcon />
           <span className="text-xs font-semibold uppercase tracking-widest text-text-muted mb-1">{template.category}</span>
           <h2 className="text-base font-semibold mb-2">{template.title}</h2>
           <p className="text-sm text-text-muted leading-relaxed flex-1">{template.description}</p>
         </Link>
       ) : (
         <>
-          <div className="text-4xl mb-3">{template.emoji}</div>
+          <TemplateIcon />
           <span className="text-xs font-semibold uppercase tracking-widest text-text-muted mb-1">{template.category}</span>
           <h2 className="text-base font-semibold mb-2">{template.title}</h2>
           <p className="text-sm text-text-muted leading-relaxed flex-1">{template.description}</p>

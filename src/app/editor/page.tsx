@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useCallback, useEffect, useRef, useMemo } from "react";
-import { ChevronLeft, ChevronRight, Sparkles, X, RotateCcw, Minus, Plus, Download, Zap, ShieldCheck, LockKeyhole, BadgeCheck } from "lucide-react";
+import { ChevronLeft, ChevronRight, Sparkles, X, RotateCcw, Minus, Plus, Download, Zap, ShieldCheck, LockKeyhole, BadgeCheck, FileText, CheckCircle } from "lucide-react";
 import { UploadZone } from "@/components/UploadZone";
 import { MobileFiller } from "@/components/MobileFiller";
 import { Toolbar } from "@/components/Toolbar";
@@ -1031,13 +1031,13 @@ export default function EditorPage() {
             </div>
             <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
               {[
-                { file: "ato-tfn-declaration.pdf", title: "TFN Declaration", emoji: "🏛️" },
-                { file: "ato-super-choice.pdf", title: "Super Choice", emoji: "🏦" },
-                { file: "statutory-declaration.pdf", title: "Statutory Declaration", emoji: "⚖️" },
-                { file: "rental-application-nsw.pdf", title: "Rental Application", emoji: "🏠" },
-                { file: "employment-separation.pdf", title: "Employment Separation", emoji: "📄" },
-                { file: "ndis-service-agreement.pdf", title: "NDIS Agreement", emoji: "♿" },
-              ].map(({ file, title, emoji }) => (
+                { file: "ato-tfn-declaration.pdf", title: "TFN Declaration" },
+                { file: "ato-super-choice.pdf", title: "Super Choice" },
+                { file: "statutory-declaration.pdf", title: "Statutory Declaration" },
+                { file: "rental-application-nsw.pdf", title: "Rental Application" },
+                { file: "employment-separation.pdf", title: "Employment Separation" },
+                { file: "ndis-service-agreement.pdf", title: "NDIS Agreement" },
+              ].map(({ file, title }) => (
                 <button
                   key={file}
                   onClick={() => {
@@ -1052,7 +1052,7 @@ export default function EditorPage() {
                   }}
                   className="flex items-center gap-3 rounded-xl border border-border bg-surface-alt px-4 py-3 text-left hover:border-accent hover:bg-accent/5 transition-colors group"
                 >
-                  <span className="text-xl">{emoji}</span>
+                  <FileText className="h-5 w-5 text-accent" />
                   <span className="text-sm font-medium text-text-muted group-hover:text-accent transition-colors">{title}</span>
                 </button>
               ))}
@@ -1383,7 +1383,9 @@ export default function EditorPage() {
       {showGuestSignupPrompt && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
           <div className="w-full max-w-md rounded-2xl bg-surface p-8 shadow-2xl text-center">
-            <div className="text-4xl mb-4">🎉</div>
+            <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-accent/10">
+              <CheckCircle className="h-6 w-6 text-accent" />
+            </div>
             <h2 className="text-xl font-bold mb-2">Your PDF is ready!</h2>
             <p className="text-text-muted text-sm mb-6">
               Create a free account to get 3 fills per month, save your Australian profile, and re-fill forms instantly.

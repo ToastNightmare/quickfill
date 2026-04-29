@@ -308,7 +308,7 @@ export default function PricingPage() {
                       </div>
                       <div className="mt-2 h-7 flex items-center">
                         <div className="inline-flex items-center rounded-full bg-green-500/15 border border-green-500/25 px-3 py-1">
-                          <span className="text-xs font-semibold text-green-400">🎉 Billed $100/year, save $44</span>
+                          <span className="text-xs font-semibold text-green-400">Billed A$100/year, save A$44</span>
                         </div>
                       </div>
                     </div>

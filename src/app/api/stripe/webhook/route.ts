@@ -57,7 +57,7 @@ function emailWrapper(content: string) {
       <div style="background: #ffffff; border: 1px solid #e5e7eb; border-top: none; border-radius: 0 0 12px 12px; padding: 40px;">
         ${content}
         <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 32px 0;" />
-        <p style="font-size: 12px; color: #9ca3af; margin: 0;">QuickFill · <a href="${APP_URL}/privacy" style="color: #9ca3af;">Privacy Policy</a> · <a href="${APP_URL}/terms" style="color: #9ca3af;">Terms</a></p>
+        <p style="font-size: 12px; color: #9ca3af; margin: 0;">QuickFill | <a href="${APP_URL}/privacy" style="color: #9ca3af;">Privacy Policy</a> | <a href="${APP_URL}/terms" style="color: #9ca3af;">Terms</a></p>
       </div>
     </div>
   `;
@@ -67,16 +67,16 @@ function welcomeEmailContent(firstName: string | null, isAnnual: boolean) {
   const name = firstName || "there";
   const billingText = isAnnual ? "A$100/year" : "A$12/month";
   return `
-    <h1 style="font-size: 24px; font-weight: 800; margin: 0 0 16px 0; color: #4f8ef7;">Welcome to QuickFill Pro 🎉</h1>
+    <h1 style="font-size: 24px; font-weight: 800; margin: 0 0 16px 0; color: #4f8ef7;">Welcome to QuickFill Pro</h1>
     <p style="font-size: 16px; color: #374151; margin: 0 0 24px 0; line-height: 1.6;">Hi ${name},</p>
     
     <p style="font-size: 15px; color: #374151; margin: 0 0 16px 0; line-height: 1.6;">You're now on QuickFill Pro. Here's what you've unlocked:</p>
     
     <div style="background: #f8fafc; border-radius: 8px; padding: 20px; margin: 24px 0;">
       <ul style="margin: 0; padding-left: 20px; font-size: 15px; color: #374151; line-height: 2.2;">
-        <li>✓ Unlimited PDF fills - no monthly limits</li>
-        <li>✓ All 13+ Australian government templates</li>
-        <li>✓ Priority support - we respond first</li>
+        <li>Unlimited PDF fills - no monthly limits</li>
+        <li>All 13+ Australian government templates</li>
+        <li>Priority support - we respond first</li>
       </ul>
     </div>
     
@@ -185,7 +185,7 @@ export async function POST(req: NextRequest) {
         await sendEmail({
           from: "QuickFill <noreply@getquickfill.com>",
           to: email,
-          subject: "Welcome to QuickFill Pro 🎉",
+          subject: "Welcome to QuickFill Pro",
           html: emailWrapper(welcomeEmailContent(firstName, isAnnual)),
         });
       }
