@@ -338,15 +338,7 @@ export default function Home() {
     }
   };
 
-  if (!isLoaded) {
-    return (
-      <div className="flex min-h-[60vh] items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-accent" />
-      </div>
-    );
-  }
-
-  if (isSignedIn) {
+  if (isLoaded && isSignedIn) {
     return <LoggedInHome />;
   }
 
