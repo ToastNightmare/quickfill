@@ -9,7 +9,6 @@ import {
   Download,
   ArrowRight,
   Check,
-  X,
   FileText,
   User,
   Clock,
@@ -320,14 +319,14 @@ export default function Home() {
   const { isLoaded, isSignedIn } = useAuth();
   const [upgradingPlan, setUpgradingPlan] = useState<string | null>(null);
 
-  const handleUpgrade = async (plan: "pro") => {
-    trackEvent("checkout_start", { source: "home_pricing", plan });
-    setUpgradingPlan(plan);
+  const handleUpgrade = async (plan: "pro", annual = true) => {
+    trackEvent("checkout_start", { source: "home_pricing", plan, billing: annual ? "annual" : "monthly" });
+    setUpgradingPlan(annual ? "pro_annual" : "pro_monthly");
     try {
       const res = await fetch("/api/stripe/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ plan }),
+        body: JSON.stringify({ plan, annual }),
       });
       const data = await res.json();
       if (data.error) {
@@ -772,112 +771,115 @@ export default function Home() {
       </section>
 
       {/* Pricing */}
-      <section id="pricing" className="bg-surface px-4 py-20 sm:px-6 lg:px-8">
-        <div className="mx-auto max-w-4xl">
+      <section id="pricing" className="scroll-mt-24 bg-surface px-4 py-20 sm:px-6 lg:px-8">
+        <div className="mx-auto max-w-5xl">
           <h2 className="text-center text-3xl font-bold tracking-tight sm:text-4xl">
             Simple, transparent pricing
           </h2>
           <p className="mx-auto mt-4 max-w-xl text-center text-text-muted">
-            Start free. Upgrade when you need more.
+            Start free. Upgrade when you need unlimited downloads and no watermark.
           </p>
 
-          <div className="mx-auto mt-12 grid max-w-2xl gap-8 sm:grid-cols-2 sm:items-stretch pt-5">
-            {/* Free tier */}
-            <div className="flex flex-col rounded-xl border border-border bg-surface p-8">
-              <h3 className="text-lg font-semibold">Free</h3>
-              <div className="mt-4">
-                <div className="flex items-end gap-2">
+          <div className="mx-auto mt-12 grid max-w-4xl gap-6 lg:grid-cols-2 lg:items-stretch">
+            <div className="flex flex-col rounded-lg border border-border bg-surface p-6 shadow-sm">
+              <div>
+                <h3 className="text-lg font-semibold">Free</h3>
+                <div className="mt-5 flex items-end gap-2">
                   <span className="text-4xl font-extrabold leading-none">$0</span>
-                  <span className="text-text-muted text-sm leading-none pb-0.5">/month</span>
+                  <span className="pb-1 text-sm text-text-muted">/month</span>
                 </div>
-                <div className="mt-2 h-7" />
+                <p className="mt-4 text-sm text-text-muted">Perfect for occasional paperwork.</p>
               </div>
-              <p className="mt-4 text-sm text-text-muted">Perfect for occasional use.</p>
-              <ul className="mt-6 space-y-3">
-                {[
-                  { label: "3 documents per month", included: true },
-                  { label: "All field types", included: true },
-                  { label: "AcroForm detection", included: true },
-                  { label: "Instant PDF download", included: true },
-                  { label: "Unlimited documents", included: false },
-                  { label: "No watermarks", included: false },
-                  { label: "Auto-fill from profile", included: false },
-                ].map((item) => (
-                  <li key={item.label} className={`flex items-start gap-2 text-sm ${!item.included ? "opacity-40" : ""}`}>
-                    {item.included ? (
+
+              <div className="mt-6">
+                <p className="text-xs font-semibold uppercase text-text-muted">Free includes</p>
+                <ul className="mt-3 space-y-3">
+                  {[
+                    "3 documents per month",
+                    "All field types",
+                    "AcroForm detection",
+                    "Instant PDF download",
+                  ].map((item) => (
+                    <li key={item} className="flex items-start gap-2 text-sm">
                       <Check className="mt-0.5 h-4 w-4 shrink-0 text-accent" />
-                    ) : (
-                      <X className="mt-0.5 h-4 w-4 shrink-0 text-text-muted" />
-                    )}
-                    <span className={!item.included ? "line-through" : ""}>{item.label}</span>
-                  </li>
-                ))}
-              </ul>
+                      <span>{item}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+
               <div className="mt-auto pt-8">
                 <Link
                   href="/sign-up"
                   onClick={() => trackEvent("home_cta_click", { cta: "pricing_free" })}
-                  className="flex h-11 items-center justify-center rounded-xl border-2 border-accent text-sm font-semibold text-accent hover:bg-accent/10 transition-colors"
+                  className="flex h-11 items-center justify-center rounded-lg border-2 border-accent text-sm font-semibold text-accent hover:bg-accent/10 transition-colors"
                 >
                   Get Started Free
                 </Link>
               </div>
             </div>
 
-            {/* Pro tier */}
-            <div className="relative flex flex-col rounded-xl bg-navy p-8 shadow-xl shadow-navy/30">
-              <div className="absolute inset-0 rounded-xl overflow-hidden pointer-events-none">
-                <div className="absolute -top-10 -right-10 h-40 w-40 rounded-full bg-accent/20 blur-2xl" />
-              </div>
-              <div className="absolute -top-3 left-6 rounded-full bg-accent px-3 py-0.5 text-xs font-semibold text-white z-10">
-                Most Popular
-              </div>
-              <h3 className="text-lg font-semibold text-white">Pro</h3>
-              <div className="mt-4">
-                <div className="flex items-end gap-2">
-                  <span className="text-4xl font-extrabold text-white leading-none">$8.33</span>
-                  <span className="text-gray-400 text-sm leading-none pb-0.5">/month</span>
-                </div>
-                <div className="mt-2 h-7 flex items-center">
-                  <div className="inline-flex items-center rounded-full bg-green-500/15 border border-green-500/25 px-3 py-1">
-                    <span className="text-xs font-semibold text-green-400">Billed A$100/year, save A$44</span>
+            <div className="flex flex-col overflow-hidden rounded-lg border-2 border-accent bg-surface shadow-xl shadow-accent/15">
+              <div className="bg-navy p-6 text-white">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <h3 className="text-lg font-semibold">Pro</h3>
+                    <p className="mt-1 text-sm text-gray-300">Unlimited fills, no watermark, priority support.</p>
                   </div>
+                  <span className="rounded-full bg-accent px-3 py-1 text-xs font-semibold text-white">
+                    Best value
+                  </span>
+                </div>
+                <div className="mt-6">
+                  <div className="flex items-end gap-2">
+                    <span className="text-4xl font-extrabold leading-none">A$100</span>
+                    <span className="pb-1 text-sm text-gray-300">/year</span>
+                  </div>
+                  <p className="mt-2 text-sm text-gray-300">Works out to A$8.33/month. Save A$44 a year.</p>
                 </div>
               </div>
-              <p className="mt-4 text-sm text-gray-300">Unlimited fills, no watermark, priority support.</p>
-              <ul className="mt-6 space-y-3">
-                {[
-                  "Unlimited documents",
-                  "All field types",
-                  "AcroForm detection",
-                  "No watermarks",
-                  "Auto-fill from profile",
-                  "Save & resume progress",
-                  "Re-fill from history",
-                  "Unlimited fill history",
-                  "Priority support",
-                ].map((item) => (
-                  <li key={item} className="flex items-start gap-2 text-sm text-gray-200">
-                    <Check className="mt-0.5 h-4 w-4 shrink-0 text-accent" />
-                    {item}
-                  </li>
-                ))}
-              </ul>
-              <div className="mt-auto pt-8">
-                <button
-                  onClick={() => handleUpgrade("pro")}
-                  disabled={!!upgradingPlan}
-                  className="flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-accent text-sm font-semibold text-white hover:bg-accent-hover transition-all shadow-lg shadow-accent/40 hover:shadow-accent/60 disabled:opacity-70"
-                >
-                  {upgradingPlan === "pro" ? (
-                    <><div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" /> Loading...</>
-                  ) : (
-                    <><Sparkles className="h-4 w-4" /> Get Pro, $100/year</>
-                  )}
-                </button>
-                <p className="mt-3 text-center text-xs text-gray-500">
-                  Or <Link href="/pricing" onClick={() => trackEvent("home_cta_click", { cta: "monthly_pricing" })} className="text-accent hover:underline">pay $12/month</Link> or <Link href="/pricing" onClick={() => trackEvent("home_cta_click", { cta: "full_pricing" })} className="text-accent hover:underline">see full pricing</Link>
-                </p>
+
+              <div className="flex flex-1 flex-col p-6">
+                <p className="text-xs font-semibold uppercase text-text-muted">Pro adds</p>
+                <ul className="mt-3 grid gap-3 sm:grid-cols-2">
+                  {[
+                    "Unlimited documents",
+                    "No watermarks",
+                    "Auto-fill from profile",
+                    "Save and resume",
+                    "Re-fill from history",
+                    "Priority support",
+                  ].map((item) => (
+                    <li key={item} className="flex items-start gap-2 text-sm">
+                      <Check className="mt-0.5 h-4 w-4 shrink-0 text-accent" />
+                      <span>{item}</span>
+                    </li>
+                  ))}
+                </ul>
+
+                <div className="mt-auto pt-8">
+                  <button
+                    onClick={() => handleUpgrade("pro", true)}
+                    disabled={!!upgradingPlan}
+                    className="flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-accent text-sm font-semibold text-white hover:bg-accent-hover transition-colors disabled:opacity-70"
+                  >
+                    {upgradingPlan === "pro_annual" ? (
+                      <><div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" /> Loading...</>
+                    ) : (
+                      <><Sparkles className="h-4 w-4" /> Get Pro, A$100/year</>
+                    )}
+                  </button>
+                  <button
+                    onClick={() => handleUpgrade("pro", false)}
+                    disabled={!!upgradingPlan}
+                    className="mt-3 flex h-10 w-full items-center justify-center rounded-lg border border-border text-sm font-semibold text-text hover:bg-surface-alt transition-colors disabled:opacity-70"
+                  >
+                    {upgradingPlan === "pro_monthly" ? "Loading..." : "Pay monthly, A$12/month"}
+                  </button>
+                  <p className="mt-3 text-center text-xs text-text-muted">
+                    Secure checkout by Stripe. Cancel any time.
+                  </p>
+                </div>
               </div>
             </div>
           </div>

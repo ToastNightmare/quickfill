@@ -1,29 +1,26 @@
 "use client";
 
 import { Check, X, Sparkles, Loader2, ShieldCheck, LockKeyhole, CreditCard } from "lucide-react";
-import { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useAuth } from "@clerk/nextjs";
 import Link from "next/link";
 import { trackEvent } from "@/lib/analytics";
 
-const proFeatures = [
-  "Unlimited documents",
+const freeIncludes = [
+  "3 documents per month",
   "All field types",
   "AcroForm detection",
-  "No watermarks",
-  "Auto-fill from profile",
-  "Unlimited fill history",
-  "Priority support",
+  "Instant PDF download",
 ];
 
-const freeFeatures = [
-  { label: "3 documents per month", included: true },
-  { label: "All field types", included: true },
-  { label: "AcroForm detection", included: true },
-  { label: "Instant PDF download", included: true },
-  { label: "Unlimited documents", included: false },
-  { label: "No watermarks", included: false },
-  { label: "Auto-fill from profile", included: false },
+const proAdds = [
+  "Unlimited documents",
+  "No watermarks",
+  "Auto-fill from profile",
+  "Save and resume progress",
+  "Re-fill from history",
+  "Unlimited fill history",
+  "Priority support",
 ];
 
 const tableFeatures = [
@@ -39,37 +36,33 @@ const tableFeatures = [
 const faqs = [
   {
     q: "Can I try QuickFill for free?",
-    a: "Yes! You get 3 free PDF fills every month, no credit card required. Upload your first form and try it now.",
+    a: "Yes. You get 3 free PDF fills every month, no credit card required. Upload your first form and try it now.",
   },
   {
     q: "What happens when I hit my free limit?",
-    a: "You'll be prompted to upgrade to Pro. Your filled documents are never lost, upgrade any time to continue.",
+    a: "You will be prompted to upgrade to Pro. Your filled documents are not lost, upgrade any time to continue.",
   },
   {
     q: "Can I cancel my subscription?",
-    a: "Absolutely. Cancel any time from your dashboard. You'll keep access until the end of your billing period.",
+    a: "Absolutely. Cancel any time from your dashboard. You keep access until the end of your billing period.",
   },
   {
     q: "What PDF forms does QuickFill support?",
-    a: "QuickFill works with any PDF, tax forms, government applications, contracts, and more. It automatically detects AcroForm fields and supports manual field placement for flat PDFs.",
+    a: "QuickFill works with any PDF, tax forms, government applications, contracts, and more. It detects AcroForm fields and supports manual field placement for flat PDFs.",
   },
   {
     q: "Is my data secure?",
     a: "PDFs are processed securely in memory for download generation and are not stored on our servers.",
   },
   {
-    q: "What does Pro include?",
-    a: "Pro gives you unlimited fills, no watermark, full fill history, and priority support, perfect for sole traders, bookkeepers, and anyone who regularly fills forms.",
-  },
-  {
     q: "Is the annual plan cheaper?",
-    a: "Yes, the annual plan works out to $8.33/month (billed $100/year), saving you over $44 compared to monthly billing. That's more than 3 months free.",
+    a: "Yes. Annual billing is A$100/year, which works out to A$8.33/month and saves A$44 compared with monthly billing.",
   },
 ];
 
 export default function PricingPage() {
   const { isSignedIn } = useAuth();
-  const [annual, setAnnual] = useState(false);
+  const [annual, setAnnual] = useState(true);
   const [upgrading, setUpgrading] = useState(false);
   const [usage, setUsage] = useState<{ tier: string; isPro: boolean } | null>(null);
 
@@ -84,17 +77,20 @@ export default function PricingPage() {
 
   const isPro = usage?.isPro ?? false;
 
-  const handleUpgrade = async () => {
-    trackEvent("checkout_start", { source: "pricing", plan: annual ? "annual" : "monthly" });
+  const handleUpgrade = async (selectedAnnual = annual) => {
+    trackEvent("checkout_start", { source: "pricing", plan: selectedAnnual ? "annual" : "monthly" });
     setUpgrading(true);
     try {
       const res = await fetch("/api/stripe/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ plan: "pro", annual }),
+        body: JSON.stringify({ plan: "pro", annual: selectedAnnual }),
       });
       const data = await res.json();
-      if (data.error) { alert(data.error); return; }
+      if (data.error) {
+        window.location.href = "/sign-up?redirect_url=/pricing";
+        return;
+      }
       if (data.url) window.location.href = data.url;
     } finally {
       setUpgrading(false);
@@ -120,14 +116,13 @@ export default function PricingPage() {
       />
 
       <div className="flex flex-col">
-        {/* Header */}
         <section className="bg-navy px-4 py-12 sm:px-6 sm:py-16 lg:px-8">
           <div className="mx-auto max-w-3xl text-center">
             <h1 className="text-3xl font-extrabold tracking-tight text-white sm:text-4xl lg:text-5xl">
               Simple, transparent pricing
             </h1>
             <p className="mx-auto mt-4 max-w-xl text-lg text-gray-300">
-              Start free. Upgrade when the watermark or monthly limit gets in your way.
+              Start free. Upgrade when unlimited downloads and no watermark matter.
             </p>
             <div className="mt-6 flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-sm text-gray-400">
               {[
@@ -144,263 +139,174 @@ export default function PricingPage() {
           </div>
         </section>
 
-        {/* Plans */}
-        <section className="bg-surface px-4 py-12 sm:px-6 lg:px-8 overflow-visible">
-          <div className="mx-auto max-w-3xl">
-
-            {/* Pro user block */}
+        <section className="bg-surface px-4 py-14 sm:px-6 lg:px-8">
+          <div className="mx-auto max-w-5xl">
             {isSignedIn && isPro && (
-              <div className="mb-8 rounded-xl border border-accent bg-accent/5 px-6 py-8 text-center">
+              <div className="mb-8 rounded-lg border border-accent bg-accent/5 px-6 py-8 text-center">
                 <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-accent">
                   <Check className="h-6 w-6 text-white" />
                 </div>
-                <h2 className="text-xl font-bold text-accent">You&apos;re already on Pro</h2>
+                <h2 className="text-xl font-bold text-accent">You are already on Pro</h2>
                 <p className="mt-2 text-sm text-text-muted">
                   You have unlimited fills, no watermarks, and priority support.
                 </p>
-                <Link href="/editor" className="mt-4 inline-flex h-11 items-center justify-center rounded-xl bg-accent px-6 text-sm font-semibold text-white hover:bg-accent-hover transition-colors">
+                <Link href="/editor" className="mt-4 inline-flex h-11 items-center justify-center rounded-lg bg-accent px-6 text-sm font-semibold text-white hover:bg-accent-hover transition-colors">
                   Open Editor
                 </Link>
               </div>
             )}
 
-            {/* Cards row, Free + fanned Pro */}
             {!isPro && (
-            <div className="grid gap-4 sm:grid-cols-2 sm:items-stretch pt-8">
-
-              {/* Free */}
-              <div className="flex flex-col rounded-xl border border-border bg-surface p-8">
-                <h2 className="text-lg font-semibold">Free</h2>
-                <div className="mt-4">
-                  <div className="flex items-end gap-2">
+              <div className="grid gap-6 lg:grid-cols-2 lg:items-stretch">
+                <div className="flex flex-col rounded-lg border border-border bg-surface p-6 shadow-sm">
+                  <h2 className="text-lg font-semibold">Free</h2>
+                  <div className="mt-5 flex items-end gap-2">
                     <span className="text-4xl font-extrabold leading-none">$0</span>
-                    <span className="text-text-muted text-sm leading-none pb-0.5">/month</span>
+                    <span className="pb-1 text-sm text-text-muted">/month</span>
                   </div>
-                  <div className="mt-2 h-7" />
-                </div>
-                <p className="mt-4 text-sm text-text-muted">Perfect for occasional use.</p>
-                <ul className="mt-6 space-y-3">
-                  {freeFeatures.map((item) => (
-                    <li key={item.label} className={`flex items-start gap-2 text-sm ${!item.included ? "opacity-40" : ""}`}>
-                      {item.included
-                        ? <Check className="mt-0.5 h-4 w-4 shrink-0 text-accent" />
-                        : <X className="mt-0.5 h-4 w-4 shrink-0 text-text-muted" />}
-                      <span className={!item.included ? "line-through" : ""}>{item.label}</span>
-                    </li>
-                  ))}
-                </ul>
-                <div className="mt-auto pt-8">
-                  {usage === null && isSignedIn ? (
-                    <div className="flex h-11 items-center justify-center">
-                      <Loader2 className="h-4 w-4 animate-spin text-text-muted" />
-                    </div>
-                  ) : !isSignedIn ? (
-                    <Link href="/sign-up" className="flex h-11 items-center justify-center rounded-xl border-2 border-accent text-sm font-semibold text-accent hover:bg-accent/10 transition-colors">
-                      Get Started Free
-                    </Link>
-                  ) : !isPro ? (
-                    <div className="flex h-11 items-center justify-center rounded-xl bg-slate-100 text-sm font-semibold text-slate-500 cursor-default">
-                      Current Plan
-                    </div>
-                  ) : (
-                    <Link href="/editor" className="flex h-11 items-center justify-center rounded-xl border-2 border-accent text-sm font-semibold text-accent hover:bg-accent/10 transition-colors">
-                      Open Editor
-                    </Link>
-                  )}
-                </div>
-              </div>
-
-              {/* Pro, two cards, animated swap on click */}
-              <style>{`
-                @keyframes cardFloat {
-                  0%   { transform: rotate(5deg) translateX(88px) translateY(8px); }
-                  50%  { transform: rotate(6.5deg) translateX(91px) translateY(4px); }
-                  100% { transform: rotate(5deg) translateX(88px) translateY(8px); }
-                }
-                .card-float-monthly { animation: cardFloat 3s ease-in-out infinite; }
-                .card-float-annual  { animation: cardFloat 3s ease-in-out infinite; }
-              `}</style>
-              <div className="relative" style={{ overflow: "visible" }}>
-
-                {/* Monthly card */}
-                <div
-                  className={`absolute inset-0 rounded-xl bg-[#1e3a6e] border border-white/15 cursor-pointer select-none ${annual ? "card-float-monthly" : ""}`}
-                  style={{
-                    zIndex: annual ? 1 : 2,
-                    transform: annual ? undefined : "rotate(0deg) translateX(0px) translateY(0px)",
-                    transformOrigin: "bottom center",
-                    boxShadow: annual ? "0 8px 32px rgba(0,0,0,0.4)" : "0 20px 60px rgba(0,0,0,0.5)",
-                    opacity: annual ? 0.88 : 1,
-                    transition: annual ? "opacity 0.35s ease, box-shadow 0.35s ease" : "transform 0.45s cubic-bezier(0.34,1.56,0.64,1), opacity 0.35s ease, box-shadow 0.35s ease",
-                  }}
-                  onClick={() => annual && setAnnual(false)}
-                >
-
-                  {/* Full content, always visible */}
-                  <div className="absolute inset-0 flex flex-col p-8">
-                    <div className="absolute -top-3 left-6 rounded-full bg-accent px-3 py-0.5 text-xs font-semibold text-white">Most Popular</div>
-                    <div className="flex items-center justify-between">
-                      <h2 className="text-lg font-semibold text-white">Pro</h2>
-                      <span className="text-sm font-extrabold text-blue-300 uppercase tracking-widest">Monthly</span>
-                    </div>
-                    <div className="mt-4">
-                      <div className="flex items-end gap-2">
-                        <span className="text-4xl font-extrabold text-white leading-none">$12</span>
-                        <span className="text-gray-400 text-xs leading-none pb-0.5">/month</span>
-                      </div>
-                      <div className="mt-2 h-7 flex items-center">
-                        <button onClick={() => { trackEvent("home_cta_click", { cta: "pricing_switch_annual" }); setAnnual(true); }} className="text-xs text-accent font-semibold hover:underline">
-Switch to annual and save A$44
-                        </button>
-                      </div>
-                    </div>
-                    <p className="mt-4 text-sm text-gray-300">No limits, no watermarks, fill as many PDFs as you need.</p>
-                    <ul className="mt-6 space-y-3">
-                      {proFeatures.map((item) => (
-                        <li key={item} className="flex items-start gap-2 text-sm text-gray-200">
-                          <Check className="mt-0.5 h-4 w-4 shrink-0 text-accent" />
-                          {item}
-                        </li>
-                      ))}
-                    </ul>
-                    <div className="mt-auto pt-8">
-                      {isPro ? (
-                        <div className="flex h-11 items-center justify-center rounded-xl bg-slate-100 text-sm font-semibold text-slate-500 cursor-default">Current Plan</div>
-                      ) : (
-                        <button onClick={handleUpgrade} disabled={upgrading}
-                          className="flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-accent text-sm font-semibold text-white hover:bg-accent-hover transition-all shadow-lg shadow-accent/40 hover:shadow-accent/60 disabled:opacity-70">
-                          {upgrading ? <><Loader2 className="h-4 w-4 animate-spin" /> Loading...</> : <><Sparkles className="h-4 w-4" /> Upgrade to Pro, $12/month</>}
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Annual card */}
-                <div
-                  className={`absolute inset-0 rounded-xl bg-navy cursor-pointer select-none ${!annual ? "card-float-annual" : ""}`}
-                  style={{
-                    zIndex: annual ? 2 : 1,
-                    transform: annual ? "rotate(0deg) translateX(0px) translateY(0px)" : undefined,
-                    transformOrigin: "bottom center",
-                    boxShadow: annual ? "0 20px 60px rgba(0,0,0,0.5)" : "0 8px 32px rgba(0,0,0,0.4)",
-                    opacity: annual ? 1 : 0.88,
-                    transition: !annual ? "opacity 0.35s ease, box-shadow 0.35s ease" : "transform 0.45s cubic-bezier(0.34,1.56,0.64,1), opacity 0.35s ease, box-shadow 0.35s ease",
-                  }}
-                  onClick={() => !annual && setAnnual(true)}
-                >
-
-
-                  {/* Annual card full content, always visible */}
-                  <div className="absolute inset-0 flex flex-col p-8">
-                    <div className="absolute inset-0 rounded-xl overflow-hidden pointer-events-none">
-                      <div className="absolute -top-10 -right-10 h-40 w-40 rounded-full bg-accent/20 blur-2xl" />
-                    </div>
-                    <div className="absolute -top-3 left-6 rounded-full bg-accent px-3 py-0.5 text-xs font-semibold text-white z-10">
-                      Best Value
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <h2 className="text-lg font-semibold text-white">Pro</h2>
-                      <span className="text-sm font-extrabold text-accent uppercase tracking-widest">Annual</span>
-                    </div>
-                    <div className="mt-4">
-                      <div className="flex items-end gap-2">
-                        <span className="text-4xl font-extrabold text-white leading-none">$8.33</span>
-                        <span className="text-gray-400 text-xs leading-none pb-0.5">/month</span>
-                      </div>
-                      <div className="mt-2 h-7 flex items-center">
-                        <div className="inline-flex items-center rounded-full bg-green-500/15 border border-green-500/25 px-3 py-1">
-                          <span className="text-xs font-semibold text-green-400">Billed A$100/year, save A$44</span>
-                        </div>
-                      </div>
-                    </div>
-                    <p className="mt-4 text-sm text-gray-300">No limits, no watermarks, fill as many PDFs as you need.</p>
-                    <ul className="mt-6 space-y-3">
-                      {proFeatures.map((item) => (
-                        <li key={item} className="flex items-start gap-2 text-sm text-gray-200">
-                          <Check className="mt-0.5 h-4 w-4 shrink-0 text-accent" />
-                          {item}
-                        </li>
-                      ))}
-                    </ul>
-                    <div className="mt-auto pt-8">
-                      {isPro ? (
-                        <div className="flex h-11 items-center justify-center rounded-xl bg-slate-100 text-sm font-semibold text-slate-500 cursor-default">Current Plan</div>
-                      ) : (
-                        <button onClick={handleUpgrade} disabled={upgrading}
-                          className="flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-accent text-sm font-semibold text-white hover:bg-accent-hover transition-all shadow-lg shadow-accent/40 hover:shadow-accent/60 disabled:opacity-70">
-                          {upgrading ? <><Loader2 className="h-4 w-4 animate-spin" /> Loading...</> : <><Sparkles className="h-4 w-4" /> Get Pro, $100/year</>}
-                        </button>
-                      )}
-
-                    </div>
-                  </div>
-                </div>
-
-                {/* Invisible spacer so the parent has natural height */}
-                <div className="invisible flex flex-col rounded-xl bg-navy p-8">
-                  <h2 className="text-lg font-semibold">Pro</h2>
-                  <div className="mt-4">
-                    <div className="flex items-end gap-2">
-                      <span className="text-4xl font-extrabold leading-none">$8.33</span>
-                      <span className="text-xs leading-none pb-0.5">/month</span>
-                    </div>
-                    <div className="mt-2 h-7" />
-                  </div>
-                  <p className="mt-4 text-sm">Unlimited fills, no watermark, priority support.</p>
-                  <ul className="mt-6 space-y-3">
-                    {proFeatures.map((item) => (
+                  <p className="mt-4 text-sm text-text-muted">For occasional PDF forms and quick one-off jobs.</p>
+                  <p className="mt-6 text-xs font-semibold uppercase text-text-muted">Free includes</p>
+                  <ul className="mt-3 space-y-3">
+                    {freeIncludes.map((item) => (
                       <li key={item} className="flex items-start gap-2 text-sm">
-                        <Check className="mt-0.5 h-4 w-4 shrink-0" />
-                        {item}
+                        <Check className="mt-0.5 h-4 w-4 shrink-0 text-accent" />
+                        <span>{item}</span>
                       </li>
                     ))}
                   </ul>
                   <div className="mt-auto pt-8">
-                    <div className="h-11 w-full" />
-                    <p className="mt-3 text-xs">Spacer</p>
+                    {usage === null && isSignedIn ? (
+                      <div className="flex h-11 items-center justify-center">
+                        <Loader2 className="h-4 w-4 animate-spin text-text-muted" />
+                      </div>
+                    ) : !isSignedIn ? (
+                      <Link href="/sign-up" className="flex h-11 items-center justify-center rounded-lg border-2 border-accent text-sm font-semibold text-accent hover:bg-accent/10 transition-colors">
+                        Get Started Free
+                      </Link>
+                    ) : (
+                      <div className="flex h-11 items-center justify-center rounded-lg bg-slate-100 text-sm font-semibold text-slate-500">
+                        Current Plan
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div className="flex flex-col overflow-hidden rounded-lg border-2 border-accent bg-surface shadow-xl shadow-accent/15">
+                  <div className="bg-navy p-6 text-white">
+                    <div className="flex items-start justify-between gap-4">
+                      <div>
+                        <h2 className="text-lg font-semibold">Pro</h2>
+                        <p className="mt-1 text-sm text-gray-300">Unlimited fills, no watermark, priority support.</p>
+                      </div>
+                      <span className="rounded-full bg-accent px-3 py-1 text-xs font-semibold text-white">
+                        Best value
+                      </span>
+                    </div>
+
+                    <div className="mt-6 grid grid-cols-2 rounded-lg border border-white/15 bg-white/5 p-1">
+                      <button
+                        onClick={() => setAnnual(true)}
+                        className={`rounded-md px-3 py-2 text-sm font-semibold transition-colors ${annual ? "bg-white text-navy" : "text-gray-300 hover:text-white"}`}
+                      >
+                        Annual
+                      </button>
+                      <button
+                        onClick={() => setAnnual(false)}
+                        className={`rounded-md px-3 py-2 text-sm font-semibold transition-colors ${!annual ? "bg-white text-navy" : "text-gray-300 hover:text-white"}`}
+                      >
+                        Monthly
+                      </button>
+                    </div>
+
+                    <div className="mt-6">
+                      {annual ? (
+                        <>
+                          <div className="flex items-end gap-2">
+                            <span className="text-4xl font-extrabold leading-none">A$100</span>
+                            <span className="pb-1 text-sm text-gray-300">/year</span>
+                          </div>
+                          <p className="mt-2 text-sm text-gray-300">Works out to A$8.33/month. Save A$44 a year.</p>
+                        </>
+                      ) : (
+                        <>
+                          <div className="flex items-end gap-2">
+                            <span className="text-4xl font-extrabold leading-none">A$12</span>
+                            <span className="pb-1 text-sm text-gray-300">/month</span>
+                          </div>
+                          <p className="mt-2 text-sm text-gray-300">Flexible monthly billing. Cancel any time.</p>
+                        </>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="flex flex-1 flex-col p-6">
+                    <p className="text-xs font-semibold uppercase text-text-muted">Pro adds</p>
+                    <ul className="mt-3 grid gap-3 sm:grid-cols-2">
+                      {proAdds.map((item) => (
+                        <li key={item} className="flex items-start gap-2 text-sm">
+                          <Check className="mt-0.5 h-4 w-4 shrink-0 text-accent" />
+                          <span>{item}</span>
+                        </li>
+                      ))}
+                    </ul>
+                    <div className="mt-auto pt-8">
+                      <button
+                        onClick={() => handleUpgrade(annual)}
+                        disabled={upgrading}
+                        className="flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-accent text-sm font-semibold text-white hover:bg-accent-hover transition-colors disabled:opacity-70"
+                      >
+                        {upgrading ? (
+                          <><Loader2 className="h-4 w-4 animate-spin" /> Loading...</>
+                        ) : annual ? (
+                          <><Sparkles className="h-4 w-4" /> Get Pro, A$100/year</>
+                        ) : (
+                          <><Sparkles className="h-4 w-4" /> Get Pro, A$12/month</>
+                        )}
+                      </button>
+                      <p className="mt-3 text-center text-xs text-text-muted">
+                        Secure checkout by Stripe. Cancel any time.
+                      </p>
+                    </div>
                   </div>
                 </div>
               </div>
-            </div>
             )}
 
-            {/* Comparison table - hide for Pro users */}
             {!isPro && (
-            <div className="mt-20 overflow-hidden rounded-xl border border-border">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="bg-surface-alt">
-                    <th className="px-6 py-4 text-left font-semibold">Feature</th>
-                    <th className="px-6 py-4 text-center font-semibold">Free</th>
-                    <th className="px-6 py-4 text-center font-semibold text-accent">Pro</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {tableFeatures.map((f) => (
-                    <tr key={f.name} className="border-t border-border">
-                      <td className="px-6 py-4">{f.name}</td>
-                      <td className="px-6 py-4 text-center">
-                        {typeof f.free === "string" ? f.free : f.free
-                          ? <Check className="mx-auto h-4 w-4 text-accent" />
-                          : <X className="mx-auto h-4 w-4 text-text-muted/40" />}
-                      </td>
-                      <td className="px-6 py-4 text-center">
-                        {typeof f.pro === "string"
-                          ? <span className="font-semibold text-accent">{f.pro}</span>
-                          : f.pro
-                          ? <Check className="mx-auto h-4 w-4 text-accent" />
-                          : <X className="mx-auto h-4 w-4 text-text-muted/40" />}
-                      </td>
+              <div className="mt-10 overflow-hidden rounded-lg border border-border">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="bg-surface-alt">
+                      <th className="px-6 py-4 text-left font-semibold">Feature</th>
+                      <th className="px-6 py-4 text-center font-semibold">Free</th>
+                      <th className="px-6 py-4 text-center font-semibold text-accent">Pro</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody>
+                    {tableFeatures.map((f) => (
+                      <tr key={f.name} className="border-t border-border">
+                        <td className="px-6 py-4">{f.name}</td>
+                        <td className="px-6 py-4 text-center">
+                          {typeof f.free === "string" ? f.free : f.free
+                            ? <Check className="mx-auto h-4 w-4 text-accent" />
+                            : <X className="mx-auto h-4 w-4 text-text-muted/40" />}
+                        </td>
+                        <td className="px-6 py-4 text-center">
+                          {typeof f.pro === "string"
+                            ? <span className="font-semibold text-accent">{f.pro}</span>
+                            : f.pro
+                            ? <Check className="mx-auto h-4 w-4 text-accent" />
+                            : <X className="mx-auto h-4 w-4 text-text-muted/40" />}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             )}
           </div>
         </section>
-        {/* Trust strip */}
+
         <div className="bg-surface border-y border-border px-4 py-5 text-sm text-text-muted">
           <div className="mx-auto flex max-w-3xl flex-wrap items-center justify-center gap-x-6 gap-y-2">
             {[
@@ -416,7 +322,6 @@ Switch to annual and save A$44
           </div>
         </div>
 
-        {/* FAQ */}
         <section className="bg-surface-alt px-4 py-20 sm:px-6 lg:px-8">
           <div className="mx-auto max-w-3xl">
             <h2 className="text-center text-2xl font-bold sm:text-3xl">
@@ -437,13 +342,13 @@ Switch to annual and save A$44
 function FaqItem({ question, answer }: { question: string; answer: string }) {
   const [open, setOpen] = useState(false);
   return (
-    <div className="rounded-xl border border-border bg-surface">
+    <div className="rounded-lg border border-border bg-surface">
       <button
         onClick={() => setOpen(!open)}
         className="flex w-full items-center justify-between px-6 py-5 text-left"
       >
         <span className="font-semibold">{question}</span>
-        <span className="ml-4 shrink-0 text-text-muted">{open ? "−" : "+"}</span>
+        <span className="ml-4 shrink-0 text-text-muted">{open ? "-" : "+"}</span>
       </button>
       {open && (
         <div className="border-t border-border px-6 py-4 text-sm leading-relaxed text-text-muted">
