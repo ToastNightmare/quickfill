@@ -140,86 +140,23 @@ export async function POST(request: NextRequest) {
     if (hasAcroForm) {
       const form = pdfDoc.getForm();
 
-      // Track which pages have been wrapped to avoid duplicate wrapping
+      removeFilledAreaWidgets(pdfDoc, form, editorFields);
+
       const wrappedPages = new Set<number>();
-
-      // Sanitize all existing AcroForm text field values, prevents WinAnsi crash on flatten
-      for (const af of form.getFields()) {
-        if (af.constructor.name === "PDFTextField") {
-          try {
-            const tf = form.getTextField(af.getName());
-            const raw = tf.getText() ?? "";
-            if (raw) tf.setText(sanitize(raw));
-          } catch { /* skip unreadable fields */ }
-        }
-      }
-
-      // Set user-filled values
       for (const field of editorFields) {
-        // Prepare page for drawing by popping unbalanced graphics states once per page
         if (!wrappedPages.has(field.page)) {
           const page = pdfDoc.getPages()[field.page];
           if (page) preparePageForDrawing(page, pdfDoc);
           wrappedPages.add(field.page);
         }
-
-        try {
-          if (field.type === "whiteout") {
-            // Whiteout fields are drawn directly on the page
-            await drawFieldOnPage(pdfDoc, field, pageScales, font, signatureFont, viewportDims);
-          } else if (field.type === "signature" && field.signatureDataUrl) {
-            const widget = findWidget(pdfDoc, form, field.id);
-            if (widget) {
-              const page = pdfDoc.getPages()[widget.pageIndex];
-              if (page) await drawSignatureImage(pdfDoc, page, field.signatureDataUrl,
-                widget.x, widget.y, widget.width, widget.height, field.value, signatureFont, 14);
-            } else {
-              await drawFieldOnPage(pdfDoc, field, pageScales, font, signatureFont, viewportDims);
-            }
-          } else if (field.type === "text" || field.type === "date" || field.type === "signature") {
-            try {
-              form.getTextField(field.id).setText(sanitize(field.value ?? ""));
-            } catch {
-              await drawFieldOnPage(pdfDoc, field, pageScales, font, signatureFont, viewportDims);
-            }
-          } else if (field.type === "checkbox") {
-            try {
-              const cb = form.getCheckBox(field.id);
-              if (field.checked) cb.check(); else cb.uncheck();
-            } catch {
-              await drawFieldOnPage(pdfDoc, field, pageScales, font, signatureFont, viewportDims);
-            }
-          } else if (field.type === "comb") {
-            // Comb fields are always user-placed, draw directly
-            await drawFieldOnPage(pdfDoc, field, pageScales, font, signatureFont, viewportDims);
-          }
-        } catch {
-          await drawFieldOnPage(pdfDoc, field, pageScales, font, signatureFont, viewportDims);
-        }
+        await drawFieldOnPage(pdfDoc, field, pageScales, font, signatureFont, viewportDims);
       }
 
-      // Try to flatten the form - if it fails (e.g., fields without valid /AP/N appearance dicts),
-      // fall back to making fields read-only
       try {
-        form.flatten({ updateFieldAppearances: false });
-      } catch (flattenErr) {
-        console.warn("form.flatten() failed, making fields read-only:", flattenErr instanceof Error ? flattenErr.message : flattenErr);
-        // Layer 2: Set all remaining fields to read-only to prevent tampering
-        for (const field of form.getFields()) {
-          try {
-            field.enableReadOnly();
-          } catch {
-            // Skip fields that cannot be made read-only
-          }
-        }
-      }
-
-      // Layer 3: Remove AcroForm dictionary entirely to make PDF completely static
-      // This prevents any form interaction even if read-only fails
-      try {
-        pdfDoc.catalog.delete(PDFName.of("AcroForm"));
+        for (const remainingField of form.getFields()) remainingField.enableReadOnly();
+        if (form.getFields().length === 0) pdfDoc.catalog.delete(PDFName.of("AcroForm"));
       } catch {
-        // AcroForm removal not critical - read-only fields are still protected
+        // Form cleanup is best-effort; drawn output remains static.
       }
     } else {
       // Track which pages have been wrapped to avoid duplicate wrapping
@@ -260,24 +197,75 @@ type PDFPage = ReturnType<PDFDocument["getPages"]>[number];
 type PDFFont = Awaited<ReturnType<PDFDocument["embedFont"]>>;
 type PDFForm = ReturnType<PDFDocument["getForm"]>;
 
-function findWidget(pdfDoc: PDFDocument, form: PDFForm, fieldName: string) {
-  try {
-    const af = form.getFields().find((f) => f.getName() === fieldName);
-    if (!af) return null;
-    const widgets = af.acroField.getWidgets();
-    if (widgets.length === 0) return null;
-    const widget = widgets[0];
-    const rect = widget.getRectangle();
-    const pageRef = widget.P();
-    let pageIndex = 0;
-    if (pageRef) {
-      const pages = pdfDoc.getPages();
-      for (let i = 0; i < pages.length; i++) {
-        if (pages[i].ref === pageRef) { pageIndex = i; break; }
-      }
+function findWidgetPageIndex(pdfDoc: PDFDocument, widget: any) {
+  const pageRef = widget.P();
+  if (!pageRef) return 0;
+  const pages = pdfDoc.getPages();
+  for (let i = 0; i < pages.length; i++) {
+    if (pages[i].ref === pageRef) return i;
+  }
+  return 0;
+}
+
+function overlapRatio(a: { x: number; y: number; width: number; height: number }, b: { x: number; y: number; width: number; height: number }) {
+  const overlapX = Math.max(0, Math.min(a.x + a.width, b.x + b.width) - Math.max(a.x, b.x));
+  const overlapY = Math.max(0, Math.min(a.y + a.height, b.y + b.height) - Math.max(a.y, b.y));
+  const overlapArea = overlapX * overlapY;
+  if (overlapArea <= 0) return 0;
+  const smallestArea = Math.min(a.width * a.height, b.width * b.height);
+  return smallestArea > 0 ? overlapArea / smallestArea : 0;
+}
+
+function fieldPdfRect(page: PDFPage, field: EditorField) {
+  return {
+    x: field.x,
+    y: page.getHeight() - field.y - field.height,
+    width: field.width,
+    height: field.height,
+  };
+}
+
+function removeFilledAreaWidgets(pdfDoc: PDFDocument, form: PDFForm, editorFields: EditorField[]) {
+  const pages = pdfDoc.getPages();
+  const fieldsToRemove = new Set<ReturnType<PDFForm["getFields"]>[number]>();
+
+  for (const acroField of form.getFields()) {
+    const nameMatches = editorFields.some((field) => field.id === acroField.getName());
+    if (nameMatches) {
+      fieldsToRemove.add(acroField);
+      continue;
     }
-    return { x: rect.x, y: rect.y, width: rect.width, height: rect.height, pageIndex };
-  } catch { return null; }
+
+    try {
+      for (const widget of acroField.acroField.getWidgets()) {
+        const pageIndex = findWidgetPageIndex(pdfDoc, widget);
+        const page = pages[pageIndex];
+        if (!page) continue;
+
+        const rect = widget.getRectangle();
+        const widgetRect = { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
+        const overlapsFilledField = editorFields.some((field) => {
+          if (field.page !== pageIndex) return false;
+          return overlapRatio(widgetRect, fieldPdfRect(page, field)) >= 0.35;
+        });
+
+        if (overlapsFilledField) {
+          fieldsToRemove.add(acroField);
+          break;
+        }
+      }
+    } catch {
+      // Keep unreadable widgets rather than risk stripping visible form structure.
+    }
+  }
+
+  for (const field of fieldsToRemove) {
+    try {
+      form.removeField(field);
+    } catch {
+      try { field.enableReadOnly(); } catch { /* skip */ }
+    }
+  }
 }
 
 function drawMultilineText(page: PDFPage, text: string, x: number, startY: number, fontSize: number, activeFont: PDFFont) {
