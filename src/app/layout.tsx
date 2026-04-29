@@ -2,7 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Inter } from "next/font/google";
 import { ClerkProvider } from "@clerk/nextjs";
 import "./globals.css";
-import { Navbar } from "@/components/Navbar";
+import { AppShell } from "@/components/AppShell";
 import { APP_CONFIG } from "@/lib/config";
 
 const inter = Inter({
@@ -56,26 +56,7 @@ export default function RootLayout({
     <ClerkProvider>
       <html lang="en" className={`${inter.className} h-full antialiased`}>
         <body className="min-h-full flex flex-col bg-surface text-text">
-          <Navbar />
-          <main className="flex-1">{children}</main>
-          <footer className="border-t border-border bg-surface py-6 mt-auto">
-            <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-              <div className="flex flex-col items-center justify-center gap-4 sm:flex-row sm:gap-6">
-                <a href="/privacy" className="text-sm text-text-muted hover:text-text transition-colors">
-                  Privacy Policy
-                </a>
-                <a href="/terms" className="text-sm text-text-muted hover:text-text transition-colors">
-                  Terms of Service
-                </a>
-                <a href="mailto:support@getquickfill.com" className="text-sm text-text-muted hover:text-text transition-colors">
-                  Contact
-                </a>
-                <p className="text-xs text-text-muted/60">
-                  (c) 2026 QuickFill. All rights reserved.
-                </p>
-              </div>
-            </div>
-          </footer>
+          <AppShell>{children}</AppShell>
         </body>
       </html>
     </ClerkProvider>

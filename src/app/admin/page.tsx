@@ -17,7 +17,7 @@ export default async function AdminPage() {
   if (!admin) notFound();
 
   return (
-    <div className="min-h-[calc(100vh-4rem)] bg-surface-alt px-4 py-10 sm:px-6 lg:px-8">
+    <div className="px-4 py-10 sm:px-6 lg:px-8">
       <div className="mx-auto max-w-4xl">
         <div>
           <p className="inline-flex items-center gap-2 rounded-full bg-accent/10 px-3 py-1 text-sm font-semibold text-accent">
