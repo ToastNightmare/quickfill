@@ -11,6 +11,7 @@ import { SignatureModal } from "@/components/SignatureModal";
 import { WelcomeModal } from "@/components/WelcomeModal";
 import { TourModal } from "@/components/TourModal";
 import { ProUnlockModal } from "@/components/ProUnlockModal";
+import { SupportForm } from "@/components/SupportForm";
 import type { PdfViewerHandle } from "@/components/PdfViewer";
 import { useHistory } from "@/lib/use-history";
 import { detectAcroFormFields } from "@/lib/pdf-utils";
@@ -120,6 +121,8 @@ export default function EditorPage() {
   const [showGuestUpsellModal, setShowGuestUpsellModal] = useState(false);
   const [showRestoredBanner, setShowRestoredBanner] = useState(false);
   const [showGuestSignupPrompt, setShowGuestSignupPrompt] = useState(false);
+  const [lastDownloadError, setLastDownloadError] = useState<string | null>(null);
+  const [showSupportForm, setShowSupportForm] = useState(false);
   const [showProUnlockModal, setShowProUnlockModal] = useState(false);
   const [unlockFeatureName, setUnlockFeatureName] = useState<string | undefined>(undefined);
   const [zoom, setZoom] = useState(100);
@@ -731,6 +734,7 @@ export default function EditorPage() {
       hasAcroForm,
     });
     setIsDownloading(true);
+    setLastDownloadError(null);
     try {
       // Check usage before downloading
       let isPro = false;
@@ -856,6 +860,8 @@ export default function EditorPage() {
       const msg = err instanceof Error ? err.message : String(err);
       console.error("Download failed:", msg, err);
       trackEvent("download_failed", { message: msg.slice(0, 120) });
+      setLastDownloadError(msg);
+      setShowSupportForm(true);
       showToast(`Failed to generate PDF: ${msg}`);
     } finally {
       setIsDownloading(false);
@@ -1408,6 +1414,36 @@ export default function EditorPage() {
           useMode
           onUseExisting={handleSignatureModalUseExisting}
         />
+      )}
+
+      {showSupportForm && lastDownloadError && (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/60 px-4">
+          <div className="w-full max-w-xl rounded-2xl bg-surface p-5 shadow-2xl">
+            <div className="mb-4 flex items-start justify-between gap-4">
+              <div>
+                <h2 className="text-lg font-bold">Send this to support?</h2>
+                <p className="mt-1 text-sm text-text-muted">
+                  We can use the error details to investigate the PDF export.
+                </p>
+              </div>
+              <button
+                onClick={() => setShowSupportForm(false)}
+                className="rounded-lg p-2 text-text-muted hover:bg-surface-alt hover:text-text"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <SupportForm
+              compact
+              source="editor_download_error"
+              title="Download problem"
+              description="The message below will go to support with your account context."
+              defaultSubject="PDF download failed"
+              defaultMessage={`File: ${fileName || "Untitled PDF"}\nFields: ${fields.length}\nPages: ${totalPages || 1}\nError: ${lastDownloadError}`}
+              onSent={() => setTimeout(() => setShowSupportForm(false), 900)}
+            />
+          </div>
+        </div>
       )}
 
       {/* Clear all confirmation */}

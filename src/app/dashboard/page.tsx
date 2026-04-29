@@ -6,6 +6,7 @@ import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { FileText, Sparkles, ExternalLink, Lock, Clock, User, RotateCcw } from "lucide-react";
 import { ProSuccessModal } from "@/components/ProSuccessModal";
+import { SupportForm } from "@/components/SupportForm";
 
 interface UsageData {
   used: number;
@@ -297,6 +298,15 @@ function DashboardContent() {
             <p className="text-xs text-text-muted">Upload and fill a new PDF form</p>
           </div>
         </Link>
+      </div>
+
+      <div className="mt-6">
+        <SupportForm
+          source="dashboard"
+          title="Need help with a form?"
+          description="Send us a quick note if a PDF, payment, or account setting needs attention."
+          defaultSubject="QuickFill support request"
+        />
       </div>
 
       {/* Upgrade banner for free users */}
