@@ -5,7 +5,7 @@ export const runtime = "nodejs";
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import crypto from "crypto";
-import { PDFDocument, rgb, StandardFonts, degrees, PDFName, PDFArray } from "pdf-lib";
+import { PDFDocument, rgb, StandardFonts, degrees, PDFName, PDFArray, PDFDict } from "pdf-lib";
 import type { EditorField } from "@/lib/types";
 import { APP_CONFIG } from "@/lib/config";
 import { applyBorderWatermark } from "@/lib/watermark";
@@ -151,6 +151,8 @@ export async function POST(request: NextRequest) {
           }
         }
         form.flatten({ updateFieldAppearances: false });
+        removeWidgetAnnotations(pdfDoc);
+        pdfDoc.catalog.delete(PDFName.of("AcroForm"));
       } catch (flattenErr) {
         console.warn("blank form flatten failed, removing filled-area widgets:", flattenErr instanceof Error ? flattenErr.message : flattenErr);
         removeFilledAreaWidgets(pdfDoc, form, editorFields);
@@ -277,6 +279,27 @@ function removeFilledAreaWidgets(pdfDoc: PDFDocument, form: PDFForm, editorField
     } catch {
       try { field.enableReadOnly(); } catch { /* skip */ }
     }
+  }
+}
+
+function removeWidgetAnnotations(pdfDoc: PDFDocument) {
+  for (const page of pdfDoc.getPages()) {
+    const annots = page.node.Annots();
+    if (!(annots instanceof PDFArray)) continue;
+
+    const keptAnnots = PDFArray.withContext(pdfDoc.context);
+    for (let i = 0; i < annots.size(); i++) {
+      const annotRef = annots.get(i);
+      const annot = pdfDoc.context.lookup(annotRef);
+      if (annot instanceof PDFDict) {
+        const subtype = annot.get(PDFName.of("Subtype"));
+        if (subtype?.toString() === "/Widget") continue;
+      }
+      keptAnnots.push(annotRef);
+    }
+
+    if (keptAnnots.size() > 0) page.node.set(PDFName.of("Annots"), keptAnnots);
+    else page.node.delete(PDFName.of("Annots"));
   }
 }
 
