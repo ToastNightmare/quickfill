@@ -4,7 +4,7 @@ import { useUser } from "@clerk/nextjs";
 import { Suspense, useEffect, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { FileText, Sparkles, ExternalLink, Lock, Clock, User, RotateCcw } from "lucide-react";
+import { BarChart3, FileText, Sparkles, ExternalLink, Lock, Clock, User, RotateCcw } from "lucide-react";
 import { ProSuccessModal } from "@/components/ProSuccessModal";
 
 interface UsageData {
@@ -272,7 +272,7 @@ function DashboardContent() {
       </div>
 
       {/* Quick links */}
-      <div className="mt-6 grid gap-4 sm:grid-cols-2">
+      <div className="mt-6 grid gap-4 sm:grid-cols-3">
         <Link
           href="/profile"
           className="flex items-center gap-3 rounded-xl border border-border bg-surface p-5 shadow-sm hover:shadow-md transition-shadow"
@@ -295,6 +295,18 @@ function DashboardContent() {
           <div>
             <p className="text-sm font-semibold">Fill a PDF</p>
             <p className="text-xs text-text-muted">Upload and fill a new PDF form</p>
+          </div>
+        </Link>
+        <Link
+          href="/dashboard/analytics"
+          className="flex items-center gap-3 rounded-xl border border-border bg-surface p-5 shadow-sm hover:shadow-md transition-shadow"
+        >
+          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-accent/10">
+            <BarChart3 className="h-5 w-5 text-accent" />
+          </div>
+          <div>
+            <p className="text-sm font-semibold">Growth Analytics</p>
+            <p className="text-xs text-text-muted">Track downloads, limits, and checkout intent</p>
           </div>
         </Link>
       </div>

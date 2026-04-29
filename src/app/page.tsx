@@ -389,9 +389,8 @@ export default function Home() {
       />
 
       {/* Hero */}
-      <section className="relative overflow-hidden bg-navy px-4 py-24 sm:px-6 sm:py-32 lg:px-8">
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_#4f8ef720_0%,_transparent_60%)]" />
-        <div className="relative mx-auto max-w-4xl text-center">
+      <section className="relative overflow-hidden bg-navy px-4 py-20 sm:px-6 sm:py-24 lg:px-8">
+        <div className="relative mx-auto max-w-5xl text-center">
           <h1 className="text-4xl font-extrabold tracking-tight text-white sm:text-5xl lg:text-6xl">
             Stop printing locked PDFs forever
           </h1>
@@ -427,11 +426,77 @@ export default function Home() {
           <p className="mt-4 text-center text-xs text-gray-400">
             Trusted by Australians filling TFN declarations, rental applications, Centrelink forms and NDIS paperwork
           </p>
+
+          <div className="mx-auto mt-12 max-w-4xl rounded-lg border border-white/10 bg-white shadow-2xl shadow-black/25">
+            <div className="flex items-center justify-between border-b border-border px-4 py-3">
+              <div className="flex items-center gap-2">
+                <div className="flex h-8 w-8 items-center justify-center rounded bg-accent/10">
+                  <FileText className="h-4 w-4 text-accent" />
+                </div>
+                <div className="text-left">
+                  <p className="text-sm font-semibold text-text">TFN declaration.pdf</p>
+                  <p className="text-xs text-text-muted">7 fields detected</p>
+                </div>
+              </div>
+              <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">
+                Ready to download
+              </span>
+            </div>
+            <div className="grid gap-0 text-left md:grid-cols-[1fr_220px]">
+              <div className="bg-surface p-5">
+                <div className="rounded border border-border bg-surface-alt p-5">
+                  <div className="space-y-4">
+                    <div>
+                      <div className="h-3 w-36 rounded bg-text/80" />
+                      <div className="mt-3 h-10 rounded border border-accent/40 bg-white px-3 py-2 text-sm font-medium text-text">
+                        Kyle Stanley
+                      </div>
+                    </div>
+                    <div>
+                      <div className="h-3 w-44 rounded bg-text/80" />
+                      <div className="mt-3 grid max-w-sm grid-cols-8 gap-1">
+                        {["0", "1", "0", "2", "1", "9", "8", "9"].map((digit, index) => (
+                          <div key={index} className="flex h-9 items-center justify-center rounded border border-accent/50 bg-white text-sm font-semibold text-text">
+                            {digit}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="h-3 w-52 rounded bg-text/80" />
+                      <div className="mt-3 grid max-w-md grid-cols-9 gap-1">
+                        {["1", "2", "3", "4", "5", "6", "7", "8", "9"].map((digit, index) => (
+                          <div key={index} className="flex h-9 items-center justify-center rounded border border-accent/50 bg-white text-sm font-semibold text-text">
+                            {digit}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div className="border-t border-border bg-surface-alt p-5 md:border-l md:border-t-0">
+                <p className="text-xs font-semibold uppercase text-text-muted">Quick actions</p>
+                <div className="mt-4 space-y-3">
+                  {[
+                    ["Auto-fill profile", "Saved details matched"],
+                    ["Private processing", "PDF not stored"],
+                    ["Instant export", "No print or scan"],
+                  ].map(([title, body]) => (
+                    <div key={title} className="rounded-lg border border-border bg-white p-3">
+                      <p className="text-sm font-semibold text-text">{title}</p>
+                      <p className="mt-1 text-xs text-text-muted">{body}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       </section>
 
       {/* Features */}
-      <section className="bg-surface px-4 py-20 sm:px-6 lg:px-8">
+      <section className="bg-surface-alt px-4 py-20 sm:px-6 lg:px-8">
         <div className="mx-auto max-w-6xl">
           <h2 className="text-center text-3xl font-bold tracking-tight sm:text-4xl">
             Everything you need to fill PDFs
@@ -444,7 +509,7 @@ export default function Home() {
             {features.map((feature) => (
               <div
                 key={feature.title}
-                className="min-h-[220px] rounded-xl border border-border bg-surface p-6 shadow-sm hover:shadow-md transition-shadow"
+                className="min-h-[220px] rounded-lg border border-border bg-surface p-6 shadow-sm hover:shadow-md transition-shadow"
               >
                 <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-accent/10">
                   <feature.icon className="h-6 w-6 text-accent" />
