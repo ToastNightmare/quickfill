@@ -339,8 +339,11 @@ export default function EditorPage() {
   }, []);
 
   const handleFileLoad = useCallback(
-    async (file: File, bytes: ArrayBuffer) => {
+    async (file: File, bytes: ArrayBuffer, source: "upload" | "template" = "upload") => {
       setIsLoading(true);
+      if (source === "upload") {
+        trackEvent("editor_upload_started", { sizeKb: Math.round(bytes.byteLength / 1024) });
+      }
       try {
         // Check file size limit (15MB max)
         const MAX_SIZE = 15 * 1024 * 1024; // 15MB in bytes
@@ -370,9 +373,11 @@ export default function EditorPage() {
         saveFileNameToLocalStorage(file.name);
 
         // Detect AcroForm fields
+        let detectedAcroFieldCount = 0;
         try {
           const acroFields = await detectAcroFormFields(bytes);
           if (acroFields.length > 0) {
+            detectedAcroFieldCount = acroFields.length;
             setHasAcroForm(true);
             const editorFields: EditorField[] = acroFields.map((af) => {
               if (af.type === "checkbox") {
@@ -408,6 +413,12 @@ export default function EditorPage() {
           setHasAcroForm(false);
           reset([]);
         }
+        trackEvent("editor_pdf_loaded", {
+          source,
+          sizeKb: Math.round(bytes.byteLength / 1024),
+          hasAcroForm: detectedAcroFieldCount > 0,
+          detectedFieldCount: detectedAcroFieldCount,
+        });
       } catch {
         setPdfBytes(null);
         setToast("This PDF could not be opened. It may be encrypted or corrupted. Try a different file.");
@@ -458,7 +469,7 @@ export default function EditorPage() {
         .then((r) => r.arrayBuffer())
         .then(async (bytes) => {
           const file = new File([bytes], templateParam, { type: "application/pdf" });
-          await handleFileLoad(file, bytes);
+          await handleFileLoad(file, bytes, "template");
         })
         .catch(() => {});
     });
@@ -466,6 +477,12 @@ export default function EditorPage() {
 
   const handleFieldAdd = useCallback(
     (field: EditorField) => {
+      trackEvent("field_added", { source: "manual", type: field.type, snapped: Boolean(field.snapped) });
+      trackEvent("field_added", { source: "manual", type: field.type, snapped: Boolean(field.snapped) });
+      trackEvent("field_added", { source: "manual", type: field.type, snapped: Boolean(field.snapped) });
+      trackEvent("field_added", { source: "manual", type: field.type, snapped: Boolean(field.snapped) });
+      trackEvent("field_added", { source: "manual", type: field.type, snapped: Boolean(field.snapped) });
+      trackEvent("field_added", { source: "manual", type: field.type, snapped: Boolean(field.snapped) });
       setFields((prev) => [...prev, field]);
       // Select the newly added field and deactivate tool
       setSelectedFieldId(field.id);
@@ -497,6 +514,7 @@ export default function EditorPage() {
       if (!source) return;
       const newId = `dup-${Date.now()}`;
       const dup = { ...source, id: newId, x: source.x + 12, y: source.y + 12 } as EditorField;
+      trackEvent("field_added", { source: "duplicate", type: dup.type });
       setFields((prev) => [...prev, dup]);
       setSelectedFieldId(newId);
     },
@@ -624,6 +642,12 @@ export default function EditorPage() {
       );
 
       if (matched > 0) {
+        trackEvent("profile_autofill_used", { matched });
+        trackEvent("profile_autofill_used", { matched });
+        trackEvent("profile_autofill_used", { matched });
+        trackEvent("profile_autofill_used", { matched });
+        trackEvent("profile_autofill_used", { matched });
+        trackEvent("profile_autofill_used", { matched });
         showToast(`Auto-filled ${matched} field${matched > 1 ? "s" : ""} from your profile`);
       } else {
         showToast("No matching fields found - try filling manually");
@@ -978,6 +1002,18 @@ export default function EditorPage() {
       }
 
       const newIds = new Set(allDetected.map((f) => f.id));
+      trackEvent("field_detection_used", { count: allDetected.length, visualCount: visualFields.length, aiCount: aiFields.length });
+      trackEvent("field_added", { source: "detect", count: allDetected.length });
+      trackEvent("field_detection_used", { count: allDetected.length, visualCount: visualFields.length, aiCount: aiFields.length });
+      trackEvent("field_added", { source: "detect", count: allDetected.length });
+      trackEvent("field_detection_used", { count: allDetected.length, visualCount: visualFields.length, aiCount: aiFields.length });
+      trackEvent("field_added", { source: "detect", count: allDetected.length });
+      trackEvent("field_detection_used", { count: allDetected.length, visualCount: visualFields.length, aiCount: aiFields.length });
+      trackEvent("field_added", { source: "detect", count: allDetected.length });
+      trackEvent("field_detection_used", { count: allDetected.length, visualCount: visualFields.length, aiCount: aiFields.length });
+      trackEvent("field_added", { source: "detect", count: allDetected.length });
+      trackEvent("field_detection_used", { count: allDetected.length, visualCount: visualFields.length, aiCount: aiFields.length });
+      trackEvent("field_added", { source: "detect", count: allDetected.length });
       setFields((prev) => [...prev, ...allDetected]);
       setHighlightFieldIds(newIds);
       setTimeout(() => setHighlightFieldIds(new Set()), 2000);

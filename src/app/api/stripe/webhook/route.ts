@@ -3,6 +3,7 @@ import { getStripe } from "@/lib/stripe";
 import { getRedis } from "@/lib/redis";
 import { Resend } from "resend";
 import type Stripe from "stripe";
+import { trackServerEvent } from "@/lib/server-analytics";
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? "https://getquickfill.com";
 
@@ -111,7 +112,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid signature" }, { status: 400 });
   }
 
-  // ── Upgrade confirmed ──────────────────────────────────────────────────────
   if (event.type === "checkout.session.completed") {
     const session = event.data.object as Stripe.Checkout.Session;
     
@@ -190,11 +190,14 @@ export async function POST(req: NextRequest) {
         });
       }
 
-      // checkout.session.completed processed successfully
+      await trackServerEvent("subscription_started", {
+        source: "stripe_checkout",
+        tier,
+        billing: isAnnual ? "annual" : "monthly",
+      });
     }
   }
 
-  // ── Subscription updated ───────────────────────────────────────────────────
   if (event.type === "customer.subscription.updated") {
     const subscription = event.data.object as Stripe.Subscription;
     const userId = await getUserIdForSubscription(subscription);
@@ -232,13 +235,13 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // ── Subscription cancelled ─────────────────────────────────────────────────
   if (event.type === "customer.subscription.deleted") {
     const subscription = event.data.object as Stripe.Subscription;
     const userId = await getUserIdForSubscription(subscription);
 
     if (userId) {
       await getRedis().del(`sub:${userId}`);
+      await trackServerEvent("subscription_cancelled", { source: "stripe_subscription" });
 
       // Send cancellation confirmation email
       const email = subscription.customer ? await getEmailForCustomer(subscription.customer as string) : null;

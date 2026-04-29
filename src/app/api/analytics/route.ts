@@ -1,18 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { getRedis } from "@/lib/redis";
+import { ANALYTICS_EVENT_SET } from "@/lib/analytics-events";
 
 export const runtime = "nodejs";
-
-const ALLOWED_EVENTS = new Set([
-  "home_cta_click",
-  "template_start",
-  "download_attempt",
-  "download_success",
-  "download_failed",
-  "free_limit_hit",
-  "checkout_start",
-]);
 
 const MAX_PROPERTIES = 12;
 const DAY_SECONDS = 60 * 60 * 24;
@@ -45,7 +36,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json().catch(() => null);
     const name = typeof body?.name === "string" ? body.name : "";
 
-    if (!ALLOWED_EVENTS.has(name)) {
+    if (!ANALYTICS_EVENT_SET.has(name)) {
       return NextResponse.json({ ok: false }, { status: 400 });
     }
 
