@@ -322,16 +322,47 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
       if (editingFieldId !== null) return;
       
       const selectedField = selectedFieldId ? fields.find(f => f.id === selectedFieldId && f.page === currentPage) : null;
-      
-      // If selected field is comb (Box Field), let the field handle its own typing keys
-      // Only allow Escape and Ctrl+D through to this handler
+
       if (selectedField && selectedField.type === "comb") {
-        const isEscape = e.key === "Escape";
-        const isDuplicate = (e.ctrlKey || e.metaKey) && e.key === "d";
-        if (!isEscape && !isDuplicate) return;
+        const combField = selectedField as CombField;
+        const charCount = combField.charCount ?? 9;
+        const currentIndex = Math.min(Math.max(combField.cursorIndex ?? Math.min((combField.value || "").replace(/ +$/, "").length, charCount - 1), 0), charCount - 1);
+        const currentValue = combField.value || "";
+
+        if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+          e.preventDefault();
+          const paddedValue = currentValue.padEnd(charCount, " ");
+          const newValue = paddedValue.slice(0, currentIndex) + e.key + paddedValue.slice(currentIndex + 1);
+          const nextIndex = Math.min(currentIndex + 1, charCount - 1);
+          onFieldUpdate(selectedField.id, { value: newValue, cursorIndex: nextIndex } as Partial<EditorField>);
+          return;
+        }
+
+        if (e.key === "Backspace") {
+          e.preventDefault();
+          const paddedValue = currentValue.padEnd(charCount, " ");
+          const targetIndex = currentIndex > 0 ? currentIndex - 1 : 0;
+          const newValue = paddedValue.slice(0, targetIndex) + " " + paddedValue.slice(targetIndex + 1);
+          onFieldUpdate(selectedField.id, { value: newValue, cursorIndex: targetIndex } as Partial<EditorField>);
+          return;
+        }
+
+        if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
+          e.preventDefault();
+          const nextIndex = e.key === "ArrowLeft"
+            ? Math.max(currentIndex - 1, 0)
+            : Math.min(currentIndex + 1, charCount - 1);
+          onFieldUpdate(selectedField.id, { cursorIndex: nextIndex } as Partial<EditorField>);
+          return;
+        }
+
+        if (e.key === "Enter") {
+          e.preventDefault();
+          return;
+        }
       }
       
-      // Delete / Backspace - delete selected field (but not for comb - handled above)
+      // Delete / Backspace - delete selected field
       // Only delete if the field is on the current page (selectedField found)
       if (e.key === "Delete" || e.key === "Backspace") {
         if (selectedField) {
@@ -1600,7 +1631,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
                   onFieldSelect(field.id);
                   onToolSelect(null);
                   // Whiteout and signature fields don't enter edit mode
-                  if (!dragStartedRef.current && field.type !== "signature" && field.type !== "whiteout") {
+                  if (!dragStartedRef.current && field.type !== "signature" && field.type !== "whiteout" && field.type !== "comb") {
                     setEditingFieldId(field.id);
                   }
                   // Reset cursor for whiteout fields
@@ -1670,6 +1701,11 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
                     } as Partial<EditorField>);
                   } else {
                     onFieldUpdate(field.id, { value } as Partial<EditorField>);
+                  }
+                }}
+                onCombCursorChange={(cursorIndex) => {
+                  if (field.type === "comb") {
+                    onFieldUpdate(field.id, { cursorIndex } as Partial<EditorField>);
                   }
                 }}
                 registerNode={registerNode}
@@ -1918,6 +1954,7 @@ function FieldShape({
   onTransformEnd,
   onDoubleClick,
   onValueChange,
+  onCombCursorChange,
   onDelete,
   registerNode,
   unregisterNode,
@@ -1938,6 +1975,7 @@ function FieldShape({
   onTransformEnd: (w: number, h: number, x: number, y: number) => void;
   onDoubleClick: () => void;
   onValueChange: (value: string | boolean | CheckboxStamp) => void;
+  onCombCursorChange?: (cursorIndex: number) => void;
   onDelete: () => void;
   registerNode: (id: string, node: Konva.Group) => void;
   unregisterNode: (id: string) => void;
@@ -2130,98 +2168,18 @@ function FieldShape({
     // Use persisted cursor from field data, or default to end of current value
     const initialCursor = combField.cursorIndex ?? Math.min(value.replace(/ +$/, "").length, charCount - 1);
     const [activeSlotIndex, setActiveSlotIndex] = useState(initialCursor);
-
-    // Refs to avoid stale closure
     const activeSlotIndexRef = useRef(initialCursor);
-    const valueRef = useRef(value);
-    const handleKeyDownRef = useRef<(e: KeyboardEvent) => void>(() => {});
-
-    // Keep refs in sync with state
-    useEffect(() => {
-      valueRef.current = value;
-    }, [value]);
 
     useEffect(() => {
-      activeSlotIndexRef.current = activeSlotIndex;
-    }, [activeSlotIndex]);
-    
-    // When field becomes selected, position cursor at end of existing text
-    useEffect(() => {
-      if (isSelected) {
-        const textLength = value.replace(/ +$/, "").length;
-        const newCursor = Math.min(textLength, charCount - 1);
-        setActiveSlotIndex(newCursor);
-        activeSlotIndexRef.current = newCursor;
-      }
-    }, [isSelected]);
-
-    // Define handleKeyDown using refs - updated every render for fresh closure
-    handleKeyDownRef.current = (e: KeyboardEvent) => {
-      const currentIndex = activeSlotIndexRef.current;
-      const currentValue = valueRef.current;
-
-      // Handle printable characters (single key, not modifier keys)
-      if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
-        e.preventDefault();
-        if (currentIndex < charCount) {
-          const paddedValue = currentValue.padEnd(charCount, " ");
-          const newValue = paddedValue.slice(0, currentIndex) + e.key + paddedValue.slice(currentIndex + 1);
-          onValueChange(newValue);
-          const nextIndex = Math.min(currentIndex + 1, charCount - 1);
-          setActiveSlotIndex(nextIndex);
-          activeSlotIndexRef.current = nextIndex;
-        }
-        return;
-      }
-      
-      if (e.key === "Backspace") {
-        e.preventDefault();
-        if (currentIndex > 0) {
-          const paddedValue = currentValue.padEnd(charCount, " ");
-          const prevIndex = currentIndex - 1;
-          const newValue = paddedValue.slice(0, prevIndex) + " " + paddedValue.slice(prevIndex + 1);
-          onValueChange(newValue);
-          setActiveSlotIndex(prevIndex);
-          activeSlotIndexRef.current = prevIndex;
-        }
-      } else if (e.key === "ArrowLeft") {
-        e.preventDefault();
-        if (currentIndex > 0) {
-          const newIndex = currentIndex - 1;
-          setActiveSlotIndex(newIndex);
-          activeSlotIndexRef.current = newIndex;
-        }
-      } else if (e.key === "ArrowRight") {
-        e.preventDefault();
-        if (currentIndex < charCount - 1) {
-          const newIndex = currentIndex + 1;
-          setActiveSlotIndex(newIndex);
-          activeSlotIndexRef.current = newIndex;
-        }
-      } else if (e.key === "Enter" || e.key === "Escape") {
-        e.preventDefault();
-        onSelect();
-      }
-    };
-
-    // Attach/detach document keydown listener when selected
-    // Use capture phase to get events before parent handlers
-    useEffect(() => {
-      if (!isSelected) return;
-      const handler = (e: KeyboardEvent) => {
-        // Only handle if this is a typing key (not navigation or modifiers alone)
-        if (e.key.length === 1 || e.key === "Backspace" || e.key === "ArrowLeft" || e.key === "ArrowRight" || e.key === "Escape" || e.key === "Enter") {
-          handleKeyDownRef.current(e);
-        }
-      };
-      // Use capture phase to intercept before bubbling
-      document.addEventListener("keydown", handler, true);
-      return () => document.removeEventListener("keydown", handler, true);
-    }, [isSelected]);
+      const nextCursor = combField.cursorIndex ?? Math.min(value.replace(/ +$/, "").length, charCount - 1);
+      setActiveSlotIndex(nextCursor);
+      activeSlotIndexRef.current = nextCursor;
+    }, [combField.cursorIndex, value, charCount]);
 
     const handleSlotClick = (index: number) => {
       setActiveSlotIndex(index);
       activeSlotIndexRef.current = index;
+      onCombCursorChange?.(index);
     };
 
     return (
