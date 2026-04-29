@@ -31,6 +31,7 @@ type DownloadAccess = {
   used: number;
   limit: number;
   key: string | null;
+  isQaBypass?: boolean;
 };
 
 function usageKey(userId: string) {
@@ -47,7 +48,23 @@ function getGuestIdentifier(request: NextRequest): string {
   return `guest:fills:${hash}`;
 }
 
+function hasValidQaToken(request: NextRequest): boolean {
+  const expected = process.env.QUICKFILL_QA_TOKEN;
+  const provided = request.headers.get("x-quickfill-qa-token");
+  if (!expected || !provided) return false;
+
+  const expectedBuffer = Buffer.from(expected);
+  const providedBuffer = Buffer.from(provided);
+  if (expectedBuffer.length !== providedBuffer.length) return false;
+
+  return crypto.timingSafeEqual(expectedBuffer, providedBuffer);
+}
+
 async function getDownloadAccess(request: NextRequest): Promise<DownloadAccess> {
+  if (hasValidQaToken(request)) {
+    return { isPro: true, used: 0, limit: FREE_FILL_LIMIT, key: null, isQaBypass: true };
+  }
+
   const { userId } = await auth();
 
   if (!userId) {
@@ -83,13 +100,16 @@ function dataUrlToBytes(dataUrl: string): Uint8Array {
 
 export async function POST(request: NextRequest) {
   try {
-    // Rate limiting check
-    const forwarded = request.headers.get("x-forwarded-for");
-    const realIp = request.headers.get("x-real-ip");
-    const identifier = forwarded?.split(",")[0] || realIp || "anonymous";
-    const { success, remaining } = await checkRateLimit(identifier);
-    if (!success) {
-      return NextResponse.json({ error: "Too many requests, try again in a minute" }, { status: 429 });
+    const qaBypass = hasValidQaToken(request);
+
+    if (!qaBypass) {
+      const forwarded = request.headers.get("x-forwarded-for");
+      const realIp = request.headers.get("x-real-ip");
+      const identifier = forwarded?.split(",")[0] || realIp || "anonymous";
+      const { success } = await checkRateLimit(identifier);
+      if (!success) {
+        return NextResponse.json({ error: "Too many requests, try again in a minute" }, { status: 429 });
+      }
     }
 
     const access = await getDownloadAccess(request);
@@ -186,10 +206,10 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Apply border watermark for free/guest users (skip for Pro)
+    // Apply border watermark for free/guest users. QA token requests act like Pro.
     const pages = pdfDoc.getPages();
     const watermarkFont = await pdfDoc.embedFont(StandardFonts.Helvetica);
-    applyBorderWatermark(pages, watermarkFont, access.isPro);
+    applyBorderWatermark(pages, watermarkFont, access.isPro || access.isQaBypass === true);
 
     const resultBytes = await pdfDoc.save();
     await incrementDownloadUsage(access);
