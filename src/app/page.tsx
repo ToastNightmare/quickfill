@@ -694,15 +694,12 @@ export default function Home() {
           <h2 className="text-center text-3xl font-bold tracking-tight sm:text-4xl">
             How it works
           </h2>
-          <div className="mt-16 grid gap-8 sm:grid-cols-3">
-            {steps.map((step, i) => (
-              <div key={step.title} className="flex flex-col items-center text-center">
-                <div className="flex h-14 w-14 items-center justify-center rounded-full bg-accent text-xl font-bold text-white">
+          <div className="mt-12 grid gap-4 sm:grid-cols-3">
+            {steps.map((step) => (
+              <div key={step.title} className="rounded-lg border border-border bg-surface p-6 text-center shadow-sm">
+                <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-accent text-lg font-bold text-white">
                   {step.number}
                 </div>
-                {i < steps.length - 1 && (
-                  <div className="hidden h-0.5 w-full bg-accent/20 sm:block absolute" />
-                )}
                 <h3 className="mt-4 text-lg font-semibold">{step.title}</h3>
                 <p className="mt-2 text-sm text-text-muted">{step.description}</p>
               </div>
