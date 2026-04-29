@@ -10,11 +10,11 @@
       <stop offset="100%" stop-color="#2d8ef7"/>
     </linearGradient>
   </defs>
-  <!-- Icon box — same cap height as text -->
+  <!-- Icon box - same cap height as text -->
   <rect x="1" y="1" width="46" height="46" rx="10" fill="white" stroke="#e2e8f0" stroke-width="1.5"/>
   <!-- Lightning bolt centred in box -->
   <polygon points="27,6 16,26 22,26 19,42 34,22 28,22" fill="url(#bolt)"/>
-  <!-- Wordmark — baseline aligned with icon centre -->
+  <!-- Wordmark - baseline aligned with icon centre -->
   <text x="56" y="35" font-family="'Arial Rounded MT Bold','Arial Black','Arial',sans-serif" font-size="28" font-weight="800" fill="url(#quick)">Quick</text>
   <text x="152" y="35" font-family="'Arial Rounded MT Bold','Arial Black','Arial',sans-serif" font-size="28" font-weight="800" fill="#1e2d4a">Fill</text>
 </svg>

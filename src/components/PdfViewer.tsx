@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useLayoutEffect, useRef, useState, useCallback, useImperativeHandle, forwardRef } from "react";
-import { Stage, Layer, Rect, Text, Group, Transformer, Image as KonvaImage } from "react-konva";
+import { Stage, Layer, Rect, Text, Group, Transformer, Image as KonvaImage, Line } from "react-konva";
 import type Konva from "konva";
 import type { EditorField, ToolType, SignatureField, CheckboxStamp, WhiteoutField, CombField } from "@/lib/types";
 import { detectSnapBox, detectAllBoxes, snapCredibilityScore, floodFillCell, detectCombCells } from "@/lib/snap-detect";
@@ -2111,17 +2111,31 @@ function FieldShape({
           const stamp: CheckboxStamp = (field as { stamp?: CheckboxStamp }).stamp ?? (field.checked ? "tick" : "none");
           if (stamp === "none") return null;
           const size = Math.min(stageW, stageH) * 0.88;
+          const strokeWidth = Math.max(1.6, size * 0.12);
+          if (stamp === "tick") {
+            return (
+              <Line
+                points={[
+                  stageW * 0.2,
+                  stageH * 0.55,
+                  stageW * 0.42,
+                  stageH * 0.78,
+                  stageW * 0.82,
+                  stageH * 0.24,
+                ]}
+                stroke="#111827"
+                strokeWidth={strokeWidth}
+                lineCap="round"
+                lineJoin="round"
+              />
+            );
+          }
+
           return (
-            <Text
-              text={stamp === "tick" ? "✓" : "✕"}
-              fontSize={size}
-              fill="#111827"
-              fontStyle="bold"
-              width={stageW}
-              height={stageH}
-              align="center"
-              verticalAlign="middle"
-            />
+            <>
+              <Line points={[stageW * 0.24, stageH * 0.24, stageW * 0.76, stageH * 0.76]} stroke="#111827" strokeWidth={strokeWidth} lineCap="round" />
+              <Line points={[stageW * 0.76, stageH * 0.24, stageW * 0.24, stageH * 0.76]} stroke="#111827" strokeWidth={strokeWidth} lineCap="round" />
+            </>
           );
         })()}
         </Group>

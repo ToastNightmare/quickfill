@@ -216,7 +216,7 @@ def create_invoice_pdf(output_path):
 
     # Footer note
     elements.append(Paragraph(
-        "GST registered business — ABN must be quoted on all tax invoices",
+        "GST registered business - ABN must be quoted on all tax invoices",
         small_style
     ))
 

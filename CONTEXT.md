@@ -1,4 +1,4 @@
-# Coder Context — Active Projects
+# Coder Context - Active Projects
 
 ## QuickFill (PRIMARY)
 - Repo: /home/kyle/projects/quickfill
@@ -41,7 +41,7 @@
 - GitHub: ToastNightmare/mission-control
 - Stack: Next.js, Tailwind
 
-## All Projects — Shared Rules
+## All Projects - Shared Rules
 - Package manager: pnpm (never npm or yarn)
 - Framework: Next.js 14+ App Router
 - Styling: Tailwind CSS

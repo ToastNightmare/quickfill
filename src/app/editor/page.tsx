@@ -481,11 +481,6 @@ export default function EditorPage() {
   const handleFieldAdd = useCallback(
     (field: EditorField) => {
       trackEvent("field_added", { source: "manual", type: field.type, snapped: Boolean(field.snapped) });
-      trackEvent("field_added", { source: "manual", type: field.type, snapped: Boolean(field.snapped) });
-      trackEvent("field_added", { source: "manual", type: field.type, snapped: Boolean(field.snapped) });
-      trackEvent("field_added", { source: "manual", type: field.type, snapped: Boolean(field.snapped) });
-      trackEvent("field_added", { source: "manual", type: field.type, snapped: Boolean(field.snapped) });
-      trackEvent("field_added", { source: "manual", type: field.type, snapped: Boolean(field.snapped) });
       setFields((prev) => [...prev, field]);
       // Select the newly added field and deactivate tool
       setSelectedFieldId(field.id);
@@ -645,11 +640,6 @@ export default function EditorPage() {
       );
 
       if (matched > 0) {
-        trackEvent("profile_autofill_used", { matched });
-        trackEvent("profile_autofill_used", { matched });
-        trackEvent("profile_autofill_used", { matched });
-        trackEvent("profile_autofill_used", { matched });
-        trackEvent("profile_autofill_used", { matched });
         trackEvent("profile_autofill_used", { matched });
         showToast(`Auto-filled ${matched} field${matched > 1 ? "s" : ""} from your profile`);
       } else {
@@ -1010,16 +1000,6 @@ export default function EditorPage() {
       const newIds = new Set(allDetected.map((f) => f.id));
       trackEvent("field_detection_used", { count: allDetected.length, visualCount: visualFields.length, aiCount: aiFields.length });
       trackEvent("field_added", { source: "detect", count: allDetected.length });
-      trackEvent("field_detection_used", { count: allDetected.length, visualCount: visualFields.length, aiCount: aiFields.length });
-      trackEvent("field_added", { source: "detect", count: allDetected.length });
-      trackEvent("field_detection_used", { count: allDetected.length, visualCount: visualFields.length, aiCount: aiFields.length });
-      trackEvent("field_added", { source: "detect", count: allDetected.length });
-      trackEvent("field_detection_used", { count: allDetected.length, visualCount: visualFields.length, aiCount: aiFields.length });
-      trackEvent("field_added", { source: "detect", count: allDetected.length });
-      trackEvent("field_detection_used", { count: allDetected.length, visualCount: visualFields.length, aiCount: aiFields.length });
-      trackEvent("field_added", { source: "detect", count: allDetected.length });
-      trackEvent("field_detection_used", { count: allDetected.length, visualCount: visualFields.length, aiCount: aiFields.length });
-      trackEvent("field_added", { source: "detect", count: allDetected.length });
       setFields((prev) => [...prev, ...allDetected]);
       setHighlightFieldIds(newIds);
       setTimeout(() => setHighlightFieldIds(new Set()), 2000);
@@ -1189,10 +1169,10 @@ export default function EditorPage() {
               <span className="hidden sm:inline text-[10px] text-amber-500 font-medium">too small</span>
             )}
             {zoom >= 125 && zoom <= 175 && (
-              <span className="hidden sm:inline text-[10px] text-green-500 font-medium">too small</span>
+              <span className="hidden sm:inline text-[10px] text-green-500 font-medium">snap ready</span>
             )}
             {zoom > 175 && (
-              <span className="hidden sm:inline text-[10px] text-amber-500 font-medium">too small</span>
+              <span className="hidden sm:inline text-[10px] text-amber-500 font-medium">too large</span>
             )}
             <button
               onClick={handleZoomIn}

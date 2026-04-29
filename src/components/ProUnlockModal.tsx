@@ -1,6 +1,6 @@
 "use client";
 
-import { Sparkles, Lock, X } from "lucide-react";
+import { CheckCircle2, Sparkles, Lock, X } from "lucide-react";
 
 interface ProUnlockModalProps {
   open: boolean;
@@ -40,15 +40,15 @@ export function ProUnlockModal({ open, onClose, featureName }: ProUnlockModalPro
         <div className="bg-surface-alt rounded-xl p-4 mb-6 text-left">
           <div className="space-y-2 text-sm">
             <div className="flex items-center gap-2">
-              <span className="text-accent">✓</span>
+              <CheckCircle2 className="h-4 w-4 shrink-0 text-accent" aria-hidden="true" />
               <span className="text-text-muted">Unlimited PDF fills</span>
             </div>
             <div className="flex items-center gap-2">
-              <span className="text-accent">✓</span>
+              <CheckCircle2 className="h-4 w-4 shrink-0 text-accent" aria-hidden="true" />
               <span className="text-text-muted">All 13+ templates</span>
             </div>
             <div className="flex items-center gap-2">
-              <span className="text-accent">✓</span>
+              <CheckCircle2 className="h-4 w-4 shrink-0 text-accent" aria-hidden="true" />
               <span className="text-text-muted">No watermarks</span>
             </div>
           </div>
