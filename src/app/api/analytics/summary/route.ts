@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { auth } from "@clerk/nextjs/server";
+import { getAdminUser } from "@/lib/admin";
 import { getRedis } from "@/lib/redis";
 
 export const runtime = "nodejs";
@@ -48,9 +48,9 @@ function toNumber(value: unknown) {
 }
 
 export async function GET() {
-  const { userId } = await auth();
-  if (!userId) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const admin = await getAdminUser();
+  if (!admin) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
   const redis = getRedis();
