@@ -187,10 +187,12 @@ export function MobileFiller() {
     setIsDownloading(true);
     try {
       let isPro = false;
+      let canSaveFillHistory = false;
       const usageRes = await fetch("/api/usage");
       if (usageRes.ok) {
         const usage = await usageRes.json();
         isPro = usage.isPro;
+        canSaveFillHistory = !usage.guest && !usage.qa;
         if (!isPro && usage.used >= usage.limit) {
           showToast("Free limit reached, upgrade to Pro for unlimited fills", 5000);
           setIsDownloading(false);
@@ -231,13 +233,15 @@ export function MobileFiller() {
       URL.revokeObjectURL(url);
 
       await fetch("/api/usage", { method: "POST" });
-      try {
-        await fetch("/api/fills", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ filename: fileName, filledAt: new Date().toISOString(), fieldCount: fields.length, pageCount: 1 }),
-        });
-      } catch { /* non-critical */ }
+      if (canSaveFillHistory) {
+        try {
+          await fetch("/api/fills", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ filename: fileName, filledAt: new Date().toISOString(), fieldCount: fields.length, pageCount: 1 }),
+          });
+        } catch { /* non-critical */ }
+      }
 
       if (!isPro) showToast("Downloaded with QuickFill watermark, upgrade Pro to remove it", 5000);
       else setStep("done");
