@@ -27,7 +27,29 @@ function getGuestIdentifier(request: NextRequest): string {
   return `guest:fills:${hash}`;
 }
 
+function hasValidQaToken(request: NextRequest): boolean {
+  const expected = process.env.QUICKFILL_QA_TOKEN;
+  const provided = request.headers.get("x-quickfill-qa-token");
+  if (!expected || !provided) return false;
+
+  const expectedBuffer = Buffer.from(expected);
+  const providedBuffer = Buffer.from(provided);
+  if (expectedBuffer.length !== providedBuffer.length) return false;
+
+  return crypto.timingSafeEqual(expectedBuffer, providedBuffer);
+}
+
 export async function GET(request: NextRequest) {
+  if (hasValidQaToken(request)) {
+    return NextResponse.json({
+      used: 0,
+      limit: Infinity,
+      isPro: true,
+      tier: "qa",
+      qa: true,
+    });
+  }
+
   const { userId } = await auth();
   
   // Guest mode: track usage by IP hash
@@ -61,6 +83,10 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  if (hasValidQaToken(request)) {
+    return NextResponse.json({ used: 0, qa: true });
+  }
+
   const { userId } = await auth();
   
   // Guest mode: track usage by IP hash server-side
