@@ -29,6 +29,14 @@ sudo apt-get install -y libnss3 libnspr4 libatk1.0-0 libatk-bridge2.0-0 libcups2
 pnpm qa
 ```
 
+### PDF Accuracy Pack
+
+```bash
+QUICKFILL_QA_TOKEN="$(cat /home/kyle/.quickfill-qa-token)" npm run qa:pdf
+```
+
+This runs the focused desktop and mobile PDF checks for AcroForm downloads, flat PDF fallback, widget cleanup, and page overflow.
+
 ### With Debugging
 
 ```bash

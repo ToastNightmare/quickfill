@@ -8,6 +8,7 @@
     "start": "next start",
     "lint": "eslint",
     "qa": "jest --passWithNoTests && playwright test --reporter=list",
+    "qa:pdf": "playwright test tests/pdf-accuracy-pack.spec.ts --reporter=list",
     "test": "jest",
     "e2e": "playwright test --reporter=list"
   },

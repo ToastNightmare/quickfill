@@ -387,12 +387,12 @@ export function MobileFiller() {
               This file does not expose standard fields. You can still use the full editor to place text, boxes, signatures, and ticks manually.
             </p>
             <div className="mt-5 grid gap-2">
-              <Link
+              <a
                 href="/editor?advanced=1"
                 className="flex h-11 items-center justify-center rounded-xl bg-accent px-4 text-sm font-semibold text-white hover:bg-accent-hover transition-colors"
               >
                 Open full editor
-              </Link>
+              </a>
               <Link
                 href="/templates"
                 className="flex h-11 items-center justify-center rounded-xl border border-border px-4 text-sm font-semibold text-text-muted hover:bg-surface transition-colors"
