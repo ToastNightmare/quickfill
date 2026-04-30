@@ -857,7 +857,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
 
           if (activeTool === "signature") {
             onSignatureFieldPlaced?.(field);
-          } else if (activeTool !== "checkbox" && activeTool !== "whiteout") {
+          } else if (activeTool !== "checkbox" && activeTool !== "whiteout" && activeTool !== "comb") {
             setEditingFieldId(id);
           }
         } else if (absDx <= 10 || absDy <= 10) {
@@ -1097,7 +1097,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
 
             if (activeTool === "signature") {
               onSignatureFieldPlaced?.(field);
-            } else if (activeTool !== "checkbox" && activeTool !== "whiteout") {
+            } else if (activeTool !== "checkbox" && activeTool !== "whiteout" && activeTool !== "comb") {
               setEditingFieldId(id);
             }
 
@@ -1352,7 +1352,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
       // For signature fields, trigger signature placement flow
       if (activeTool === "signature") {
         onSignatureFieldPlaced?.(field);
-      } else if (activeTool !== "checkbox" && activeTool !== "whiteout") {
+      } else if (activeTool !== "checkbox" && activeTool !== "whiteout" && activeTool !== "comb") {
         // Immediately enter edit mode for text-like fields
         setEditingFieldId(id);
       }
@@ -1633,6 +1633,8 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
                   // Whiteout and signature fields don't enter edit mode
                   if (!dragStartedRef.current && field.type !== "signature" && field.type !== "whiteout" && field.type !== "comb") {
                     setEditingFieldId(field.id);
+                  } else if (field.type === "comb") {
+                    setEditingFieldId(null);
                   }
                   // Reset cursor for whiteout fields
                   if (field.type === "whiteout") {
