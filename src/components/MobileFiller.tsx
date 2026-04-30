@@ -241,8 +241,14 @@ export function MobileFiller() {
 
       if (!isPro) showToast("Downloaded with QuickFill watermark, upgrade Pro to remove it", 5000);
       else setStep("done");
-    } catch {
-      showToast("Download failed, please try again");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Download failed";
+      showToast(
+        message.includes("Free fill limit")
+          ? "Free fill limit reached. Upgrade to Pro for unlimited downloads."
+          : `Download failed: ${message}`,
+        5000
+      );
     } finally {
       setIsDownloading(false);
     }
