@@ -35,7 +35,7 @@ pnpm qa
 QUICKFILL_QA_TOKEN="$(cat /home/kyle/.quickfill-qa-token)" npm run qa:pdf
 ```
 
-This runs the focused desktop and mobile PDF checks for AcroForm downloads, flat PDF fallback, widget cleanup, and page overflow.
+This runs the focused desktop and mobile PDF checks for AcroForm downloads, flat PDF fallback, widget cleanup, page overflow, and real template export coverage.
 
 ### With Debugging
 

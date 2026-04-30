@@ -201,10 +201,8 @@ export async function POST(request: NextRequest) {
           }
         }
         form.flatten({ updateFieldAppearances: false });
-        removeWidgetAnnotations(pdfDoc);
-        pdfDoc.catalog.delete(PDFName.of("AcroForm"));
       } catch (flattenErr) {
-        console.warn("blank form flatten failed, removing filled-area widgets:", flattenErr instanceof Error ? flattenErr.message : flattenErr);
+        console.warn("blank form flatten failed, removing AcroForm artifacts:", flattenErr instanceof Error ? flattenErr.message : flattenErr);
         removeFilledAreaWidgets(pdfDoc, form, editorFields);
         try {
           for (const remainingField of form.getFields()) remainingField.enableReadOnly();
@@ -212,6 +210,8 @@ export async function POST(request: NextRequest) {
           // Form cleanup is best-effort; drawn output remains static.
         }
       }
+
+      cleanupAcroFormArtifacts(pdfDoc);
 
       const wrappedPages = new Set<number>();
       for (const field of editorFields) {
@@ -241,7 +241,7 @@ export async function POST(request: NextRequest) {
     const watermarkFont = await pdfDoc.embedFont(StandardFonts.Helvetica);
     applyBorderWatermark(pages, watermarkFont, access.isPro || access.isQaBypass === true);
 
-    const resultBytes = await pdfDoc.save();
+    const resultBytes = await pdfDoc.save({ updateFieldAppearances: false });
     await incrementDownloadUsage(access);
     await recordDownloadLog({
       status: "success",
@@ -352,6 +352,15 @@ function removeFilledAreaWidgets(pdfDoc: PDFDocument, form: PDFForm, editorField
       try { field.enableReadOnly(); } catch { /* skip */ }
     }
   }
+}
+
+function cleanupAcroFormArtifacts(pdfDoc: PDFDocument) {
+  try {
+    removeWidgetAnnotations(pdfDoc);
+  } catch { /* cleanup is best-effort */ }
+  try {
+    pdfDoc.catalog.delete(PDFName.of("AcroForm"));
+  } catch { /* cleanup is best-effort */ }
 }
 
 function removeWidgetAnnotations(pdfDoc: PDFDocument) {

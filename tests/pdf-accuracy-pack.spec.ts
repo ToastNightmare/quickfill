@@ -1,5 +1,7 @@
 import { test, expect, type APIRequestContext, type Page } from "@playwright/test";
-import { PDFDocument, PDFName, StandardFonts, rgb } from "pdf-lib";
+import { PDFDict, PDFDocument, PDFName, StandardFonts, rgb } from "pdf-lib";
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
 
 type TestPdf = {
   name: string;
@@ -7,6 +9,28 @@ type TestPdf = {
 };
 
 const qaToken = process.env.QUICKFILL_QA_TOKEN;
+const templateDir = join(process.cwd(), "public", "templates");
+const realTemplateFiles = [
+  "ato-tfn-declaration.pdf",
+  "ato-super-choice.pdf",
+  "ato-withholding-declaration.pdf",
+  "centrelink-su415.pdf",
+  "employment-separation.pdf",
+  "medicare-enrolment.pdf",
+  "ndis-service-agreement.pdf",
+  "rental-application.pdf",
+  "tenancy-application-nsw.pdf",
+  "tenancy-application-vic.pdf",
+  "statutory-declaration.pdf",
+  "australian-invoice.pdf",
+];
+
+async function loadTemplatePdf(name: string): Promise<TestPdf> {
+  return {
+    name,
+    bytes: await readFile(join(templateDir, name)),
+  };
+}
 
 async function createAcroFormPdf(): Promise<TestPdf> {
   const pdfDoc = await PDFDocument.create();
@@ -71,6 +95,29 @@ async function createFlatPdf(): Promise<TestPdf> {
 async function installQaHeaders(page: Page) {
   if (!qaToken) return;
   await page.setExtraHTTPHeaders({ "x-quickfill-qa-token": qaToken });
+}
+
+async function hasCatalogAcroForm(bytes: Buffer) {
+  const pdfDoc = await PDFDocument.load(bytes);
+  return pdfDoc.catalog.get(PDFName.of("AcroForm")) !== undefined;
+}
+
+async function countWidgetAnnotations(bytes: Buffer) {
+  const pdfDoc = await PDFDocument.load(bytes);
+  let count = 0;
+  for (const page of pdfDoc.getPages()) {
+    const annots = page.node.Annots();
+    if (!annots) continue;
+    for (let i = 0; i < annots.size(); i++) {
+      try {
+        const annot = pdfDoc.context.lookup(annots.get(i), PDFDict);
+        if (annot.get(PDFName.of("Subtype"))?.toString() === "/Widget") count++;
+      } catch {
+        // Ignore malformed non-widget annotations in source PDFs.
+      }
+    }
+  }
+  return count;
 }
 
 async function uploadPdf(page: Page, pdf: TestPdf, inputIndex: number) {
@@ -165,6 +212,39 @@ async function requestFilledPdf(request: APIRequestContext, pdf: TestPdf) {
   return body;
 }
 
+async function exportTemplatePdf(request: APIRequestContext, pdf: TestPdf) {
+  test.skip(!qaToken, "Set QUICKFILL_QA_TOKEN to run real template export checks.");
+  const hasAcroForm = await hasCatalogAcroForm(pdf.bytes);
+
+  const response = await request.post("/api/fill-pdf", {
+    headers: qaToken ? { "x-quickfill-qa-token": qaToken } : undefined,
+    multipart: {
+      pdf: {
+        name: pdf.name,
+        mimeType: "application/pdf",
+        buffer: pdf.bytes,
+      },
+      fields: JSON.stringify([]),
+      pageScales: JSON.stringify([]),
+      viewportDims: JSON.stringify([]),
+      hasAcroForm: String(hasAcroForm),
+    },
+  });
+
+  expect(response.status(), `${pdf.name} should export successfully`).toBe(200);
+  const body = await response.body();
+  expect(body.length, `${pdf.name} should not return an empty PDF`).toBeGreaterThan(1000);
+
+  const resultDoc = await PDFDocument.load(body);
+  expect(resultDoc.getPageCount(), `${pdf.name} should keep its pages`).toBeGreaterThan(0);
+  expect(resultDoc.catalog.get(PDFName.of("AcroForm")), `${pdf.name} should export as a static PDF`).toBeUndefined();
+  if (hasAcroForm) {
+    expect(await countWidgetAnnotations(body), `${pdf.name} should not keep widget annotations`).toBe(0);
+  }
+
+  return body;
+}
+
 test.describe("PDF accuracy pack", () => {
   test("server output is static and removes widget noise for an AcroForm", async ({ request }) => {
     const pdf = await createAcroFormPdf();
@@ -234,5 +314,27 @@ test.describe("PDF accuracy pack", () => {
     await expect(page.locator("canvas").first()).toBeVisible();
     const overflow = await page.locator("body").evaluate((body) => body.scrollWidth - body.clientWidth);
     expect(overflow).toBeLessThanOrEqual(2);
+  });
+
+  test.describe("real template exports", () => {
+    for (const templateFile of realTemplateFiles) {
+      test(`${templateFile} exports cleanly`, async ({ request }) => {
+        const pdf = await loadTemplatePdf(templateFile);
+        await exportTemplatePdf(request, pdf);
+      });
+    }
+  });
+
+  test("homepage template links point to real PDFs", async ({ page }) => {
+    await page.goto("/templates");
+    await expect(page.getByText("Tax File Number Declaration")).toBeVisible();
+
+    for (const templateFile of realTemplateFiles.slice(0, 6)) {
+      const response = await page.request.get(`/templates/${templateFile}`);
+      expect(response.status(), `${templateFile} should be downloadable`).toBe(200);
+      expect(response.headers()["content-type"] ?? "").toContain("application/pdf");
+      const body = await response.body();
+      expect(body.length).toBeGreaterThan(1000);
+    }
   });
 });
