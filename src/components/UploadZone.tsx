@@ -2,7 +2,7 @@
 
 import { useCallback, useState } from "react";
 import { useDropzone, type FileRejection } from "react-dropzone";
-import { Upload, FileText } from "lucide-react";
+import { LockKeyhole, ShieldCheck, Upload } from "lucide-react";
 
 interface UploadZoneProps {
   onFileLoad: (file: File, bytes: ArrayBuffer) => void;
@@ -67,6 +67,26 @@ export function UploadZone({ onFileLoad }: UploadZoneProps) {
         </p>
         <p className="mt-1 text-sm text-text-muted hidden sm:block">or click to browse</p>
         <p className="mt-4 text-xs text-text-muted">PDF files only, up to 50MB</p>
+        <div className="mt-5 grid w-full max-w-md gap-2 text-left sm:grid-cols-2">
+          <div className="flex items-start gap-2 rounded-lg border border-border bg-surface px-3 py-2">
+            <LockKeyhole className="mt-0.5 h-4 w-4 shrink-0 text-accent" />
+            <div>
+              <p className="text-xs font-semibold text-text">PDF not stored</p>
+              <p className="mt-0.5 text-[11px] leading-snug text-text-muted">
+                Processed for your download only.
+              </p>
+            </div>
+          </div>
+          <div className="flex items-start gap-2 rounded-lg border border-border bg-surface px-3 py-2">
+            <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-accent" />
+            <div>
+              <p className="text-xs font-semibold text-text">Private by default</p>
+              <p className="mt-0.5 text-[11px] leading-snug text-text-muted">
+                Your form stays focused on the task.
+              </p>
+            </div>
+          </div>
+        </div>
         {sizeError && (
           <p className="mt-3 text-sm font-medium text-red-500">
             File too large. Please upload a PDF under 50MB.

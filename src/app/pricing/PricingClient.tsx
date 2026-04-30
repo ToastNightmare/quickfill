@@ -33,6 +33,12 @@ const tableFeatures = [
   { name: "Priority support", free: false, pro: true },
 ];
 
+const upgradeReasons = [
+  "You fill forms for work, clients, payroll, rentals, or government paperwork.",
+  "You need clean downloads without a watermark.",
+  "You want saved history, profile auto-fill, and support when something fails.",
+];
+
 const faqs = [
   {
     q: "Can I try QuickFill for free?",
@@ -157,6 +163,7 @@ export default function PricingPage() {
             )}
 
             {!isPro && (
+              <>
               <div className="grid gap-6 lg:grid-cols-2 lg:items-stretch">
                 <div className="flex flex-col rounded-lg border border-border bg-surface p-6 shadow-sm">
                   <h2 className="text-lg font-semibold">Free</h2>
@@ -270,6 +277,29 @@ export default function PricingPage() {
                   </div>
                 </div>
               </div>
+
+              <div className="mt-8 rounded-lg border border-border bg-surface-alt p-6">
+                <div className="flex flex-col gap-5 md:flex-row md:items-start md:justify-between">
+                  <div>
+                    <h2 className="text-lg font-bold">When Pro makes sense</h2>
+                    <p className="mt-2 max-w-2xl text-sm leading-relaxed text-text-muted">
+                      Stay free if you only fill the odd PDF. Upgrade when QuickFill saves you time every month or when the completed document needs to look clean for work.
+                    </p>
+                  </div>
+                  <Link href="/editor" className="inline-flex h-10 items-center justify-center rounded-lg border border-border px-4 text-sm font-semibold text-text hover:bg-surface transition-colors">
+                    Try a PDF first
+                  </Link>
+                </div>
+                <div className="mt-5 grid gap-3 md:grid-cols-3">
+                  {upgradeReasons.map((reason) => (
+                    <div key={reason} className="flex items-start gap-2 rounded-lg bg-surface p-4 text-sm">
+                      <Check className="mt-0.5 h-4 w-4 shrink-0 text-accent" />
+                      <span>{reason}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              </>
             )}
 
             {!isPro && (

@@ -295,6 +295,31 @@ const heroTrustPills = [
   { icon: BadgeCheck, text: "Built for Australian forms: TFN, Centrelink, rentals, NDIS" },
 ];
 
+const proofStats = [
+  { value: "15+", label: "Australian templates" },
+  { value: "3", label: "free fills each month" },
+  { value: "0", label: "stored PDF uploads" },
+  { value: "50MB", label: "PDF upload limit" },
+];
+
+const buyerQuestions = [
+  {
+    icon: LockKeyhole,
+    title: "Will QuickFill keep my PDF?",
+    body: "No. Uploaded PDFs are processed for download generation and are not stored on our servers.",
+  },
+  {
+    icon: ShieldCheck,
+    title: "Will it work with official forms?",
+    body: "Yes. QuickFill is tested against real Australian templates including ATO, Services Australia, Medicare, NDIS, rental, and business forms.",
+  },
+  {
+    icon: BadgeCheck,
+    title: "Can I try it before paying?",
+    body: "Yes. The free plan gives 3 fills each month so you can test your own PDF before upgrading.",
+  },
+];
+
 const securitySignals = [
   {
     icon: LockKeyhole,
@@ -508,6 +533,62 @@ export default function Home() {
                 </Link>
               </div>
             </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Proof strip */}
+      <section className="border-y border-border bg-surface px-4 py-8 sm:px-6 lg:px-8">
+        <div className="mx-auto grid max-w-5xl gap-4 sm:grid-cols-4">
+          {proofStats.map((stat) => (
+            <div key={stat.label} className="rounded-lg border border-border bg-surface-alt px-4 py-5 text-center">
+              <p className="text-2xl font-extrabold text-text">{stat.value}</p>
+              <p className="mt-1 text-xs font-medium uppercase tracking-wide text-text-muted">{stat.label}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* Buyer confidence */}
+      <section className="bg-surface px-4 py-16 sm:px-6 lg:px-8">
+        <div className="mx-auto max-w-5xl">
+          <div className="text-center">
+            <span className="inline-flex items-center gap-2 rounded-full bg-accent/10 px-4 py-1.5 text-sm font-semibold text-accent">
+              Built for cautious paperwork
+            </span>
+            <h2 className="mt-4 text-3xl font-bold tracking-tight sm:text-4xl">
+              The answers people need before uploading a form
+            </h2>
+            <p className="mx-auto mt-4 max-w-2xl text-text-muted">
+              QuickFill is designed for sensitive Australian paperwork where privacy, accuracy, and speed matter.
+            </p>
+          </div>
+          <div className="mt-10 grid gap-5 md:grid-cols-3">
+            {buyerQuestions.map((item) => (
+              <div key={item.title} className="rounded-lg border border-border bg-surface-alt p-6 shadow-sm">
+                <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-accent/10">
+                  <item.icon className="h-5 w-5 text-accent" />
+                </div>
+                <h3 className="mt-4 text-base font-semibold">{item.title}</h3>
+                <p className="mt-2 text-sm leading-relaxed text-text-muted">{item.body}</p>
+              </div>
+            ))}
+          </div>
+          <div className="mt-8 flex flex-col items-center gap-3 sm:flex-row sm:justify-center">
+            <Link
+              href="/editor"
+              onClick={() => trackEvent("home_cta_click", { cta: "trust_fill_pdf" })}
+              className="flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-accent px-5 text-sm font-semibold text-white hover:bg-accent-hover transition-colors sm:w-auto"
+            >
+              Upload a PDF
+              <ArrowRight className="h-4 w-4" />
+            </Link>
+            <Link
+              href="/privacy"
+              className="flex h-11 w-full items-center justify-center rounded-lg border border-border px-5 text-sm font-semibold text-text hover:bg-surface-alt transition-colors sm:w-auto"
+            >
+              Read privacy details
+            </Link>
           </div>
         </div>
       </section>

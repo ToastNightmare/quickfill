@@ -150,6 +150,17 @@ const professionalTemplates: Template[] = [
   },
 ];
 
+const templateGroups = [
+  officialTemplates,
+  legalTemplates,
+  centrelinkTemplates,
+  realEstateTemplates,
+  superTemplates,
+  professionalTemplates,
+];
+
+const templateCount = templateGroups.reduce((count, group) => count + group.length, 0);
+
 function TemplateIcon() {
   return (
     <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-lg bg-accent/10">
@@ -226,15 +237,35 @@ export default function TemplatesPage() {
         </span>
         <h1 className="mt-4 text-3xl font-bold tracking-tight sm:text-4xl">Form Templates</h1>
         <p className="mx-auto mt-4 max-w-2xl text-text-muted">
-          Ready-to-fill Australian forms. Click any template to open it in the editor with your profile auto-filled.
+          Ready-to-fill Australian forms. Pick a template, use your own PDF, or start from a blank upload in the editor.
         </p>
+        <div className="mt-6 flex flex-col items-center justify-center gap-3 sm:flex-row">
+          <Link
+            href="/editor"
+            className="flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-accent px-5 text-sm font-semibold text-white hover:bg-accent-hover transition-colors sm:w-auto"
+          >
+            <FileText className="h-4 w-4" />
+            Upload Your Own PDF
+          </Link>
+          <span className="text-sm text-text-muted">
+            {templateCount} ready templates available
+          </span>
+        </div>
       </div>
 
-      <div className="mx-auto mt-8 flex max-w-3xl items-start gap-3 rounded-xl border border-border bg-surface-alt p-4 text-left">
+      <div className="mx-auto mt-8 grid max-w-4xl gap-4 md:grid-cols-2">
+        <div className="flex items-start gap-3 rounded-xl border border-border bg-surface-alt p-4 text-left">
+          <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-accent" />
+          <p className="text-sm leading-relaxed text-text-muted">
+            QuickFill is independent and is not affiliated with the ATO, Services Australia, NDIS or state agencies. We help you fill publicly available forms faster.
+          </p>
+        </div>
+        <div className="flex items-start gap-3 rounded-xl border border-border bg-surface-alt p-4 text-left">
         <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-accent" />
         <p className="text-sm leading-relaxed text-text-muted">
-          QuickFill is independent and is not affiliated with the ATO, Services Australia, NDIS or state agencies. We help you fill publicly available forms faster.
+          PDFs are processed for download generation and are not stored on our servers. You can also upload any other Australian PDF form.
         </p>
+        </div>
       </div>
 
       {/* Government Forms Section */}
