@@ -476,7 +476,7 @@ export default function Home() {
                     <div>
                       <p className="text-xs font-semibold text-text-muted">Full name</p>
                       <div className="mt-3 h-10 rounded border border-accent/40 bg-white px-3 py-2 text-sm font-medium text-text">
-                        Kyle Stanley
+                        Alex Taylor
                       </div>
                     </div>
                     <div>
