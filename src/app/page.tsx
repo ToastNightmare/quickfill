@@ -427,7 +427,7 @@ export default function Home() {
           </p>
 
           <div className="mx-auto mt-12 max-w-4xl rounded-lg border border-white/10 bg-white shadow-2xl shadow-black/25">
-            <div className="flex items-center justify-between border-b border-border px-4 py-3">
+            <div className="flex flex-col items-start gap-3 border-b border-border px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
               <div className="flex items-center gap-2">
                 <div className="flex h-8 w-8 items-center justify-center rounded bg-accent/10">
                   <FileText className="h-4 w-4 text-accent" />

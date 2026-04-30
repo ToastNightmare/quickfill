@@ -146,9 +146,14 @@ export default function EditorPage() {
   const { fields, set: setFields, undo, redo, reset, canUndo, canRedo } = useHistory();
   const restoredRef = useRef(false);
   const initialRestoreDoneRef = useRef(false);
+  const [advancedMobile, setAdvancedMobile] = useState(false);
 
   const pdfViewerRef = useRef<PdfViewerHandle>(null);
   const viewerContainerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    setAdvancedMobile(new URLSearchParams(window.location.search).get("advanced") === "1");
+  }, []);
 
   // Dynamic page title based on fileName
   useEffect(() => {
@@ -1019,11 +1024,11 @@ export default function EditorPage() {
     return (
       <>
         {/* Mobile, dedicated filler flow */}
-        <div className="sm:hidden">
+        <div className={advancedMobile ? "hidden" : "sm:hidden"}>
           <MobileFiller />
         </div>
-        {/* Desktop, full editor upload */}
-        <div className="hidden sm:flex sm:flex-col sm:flex-1">
+        {/* Desktop and advanced mobile full editor upload */}
+        <div className={advancedMobile ? "flex flex-col flex-1" : "hidden sm:flex sm:flex-col sm:flex-1"}>
           {isLoading && (
             <div className="fixed inset-0 z-[100] flex items-center justify-center bg-surface/80">
               <div className="flex flex-col items-center gap-3">
@@ -1107,11 +1112,11 @@ export default function EditorPage() {
   return (
     <>
     {/* Mobile, filler flow (replaces canvas editor entirely) */}
-    <div className="sm:hidden">
+    <div className={advancedMobile ? "hidden" : "sm:hidden"}>
       <MobileFiller />
     </div>
-    {/* Desktop, full canvas editor */}
-    <div className="hidden sm:flex sm:flex-col h-[calc(100svh-64px)]">
+    {/* Desktop and advanced mobile full canvas editor */}
+    <div className={advancedMobile ? "flex flex-col h-[calc(100svh-64px)]" : "hidden sm:flex sm:flex-col h-[calc(100svh-64px)]"}>
       {/* Loading overlay */}
       {isLoading && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-surface/80">

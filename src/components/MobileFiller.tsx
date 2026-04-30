@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState, useCallback, useRef, useEffect } from "react";
 import {
   Upload, FileText, UserCheck, Download,
@@ -283,7 +284,7 @@ export function MobileFiller() {
           {isLoading ? <Loader2 className="h-5 w-5 animate-spin" /> : <Upload className="h-5 w-5" />}
           {isLoading ? "Reading PDF..." : "Choose PDF"}
         </button>
-        <p className="mt-4 text-xs text-text-muted">PDF files only · up to 50MB</p>
+        <p className="mt-4 text-xs text-text-muted">PDF files only, up to 50MB</p>
 
         <div className="mt-10 w-full max-w-sm rounded-2xl border border-border bg-surface-alt p-4">
           <p className="text-xs font-semibold uppercase tracking-widest text-text-muted mb-3">Works best with</p>
@@ -336,14 +337,11 @@ export function MobileFiller() {
             <p className="text-xs text-text-muted">{filledCount} of {fields.length} filled</p>
           )}
         </div>
-        <button
-          onClick={handleDownload}
-          disabled={isDownloading}
-          className="flex items-center gap-1.5 rounded-xl bg-accent px-4 py-2 text-sm font-semibold text-white hover:bg-accent-hover disabled:opacity-60 transition-colors"
-        >
-          {isDownloading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
-          {isDownloading ? "Saving..." : "Download"}
-        </button>
+        {fields.length > 0 && (
+          <span className="rounded-full bg-accent/10 px-3 py-1 text-xs font-semibold text-accent">
+            {filledCount === fields.length ? "Ready" : "In progress"}
+          </span>
+        )}
       </div>
 
       {/* Progress bar */}
@@ -374,11 +372,24 @@ export function MobileFiller() {
         {!hasAcroForm || fields.length === 0 ? (
           <div className="rounded-2xl border border-border bg-surface-alt p-6 text-center">
             <FileText className="h-8 w-8 text-text-muted mx-auto mb-3" />
-            <p className="text-sm font-semibold text-text mb-1">No fillable fields detected</p>
+            <p className="text-sm font-semibold text-text mb-1">Flat PDF detected</p>
             <p className="text-xs text-text-muted leading-relaxed">
-              This PDF doesn't have standard fillable fields. Use the desktop editor at{" "}
-              <span className="text-accent font-medium">getquickfill.com</span> for full control.
+              This file does not expose standard fields. You can still use the full editor to place text, boxes, signatures, and ticks manually.
             </p>
+            <div className="mt-5 grid gap-2">
+              <Link
+                href="/editor?advanced=1"
+                className="flex h-11 items-center justify-center rounded-xl bg-accent px-4 text-sm font-semibold text-white hover:bg-accent-hover transition-colors"
+              >
+                Open full editor
+              </Link>
+              <Link
+                href="/templates"
+                className="flex h-11 items-center justify-center rounded-xl border border-border px-4 text-sm font-semibold text-text-muted hover:bg-surface transition-colors"
+              >
+                Try a template instead
+              </Link>
+            </div>
           </div>
         ) : (
           <div className="flex flex-col gap-3">
@@ -396,6 +407,7 @@ export function MobileFiller() {
       </div>
 
       {/* Sticky download bar */}
+      {hasAcroForm && fields.length > 0 && (
       <div className="fixed bottom-0 left-0 right-0 border-t border-border bg-surface px-4 pt-3 pb-[max(env(safe-area-inset-bottom),12px)] z-30">
         <button
           onClick={handleDownload}
@@ -406,6 +418,7 @@ export function MobileFiller() {
           {isDownloading ? "Saving..." : "Download Filled PDF"}
         </button>
       </div>
+      )}
 
       {/* Signature modal */}
       <SignatureModal
