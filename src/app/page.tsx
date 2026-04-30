@@ -456,86 +456,132 @@ export default function Home() {
             Trusted by Australians filling TFN declarations, rental applications, Centrelink forms and NDIS paperwork
           </p>
 
-          <div className="mx-auto mt-12 max-w-4xl rounded-lg border border-white/10 bg-white shadow-2xl shadow-black/25">
-            <div className="flex flex-col items-start gap-3 border-b border-border px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-              <div className="flex items-center gap-2">
-                <div className="flex h-8 w-8 items-center justify-center rounded bg-accent/10">
-                  <FileText className="h-4 w-4 text-accent" />
-                </div>
-                <div className="text-left">
-                  <p className="text-[11px] font-semibold uppercase tracking-wide text-accent">
-                    Example PDF fill
-                  </p>
-                  <p className="text-sm font-semibold text-text">TFN declaration.pdf</p>
-                  <p className="text-xs text-text-muted">7 fields detected</p>
-                </div>
+          <div className="mx-auto mt-12 max-w-5xl overflow-hidden rounded-lg border border-white/10 bg-white text-left shadow-2xl shadow-black/25">
+            <div className="flex flex-col gap-3 border-b border-border bg-white px-4 py-3 text-text sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex min-w-0 items-center gap-2 text-sm text-text-muted">
+                <span className="text-base text-text-muted">&lt;</span>
+                <span>Templates</span>
+                <span>/</span>
+                <span className="truncate font-medium text-text">ato-withholding-declaration.pdf</span>
               </div>
-              <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">
-                Ready to download
-              </span>
+              <div className="flex flex-wrap items-center gap-3 text-xs text-text-muted">
+                <span>150%</span>
+                <span className="rounded-full bg-emerald-50 px-2 py-1 font-semibold text-emerald-700">snap ready</span>
+                <span>Fit</span>
+                <span className="rounded-md bg-emerald-50 px-2 py-1 font-semibold text-emerald-700">Snap</span>
+              </div>
             </div>
-            <div className="grid gap-0 text-left md:grid-cols-[1fr_220px]">
-              <div className="bg-surface p-5">
-                <div className="rounded border border-border bg-surface-alt p-5">
-                  <div className="space-y-4">
-                    <div>
-                      <p className="text-xs font-semibold text-text-muted">Full name</p>
-                      <div className="mt-3 h-10 rounded border border-accent/40 bg-white px-3 py-2 text-sm font-medium text-text">
-                        Alex Taylor
-                      </div>
+            <div className="grid min-h-[420px] bg-surface-alt md:grid-cols-[210px_1fr]">
+              <aside className="hidden border-r border-border bg-surface p-3 md:block">
+                <p className="px-1 text-[10px] font-bold uppercase tracking-widest text-text-muted">Place fields</p>
+                <div className="mt-2 space-y-1">
+                  {[
+                    ["T", "Text Field"],
+                    ["[]", "Box Field"],
+                    ["X", "Checkbox"],
+                    ["Sig", "Signature"],
+                    ["Date", "Date"],
+                    ["Erase", "Whiteout"],
+                  ].map(([icon, label]) => (
+                    <div key={label} className="flex h-7 items-center gap-2 rounded-md border border-border bg-surface-alt px-2 text-xs font-semibold text-text-muted">
+                      <span className="w-5 text-center text-text-muted">{icon}</span>
+                      {label}
                     </div>
+                  ))}
+                </div>
+                <p className="mt-4 px-1 text-[10px] font-bold uppercase tracking-widest text-text-muted">Actions</p>
+                <div className="mt-2 space-y-1 text-xs text-text-muted">
+                  {["Undo", "Snap Off", "Clear Fields", "Save Progress", "Start Over"].map((label) => (
+                    <div key={label} className="rounded-md px-2 py-1.5">{label}</div>
+                  ))}
+                  <div className="mt-2 rounded-md bg-accent px-2 py-2 text-center font-semibold text-white">
+                    Download PDF
+                  </div>
+                </div>
+              </aside>
+              <div className="overflow-hidden bg-white px-5 py-4 text-text sm:px-8">
+                <div className="min-w-[620px] origin-top-left scale-[0.48] sm:scale-[0.72] md:scale-[0.82] lg:scale-100">
+                  <h3 className="text-3xl font-light leading-tight">
+                    Section A: <span className="font-extrabold">Payee&apos;s declaration</span>
+                  </h3>
+                  <div className="mt-4 flex items-center gap-3">
+                    <div className="flex h-8 w-8 items-center justify-center rounded-full bg-cyan-500 text-xl font-bold text-white">&gt;</div>
+                    <p className="text-xl text-text">To be completed by payee.</p>
+                  </div>
+                  <div className="mt-4 grid grid-cols-[32px_1fr] gap-x-3">
+                    <p className="text-2xl font-bold">1</p>
                     <div>
-                      <p className="text-xs font-semibold text-text-muted">Date of birth</p>
-                      <div className="mt-3 grid max-w-sm grid-cols-8 gap-1">
-                        {["0", "1", "0", "2", "1", "9", "8", "9"].map((digit, index) => (
-                          <div key={index} className="flex h-9 items-center justify-center rounded border border-accent/50 bg-white text-sm font-semibold text-text">
-                            {digit}
+                      <p className="text-xl font-extrabold">What is your name?</p>
+                      <div className="mt-3 flex flex-wrap items-center gap-4 text-lg">
+                        <span>Title:</span>
+                        {["Mr", "Mrs", "Miss", "Ms", "Other"].map((label) => (
+                          <div key={label} className="flex items-center gap-2">
+                            <span>{label}</span>
+                            <span className="flex h-8 w-8 items-center justify-center border border-text bg-white text-2xl font-bold">
+                              {label === "Mr" ? <Check className="h-6 w-6" /> : ""}
+                            </span>
                           </div>
                         ))}
                       </div>
+                      <div className="mt-2">
+                        <p className="text-lg">Family name</p>
+                        <div className="h-9 w-full border border-text bg-white px-2 py-1 text-2xl leading-none text-navy">
+                          Sampleman
+                        </div>
+                      </div>
+                      <div className="mt-2 grid grid-cols-2 gap-10">
+                        <div>
+                          <p className="text-lg">First given name</p>
+                          <div className="h-9 border border-text bg-white px-2 py-1 text-2xl leading-none text-navy">
+                            Testy
+                          </div>
+                        </div>
+                        <div>
+                          <p className="text-lg">Other given names</p>
+                          <div className="h-9 border border-text bg-white px-2 py-1 text-2xl leading-none text-navy">
+                            McFormface
+                          </div>
+                        </div>
+                      </div>
                     </div>
-                    <div>
-                      <p className="text-xs font-semibold text-text-muted">Tax file number</p>
-                      <div className="mt-3 grid max-w-md grid-cols-9 gap-1">
-                        {["1", "2", "3", "4", "5", "6", "7", "8", "9"].map((digit, index) => (
-                          <div key={index} className="flex h-9 items-center justify-center rounded border border-accent/50 bg-white text-sm font-semibold text-text">
-                            {digit}
+                    <p className="mt-6 text-2xl font-bold">2</p>
+                    <div className="mt-6">
+                      <p className="text-xl font-extrabold">What is your date of birth?</p>
+                      <div className="mt-2 flex items-end gap-2">
+                        <div className="grid grid-cols-2 gap-1">
+                          {["1", "2"].map((digit, index) => (
+                            <span key={`day-${index}`} className="flex h-9 w-8 items-center justify-center border border-text text-xl">{digit}</span>
+                          ))}
+                        </div>
+                        <span className="text-2xl">/</span>
+                        <div className="grid grid-cols-2 gap-1">
+                          {["1", "2"].map((digit, index) => (
+                            <span key={`month-${index}`} className="flex h-9 w-8 items-center justify-center border border-text text-xl">{digit}</span>
+                          ))}
+                        </div>
+                        <span className="text-2xl">/</span>
+                        <div className="grid grid-cols-4 gap-1">
+                          {["1", "9", "9", "9"].map((digit, index) => (
+                            <span key={`year-${index}`} className="flex h-9 w-8 items-center justify-center border border-text text-xl">{digit}</span>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                    <p className="mt-6 text-2xl font-bold">3</p>
+                    <div className="mt-6">
+                      <p className="text-xl font-extrabold">What is your tax file number (TFN)?</p>
+                      <div className="mt-2 flex gap-7">
+                        {["123", "456", "789"].map((group) => (
+                          <div key={group} className="grid grid-cols-3 gap-1">
+                            {group.split("").map((digit, index) => (
+                              <span key={`${group}-${index}`} className="flex h-9 w-8 items-center justify-center border border-text text-xl">{digit}</span>
+                            ))}
                           </div>
                         ))}
                       </div>
                     </div>
                   </div>
                 </div>
-                <p className="mt-3 text-xs text-text-muted">
-                  A quick example of a filled PDF. Start with your own file to create a real download.
-                </p>
-              </div>
-              <div className="border-t border-border bg-surface-alt p-5 md:border-l md:border-t-0">
-                <p className="text-xs font-semibold uppercase tracking-wide text-text-muted">What happens</p>
-                <div className="mt-4 space-y-3">
-                  {[
-                    ["Auto-fill matched fields", "Use saved details when they fit"],
-                    ["Private by default", "Files are processed for download"],
-                    ["Download-ready PDF", "No print or scan step"],
-                  ].map(([title, body]) => (
-                    <div key={title} className="rounded-lg border border-border bg-white p-3">
-                      <div className="flex items-start gap-2">
-                        <Check className="mt-0.5 h-4 w-4 shrink-0 text-accent" />
-                        <div>
-                          <p className="text-sm font-semibold text-text">{title}</p>
-                          <p className="mt-1 text-xs text-text-muted">{body}</p>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-                <Link
-                  href="/editor"
-                  onClick={() => trackEvent("home_cta_click", { cta: "preview_try_pdf" })}
-                  className="mt-4 flex h-10 items-center justify-center rounded-lg bg-accent px-4 text-sm font-semibold text-white hover:bg-accent-hover transition-colors"
-                >
-                  Try it with a PDF
-                </Link>
               </div>
             </div>
           </div>
