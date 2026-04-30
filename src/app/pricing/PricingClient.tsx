@@ -67,7 +67,7 @@ const faqs = [
 ];
 
 export default function PricingPage() {
-  const { isSignedIn } = useAuth();
+  const { isLoaded, isSignedIn } = useAuth();
   const [annual, setAnnual] = useState(true);
   const [upgrading, setUpgrading] = useState(false);
   const [usage, setUsage] = useState<{ tier: string; isPro: boolean } | null>(null);
@@ -85,6 +85,11 @@ export default function PricingPage() {
 
   const handleUpgrade = async (selectedAnnual = annual) => {
     trackEvent("checkout_start", { source: "pricing", plan: selectedAnnual ? "annual" : "monthly" });
+    if (!isLoaded) return;
+    if (!isSignedIn) {
+      window.location.href = `/checkout?plan=pro&billing=${selectedAnnual ? "annual" : "monthly"}&source=pricing`;
+      return;
+    }
     setUpgrading(true);
     try {
       const res = await fetch("/api/stripe/checkout", {
@@ -94,7 +99,7 @@ export default function PricingPage() {
       });
       const data = await res.json();
       if (data.error) {
-        window.location.href = "/sign-up?redirect_url=/pricing";
+        window.location.href = `/checkout?plan=pro&billing=${selectedAnnual ? "annual" : "monthly"}&source=pricing`;
         return;
       }
       if (data.url) window.location.href = data.url;

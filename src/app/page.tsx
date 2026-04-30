@@ -346,6 +346,11 @@ export default function Home() {
 
   const handleUpgrade = async (plan: "pro", annual = true) => {
     trackEvent("checkout_start", { source: "home_pricing", plan, billing: annual ? "annual" : "monthly" });
+    if (!isLoaded) return;
+    if (!isSignedIn) {
+      window.location.href = `/checkout?plan=${plan}&billing=${annual ? "annual" : "monthly"}&source=home_pricing`;
+      return;
+    }
     setUpgradingPlan(annual ? "pro_annual" : "pro_monthly");
     try {
       const res = await fetch("/api/stripe/checkout", {
@@ -355,7 +360,7 @@ export default function Home() {
       });
       const data = await res.json();
       if (data.error) {
-        window.location.href = "/sign-up?redirect_url=/pricing";
+        window.location.href = `/checkout?plan=${plan}&billing=${annual ? "annual" : "monthly"}&source=home_pricing`;
         return;
       }
       if (data.url) window.location.href = data.url;
