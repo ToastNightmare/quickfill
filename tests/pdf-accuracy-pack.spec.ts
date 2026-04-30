@@ -1,4 +1,4 @@
-import { test, expect, type APIRequestContext, type Page } from "@playwright/test";
+import { test, expect, type APIRequestContext, type Page, type TestInfo } from "@playwright/test";
 import { PDFDict, PDFDocument, PDFName, StandardFonts, rgb } from "pdf-lib";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -6,6 +6,25 @@ import { join } from "node:path";
 type TestPdf = {
   name: string;
   bytes: Buffer;
+};
+
+type PdfVisualMetrics = {
+  width: number;
+  height: number;
+  changedRatio: number;
+  meanDelta: number;
+  sourceNonWhiteRatio: number;
+  outputNonWhiteRatio: number;
+  sourcePng: string;
+  outputPng: string;
+};
+
+const visualThresholds = {
+  minWidth: 300,
+  minHeight: 500,
+  minNonWhiteRatio: 0.01,
+  maxMeanDelta: 12,
+  maxChangedRatio: 0.08,
 };
 
 const qaToken = process.env.QUICKFILL_QA_TOKEN;
@@ -183,6 +202,8 @@ async function installPdfVisualRenderer(page: Page) {
               meanDelta: deltaSum / samples,
               sourceNonWhiteRatio: sourceNonWhite / samples,
               outputNonWhiteRatio: outputNonWhite / samples,
+              sourcePng: source.canvas.toDataURL("image/png"),
+              outputPng: output.canvas.toDataURL("image/png"),
             };
           };
         </script>
@@ -340,11 +361,56 @@ async function exportTemplatePdf(request: APIRequestContext, pdf: TestPdf) {
   return body;
 }
 
-async function comparePdfVisuals(page: Page, sourceBytes: Buffer, outputBytes: Buffer) {
+function pngBufferFromDataUrl(dataUrl: string) {
+  const prefix = "data:image/png;base64,";
+  expect(dataUrl.startsWith(prefix)).toBe(true);
+  return Buffer.from(dataUrl.slice(prefix.length), "base64");
+}
+
+function pdfVisualMetricsReport(metrics: PdfVisualMetrics) {
+  return {
+    width: metrics.width,
+    height: metrics.height,
+    changedRatio: metrics.changedRatio,
+    meanDelta: metrics.meanDelta,
+    sourceNonWhiteRatio: metrics.sourceNonWhiteRatio,
+    outputNonWhiteRatio: metrics.outputNonWhiteRatio,
+    thresholds: visualThresholds,
+  };
+}
+
+function pdfVisualMetricsFailed(metrics: PdfVisualMetrics) {
+  return (
+    metrics.width <= visualThresholds.minWidth ||
+    metrics.height <= visualThresholds.minHeight ||
+    metrics.sourceNonWhiteRatio <= visualThresholds.minNonWhiteRatio ||
+    metrics.outputNonWhiteRatio <= visualThresholds.minNonWhiteRatio ||
+    metrics.meanDelta >= visualThresholds.maxMeanDelta ||
+    metrics.changedRatio >= visualThresholds.maxChangedRatio
+  );
+}
+
+async function attachPdfVisualDebug(testInfo: TestInfo, templateFile: string, metrics: PdfVisualMetrics) {
+  const artifactName = templateFile.replace(/\.pdf$/i, "");
+  await testInfo.attach(`${artifactName}-visual-metrics.json`, {
+    body: Buffer.from(JSON.stringify(pdfVisualMetricsReport(metrics), null, 2)),
+    contentType: "application/json",
+  });
+  await testInfo.attach(`${artifactName}-source-page-1.png`, {
+    body: pngBufferFromDataUrl(metrics.sourcePng),
+    contentType: "image/png",
+  });
+  await testInfo.attach(`${artifactName}-output-page-1.png`, {
+    body: pngBufferFromDataUrl(metrics.outputPng),
+    contentType: "image/png",
+  });
+}
+
+async function comparePdfVisuals(page: Page, sourceBytes: Buffer, outputBytes: Buffer): Promise<PdfVisualMetrics> {
   return page.evaluate(
     ({ sourceBase64, outputBase64 }) => {
       return (window as unknown as {
-        comparePdfVisuals: (sourceBase64: string, outputBase64: string) => Promise<Record<string, number>>;
+        comparePdfVisuals: (sourceBase64: string, outputBase64: string) => Promise<PdfVisualMetrics>;
       }).comparePdfVisuals(sourceBase64, outputBase64);
     },
     { sourceBase64: sourceBytes.toString("base64"), outputBase64: outputBytes.toString("base64") }
@@ -431,7 +497,7 @@ test.describe("PDF accuracy pack", () => {
     }
   });
 
-  test("visual export smoke keeps key templates readable", async ({ page, request }) => {
+  test("visual export smoke keeps key templates readable", async ({ page, request }, testInfo) => {
     test.skip(!qaToken, "Set QUICKFILL_QA_TOKEN to run visual PDF checks.");
     await installPdfVisualRenderer(page);
 
@@ -440,12 +506,16 @@ test.describe("PDF accuracy pack", () => {
       const exported = await exportTemplatePdf(request, pdf);
       const metrics = await comparePdfVisuals(page, pdf.bytes, exported);
 
-      expect(metrics.width, `${templateFile} should render with page width`).toBeGreaterThan(300);
-      expect(metrics.height, `${templateFile} should render with page height`).toBeGreaterThan(500);
-      expect(metrics.sourceNonWhiteRatio, `${templateFile} source should not be blank`).toBeGreaterThan(0.01);
-      expect(metrics.outputNonWhiteRatio, `${templateFile} output should not be blank`).toBeGreaterThan(0.01);
-      expect(metrics.meanDelta, `${templateFile} visual output drift is too high`).toBeLessThan(12);
-      expect(metrics.changedRatio, `${templateFile} visual changed area is too high`).toBeLessThan(0.08);
+      if (pdfVisualMetricsFailed(metrics)) {
+        await attachPdfVisualDebug(testInfo, templateFile, metrics);
+      }
+
+      expect(metrics.width, `${templateFile} should render with page width`).toBeGreaterThan(visualThresholds.minWidth);
+      expect(metrics.height, `${templateFile} should render with page height`).toBeGreaterThan(visualThresholds.minHeight);
+      expect(metrics.sourceNonWhiteRatio, `${templateFile} source should not be blank`).toBeGreaterThan(visualThresholds.minNonWhiteRatio);
+      expect(metrics.outputNonWhiteRatio, `${templateFile} output should not be blank`).toBeGreaterThan(visualThresholds.minNonWhiteRatio);
+      expect(metrics.meanDelta, `${templateFile} visual output drift is too high`).toBeLessThan(visualThresholds.maxMeanDelta);
+      expect(metrics.changedRatio, `${templateFile} visual changed area is too high`).toBeLessThan(visualThresholds.maxChangedRatio);
     }
   });
 
