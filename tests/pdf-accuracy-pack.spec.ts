@@ -25,6 +25,13 @@ const realTemplateFiles = [
   "australian-invoice.pdf",
 ];
 
+const visualTemplateFiles = [
+  "ato-tfn-declaration.pdf",
+  "ato-super-choice.pdf",
+  "employment-separation.pdf",
+  "medicare-enrolment.pdf",
+];
+
 async function loadTemplatePdf(name: string): Promise<TestPdf> {
   return {
     name,
@@ -95,6 +102,94 @@ async function createFlatPdf(): Promise<TestPdf> {
 async function installQaHeaders(page: Page) {
   if (!qaToken) return;
   await page.setExtraHTTPHeaders({ "x-quickfill-qa-token": qaToken });
+}
+
+async function installPdfVisualRenderer(page: Page) {
+  const pdfjsBrowserPath = join(process.cwd(), "node_modules", "pdfjs-dist", "build", "pdf.mjs");
+  await page.route("**/__quickfill-qa/pdf.mjs", (route) => {
+    route.fulfill({ path: pdfjsBrowserPath, contentType: "text/javascript" });
+  });
+  await page.goto("/");
+  await page.setContent(`
+    <html>
+      <body style="margin:0;background:#fff">
+        <canvas id="source"></canvas>
+        <canvas id="output"></canvas>
+        <script type="module">
+          import * as pdfjsLib from "/__quickfill-qa/pdf.mjs";
+          pdfjsLib.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs";
+
+          function base64ToBytes(base64) {
+            return Uint8Array.from(atob(base64), (char) => char.charCodeAt(0));
+          }
+
+          async function renderToCanvas(canvasId, base64) {
+            const doc = await pdfjsLib.getDocument({ data: base64ToBytes(base64) }).promise;
+            const page = await doc.getPage(1);
+            const viewport = page.getViewport({ scale: 1 });
+            const canvas = document.getElementById(canvasId);
+            canvas.width = Math.floor(viewport.width);
+            canvas.height = Math.floor(viewport.height);
+            const context = canvas.getContext("2d", { willReadFrequently: true });
+            context.fillStyle = "#fff";
+            context.fillRect(0, 0, canvas.width, canvas.height);
+            await page.render({ canvasContext: context, viewport }).promise;
+            return {
+              canvas,
+              context,
+              imageData: context.getImageData(0, 0, canvas.width, canvas.height),
+            };
+          }
+
+          function isNonWhite(data, index) {
+            return data[index] < 245 || data[index + 1] < 245 || data[index + 2] < 245;
+          }
+
+          window.comparePdfVisuals = async (sourceBase64, outputBase64) => {
+            const source = await renderToCanvas("source", sourceBase64);
+            const output = await renderToCanvas("output", outputBase64);
+            const width = Math.min(source.canvas.width, output.canvas.width);
+            const height = Math.min(source.canvas.height, output.canvas.height);
+            const sourceData = source.imageData.data;
+            const outputData = output.imageData.data;
+            let changed = 0;
+            let sourceNonWhite = 0;
+            let outputNonWhite = 0;
+            let deltaSum = 0;
+            const sampleStep = 2;
+            let samples = 0;
+
+            for (let y = 0; y < height; y += sampleStep) {
+              for (let x = 0; x < width; x += sampleStep) {
+                const sourceIndex = (y * source.canvas.width + x) * 4;
+                const outputIndex = (y * output.canvas.width + x) * 4;
+                if (isNonWhite(sourceData, sourceIndex)) sourceNonWhite++;
+                if (isNonWhite(outputData, outputIndex)) outputNonWhite++;
+
+                const delta =
+                  Math.abs(sourceData[sourceIndex] - outputData[outputIndex]) +
+                  Math.abs(sourceData[sourceIndex + 1] - outputData[outputIndex + 1]) +
+                  Math.abs(sourceData[sourceIndex + 2] - outputData[outputIndex + 2]);
+                deltaSum += delta / 3;
+                if (delta > 75) changed++;
+                samples++;
+              }
+            }
+
+            return {
+              width,
+              height,
+              changedRatio: changed / samples,
+              meanDelta: deltaSum / samples,
+              sourceNonWhiteRatio: sourceNonWhite / samples,
+              outputNonWhiteRatio: outputNonWhite / samples,
+            };
+          };
+        </script>
+      </body>
+    </html>
+  `);
+  await page.waitForFunction(() => typeof (window as any).comparePdfVisuals === "function");
 }
 
 async function hasCatalogAcroForm(bytes: Buffer) {
@@ -245,6 +340,17 @@ async function exportTemplatePdf(request: APIRequestContext, pdf: TestPdf) {
   return body;
 }
 
+async function comparePdfVisuals(page: Page, sourceBytes: Buffer, outputBytes: Buffer) {
+  return page.evaluate(
+    ({ sourceBase64, outputBase64 }) => {
+      return (window as unknown as {
+        comparePdfVisuals: (sourceBase64: string, outputBase64: string) => Promise<Record<string, number>>;
+      }).comparePdfVisuals(sourceBase64, outputBase64);
+    },
+    { sourceBase64: sourceBytes.toString("base64"), outputBase64: outputBytes.toString("base64") }
+  );
+}
+
 test.describe("PDF accuracy pack", () => {
   test("server output is static and removes widget noise for an AcroForm", async ({ request }) => {
     const pdf = await createAcroFormPdf();
@@ -322,6 +428,24 @@ test.describe("PDF accuracy pack", () => {
         const pdf = await loadTemplatePdf(templateFile);
         await exportTemplatePdf(request, pdf);
       });
+    }
+  });
+
+  test("visual export smoke keeps key templates readable", async ({ page, request }) => {
+    test.skip(!qaToken, "Set QUICKFILL_QA_TOKEN to run visual PDF checks.");
+    await installPdfVisualRenderer(page);
+
+    for (const templateFile of visualTemplateFiles) {
+      const pdf = await loadTemplatePdf(templateFile);
+      const exported = await exportTemplatePdf(request, pdf);
+      const metrics = await comparePdfVisuals(page, pdf.bytes, exported);
+
+      expect(metrics.width, `${templateFile} should render with page width`).toBeGreaterThan(300);
+      expect(metrics.height, `${templateFile} should render with page height`).toBeGreaterThan(500);
+      expect(metrics.sourceNonWhiteRatio, `${templateFile} source should not be blank`).toBeGreaterThan(0.01);
+      expect(metrics.outputNonWhiteRatio, `${templateFile} output should not be blank`).toBeGreaterThan(0.01);
+      expect(metrics.meanDelta, `${templateFile} visual output drift is too high`).toBeLessThan(12);
+      expect(metrics.changedRatio, `${templateFile} visual changed area is too high`).toBeLessThan(0.08);
     }
   });
 
