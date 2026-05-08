@@ -12,6 +12,7 @@ export const ANALYTICS_EVENTS = [
   "free_limit_hit",
   "checkout_start",
   "subscription_started",
+  "subscription_updated",
   "subscription_cancelled"
 ] as const;
 
