@@ -11,6 +11,17 @@
 7. Review Vercel logs for new errors.
 8. Review Stripe webhook delivery if billing code changed.
 
+## Scheduled Health Monitor
+
+- Vercel runs `/api/cron/health-check` hourly from `vercel.json`.
+- The route requires `CRON_SECRET` in Vercel Production and Preview environment variables.
+- The monitor checks the public homepage, database, Redis, Stripe config, Clerk config, and optional alerting tools.
+- Each run writes an `ops_health_check_ok` or `ops_health_check_failed` event to `audit_events` when the database is reachable.
+- Alerts are sent through Resend when `RESEND_API_KEY` and `QUICKFILL_ALERT_EMAILS` are configured.
+- Set `QUICKFILL_ALERT_FROM` if the default `QuickFill <alerts@getquickfill.com>` sender is not verified in Resend.
+- Set `QUICKFILL_MONITOR_PATHS` as a comma-separated list to check more public paths, for example `/,/pricing`.
+- Run `pnpm smoke:production` for a manual public smoke check.
+
 ## Weekly
 
 - Check Stripe failed webhook events.
