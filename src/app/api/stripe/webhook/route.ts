@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getStripe } from "@/lib/stripe";
-import { getRedis } from "@/lib/redis";
 import { Resend } from "resend";
 import type Stripe from "stripe";
+import { getStripe } from "@/lib/stripe";
+import { getRedis, isRedisConfigured } from "@/lib/redis";
 import { trackServerEvent } from "@/lib/server-analytics";
+import { claimStripeEvent, saveSubscriptionSnapshot, tierFromPriceId, type QuickFillTier } from "@/lib/billing-store";
+import { log } from "@/lib/log";
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? "https://getquickfill.com";
 
@@ -12,48 +14,25 @@ function getResend() {
   return new Resend(process.env.RESEND_API_KEY);
 }
 
-async function sendEmail(message: { from: string; to: string; subject: string; html: string }) {
+async function sendEmail(message: { to: string; subject: string; html: string }) {
   const resend = getResend();
   if (!resend) return;
+
   try {
-    await resend.emails.send(message);
-  } catch {
-    // Email failures should not block Stripe webhook processing.
+    await resend.emails.send({
+      from: "QuickFill <noreply@getquickfill.com>",
+      ...message,
+    });
+  } catch (error) {
+    log.warn("email_send_failed", { error: error instanceof Error ? error.message : String(error) });
   }
-}
-
-function tierFromPriceId(priceId: string): "pro" | "business" | null {
-  if (priceId === process.env.STRIPE_PRO_PRICE_ID) return "pro";
-  if (priceId === process.env.STRIPE_PRO_ANNUAL_PRICE_ID) return "pro";
-  if (process.env.STRIPE_BUSINESS_PRICE_ID && priceId === process.env.STRIPE_BUSINESS_PRICE_ID) return "business";
-  return null;
-}
-
-async function getEmailForCustomer(customerId: string): Promise<string | null> {
-  try {
-    const customer = await getStripe().customers.retrieve(customerId) as Stripe.Customer;
-    return customer.email ?? null;
-  } catch {
-    return null;
-  }
-}
-
-async function getUserIdForCustomer(customerId: string): Promise<string | null> {
-  return getRedis().get<string>(`stripe_customer_user:${customerId}`);
-}
-
-async function getUserIdForSubscription(subscription: Stripe.Subscription): Promise<string | null> {
-  const metaUserId = subscription.metadata?.userId;
-  if (metaUserId) return metaUserId;
-  if (!subscription.customer) return null;
-  return getUserIdForCustomer(subscription.customer as string);
 }
 
 function emailWrapper(content: string) {
   return `
     <div style="font-family: sans-serif; max-width: 560px; margin: 0 auto; color: #1a1a2e;">
       <div style="background: #0f1929; border-radius: 12px 12px 0 0; padding: 32px 40px; text-align: center;">
-        <img src="${APP_URL}/logo-white.png" alt="QuickFill" style="height: 48px; width: auto;" />
+        <h1 style="color: #fff; margin: 0; font-size: 28px;">QuickFill</h1>
       </div>
       <div style="background: #ffffff; border: 1px solid #e5e7eb; border-top: none; border-radius: 0 0 12px 12px; padding: 40px;">
         ${content}
@@ -64,37 +43,164 @@ function emailWrapper(content: string) {
   `;
 }
 
-function welcomeEmailContent(firstName: string | null, isAnnual: boolean) {
-  const name = firstName || "there";
-  const billingText = isAnnual ? "A$100/year" : "A$12/month";
-  return `
-    <h1 style="font-size: 24px; font-weight: 800; margin: 0 0 16px 0; color: #4f8ef7;">Welcome to QuickFill Pro</h1>
-    <p style="font-size: 16px; color: #374151; margin: 0 0 24px 0; line-height: 1.6;">Hi ${name},</p>
-    
-    <p style="font-size: 15px; color: #374151; margin: 0 0 16px 0; line-height: 1.6;">You're now on QuickFill Pro. Here's what you've unlocked:</p>
-    
-    <div style="background: #f8fafc; border-radius: 8px; padding: 20px; margin: 24px 0;">
-      <ul style="margin: 0; padding-left: 20px; font-size: 15px; color: #374151; line-height: 2.2;">
-        <li>Unlimited PDF fills - no monthly limits</li>
-        <li>All 13+ Australian government templates</li>
-        <li>Priority support - we respond first</li>
-      </ul>
-    </div>
-    
-    <p style="font-size: 15px; color: #374151; margin: 0 0 16px 0; line-height: 1.6;">Get started right away:</p>
-    
-    <div style="text-align: center; margin: 28px 0;">
-      <a href="${APP_URL}/editor" style="display: inline-block; background: #2d8ef7; color: white; font-weight: 600; padding: 14px 32px; border-radius: 10px; text-decoration: none; font-size: 15px;">
-        Start filling now
-      </a>
-    </div>
-    
-    <p style="font-size: 14px; color: #6b7280; margin: 24px 0 8px 0; line-height: 1.6;">
-      Your subscription renews automatically at <strong>${billingText}</strong>. You can manage or cancel anytime from your <a href="${APP_URL}/dashboard" style="color: #4f8ef7; text-decoration: none;">dashboard</a>.
-    </p>
-    
-    <p style="font-size: 15px; color: #374151; margin: 24px 0 0 0; line-height: 1.6;">Thanks for supporting QuickFill.<br/><strong>The QuickFill Team</strong></p>
-  `;
+function subscriptionPeriodEnd(subscription: Stripe.Subscription) {
+  return (subscription as unknown as { current_period_end?: number | null }).current_period_end ?? null;
+}
+
+function subscriptionTier(subscription: Stripe.Subscription): QuickFillTier {
+  const metadataTier = subscription.metadata?.plan;
+  if (metadataTier === "pro" || metadataTier === "business") return metadataTier;
+
+  const priceId = subscription.items.data[0]?.price?.id;
+  return tierFromPriceId(priceId) ?? "pro";
+}
+
+async function getEmailForCustomer(customerId: string): Promise<string | null> {
+  try {
+    const customer = (await getStripe().customers.retrieve(customerId)) as Stripe.Customer;
+    return customer.email ?? null;
+  } catch {
+    return null;
+  }
+}
+
+async function getUserIdForCustomer(customerId: string): Promise<string | null> {
+  if (!isRedisConfigured()) return null;
+  return getRedis().get<string>(`stripe_customer_user:${customerId}`);
+}
+
+async function getUserIdForSubscription(subscription: Stripe.Subscription): Promise<string | null> {
+  const metaUserId = subscription.metadata?.userId;
+  if (metaUserId) return metaUserId;
+  if (!subscription.customer) return null;
+  return getUserIdForCustomer(subscription.customer as string);
+}
+
+async function saveSubscriptionForUser(userId: string, subscription: Stripe.Subscription) {
+  const customerId = subscription.customer ? String(subscription.customer) : null;
+  const tier = subscriptionTier(subscription);
+
+  await saveSubscriptionSnapshot({
+    userId,
+    customerId,
+    subscriptionId: subscription.id,
+    tier,
+    status: subscription.status,
+    currentPeriodEnd: subscriptionPeriodEnd(subscription),
+  });
+
+  return { tier, customerId };
+}
+
+async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
+  const userId = session.metadata?.userId;
+  if (!userId) {
+    log.warn("stripe_checkout_missing_user", { sessionId: session.id });
+    return;
+  }
+
+  let tier: QuickFillTier = session.metadata?.plan === "business" ? "business" : "pro";
+  let subscription: Stripe.Subscription | null = null;
+
+  if (session.subscription) {
+    subscription = await getStripe().subscriptions.retrieve(session.subscription as string);
+    tier = subscriptionTier(subscription);
+    await getStripe().subscriptions.update(subscription.id, {
+      metadata: {
+        userId,
+        plan: tier,
+        billing: session.metadata?.billing ?? "monthly",
+      },
+    });
+  }
+
+  const customerId = session.customer ? String(session.customer) : null;
+  await saveSubscriptionSnapshot({
+    userId,
+    customerId,
+    subscriptionId: subscription?.id ?? (session.subscription ? String(session.subscription) : null),
+    tier,
+    status: subscription?.status ?? "active",
+    currentPeriodEnd: subscription ? subscriptionPeriodEnd(subscription) : null,
+  });
+
+  const email = session.customer_email ?? (customerId ? await getEmailForCustomer(customerId) : null);
+  if (email) {
+    await sendEmail({
+      to: email,
+      subject: "Welcome to QuickFill Pro",
+      html: emailWrapper(`
+        <h2 style="font-size: 24px; margin: 0 0 16px 0; color: #2563eb;">Welcome to QuickFill ${tier === "business" ? "Business" : "Pro"}</h2>
+        <p style="font-size: 15px; color: #374151; line-height: 1.6;">Your subscription is active. You can start filling PDFs right away.</p>
+        <p style="margin-top: 24px;"><a href="${APP_URL}/editor" style="background: #2563eb; color: white; padding: 12px 18px; border-radius: 8px; text-decoration: none; font-weight: 700;">Open QuickFill</a></p>
+      `),
+    });
+  }
+
+  await trackServerEvent("subscription_started", {
+    source: "stripe_checkout",
+    tier,
+    billing: session.metadata?.billing ?? "monthly",
+  });
+}
+
+async function handleSubscriptionUpdated(subscription: Stripe.Subscription) {
+  const userId = await getUserIdForSubscription(subscription);
+  if (!userId) {
+    log.warn("stripe_subscription_missing_user", { subscriptionId: subscription.id, status: subscription.status });
+    return;
+  }
+
+  const { tier } = await saveSubscriptionForUser(userId, subscription);
+
+  if (subscription.status === "past_due" || subscription.status === "unpaid") {
+    const email = subscription.customer ? await getEmailForCustomer(String(subscription.customer)) : null;
+    if (email) {
+      await sendEmail({
+        to: email,
+        subject: "Action needed, QuickFill payment failed",
+        html: emailWrapper(`
+          <h2 style="font-size: 24px; margin: 0 0 16px 0;">Payment failed</h2>
+          <p style="font-size: 15px; color: #374151; line-height: 1.6;">We could not process your QuickFill payment. Update your payment details from your dashboard to restore paid access.</p>
+          <p style="margin-top: 24px;"><a href="${APP_URL}/dashboard" style="background: #2563eb; color: white; padding: 12px 18px; border-radius: 8px; text-decoration: none; font-weight: 700;">Open dashboard</a></p>
+        `),
+      });
+    }
+  }
+
+  await trackServerEvent("subscription_updated", { source: "stripe_subscription", tier, status: subscription.status });
+}
+
+async function handleSubscriptionDeleted(subscription: Stripe.Subscription) {
+  const userId = await getUserIdForSubscription(subscription);
+  if (!userId) {
+    log.warn("stripe_subscription_deleted_missing_user", { subscriptionId: subscription.id });
+    return;
+  }
+
+  await saveSubscriptionSnapshot({
+    userId,
+    customerId: subscription.customer ? String(subscription.customer) : null,
+    subscriptionId: subscription.id,
+    tier: "free",
+    status: "canceled",
+    currentPeriodEnd: subscriptionPeriodEnd(subscription),
+  });
+
+  const email = subscription.customer ? await getEmailForCustomer(String(subscription.customer)) : null;
+  if (email) {
+    await sendEmail({
+      to: email,
+      subject: "Your QuickFill subscription has ended",
+      html: emailWrapper(`
+        <h2 style="font-size: 24px; margin: 0 0 16px 0;">Subscription ended</h2>
+        <p style="font-size: 15px; color: #374151; line-height: 1.6;">Your account has been moved back to the free plan. You can resubscribe any time from pricing.</p>
+        <p style="margin-top: 24px;"><a href="${APP_URL}/pricing" style="background: #2563eb; color: white; padding: 12px 18px; border-radius: 8px; text-decoration: none; font-weight: 700;">View plans</a></p>
+      `),
+    });
+  }
+
+  await trackServerEvent("subscription_cancelled", { source: "stripe_subscription" });
 }
 
 export async function POST(req: NextRequest) {
@@ -112,163 +218,28 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid signature" }, { status: 400 });
   }
 
-  if (event.type === "checkout.session.completed") {
-    const session = event.data.object as Stripe.Checkout.Session;
-    
-    // checkout.session.completed received
-
-    const userId = session.metadata?.userId;
-
-    if (userId) {
-      let tier: "pro" | "business" | null = null;
-      const metaPlan = session.metadata?.plan;
-      if (metaPlan === "business" || metaPlan === "pro") tier = metaPlan;
-
-      if (!tier && session.subscription) {
-        try {
-          const subscription = await getStripe().subscriptions.retrieve(session.subscription as string);
-          const priceId = subscription.items.data[0]?.price?.id;
-          if (priceId) tier = tierFromPriceId(priceId);
-          // Retrieved subscription tier
-        } catch (err) {
-          // Failed to retrieve subscription
-        }
-      }
-
-      if (!tier) {
-        tier = "pro"; // Default to pro if we can't determine
-        // Defaulting to pro tier
-      }
-
-      // Setting Redis subscription key
-      await getRedis().set(`sub:${userId}`, tier);
-
-      if (session.customer) {
-        const customerId = session.customer as string;
-        await getRedis().set(`stripe_customer:${userId}`, customerId);
-        await getRedis().set(`stripe_customer_user:${customerId}`, userId);
-      }
-
-      if (session.subscription) {
-        try {
-          await getStripe().subscriptions.update(session.subscription as string, {
-            metadata: {
-              userId,
-              plan: tier,
-              billing: session.metadata?.billing ?? "monthly",
-            },
-          });
-        } catch {
-          // The reverse customer lookup still lets later subscription events find the user.
-        }
-      }
-
-      // Send Pro welcome email
-      const email = session.customer_email ?? (session.customer ? await getEmailForCustomer(session.customer as string) : null);
-      const isAnnual = session.metadata?.billing === "annual";
-      
-      // Try to get first name from metadata or customer name
-      let firstName: string | null = session.metadata?.firstName || null;
-      if (!firstName && session.customer) {
-        try {
-          const customer = await getStripe().customers.retrieve(session.customer as string) as Stripe.Customer;
-          if (customer.name) {
-            firstName = customer.name.split(' ')[0];
-          }
-        } catch {
-          // Ignore if we can't get customer name
-        }
-      }
-
-      if (email) {
-        // Sending Pro welcome email
-        await sendEmail({
-          from: "QuickFill <noreply@getquickfill.com>",
-          to: email,
-          subject: "Welcome to QuickFill Pro",
-          html: emailWrapper(welcomeEmailContent(firstName, isAnnual)),
-        });
-      }
-
-      await trackServerEvent("subscription_started", {
-        source: "stripe_checkout",
-        tier,
-        billing: isAnnual ? "annual" : "monthly",
-      });
-    }
+  const claimed = await claimStripeEvent(event.id, event.type);
+  if (!claimed) {
+    return NextResponse.json({ received: true, duplicate: true });
   }
 
-  if (event.type === "customer.subscription.updated") {
-    const subscription = event.data.object as Stripe.Subscription;
-    const userId = await getUserIdForSubscription(subscription);
-
-    if (userId) {
-      const status = subscription.status;
-
-      if (status === "active") {
-        const priceId = subscription.items.data[0]?.price?.id;
-        const tier = priceId ? tierFromPriceId(priceId) : null;
-        await getRedis().set(`sub:${userId}`, tier ?? "pro");
-      } else if (status === "past_due" || status === "unpaid") {
-        await getRedis().del(`sub:${userId}`);
-
-        // Send payment failed email
-        const email = subscription.customer ? await getEmailForCustomer(subscription.customer as string) : null;
-        if (email) {
-          await sendEmail({
-            from: "QuickFill <hello@getquickfill.com>",
-            to: email,
-            subject: "Action needed, QuickFill payment failed",
-            html: emailWrapper(`
-              <h1 style="font-size: 24px; font-weight: 800; margin: 0 0 8px 0;">Payment failed</h1>
-              <p style="color: #6b7280; margin: 0 0 24px 0;">We couldn't process your QuickFill Pro payment. Your account has been moved to the free plan.</p>
-              <p style="font-size: 14px; color: #6b7280; margin: 0 0 24px 0;">Update your payment details to restore Pro access:</p>
-              <a href="${APP_URL}/dashboard" style="display: inline-block; background: #2d8ef7; color: white; font-weight: 600; padding: 14px 28px; border-radius: 10px; text-decoration: none; margin-bottom: 24px; font-size: 15px;">
-                Update payment details</a>
-              <p style="font-size: 13px; color: #9ca3af; margin: 0;">If you have any questions, reply to this email and we'll help you out.</p>
-            `),
-          });
-        }
-      } else if (status === "canceled" || status === "paused") {
-        await getRedis().del(`sub:${userId}`);
-      }
+  try {
+    if (event.type === "checkout.session.completed") {
+      await handleCheckoutCompleted(event.data.object as Stripe.Checkout.Session);
+    } else if (event.type === "customer.subscription.updated") {
+      await handleSubscriptionUpdated(event.data.object as Stripe.Subscription);
+    } else if (event.type === "customer.subscription.deleted") {
+      await handleSubscriptionDeleted(event.data.object as Stripe.Subscription);
     }
+
+    log.info("stripe_webhook_processed", { eventId: event.id, eventType: event.type });
+    return NextResponse.json({ received: true });
+  } catch (error) {
+    log.error("stripe_webhook_failed", {
+      eventId: event.id,
+      eventType: event.type,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return NextResponse.json({ error: "Webhook processing failed" }, { status: 500 });
   }
-
-  if (event.type === "customer.subscription.deleted") {
-    const subscription = event.data.object as Stripe.Subscription;
-    const userId = await getUserIdForSubscription(subscription);
-
-    if (userId) {
-      await getRedis().del(`sub:${userId}`);
-      await trackServerEvent("subscription_cancelled", { source: "stripe_subscription" });
-
-      // Send cancellation confirmation email
-      const email = subscription.customer ? await getEmailForCustomer(subscription.customer as string) : null;
-      if (email) {
-        await sendEmail({
-          from: "QuickFill <hello@getquickfill.com>",
-          to: email,
-          subject: "Your QuickFill Pro subscription has ended",
-          html: emailWrapper(`
-            <h1 style="font-size: 24px; font-weight: 800; margin: 0 0 8px 0;">Subscription ended</h1>
-            <p style="color: #6b7280; margin: 0 0 24px 0;">Your QuickFill Pro subscription has been cancelled. You've been moved to the free plan (3 fills/month).</p>
-
-            <div style="background: #f8fafc; border-radius: 8px; padding: 16px; margin-bottom: 24px;">
-              <p style="margin: 0; font-size: 14px; color: #374151;">Your filled PDFs and profile data are safe, nothing has been deleted.</p>
-            </div>
-
-            <p style="font-size: 14px; color: #6b7280; margin: 0 0 24px 0;">Changed your mind? You can resubscribe any time.</p>
-
-            <a href="${APP_URL}/pricing" style="display: inline-block; background: #2d8ef7; color: white; font-weight: 600; padding: 14px 28px; border-radius: 10px; text-decoration: none; margin-bottom: 24px; font-size: 15px;">
-              Resubscribe to Pro</a>
-
-            <p style="font-size: 13px; color: #9ca3af; margin: 0;">Thanks for trying QuickFill Pro. We'd love to have you back.</p>
-          `),
-        });
-      }
-    }
-  }
-
-  return NextResponse.json({ received: true });
 }
