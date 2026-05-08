@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft, CreditCard, FileText, ShieldAlert, UserRound } from "lucide-react";
+import { AlertTriangle, ArrowLeft, CreditCard, FileText, UserRound } from "lucide-react";
 import { getAdminUser } from "@/lib/admin";
 import { getAdminCustomer } from "@/lib/admin-console";
 
@@ -78,7 +78,7 @@ export default async function AdminCustomerPage({ params }: PageProps) {
       {customer.hasSensitiveProfileData && (
         <div className="mt-6 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
           <div className="flex gap-2">
-            <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0" />
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
             <p>This customer profile contains sensitive fields. This admin view only shows safe profile values.</p>
           </div>
         </div>
