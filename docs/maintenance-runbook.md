@@ -13,7 +13,8 @@
 
 ## Scheduled Health Monitor
 
-- Vercel runs `/api/cron/health-check` hourly from `vercel.json`.
+- Vercel runs `/api/cron/health-check` daily from `vercel.json` while the project is on Hobby.
+- Move the schedule to hourly after upgrading to Vercel Pro.
 - The route requires `CRON_SECRET` in Vercel Production and Preview environment variables.
 - The monitor checks the public homepage, database, Redis, Stripe config, Clerk config, and optional alerting tools.
 - Each run writes an `ops_health_check_ok` or `ops_health_check_failed` event to `audit_events` when the database is reachable.
