@@ -223,6 +223,14 @@ function stripeInterval(subscription: Stripe.Subscription) {
   return subscription.items.data[0]?.price?.recurring?.interval ?? "month";
 }
 
+function stripeCustomerId(customer: Stripe.Subscription["customer"]) {
+  return typeof customer === "string" ? customer : customer.id;
+}
+
+function subscriptionPeriodEnd(subscription: Stripe.Subscription) {
+  return (subscription as unknown as { current_period_end?: number | null }).current_period_end ?? null;
+}
+
 export async function getAdminCustomer(userId: string): Promise<AdminCustomerDetail> {
   const client = await clerkClient();
   const user = await client.users.getUser(userId);
@@ -255,14 +263,17 @@ export async function getAdminCustomer(userId: string): Promise<AdminCustomerDet
         };
       }
 
-      subscriptions = subList.data.map((subscription) => ({
-        id: subscription.id,
-        status: subscription.status,
-        currentPeriodEnd: subscription.items.data[0]?.current_period_end ? new Date(subscription.items.data[0].current_period_end * 1000).toISOString() : null,
-        price: subscription.items.data[0]?.price?.nickname ?? subscription.items.data[0]?.price?.id ?? "Unknown price",
-        amount: stripeAmount(subscription),
-        interval: stripeInterval(subscription),
-      }));
+      subscriptions = subList.data.map((subscription) => {
+        const periodEnd = subscriptionPeriodEnd(subscription);
+        return {
+          id: subscription.id,
+          status: subscription.status,
+          currentPeriodEnd: periodEnd ? new Date(periodEnd * 1000).toISOString() : null,
+          price: subscription.items.data[0]?.price?.nickname ?? subscription.items.data[0]?.price?.id ?? "Unknown price",
+          amount: stripeAmount(subscription),
+          interval: stripeInterval(subscription),
+        };
+      });
     } catch {
       stripeCustomer = null;
       subscriptions = [];
@@ -324,7 +335,7 @@ export async function getAdminRevenueSummary(): Promise<AdminRevenueSummary> {
     })),
     recentSubscriptions: subscriptions.data.slice(0, 12).map((subscription) => ({
       id: subscription.id,
-      customer: typeof subscription.customer === "string" ? subscription.customer : subscription.customer.id,
+      customer: stripeCustomerId(subscription.customer),
       status: subscription.status,
       createdAt: new Date(subscription.created * 1000).toISOString(),
       amount: stripeAmount(subscription),
@@ -440,7 +451,7 @@ export async function getAdminBillingReconciliation(): Promise<AdminBillingRecon
         severity: "fail",
         type: "stripe_missing_in_app",
         userId: stripeSubscription.metadata?.userId ?? null,
-        stripeCustomerId: typeof stripeSubscription.customer === "string" ? stripeSubscription.customer : stripeSubscription.customer.id,
+        stripeCustomerId: stripeCustomerId(stripeSubscription.customer),
         stripeSubscriptionId: stripeSubscription.id,
         message: "Stripe has an active-like subscription that is not stored in QuickFill.",
         stripeState: stripeSubscription.status,
