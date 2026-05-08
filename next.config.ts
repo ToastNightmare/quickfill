@@ -2,7 +2,7 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   experimental: {
-    workerThreads: true,
+    webpackBuildWorker: true,
   },
   webpack: (config) => {
     config.resolve.alias.canvas = false;
