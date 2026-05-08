@@ -64,6 +64,7 @@ export async function GET() {
       required: true,
       message: isRedisConfigured() ? "Upstash Redis is configured." : "Upstash Redis is missing.",
     },
+    cronMonitor: serviceCheck(["CRON_SECRET"], true, "Scheduled health monitor secret is configured.", "CRON_SECRET is missing."),
     stripe: serviceCheck(stripeRequired, true, "Stripe billing is configured.", "Stripe billing is missing required variables."),
     clerk: serviceCheck(["CLERK_SECRET_KEY", "NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY"], true, "Clerk authentication is configured.", "Clerk authentication is missing required variables."),
     resend: serviceCheck(["RESEND_API_KEY"], false, "Resend email is configured.", "Resend email is not configured."),
@@ -90,7 +91,7 @@ export async function GET() {
     !services.openai.configured ? "OpenAI field detection is not configured." : null,
   ].filter(Boolean);
 
-  const ok = services.database.ok && services.redis.ok && services.stripe.ok && services.clerk.ok;
+  const ok = services.database.ok && services.redis.ok && services.cronMonitor.ok && services.stripe.ok && services.clerk.ok;
 
   return NextResponse.json({
     ok,
