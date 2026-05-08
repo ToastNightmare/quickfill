@@ -88,6 +88,7 @@ const EVENT_LABELS: Record<AnalyticsEventName, string> = {
   free_limit_hit: "Limit hits",
   checkout_start: "Checkout starts",
   subscription_started: "Paid conversions",
+  subscription_updated: "Subscription updates",
   subscription_cancelled: "Cancellations",
 };
 
@@ -105,6 +106,7 @@ const EVENT_ICONS: Record<AnalyticsEventName, typeof MousePointerClick> = {
   free_limit_hit: Gauge,
   checkout_start: Sparkles,
   subscription_started: TrendingUp,
+  subscription_updated: TrendingUp,
   subscription_cancelled: Zap,
 };
 
