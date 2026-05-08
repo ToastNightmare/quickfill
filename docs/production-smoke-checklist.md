@@ -2,6 +2,13 @@
 
 Use this after every production deploy and before any public launch, ad spend, or larger customer invite.
 
+## Automated Checks
+
+1. Confirm the newest Vercel deployment is `Ready`.
+2. Confirm the scheduled `/api/cron/health-check` run is succeeding after `CRON_SECRET` is configured.
+3. Run `pnpm smoke:production` for a manual public smoke check when working locally or from CI.
+4. Review recent `ops_health_check_ok` and `ops_health_check_failed` rows in `audit_events` if production behavior looks unusual.
+
 ## Owner Check
 
 1. Confirm the newest Vercel deployment is `Ready` and assigned to `getquickfill.com`.
