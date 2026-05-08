@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { AlertTriangle, BarChart3, CreditCard, Inbox, ShieldCheck, Users } from "lucide-react";
+import { AlertTriangle, BarChart3, CreditCard, Inbox, ServerCog, ShieldCheck, Users } from "lucide-react";
 import { notFound } from "next/navigation";
 import { getAdminUser } from "@/lib/admin";
 
@@ -18,6 +18,12 @@ const adminCards = [
     title: "Growth analytics",
     body: "Track downloads, limits, checkout intent, and product quality.",
     icon: BarChart3,
+  },
+  {
+    href: "/admin/ops",
+    title: "Ops health",
+    body: "Check production dependencies, deploy metadata, and launch readiness.",
+    icon: ServerCog,
   },
   {
     href: "/admin/users",
