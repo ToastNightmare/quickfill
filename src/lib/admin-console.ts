@@ -3,8 +3,26 @@ import type Stripe from "stripe";
 import { getRedis } from "@/lib/redis";
 import { getStripe } from "@/lib/stripe";
 import { getDownloadLogs, getSupportMessages } from "@/lib/admin-logs";
+import { isDatabaseConfigured, query } from "@/lib/db";
+import { tierFromPriceId } from "@/lib/billing-store";
 
 type ClerkUser = Awaited<ReturnType<Awaited<ReturnType<typeof clerkClient>>["users"]["getUser"]>>;
+
+type StoredSubscriptionRow = {
+  user_id: string;
+  stripe_customer_id: string | null;
+  stripe_subscription_id: string | null;
+  tier: string;
+  status: string;
+  current_period_end: string | null;
+  updated_at: string;
+};
+
+type StoredStripeEventRow = {
+  stripe_event_id: string;
+  event_type: string;
+  processed_at: string;
+};
 
 export interface AdminUserSummary {
   id: string;
@@ -81,6 +99,28 @@ export interface AdminRevenueSummary {
     amount: number;
     interval: string;
   }[];
+}
+
+export interface AdminBillingReconciliation {
+  databaseConfigured: boolean;
+  stripeSubscriptionCount: number;
+  storedSubscriptionCount: number;
+  storedPaidCount: number;
+  stripeActiveLikeCount: number;
+  mismatchCount: number;
+  recentWebhookEvents: StoredStripeEventRow[];
+  mismatches: {
+    id: string;
+    severity: "warn" | "fail";
+    type: string;
+    userId: string | null;
+    stripeCustomerId: string | null;
+    stripeSubscriptionId: string | null;
+    message: string;
+    appState?: string;
+    stripeState?: string;
+  }[];
+  storedSubscriptions: StoredSubscriptionRow[];
 }
 
 function monthKey(userId: string) {
@@ -290,5 +330,133 @@ export async function getAdminRevenueSummary(): Promise<AdminRevenueSummary> {
       amount: stripeAmount(subscription),
       interval: stripeInterval(subscription),
     })),
+  };
+}
+
+function subscriptionPriceId(subscription: Stripe.Subscription) {
+  return subscription.items.data[0]?.price?.id ?? null;
+}
+
+function activeLikeStatus(status: string) {
+  return ["active", "trialing", "past_due"].includes(status);
+}
+
+export async function getAdminBillingReconciliation(): Promise<AdminBillingReconciliation> {
+  const stripe = getStripe();
+  const stripeSubscriptions = await stripe.subscriptions.list({ status: "all", limit: 100 });
+  const databaseConfigured = isDatabaseConfigured();
+  const storedSubscriptions = databaseConfigured
+    ? await query<StoredSubscriptionRow>(
+        `select user_id, stripe_customer_id, stripe_subscription_id, tier, status, current_period_end, updated_at
+         from subscriptions
+         order by updated_at desc
+         limit 250`,
+      )
+    : [];
+  const recentWebhookEvents = databaseConfigured
+    ? await query<StoredStripeEventRow>(
+        `select stripe_event_id, event_type, processed_at
+         from stripe_events
+         order by processed_at desc
+         limit 20`,
+      )
+    : [];
+
+  const stripeById = new Map(stripeSubscriptions.data.map((subscription) => [subscription.id, subscription]));
+  const storedBySubscriptionId = new Map(
+    storedSubscriptions
+      .filter((subscription) => subscription.stripe_subscription_id)
+      .map((subscription) => [subscription.stripe_subscription_id as string, subscription]),
+  );
+  const mismatches: AdminBillingReconciliation["mismatches"] = [];
+
+  for (const stored of storedSubscriptions) {
+    const storedIsPaid = stored.tier !== "free" && activeLikeStatus(stored.status);
+    if (!storedIsPaid) continue;
+
+    if (!stored.stripe_subscription_id) {
+      mismatches.push({
+        id: `missing-subscription-id-${stored.user_id}`,
+        severity: "fail",
+        type: "missing_stripe_subscription_id",
+        userId: stored.user_id,
+        stripeCustomerId: stored.stripe_customer_id,
+        stripeSubscriptionId: null,
+        message: "App shows paid access but has no Stripe subscription id stored.",
+        appState: `${stored.tier} / ${stored.status}`,
+      });
+      continue;
+    }
+
+    const stripeSubscription = stripeById.get(stored.stripe_subscription_id);
+    if (!stripeSubscription) {
+      mismatches.push({
+        id: `missing-in-stripe-${stored.stripe_subscription_id}`,
+        severity: "fail",
+        type: "missing_in_stripe",
+        userId: stored.user_id,
+        stripeCustomerId: stored.stripe_customer_id,
+        stripeSubscriptionId: stored.stripe_subscription_id,
+        message: "App shows paid access but the subscription was not found in the first Stripe page.",
+        appState: `${stored.tier} / ${stored.status}`,
+      });
+      continue;
+    }
+
+    const stripeTier = tierFromPriceId(subscriptionPriceId(stripeSubscription));
+    if (stripeTier && stripeTier !== stored.tier) {
+      mismatches.push({
+        id: `tier-${stored.stripe_subscription_id}`,
+        severity: "warn",
+        type: "tier_mismatch",
+        userId: stored.user_id,
+        stripeCustomerId: stored.stripe_customer_id,
+        stripeSubscriptionId: stored.stripe_subscription_id,
+        message: "Stored QuickFill tier does not match the Stripe price tier.",
+        appState: stored.tier,
+        stripeState: stripeTier,
+      });
+    }
+
+    if (stripeSubscription.status !== stored.status) {
+      mismatches.push({
+        id: `status-${stored.stripe_subscription_id}`,
+        severity: activeLikeStatus(stripeSubscription.status) === activeLikeStatus(stored.status) ? "warn" : "fail",
+        type: "status_mismatch",
+        userId: stored.user_id,
+        stripeCustomerId: stored.stripe_customer_id,
+        stripeSubscriptionId: stored.stripe_subscription_id,
+        message: "Stored QuickFill subscription status does not match Stripe.",
+        appState: stored.status,
+        stripeState: stripeSubscription.status,
+      });
+    }
+  }
+
+  for (const stripeSubscription of stripeSubscriptions.data.filter((subscription) => activeLikeStatus(subscription.status))) {
+    if (!storedBySubscriptionId.has(stripeSubscription.id)) {
+      mismatches.push({
+        id: `stripe-missing-in-app-${stripeSubscription.id}`,
+        severity: "fail",
+        type: "stripe_missing_in_app",
+        userId: stripeSubscription.metadata?.userId ?? null,
+        stripeCustomerId: typeof stripeSubscription.customer === "string" ? stripeSubscription.customer : stripeSubscription.customer.id,
+        stripeSubscriptionId: stripeSubscription.id,
+        message: "Stripe has an active-like subscription that is not stored in QuickFill.",
+        stripeState: stripeSubscription.status,
+      });
+    }
+  }
+
+  return {
+    databaseConfigured,
+    stripeSubscriptionCount: stripeSubscriptions.data.length,
+    storedSubscriptionCount: storedSubscriptions.length,
+    storedPaidCount: storedSubscriptions.filter((subscription) => subscription.tier !== "free" && activeLikeStatus(subscription.status)).length,
+    stripeActiveLikeCount: stripeSubscriptions.data.filter((subscription) => activeLikeStatus(subscription.status)).length,
+    mismatchCount: mismatches.length,
+    recentWebhookEvents,
+    mismatches,
+    storedSubscriptions,
   };
 }
