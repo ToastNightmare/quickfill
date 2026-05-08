@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { AlertTriangle, BarChart3, CreditCard, Inbox, RefreshCw, ServerCog, ShieldCheck, Users } from "lucide-react";
+import { AlertTriangle, BarChart3, CreditCard, Inbox, ServerCog, ShieldCheck, Users } from "lucide-react";
 import { notFound } from "next/navigation";
 import { getAdminUser } from "@/lib/admin";
 
@@ -24,12 +24,6 @@ const adminCards = [
     title: "Ops health",
     body: "Check production dependencies, deploy metadata, and launch readiness.",
     icon: ServerCog,
-  },
-  {
-    href: "/admin/billing",
-    title: "Billing reconciliation",
-    body: "Compare Stripe subscriptions with QuickFill stored access state.",
-    icon: RefreshCw,
   },
   {
     href: "/admin/users",
