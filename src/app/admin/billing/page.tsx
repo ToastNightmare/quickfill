@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { AlertTriangle, CheckCircle2, CreditCard, Database, RefreshCw, Webhook } from "lucide-react";
+import { AlertTriangle, CheckCircle2, CreditCard, Database, RefreshCw } from "lucide-react";
 import { getAdminUser } from "@/lib/admin";
 import { getAdminBillingReconciliation } from "@/lib/admin-console";
 
@@ -125,7 +125,7 @@ export default async function AdminBillingPage() {
 
       <div className="mt-8 grid gap-6 lg:grid-cols-2">
         <section className="rounded-lg border border-border bg-surface p-5 shadow-sm">
-          <h2 className="flex items-center gap-2 font-semibold"><Webhook className="h-5 w-5 text-accent" /> Recent webhook events</h2>
+          <h2 className="flex items-center gap-2 font-semibold"><CreditCard className="h-5 w-5 text-accent" /> Recent webhook events</h2>
           <div className="mt-4 space-y-3">
             {reconciliation.recentWebhookEvents.map((event) => (
               <div key={event.stripe_event_id} className="rounded-lg border border-border p-4 text-sm">
