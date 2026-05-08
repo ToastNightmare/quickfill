@@ -13,7 +13,7 @@ Last updated: 2026-05-09
 - Root `proxy.ts` added for Next.js production routing.
 - Vercel install/build settings added.
 - Production foundation docs added.
-- Latest verified production build passed on commit `fb8f7ac` (`Fix Neon query adapter typing`).
+- Latest verified production build passed on commit `07b2b1f` (`Update maintenance runbook for ops health`).
 - Admin ops health page added at `/admin/ops`.
 - Admin health endpoint expanded at `/api/admin/health`.
 - Production smoke checklist added in `docs/production-smoke-checklist.md`.
@@ -34,7 +34,6 @@ Last updated: 2026-05-09
 
 ## Next Checks
 
-- Confirm the newest Vercel deploy for this commit is Ready.
 - Visit `/admin/ops` as an admin and confirm no blockers.
 - Confirm `/api/admin/health` works for an admin account.
 - Run the production smoke checklist end to end.
