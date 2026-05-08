@@ -110,6 +110,7 @@ export default async function AdminOpsPage() {
 
   const database = await checkDatabaseConnection();
   const redisReady = isRedisConfigured();
+  const cronReady = hasEnv("CRON_SECRET");
   const stripeCoreReady = hasEnv(
     "STRIPE_SECRET_KEY",
     "STRIPE_WEBHOOK_SECRET",
@@ -121,6 +122,7 @@ export default async function AdminOpsPage() {
   const businessAnnualReady = hasEnv("STRIPE_BUSINESS_ANNUAL_PRICE_ID");
   const clerkReady = hasEnv("CLERK_SECRET_KEY", "NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY");
   const emailReady = hasEnv("RESEND_API_KEY");
+  const alertReady = hasAnyEnv("QUICKFILL_ALERT_EMAILS", "QUICKFILL_ADMIN_EMAILS");
   const appUrlReady = hasAnyEnv("NEXT_PUBLIC_APP_URL", "NEXT_PUBLIC_APP_DOMAIN");
 
   const services: ServiceCard[] = [
@@ -130,6 +132,17 @@ export default async function AdminOpsPage() {
       detail: process.env.VERCEL_ENV ? `Running in ${process.env.VERCEL_ENV}.` : "Vercel environment metadata is not set locally.",
       icon: ServerCog,
       items: [formatCommit(), "After each deploy, confirm the Vercel deployment is Ready and the public homepage loads."],
+    },
+    {
+      name: "Scheduled monitor",
+      status: cronReady ? "ok" : "fail",
+      detail: cronReady ? "Cron secret is configured." : "CRON_SECRET is missing.",
+      icon: ServerCog,
+      items: [
+        "Vercel runs /api/cron/health-check daily on the current Hobby plan.",
+        "The monitor records audit events and checks the homepage, database, Redis, Stripe, and Clerk.",
+        alertReady ? "Alert recipients are configured." : "Add QUICKFILL_ALERT_EMAILS to send failure alerts.",
+      ],
     },
     {
       name: "Database",
@@ -165,10 +178,10 @@ export default async function AdminOpsPage() {
     },
     {
       name: "Email and alerts",
-      status: emailReady ? "ok" : "warn",
+      status: emailReady && alertReady ? "ok" : emailReady ? "warn" : "warn",
       detail: emailReady ? "Resend is configured." : "Resend is not configured.",
       icon: Mail,
-      items: ["Email is used for billing and support notifications.", "Sentry is optional but recommended for production error visibility."],
+      items: ["Email is used for billing and support notifications.", alertReady ? "Alert recipients are configured." : "Add QUICKFILL_ALERT_EMAILS for monitor alerts.", "Sentry is optional but recommended for production error visibility."],
     },
     {
       name: "Public app settings",
@@ -216,7 +229,7 @@ export default async function AdminOpsPage() {
             <p>Visit the homepage, pricing page, sign-in, dashboard, editor, and checkout start after every production deploy.</p>
             <p>Review Vercel runtime logs, Stripe webhook delivery, and admin analytics before calling a release complete.</p>
             <p>Run a real PDF upload/fill/download smoke test before paid traffic or public announcements.</p>
-            <p>Keep the database, Redis, Stripe, Clerk, and email checks green before scaling toward high user volume.</p>
+            <p>Keep the database, Redis, Stripe, Clerk, and monitor checks green before scaling toward high user volume.</p>
           </div>
         </section>
       </div>
