@@ -9,6 +9,14 @@ if (!process.env.DATABASE_URL) {
 
 const root = path.dirname(fileURLToPath(new URL("../package.json", import.meta.url)));
 const migration = await readFile(path.join(root, "db/migrations/0001_foundation.sql"), "utf8");
+const statements = migration
+  .split(/;\s*\n/)
+  .map((statement) => statement.trim())
+  .filter(Boolean);
+
 const sql = neon(process.env.DATABASE_URL);
-await sql(migration);
-console.log("QuickFill database migration applied");
+for (const statement of statements) {
+  await sql(`${statement};`);
+}
+
+console.log(`QuickFill database migration applied (${statements.length} statements)`);
