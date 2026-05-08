@@ -1,9 +1,6 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  experimental: {
-    webpackBuildWorker: true,
-  },
   webpack: (config) => {
     config.resolve.alias.canvas = false;
     return config;
