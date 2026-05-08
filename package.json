@@ -13,6 +13,7 @@
     "test": "jest",
     "e2e": "playwright test --reporter=list",
     "verify:app": "node scripts/verify-app.mjs",
+    "smoke:production": "node scripts/smoke-production.mjs",
     "load:smoke": "node scripts/load-smoke.mjs",
     "billing:reconcile": "node scripts/reconcile-stripe.mjs",
     "ops:report": "node scripts/ops-report.mjs",
