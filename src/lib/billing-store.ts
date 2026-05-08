@@ -54,7 +54,7 @@ export async function saveSubscriptionSnapshot(input: {
 
   await query(
     `insert into subscriptions (user_id, stripe_customer_id, stripe_subscription_id, tier, status, current_period_end, updated_at)
-     values ($1, $2, $3, $4, $5, to_timestamp($6), now())
+     values ($1, $2, $3, $4, $5, to_timestamp($6::double precision), now())
      on conflict (user_id) do update set
        stripe_customer_id = excluded.stripe_customer_id,
        stripe_subscription_id = excluded.stripe_subscription_id,
