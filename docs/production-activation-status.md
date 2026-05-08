@@ -16,12 +16,13 @@ Last updated: 2026-05-09
 - Admin ops health page added at `/admin/ops`.
 - Admin health endpoint expanded at `/api/admin/health`.
 - Production smoke checklist added in `docs/production-smoke-checklist.md`.
-- Hourly production health monitor added at `/api/cron/health-check`.
+- Daily production health monitor added at `/api/cron/health-check` for the current Hobby plan.
 - Manual production smoke script added as `pnpm smoke:production`.
 
 ## Known Warnings
 
 - `CRON_SECRET` must be added in Vercel before the scheduled health monitor can run successfully.
+- Upgrade to Vercel Pro before switching the health monitor from daily to hourly.
 - Business annual Stripe price is not configured yet. Either add `STRIPE_BUSINESS_ANNUAL_PRICE_ID` or keep Business annual hidden from public purchase paths.
 - Vercel Web Analytics is not enabled from the dashboard yet.
 - Vercel Speed Insights is not enabled from the dashboard yet.
