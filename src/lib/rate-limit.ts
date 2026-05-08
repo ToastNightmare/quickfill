@@ -1,19 +1,36 @@
 import { Ratelimit } from "@upstash/ratelimit";
-import { Redis } from "@upstash/redis";
+import { getRedis, isRedisConfigured } from "@/lib/redis";
 
-// Create a Redis client
-const redis = new Redis({
-  url: process.env.UPSTASH_REDIS_REST_URL || "",
-  token: process.env.UPSTASH_REDIS_REST_TOKEN || "",
-});
+type RateLimitPolicy = "default" | "abn" | "detectFields" | "fillPdf" | "checkout";
 
-// Create a sliding window rate limiter: 30 requests per 60 seconds
-const ratelimit = new Ratelimit({
-  redis,
-  limiter: Ratelimit.slidingWindow(30, "60 s"),
-  analytics: true,
-});
+const policyWindows: Record<RateLimitPolicy, { requests: number; window: `${number} ${"s" | "m" | "h"}` }> = {
+  default: { requests: 30, window: "60 s" },
+  abn: { requests: 60, window: "60 s" },
+  detectFields: { requests: 20, window: "60 s" },
+  fillPdf: { requests: 20, window: "60 s" },
+  checkout: { requests: 8, window: "60 s" },
+};
 
-export function checkRateLimit(identifier: string): Promise<{ success: boolean; remaining: number }> {
-  return ratelimit.limit(identifier);
+const limiters = new Map<RateLimitPolicy, Ratelimit>();
+
+function getLimiter(policy: RateLimitPolicy) {
+  const existing = limiters.get(policy);
+  if (existing) return existing;
+
+  const config = policyWindows[policy];
+  const limiter = new Ratelimit({
+    redis: getRedis(),
+    limiter: Ratelimit.slidingWindow(config.requests, config.window),
+    analytics: true,
+  });
+  limiters.set(policy, limiter);
+  return limiter;
+}
+
+export async function checkRateLimit(identifier: string, policy: RateLimitPolicy = "default") {
+  if (!isRedisConfigured()) {
+    return { success: true, remaining: Number.POSITIVE_INFINITY, limit: Number.POSITIVE_INFINITY, reset: Date.now() + 60000 };
+  }
+
+  return getLimiter(policy).limit(`${policy}:${identifier}`);
 }
