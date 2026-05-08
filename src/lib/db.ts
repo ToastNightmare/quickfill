@@ -1,9 +1,15 @@
 type SqlQuery = (query: string, params?: unknown[]) => Promise<unknown[]>;
 
+type NeonFactory = (connectionString: string) => unknown;
+
 let sqlPromise: Promise<SqlQuery> | null = null;
 
 export function isDatabaseConfigured() {
   return Boolean(process.env.DATABASE_URL);
+}
+
+function asSqlQuery(client: unknown): SqlQuery {
+  return client as unknown as SqlQuery;
 }
 
 async function getSql(): Promise<SqlQuery> {
@@ -12,7 +18,10 @@ async function getSql(): Promise<SqlQuery> {
   }
 
   if (!sqlPromise) {
-    sqlPromise = import("@neondatabase/serverless").then(({ neon }) => neon(process.env.DATABASE_URL!) as SqlQuery);
+    sqlPromise = import("@neondatabase/serverless").then(({ neon }) => {
+      const createClient = neon as unknown as NeonFactory;
+      return asSqlQuery(createClient(process.env.DATABASE_URL!));
+    });
   }
 
   return sqlPromise;
