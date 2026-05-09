@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Search, ShieldCheck, UserRound } from "lucide-react";
 import { getAdminUser } from "@/lib/admin";
@@ -36,7 +35,7 @@ export default async function AdminUsersPage({ searchParams }: PageProps) {
           </p>
           <h1 className="mt-4 text-3xl font-bold tracking-tight">User management</h1>
           <p className="mt-2 max-w-2xl text-sm text-text-muted">
-            Search customers, check plan state, and jump into safe customer lookup without touching the Pro dashboard.
+            Search customers, check plan state, and review safe customer lookup without touching the Pro dashboard.
           </p>
         </div>
         <form className="flex w-full gap-2 sm:w-auto">
@@ -78,13 +77,13 @@ export default async function AdminUsersPage({ searchParams }: PageProps) {
               {data.users.map((user) => (
                 <tr key={user.id} className="hover:bg-surface-alt/60">
                   <td className="px-5 py-4">
-                    <Link href={"/admin/customers/" + user.id} className="flex items-center gap-3">
+                    <div className="flex items-center gap-3">
                       <img src={user.imageUrl} alt="" className="h-9 w-9 rounded-full border border-border bg-surface-alt" />
                       <span>
                         <span className="block font-semibold text-text">{user.name}</span>
                         <span className="block text-xs text-text-muted">{user.email || user.id}</span>
                       </span>
-                    </Link>
+                    </div>
                   </td>
                   <td className="px-5 py-4">
                     <span className="rounded-full bg-accent/10 px-2.5 py-1 text-xs font-semibold uppercase text-accent">
