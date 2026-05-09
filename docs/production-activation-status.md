@@ -17,7 +17,10 @@ Last updated: 2026-05-09
 - Admin health endpoint expanded at `/api/admin/health`.
 - Production smoke checklist added in `docs/production-smoke-checklist.md`.
 - Daily production health monitor added at `/api/cron/health-check` for the current Hobby plan.
-- Manual production smoke script added as `pnpm smoke:production`.
+- Manual production smoke script added as `pnpm smoke:production` and now checks `/` plus `/pricing` by default.
+- Stripe reconciliation script expanded as `pnpm billing:reconcile`.
+- Deep-scan recommendations backlog added in `docs/deep-scan-recommendations.md`.
+- Removed broken admin Users links to the removed customer-detail route.
 
 ## Known Warnings
 
@@ -27,6 +30,7 @@ Last updated: 2026-05-09
 - Vercel Web Analytics is not enabled from the dashboard yet.
 - Vercel Speed Insights is not enabled from the dashboard yet.
 - The Vercel personal dashboard shows a secure-account recommendation for two-factor authentication.
+- Customer-detail drill-in should be rebuilt later in a small, separately verified slice.
 
 ## Stripe Snapshot
 
@@ -47,5 +51,6 @@ Last updated: 2026-05-09
 - Visit `/admin/ops` as an admin and confirm no blockers.
 - Confirm `/api/admin/health` works for an admin account.
 - Run the production smoke checklist end to end.
+- Run `pnpm billing:reconcile` after the next successful deployment.
 - Confirm Stripe webhook events are received after a checkout test.
 - Enable Vercel Web Analytics and Speed Insights from the dashboard.
