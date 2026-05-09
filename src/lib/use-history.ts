@@ -1,5 +1,6 @@
 import { useReducer, useCallback } from "react";
 import type { EditorField } from "./types";
+import { orderFieldsForLayering } from "./field-layering";
 
 const MAX_HISTORY = 50;
 
@@ -18,10 +19,11 @@ type HistoryAction =
 function reducer(state: HistoryState, action: HistoryAction): HistoryState {
   switch (action.type) {
     case "SET": {
-      const next =
+      const next = orderFieldsForLayering(
         typeof action.updater === "function"
           ? action.updater(state.present)
-          : action.updater;
+          : action.updater,
+      );
       const newPast = [...state.past, state.present];
       return {
         past: newPast.length > MAX_HISTORY ? newPast.slice(newPast.length - MAX_HISTORY) : newPast,
@@ -50,14 +52,14 @@ function reducer(state: HistoryState, action: HistoryAction): HistoryState {
       };
     }
     case "RESET":
-      return { past: [], present: action.fields, future: [] };
+      return { past: [], present: orderFieldsForLayering(action.fields), future: [] };
   }
 }
 
 export function useHistory(initial: EditorField[] = []) {
   const [state, dispatch] = useReducer(reducer, {
     past: [],
-    present: initial,
+    present: orderFieldsForLayering(initial),
     future: [],
   });
 
