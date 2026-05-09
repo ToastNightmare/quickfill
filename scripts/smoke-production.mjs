@@ -1,5 +1,5 @@
 const baseUrl = (process.env.QUICKFILL_APP_URL || "https://getquickfill.com").replace(/\/$/, "");
-const paths = (process.env.QUICKFILL_SMOKE_PATHS || "/")
+const paths = (process.env.QUICKFILL_SMOKE_PATHS || "/,/pricing")
   .split(",")
   .map((path) => path.trim())
   .filter(Boolean);
