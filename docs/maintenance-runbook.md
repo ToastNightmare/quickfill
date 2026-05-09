@@ -10,6 +10,7 @@
 6. Check `/api/usage` returns a non-500 response.
 7. Review Vercel logs for new errors.
 8. Review Stripe webhook delivery if billing code changed.
+9. Run `pnpm smoke:production` when a normal terminal is available.
 
 ## Scheduled Health Monitor
 
@@ -31,10 +32,12 @@
 - Run a smoke check against production using `docs/production-smoke-checklist.md`.
 - Review `/admin/analytics` for checkout, subscription, usage, and failed-download signals.
 - Check `/admin/ops` for missing optional services before marketing or support pushes.
+- Review `docs/deep-scan-recommendations.md` and move one priority item forward.
 
 ## Monthly
 
-- Reconcile Stripe subscriptions with stored subscription records.
+- Run `pnpm billing:reconcile` and investigate any mismatches.
+- Run `pnpm billing:reconcile --strict` before major billing changes.
 - Review rate-limit policy and abuse patterns.
 - Export or snapshot key operational records.
 - Confirm admin emails and support access are still correct.
@@ -47,11 +50,12 @@
 - Keep Redis rate limiting enabled before public launch campaigns.
 - Add Business annual pricing before offering annual Business checkout.
 - Enable Vercel Web Analytics and Speed Insights from the dashboard.
+- Define a backup/export procedure for subscriptions, usage events, and audit events.
 
 ## Incident Response
 
 - If production breaks after a deploy, use Vercel Instant Rollback first.
-- If billing access is wrong, verify Stripe event delivery and subscription records.
+- If billing access is wrong, verify Stripe event delivery and subscription records, then run `pnpm billing:reconcile`.
 - If database connectivity fails, check `DATABASE_URL` and Neon resource status.
 - If rate limits fail open or closed, check Upstash Redis environment variables and usage.
 - If a build fails, open the newest Vercel build logs and fix the first TypeScript or install error before retrying.
