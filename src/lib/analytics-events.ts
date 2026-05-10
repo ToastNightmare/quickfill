@@ -6,6 +6,7 @@ export const ANALYTICS_EVENTS = [
   "field_added",
   "field_detection_used",
   "profile_autofill_used",
+  "profile_autofill_shadow_reported",
   "download_attempt",
   "download_success",
   "download_failed",
