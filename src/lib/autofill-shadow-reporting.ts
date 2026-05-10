@@ -8,7 +8,8 @@ export function trackAutofillShadowReport<T extends ProfileAutofillField>(
 ) {
   if (!shouldReportAutofillShadowMode(result.mode)) return false;
 
-  trackEvent("profile_autofill_shadow_reported", {
+  trackEvent("profile_autofill_used", {
+    shadowReported: true,
     ...result.shadowReport,
     ...extra,
   });
