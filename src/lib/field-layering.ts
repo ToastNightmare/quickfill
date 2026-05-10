@@ -1,6 +1,6 @@
-import type { EditorField } from "./types";
+import type { EditorField, FieldLayerDirection } from "./types";
 
-export type FieldLayerDirection = "back" | "backward" | "forward" | "front";
+export type { FieldLayerDirection } from "./types";
 
 function fieldLayerRank(field: EditorField) {
   return field.type === "whiteout" ? 0 : 1;
