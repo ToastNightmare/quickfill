@@ -11,6 +11,7 @@
 7. Review Vercel logs for new errors.
 8. Review Stripe webhook delivery if billing code changed.
 9. Run `pnpm smoke:production` when a normal terminal is available.
+10. If the editor changed, test whiteout with text and signature placed on top before calling the release complete.
 
 ## Scheduled Health Monitor
 
@@ -31,8 +32,8 @@
 - Confirm database storage and compute remain within plan.
 - Run a smoke check against production using `docs/production-smoke-checklist.md`.
 - Review `/admin/analytics` for checkout, subscription, usage, and failed-download signals.
-- Check `/admin/ops` for missing optional services before marketing or support pushes.
-- Review `docs/deep-scan-recommendations.md` and move one priority item forward.
+- Check `/admin/ops` and `/api/admin/health` for missing optional services before marketing or support pushes.
+- Review `docs/deep-scan-recommendations.md` and `docs/long-haul-scale-plan.md`, then move one priority item forward.
 
 ## Monthly
 
@@ -42,6 +43,7 @@
 - Export or snapshot key operational records.
 - Confirm admin emails and support access are still correct.
 - Review pricing, limits, and plan copy against Stripe products.
+- Review failed PDF exports and convert repeated issues into regression tests.
 
 ## Scaling Watchlist
 
@@ -51,6 +53,7 @@
 - Add Business annual pricing before offering annual Business checkout.
 - Enable Vercel Web Analytics and Speed Insights from the dashboard.
 - Define a backup/export procedure for subscriptions, usage events, and audit events.
+- Keep PDF editor correctness covered by tests for field placement, whiteout layering, signatures, and final export output.
 
 ## Incident Response
 
@@ -59,3 +62,4 @@
 - If database connectivity fails, check `DATABASE_URL` and Neon resource status.
 - If rate limits fail open or closed, check Upstash Redis environment variables and usage.
 - If a build fails, open the newest Vercel build logs and fix the first TypeScript or install error before retrying.
+- If PDF export correctness regresses, pause editor deploys, add a failing fixture/test, then fix the render/export path before adding features.
