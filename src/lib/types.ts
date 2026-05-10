@@ -1,4 +1,5 @@
 export type ToolType = "text" | "checkbox" | "signature" | "date" | "whiteout" | "comb";
+export type FieldLayerDirection = "back" | "backward" | "forward" | "front";
 
 export interface FieldBase {
   id: string;
