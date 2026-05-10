@@ -18,12 +18,29 @@ export interface ProfileAutofillField {
   value?: string;
 }
 
+export interface ProfileAutofillShadowReport {
+  mode: ProfileAutofillMode;
+  fieldCount: number;
+  legacyMatched: number;
+  intelligenceAutoFill: number;
+  intelligenceReview: number;
+  intelligenceSuggest: number;
+  intelligenceSkip: number;
+  agreementCount: number;
+  disagreementCount: number;
+  missingProfileValueCount: number;
+  averageConfidence: number;
+  highConfidenceWithoutLegacyCount: number;
+  profileKeys: string;
+}
+
 export interface ProfileAutofillResult<T extends ProfileAutofillField> {
   fields: T[];
   matched: number;
   mode: ProfileAutofillMode;
   predictions: AutofillPrediction[];
   summary: ReturnType<typeof summarizeAutofillPredictions>;
+  shadowReport: ProfileAutofillShadowReport;
 }
 
 const LEGACY_MATCHERS: { key: string; keywords: string[] }[] = [
@@ -64,11 +81,15 @@ function toCandidate(field: ProfileAutofillField): AutofillFieldCandidate {
   };
 }
 
+function legacyKeyForField(field: ProfileAutofillField) {
+  if (field.type !== "text") return null;
+  return matchLegacyProfileKey(field.name ?? field.label);
+}
+
 function applyLegacyProfileAutofill<T extends ProfileAutofillField>(fields: T[], profile: AutofillProfile) {
   let matched = 0;
   const next = fields.map((field) => {
-    if (field.type !== "text") return field;
-    const key = matchLegacyProfileKey(field.name ?? field.label);
+    const key = legacyKeyForField(field);
     const value = key ? profile[key] : undefined;
     if (!value) return field;
     matched += 1;
@@ -76,6 +97,51 @@ function applyLegacyProfileAutofill<T extends ProfileAutofillField>(fields: T[],
   });
 
   return { fields: next, matched };
+}
+
+function buildShadowReport<T extends ProfileAutofillField>(
+  fields: T[],
+  predictions: AutofillPrediction[],
+  summary: ReturnType<typeof summarizeAutofillPredictions>,
+  legacyMatched: number,
+  mode: ProfileAutofillMode,
+): ProfileAutofillShadowReport {
+  const legacyKeysById = new Map(fields.map((field) => [field.id, legacyKeyForField(field)]));
+  const confidences = predictions.map((prediction) => prediction.confidence);
+  const profileKeys = new Set<string>();
+  let agreementCount = 0;
+  let disagreementCount = 0;
+  let missingProfileValueCount = 0;
+  let highConfidenceWithoutLegacyCount = 0;
+
+  for (const prediction of predictions) {
+    if (prediction.profileKey) profileKeys.add(prediction.profileKey);
+    const legacyKey = legacyKeysById.get(prediction.fieldId) ?? null;
+    if (prediction.profileKey && legacyKey === prediction.profileKey) agreementCount += 1;
+    if (prediction.profileKey && legacyKey && legacyKey !== prediction.profileKey) disagreementCount += 1;
+    if (prediction.profileKey && !prediction.hasProfileValue) missingProfileValueCount += 1;
+    if (prediction.decision === "auto-fill" && !legacyKey) highConfidenceWithoutLegacyCount += 1;
+  }
+
+  const averageConfidence = confidences.length > 0
+    ? Number((confidences.reduce((total, value) => total + value, 0) / confidences.length).toFixed(3))
+    : 0;
+
+  return {
+    mode,
+    fieldCount: fields.length,
+    legacyMatched,
+    intelligenceAutoFill: summary["auto-fill"],
+    intelligenceReview: summary.review,
+    intelligenceSuggest: summary.suggest,
+    intelligenceSkip: summary.skip,
+    agreementCount,
+    disagreementCount,
+    missingProfileValueCount,
+    averageConfidence,
+    highConfidenceWithoutLegacyCount,
+    profileKeys: Array.from(profileKeys).sort().join(","),
+  };
 }
 
 export function runProfileAutofill<T extends ProfileAutofillField>(
@@ -86,26 +152,33 @@ export function runProfileAutofill<T extends ProfileAutofillField>(
   const candidates = fields.map(toCandidate);
   const predictions = predictAutofillFields(candidates, profile);
   const summary = summarizeAutofillPredictions(predictions);
+  const legacy = applyLegacyProfileAutofill(fields, profile);
 
   if (mode === "intelligence") {
     const next = applyAutofillPredictions(fields, profile, predictions, "auto-fill");
+    const matched = next.filter((field, index) => field.value !== fields[index]?.value).length;
     return {
       fields: next,
-      matched: next.filter((field, index) => field.value !== fields[index]?.value).length,
+      matched,
       mode,
       predictions,
       summary,
+      shadowReport: buildShadowReport(fields, predictions, summary, legacy.matched, mode),
     };
   }
 
-  const legacy = applyLegacyProfileAutofill(fields, profile);
   return {
     fields: legacy.fields,
     matched: legacy.matched,
     mode,
     predictions,
     summary,
+    shadowReport: buildShadowReport(fields, predictions, summary, legacy.matched, mode),
   };
+}
+
+export function shouldReportAutofillShadowMode(mode: ProfileAutofillMode) {
+  return mode === "shadow" || mode === "intelligence";
 }
 
 export function autofillModeFromFlag(flag: string | undefined | null): ProfileAutofillMode {
