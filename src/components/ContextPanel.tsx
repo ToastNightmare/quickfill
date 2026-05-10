@@ -1,24 +1,34 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import {
-  Type, CheckSquare, PenTool, Calendar,
-  Minus, Plus, Trash2, MousePointer2,
-  Sparkles, UserCheck, Eraser, Copy,
-  ChevronDown, ChevronUp, SquareSplitHorizontal,
+  Type,
+  CheckSquare,
+  PenTool,
+  Calendar,
+  Minus,
+  Plus,
+  Trash2,
+  MousePointer2,
+  Sparkles,
+  UserCheck,
+  Eraser,
+  Copy,
+  ChevronDown,
+  ChevronUp,
+  SquareSplitHorizontal,
 } from "lucide-react";
-import type { EditorField, ToolType, SignatureField, WhiteoutField } from "@/lib/types";
-import type { CheckboxStamp } from "@/lib/types";
+import type { CheckboxStamp, CombField, EditorField, FieldLayerDirection, SignatureField, ToolType, WhiteoutField } from "@/lib/types";
 
 const FONT_SIZES = [8, 10, 11, 12, 14, 16, 18, 24, 36];
 
 const TOOL_META: Record<ToolType, { icon: typeof Type; label: string; hint: string; color: string }> = {
-  text:      { icon: Type,        label: "Text Field",  hint: "Click anywhere on the PDF to place a text field. It will snap to form boxes automatically.",      color: "text-blue-500" },
-  checkbox:  { icon: CheckSquare, label: "Checkbox",    hint: "Click anywhere on the PDF to stamp a tick or cross. Click again to cycle or clear.",              color: "text-violet-500" },
-  signature: { icon: PenTool,     label: "Signature",   hint: "Click the PDF to place a signature field. You can draw or reuse a saved signature.",              color: "text-pink-500" },
-  date:      { icon: Calendar,    label: "Date",        hint: "Click the PDF to place a date field. Today's date is pre-filled, edit it after placing.",        color: "text-amber-500" },
-  comb:      { icon: SquareSplitHorizontal, label: "Box Field", hint: "Drag across character boxes for TFN, ABN, Medicare, etc. Each cell holds one character.", color: "text-cyan-500" },
-  whiteout:  { icon: Eraser,      label: "Whiteout",    hint: "Drag to draw a rectangle over unwanted text. It will sample the background color automatically.", color: "text-gray-500" },
+  text: { icon: Type, label: "Text Field", hint: "Click anywhere on the PDF to place a text field. It will snap to form boxes automatically.", color: "text-blue-500" },
+  checkbox: { icon: CheckSquare, label: "Checkbox", hint: "Click anywhere on the PDF to stamp a tick or cross. Click again to cycle or clear.", color: "text-violet-500" },
+  signature: { icon: PenTool, label: "Signature", hint: "Click the PDF to place a signature field. You can draw or reuse a saved signature.", color: "text-pink-500" },
+  date: { icon: Calendar, label: "Date", hint: "Click the PDF to place a date field. Today's date is pre-filled, edit it after placing.", color: "text-amber-500" },
+  comb: { icon: SquareSplitHorizontal, label: "Box Field", hint: "Drag across character boxes for TFN, ABN, Medicare, etc. Each cell holds one character.", color: "text-cyan-500" },
+  whiteout: { icon: Eraser, label: "Whiteout", hint: "Drag to draw a rectangle over unwanted text. It will sample the background color automatically.", color: "text-gray-500" },
 };
 
 interface ContextPanelProps {
@@ -36,6 +46,37 @@ interface ContextPanelProps {
   isDetecting: boolean;
   whiteoutColor?: string | null;
   onWhiteoutColorChange?: (color: string) => void;
+}
+
+function dispatchLayerMove(fieldId: string, direction: FieldLayerDirection) {
+  window.dispatchEvent(new CustomEvent("quickfill:move-field-layer", { detail: { fieldId, direction } }));
+}
+
+function fieldIcon(type: ToolType) {
+  if (type === "checkbox") return CheckSquare;
+  if (type === "signature") return PenTool;
+  if (type === "date") return Calendar;
+  if (type === "whiteout") return Eraser;
+  if (type === "comb") return SquareSplitHorizontal;
+  return Type;
+}
+
+function fieldLabel(type: ToolType) {
+  if (type === "checkbox") return "Checkbox";
+  if (type === "signature") return "Signature";
+  if (type === "date") return "Date";
+  if (type === "whiteout") return "Whiteout";
+  if (type === "comb") return "Box Field";
+  return "Text Field";
+}
+
+function fieldColor(type: ToolType) {
+  if (type === "checkbox") return "text-violet-500";
+  if (type === "signature") return "text-pink-500";
+  if (type === "date") return "text-amber-500";
+  if (type === "whiteout") return "text-gray-500";
+  if (type === "comb") return "text-cyan-500";
+  return "text-blue-500";
 }
 
 export function ContextPanel({
@@ -57,352 +98,58 @@ export function ContextPanel({
   const [sizeExpanded, setSizeExpanded] = useState(false);
   const [charCountExpanded, setCharCountExpanded] = useState(false);
 
-  // ── Field selected ALWAYS takes priority (even if activeTool hasn't cleared yet)
   if (selectedField) {
     const fieldType = selectedField.type;
-
-    const TypeIcon =
-      fieldType === "checkbox" ? CheckSquare :
-      fieldType === "signature" ? PenTool :
-      fieldType === "date" ? Calendar :
-      fieldType === "whiteout" ? Eraser :
-      fieldType === "comb" ? SquareSplitHorizontal : Type;
-
-    const typeLabel =
-      fieldType === "checkbox" ? "Checkbox" :
-      fieldType === "signature" ? "Signature" :
-      fieldType === "date" ? "Date" :
-      fieldType === "whiteout" ? "Whiteout" :
-      fieldType === "comb" ? "Box Field" : "Text Field";
-
-    const typeColor =
-      fieldType === "checkbox" ? "text-violet-500" :
-      fieldType === "signature" ? "text-pink-500" :
-      fieldType === "date" ? "text-amber-500" :
-      fieldType === "whiteout" ? "text-gray-500" :
-      fieldType === "comb" ? "text-cyan-500" : "text-blue-500";
+    const TypeIcon = fieldIcon(fieldType);
 
     return (
       <Panel>
-        {/* Field type header */}
         <Section>
-          <div className={`flex items-center gap-2 ${typeColor}`}>
+          <div className={`flex items-center gap-2 ${fieldColor(fieldType)}`}>
             <TypeIcon className="h-4 w-4 shrink-0" />
-            <p className="text-sm font-bold text-text">{typeLabel} selected</p>
+            <p className="text-sm font-bold text-text">{fieldLabel(fieldType)} selected</p>
           </div>
         </Section>
 
         <Divider />
 
-        {/* Checkbox stamp controls */}
-        {fieldType === "checkbox" && (() => {
-          const stamp: CheckboxStamp =
-            (selectedField as { stamp?: CheckboxStamp }).stamp ??
-            (selectedField.checked ? "tick" : "none");
-          return (
-            <Section label="Stamp">
-              <div className="grid grid-cols-3 gap-2">
-                <StampCard active={stamp === "tick"}  onClick={() => onStampChange("tick")}  char="✓" label="Tick" />
-                <StampCard active={stamp === "cross"} onClick={() => onStampChange("cross")} char="✕" label="Cross" />
-                <StampCard active={stamp === "none"}  onClick={() => onStampChange("none")}  char="○" label="None" />
-              </div>
-            </Section>
-          );
-        })()}
+        <LayerControls selectedField={selectedField} />
 
-        {/* Whiteout color picker */}
-        {fieldType === "whiteout" && (() => {
-          const whiteoutField = selectedField as WhiteoutField;
-          return (
-            <Section label="Fill Color">
-              <div className="flex items-center gap-3">
-                <input
-                  type="color"
-                  value={whiteoutField.fillColor}
-                  onChange={(e) => onFieldUpdate(selectedField.id, { fillColor: e.target.value } as Partial<EditorField>)}
-                  className="h-10 w-10 cursor-pointer rounded-lg border border-border bg-white p-1"
-                />
-                <div className="flex-1">
-                  <p className="text-xs font-medium text-text">{whiteoutField.fillColor}</p>
-                  <p className="text-[10px] text-text-muted">Click to pick a different color</p>
-                </div>
-              </div>
-            </Section>
-          );
-        })()}
+        <Divider />
 
-        {/* Signature controls */}
-        {fieldType === "signature" && (() => {
-          const sigField = selectedField as SignatureField;
-          const isSigned = !!sigField.signatureDataUrl;
-          return (
-            <Section label="Signature">
-              {isSigned ? (
-                <>
-                  {/* Preview, generous height, white bg */}
-                  <div className="mb-3 flex items-center justify-center rounded-xl border border-green-200 bg-white p-3 min-h-[96px] shadow-inner">
-                    <img
-                      src={sigField.signatureDataUrl}
-                      alt="Signature"
-                      className="max-h-20 max-w-full object-contain"
-                    />
-                  </div>
-                  <div className="flex items-center gap-1.5 mb-1">
-                    <div className="h-2 w-2 rounded-full bg-green-500 shrink-0" />
-                    <p className="text-xs text-green-700 font-medium">Signed</p>
-                  </div>
-                  <button
-                    onClick={() => onSignatureRequest(selectedField.id)}
-                    className="mt-2 flex w-full items-center justify-center gap-2 rounded-xl border border-border py-2.5 text-sm font-medium text-text-muted hover:bg-surface-alt transition-colors"
-                  >
-                    <PenTool className="h-4 w-4" />
-                    Re-sign
-                  </button>
-                </>
-              ) : (
-                <>
-                  <div className="mb-3 flex items-center justify-center rounded-xl border-2 border-dashed border-border bg-surface-alt p-4 min-h-[96px]">
-                    <div className="text-center">
-                      <PenTool className="h-6 w-6 text-text-muted mx-auto mb-1.5" />
-                      <p className="text-xs font-medium text-text-muted">Not signed yet</p>
-                      <p className="text-[10px] text-text-muted/60 mt-0.5">Click below to sign</p>
-                    </div>
-                  </div>
-                  <button
-                    onClick={() => onSignatureRequest(selectedField.id)}
-                    className="flex w-full items-center justify-center gap-2 rounded-xl bg-accent py-2.5 text-sm font-semibold text-white hover:bg-accent-hover transition-colors"
-                  >
-                    <PenTool className="h-4 w-4" />
-                    Sign Now
-                  </button>
-                </>
-              )}
-            </Section>
-          );
-        })()}
+        {fieldType === "checkbox" && (
+          <CheckboxControls selectedField={selectedField} onStampChange={onStampChange} />
+        )}
 
-        {/* Font size controls, text and date only */}
-        {(fieldType === "text" || fieldType === "date") && (() => {
-          const fontSize = (selectedField as { fontSize?: number }).fontSize ?? 14;
-          const prevSize = FONT_SIZES.slice().reverse().find((s) => s < fontSize);
-          const nextSize = FONT_SIZES.find((s) => s > fontSize);
-          return (
-            <Section label="Font Size">
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => prevSize && onFieldUpdate(selectedField.id, { fontSize: prevSize } as Partial<EditorField>)}
-                  disabled={!prevSize}
-                  className="flex h-9 w-9 items-center justify-center rounded-lg border border-border text-text-muted hover:bg-surface-alt transition-colors disabled:opacity-30"
-                >
-                  <Minus className="h-4 w-4" />
-                </button>
-                <div className="flex flex-1 items-center justify-center rounded-lg border border-border bg-surface-alt py-2 text-sm font-semibold text-text tabular-nums">
-                  {fontSize}px
-                </div>
-                <button
-                  onClick={() => nextSize && onFieldUpdate(selectedField.id, { fontSize: nextSize } as Partial<EditorField>)}
-                  disabled={!nextSize}
-                  className="flex h-9 w-9 items-center justify-center rounded-lg border border-border text-text-muted hover:bg-surface-alt transition-colors disabled:opacity-30"
-                >
-                  <Plus className="h-4 w-4" />
-                </button>
-              </div>
-            </Section>
-          );
-        })()}
+        {fieldType === "whiteout" && (
+          <WhiteoutControls selectedField={selectedField} onFieldUpdate={onFieldUpdate} />
+        )}
 
-        {/* Box Field controls */}
-        {fieldType === "comb" && (() => {
-          const combField = selectedField as import("@/lib/types").CombField;
-          const charCount = combField.charCount ?? 9;
-          const currentCellWidth = combField.cellWidth ?? Math.round(selectedField.width / charCount);
-          
-          return (
-            <>
-              <Section>
-                <button
-                  onClick={() => setCharCountExpanded(v => !v)}
-                  className="flex w-full items-center justify-between text-[10px] font-semibold uppercase tracking-widest text-text-muted hover:text-text transition-colors"
-                >
-                  Character Count
-                  {charCountExpanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
-                </button>
-                {charCountExpanded && (
-                  <>
-                    <select
-                      value={charCount}
-                      onChange={(e) => {
-                        const newCount = parseInt(e.target.value, 10);
-                        if (!isNaN(newCount) && newCount > 0 && newCount <= 30) {
-                          // Clear detected cell positions when manually changing count
-                          // This forces uniform spacing based on the new count
-                          onFieldUpdate(selectedField.id, {
-                            charCount: newCount,
-                            cellPositions: undefined,
-                            cellWidths: undefined,
-                          } as Partial<EditorField>);
-                        }
-                      }}
-                      className="w-full rounded-lg border border-border bg-surface-alt px-3 py-2 text-sm font-medium text-text focus:outline-none focus:ring-2 focus:ring-accent"
-                    >
-                      {[8, 9, 10, 11, 12, 15, 16, 20, 30].map((n) => (
-                        <option key={n} value={n}>
-                          {n} {n === 1 ? "character" : "characters"}
-                        </option>
-                      ))}
-                    </select>
-                    <p className="mt-2 text-xs text-text-muted">
-                      Common: 9 (TFN), 11 (ABN), 10 (Medicare)
-                    </p>
-                  </>
-                )}
-              </Section>
-              
-              <Divider />
-              <Section>
-                <label className="text-[10px] font-semibold uppercase tracking-widest text-text-muted">
-                  Cell Width
-                </label>
-                <div className="flex items-center gap-2 mt-1">
-                  <input
-                    type="range"
-                    min={12}
-                    max={50}
-                    step={1}
-                    value={currentCellWidth}
-                    onChange={(e) => {
-                      const newWidth = parseInt(e.target.value, 10);
-                      const newTotalWidth = newWidth * charCount;
-                      // Clear detected cell positions when manually adjusting width
-                      // This forces uniform spacing based on the new cell width
-                      onFieldUpdate(selectedField.id, {
-                        cellWidth: newWidth,
-                        width: newTotalWidth,
-                        cellPositions: undefined,
-                        cellWidths: undefined,
-                      } as Partial<EditorField>);
-                    }}
-                    className="flex-1 h-2 bg-surface-alt rounded-lg appearance-none cursor-pointer accent-accent"
-                  />
-                  <span className="text-xs text-text-muted w-8 text-right">{currentCellWidth}px</span>
-                </div>
-                <p className="mt-1 text-xs text-text-muted">
-                  Adjust to match form box spacing
-                </p>
-              </Section>
-              
-              <Divider />
-              <Section>
-                <label className="text-[10px] font-semibold uppercase tracking-widest text-text-muted">
-                  X Offset
-                </label>
-                <div className="flex items-center gap-2 mt-1">
-                  <input
-                    type="range"
-                    min={-20}
-                    max={20}
-                    step={1}
-                    value={combField.offsetX ?? 0}
-                    onChange={(e) => {
-                      const newOffset = parseInt(e.target.value, 10);
-                      onFieldUpdate(selectedField.id, { offsetX: newOffset } as Partial<EditorField>);
-                    }}
-                    className="flex-1 h-2 bg-surface-alt rounded-lg appearance-none cursor-pointer accent-accent"
-                  />
-                  <span className="text-xs text-text-muted w-10 text-right">{combField.offsetX ?? 0}px</span>
-                </div>
-                <p className="mt-1 text-xs text-text-muted">
-                  Nudge left/right to align with boxes
-                </p>
-              </Section>
-              
-              <Divider />
-              <Section>
-                <label className="text-[10px] font-semibold uppercase tracking-widest text-text-muted">
-                  Char Offset
-                </label>
-                <div className="flex items-center gap-2 mt-1">
-                  <input
-                    type="range"
-                    min={-10}
-                    max={10}
-                    step={1}
-                    value={combField.charOffsetX ?? 0}
-                    onChange={(e) => {
-                      const newOffset = parseInt(e.target.value, 10);
-                      onFieldUpdate(selectedField.id, { charOffsetX: newOffset } as Partial<EditorField>);
-                    }}
-                    className="flex-1 h-2 bg-surface-alt rounded-lg appearance-none cursor-pointer accent-accent"
-                  />
-                  <span className="text-xs text-text-muted w-10 text-right">{combField.charOffsetX ?? 0}px</span>
-                </div>
-                <p className="mt-1 text-xs text-text-muted">
-                  Center characters within cells
-                </p>
-              </Section>
-              
-              <Divider />
-              <Section>
-                <p className="text-xs text-text-muted text-center">{combField.value?.replace(/ +$/, "").length || 0} / {charCount} characters filled</p>
-              </Section>
-            </>
-          );
-        })()}
+        {fieldType === "signature" && (
+          <SignatureControls selectedField={selectedField} onSignatureRequest={onSignatureRequest} />
+        )}
 
-        {/* Size inputs  -  not for checkbox or whiteout */}
+        {(fieldType === "text" || fieldType === "date") && (
+          <FontSizeControls selectedField={selectedField} onFieldUpdate={onFieldUpdate} />
+        )}
+
+        {fieldType === "comb" && (
+          <CombControls
+            selectedField={selectedField}
+            expanded={charCountExpanded}
+            onExpandedChange={setCharCountExpanded}
+            onFieldUpdate={onFieldUpdate}
+          />
+        )}
+
         {selectedField.type !== "checkbox" && selectedField.type !== "whiteout" && (
           <>
-            <Section>
-              <button
-                onClick={() => setSizeExpanded(v => !v)}
-                className="flex w-full items-center justify-between text-[10px] font-semibold uppercase tracking-widest text-text-muted hover:text-text transition-colors"
-              >
-                Size
-                {sizeExpanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
-              </button>
-              {sizeExpanded && (
-                <div className="flex gap-2 mt-2">
-                  <div className="flex flex-1 flex-col gap-1">
-                    <label className="text-[10px] text-text-muted">W</label>
-                    <input
-                      type="number"
-                      min={20}
-                      max={2000}
-                      value={Math.round(selectedField.width)}
-                      onChange={(e) => {
-                        const val = Math.max(20, parseInt(e.target.value) || 20);
-                        if (selectedField.type === "signature") {
-                          const ratio = selectedField.height / selectedField.width;
-                          onFieldUpdate(selectedField.id, { width: val, height: Math.round(val * ratio) } as Partial<EditorField>);
-                        } else {
-                          onFieldUpdate(selectedField.id, { width: val } as Partial<EditorField>);
-                        }
-                      }}
-                      className="w-full rounded-lg border border-border bg-surface-alt px-2 py-1.5 text-sm text-text focus:border-accent focus:outline-none"
-                    />
-                  </div>
-                  <div className="flex flex-1 flex-col gap-1">
-                    <label className="text-[10px] text-text-muted">H</label>
-                    <input
-                      type="number"
-                      min={10}
-                      max={2000}
-                      value={Math.round(selectedField.height)}
-                      onChange={(e) => {
-                        const val = Math.max(10, parseInt(e.target.value) || 10);
-                        if (selectedField.type === "signature") {
-                          const ratio = selectedField.width / selectedField.height;
-                          onFieldUpdate(selectedField.id, { height: val, width: Math.round(val * ratio) } as Partial<EditorField>);
-                        } else {
-                          onFieldUpdate(selectedField.id, { height: val } as Partial<EditorField>);
-                        }
-                      }}
-                      className="w-full rounded-lg border border-border bg-surface-alt px-2 py-1.5 text-sm text-text focus:border-accent focus:outline-none"
-                    />
-                  </div>
-                </div>
-              )}
-            </Section>
+            <SizeControls
+              selectedField={selectedField}
+              expanded={sizeExpanded}
+              onExpandedChange={setSizeExpanded}
+              onFieldUpdate={onFieldUpdate}
+            />
             <Divider />
           </>
         )}
@@ -419,7 +166,7 @@ export function ContextPanel({
           )}
           <button
             onClick={() => { onFieldDelete(selectedField.id); onFieldDeselect(); }}
-            className="flex w-full items-center justify-center gap-2 rounded-xl bg-red-50 py-2.5 text-sm font-semibold text-red-600 hover:bg-red-100 transition-colors mt-2"
+            className="mt-2 flex w-full items-center justify-center gap-2 rounded-xl bg-red-50 py-2.5 text-sm font-semibold text-red-600 hover:bg-red-100 transition-colors"
           >
             <Trash2 className="h-4 w-4" />
             Delete Field
@@ -429,7 +176,6 @@ export function ContextPanel({
     );
   }
 
-  // ── Tool active (only when no field is selected) ─────────────────────────
   if (activeTool) {
     const { icon: Icon, label, hint, color } = TOOL_META[activeTool];
     return (
@@ -444,7 +190,6 @@ export function ContextPanel({
           </div>
         </Section>
 
-        {/* Whiteout color picker when tool is active */}
         {activeTool === "whiteout" && onWhiteoutColorChange && (
           <>
             <Divider />
@@ -453,7 +198,7 @@ export function ContextPanel({
                 <input
                   type="color"
                   value={whiteoutColor || "#ffffff"}
-                  onChange={(e) => onWhiteoutColorChange(e.target.value)}
+                  onChange={(event) => onWhiteoutColorChange(event.target.value)}
                   className="h-10 w-10 cursor-pointer rounded-lg border border-border bg-white p-1"
                 />
                 <div className="flex-1">
@@ -479,7 +224,6 @@ export function ContextPanel({
     );
   }
 
-  // ── Idle state ─────────────────────────────────────────────────────────────
   return (
     <Panel>
       <Section>
@@ -518,9 +262,312 @@ export function ContextPanel({
   );
 }
 
-// ── Primitives ───────────────────────────────────────────────────────────────
+function LayerControls({ selectedField }: { selectedField: EditorField }) {
+  const note = selectedField.type === "whiteout"
+    ? "Whiteout remains behind fill fields. These buttons reorder whiteout patches."
+    : "Whiteout stays behind this field. These buttons reorder fill fields."
 
-function Panel({ children }: { children: React.ReactNode }) {
+  return (
+    <Section label="Layer">
+      <div className="grid grid-cols-2 gap-2">
+        <LayerButton label="Back" onClick={() => dispatchLayerMove(selectedField.id, "back")} />
+        <LayerButton label="Backward" onClick={() => dispatchLayerMove(selectedField.id, "backward")} />
+        <LayerButton label="Forward" onClick={() => dispatchLayerMove(selectedField.id, "forward")} />
+        <LayerButton label="Front" onClick={() => dispatchLayerMove(selectedField.id, "front")} />
+      </div>
+      <p className="mt-2 text-xs leading-5 text-text-muted">{note}</p>
+    </Section>
+  );
+}
+
+function LayerButton({ label, onClick }: { label: string; onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      className="rounded-lg border border-border bg-surface-alt px-2 py-2 text-xs font-semibold text-text-muted hover:border-accent hover:text-text transition-colors"
+    >
+      {label}
+    </button>
+  );
+}
+
+function CheckboxControls({ selectedField, onStampChange }: { selectedField: EditorField; onStampChange: (stamp: CheckboxStamp) => void }) {
+  if (selectedField.type !== "checkbox") return null;
+  const stamp: CheckboxStamp = selectedField.stamp ?? (selectedField.checked ? "tick" : "none");
+  return (
+    <Section label="Stamp">
+      <div className="grid grid-cols-3 gap-2">
+        <StampCard active={stamp === "tick"} onClick={() => onStampChange("tick")} char="T" label="Tick" />
+        <StampCard active={stamp === "cross"} onClick={() => onStampChange("cross")} char="X" label="Cross" />
+        <StampCard active={stamp === "none"} onClick={() => onStampChange("none")} char="-" label="None" />
+      </div>
+    </Section>
+  );
+}
+
+function WhiteoutControls({ selectedField, onFieldUpdate }: { selectedField: EditorField; onFieldUpdate: (id: string, updates: Partial<EditorField>) => void }) {
+  if (selectedField.type !== "whiteout") return null;
+  const whiteoutField = selectedField as WhiteoutField;
+  return (
+    <Section label="Fill Color">
+      <div className="flex items-center gap-3">
+        <input
+          type="color"
+          value={whiteoutField.fillColor}
+          onChange={(event) => onFieldUpdate(selectedField.id, { fillColor: event.target.value } as Partial<EditorField>)}
+          className="h-10 w-10 cursor-pointer rounded-lg border border-border bg-white p-1"
+        />
+        <div className="flex-1">
+          <p className="text-xs font-medium text-text">{whiteoutField.fillColor}</p>
+          <p className="text-[10px] text-text-muted">Click to pick a different color</p>
+        </div>
+      </div>
+    </Section>
+  );
+}
+
+function SignatureControls({ selectedField, onSignatureRequest }: { selectedField: EditorField; onSignatureRequest: (fieldId: string) => void }) {
+  if (selectedField.type !== "signature") return null;
+  const sigField = selectedField as SignatureField;
+  const isSigned = Boolean(sigField.signatureDataUrl);
+  return (
+    <Section label="Signature">
+      {isSigned && sigField.signatureDataUrl ? (
+        <div className="mb-3 flex min-h-[96px] items-center justify-center rounded-xl border border-green-200 bg-white p-3 shadow-inner">
+          <img src={sigField.signatureDataUrl} alt="Signature" className="max-h-20 max-w-full object-contain" />
+        </div>
+      ) : (
+        <div className="mb-3 flex min-h-[96px] items-center justify-center rounded-xl border-2 border-dashed border-border bg-surface-alt p-4 text-center">
+          <div>
+            <PenTool className="mx-auto mb-1.5 h-6 w-6 text-text-muted" />
+            <p className="text-xs font-medium text-text-muted">Not signed yet</p>
+          </div>
+        </div>
+      )}
+      <button
+        onClick={() => onSignatureRequest(selectedField.id)}
+        className={isSigned
+          ? "flex w-full items-center justify-center gap-2 rounded-xl border border-border py-2.5 text-sm font-medium text-text-muted hover:bg-surface-alt transition-colors"
+          : "flex w-full items-center justify-center gap-2 rounded-xl bg-accent py-2.5 text-sm font-semibold text-white hover:bg-accent-hover transition-colors"}
+      >
+        <PenTool className="h-4 w-4" />
+        {isSigned ? "Re-sign" : "Sign Now"}
+      </button>
+    </Section>
+  );
+}
+
+function FontSizeControls({ selectedField, onFieldUpdate }: { selectedField: EditorField; onFieldUpdate: (id: string, updates: Partial<EditorField>) => void }) {
+  const fontSize = (selectedField as { fontSize?: number }).fontSize ?? 14;
+  const prevSize = FONT_SIZES.slice().reverse().find((size) => size < fontSize);
+  const nextSize = FONT_SIZES.find((size) => size > fontSize);
+  return (
+    <Section label="Font Size">
+      <div className="flex items-center gap-2">
+        <button
+          onClick={() => prevSize && onFieldUpdate(selectedField.id, { fontSize: prevSize } as Partial<EditorField>)}
+          disabled={!prevSize}
+          className="flex h-9 w-9 items-center justify-center rounded-lg border border-border text-text-muted hover:bg-surface-alt transition-colors disabled:opacity-30"
+        >
+          <Minus className="h-4 w-4" />
+        </button>
+        <div className="flex flex-1 items-center justify-center rounded-lg border border-border bg-surface-alt py-2 text-sm font-semibold text-text tabular-nums">
+          {fontSize}px
+        </div>
+        <button
+          onClick={() => nextSize && onFieldUpdate(selectedField.id, { fontSize: nextSize } as Partial<EditorField>)}
+          disabled={!nextSize}
+          className="flex h-9 w-9 items-center justify-center rounded-lg border border-border text-text-muted hover:bg-surface-alt transition-colors disabled:opacity-30"
+        >
+          <Plus className="h-4 w-4" />
+        </button>
+      </div>
+    </Section>
+  );
+}
+
+function CombControls({
+  selectedField,
+  expanded,
+  onExpandedChange,
+  onFieldUpdate,
+}: {
+  selectedField: EditorField;
+  expanded: boolean;
+  onExpandedChange: (value: boolean) => void;
+  onFieldUpdate: (id: string, updates: Partial<EditorField>) => void;
+}) {
+  if (selectedField.type !== "comb") return null;
+  const combField = selectedField as CombField;
+  const charCount = combField.charCount ?? 9;
+  const currentCellWidth = combField.cellWidth ?? Math.round(selectedField.width / charCount);
+
+  return (
+    <>
+      <Section>
+        <button
+          onClick={() => onExpandedChange(!expanded)}
+          className="flex w-full items-center justify-between text-[10px] font-semibold uppercase tracking-widest text-text-muted hover:text-text transition-colors"
+        >
+          Character Count
+          {expanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+        </button>
+        {expanded && (
+          <>
+            <select
+              value={charCount}
+              onChange={(event) => {
+                const newCount = parseInt(event.target.value, 10);
+                if (Number.isFinite(newCount) && newCount > 0 && newCount <= 30) {
+                  onFieldUpdate(selectedField.id, {
+                    charCount: newCount,
+                    cellPositions: undefined,
+                    cellWidths: undefined,
+                  } as Partial<EditorField>);
+                }
+              }}
+              className="mt-2 w-full rounded-lg border border-border bg-surface-alt px-3 py-2 text-sm font-medium text-text focus:outline-none focus:ring-2 focus:ring-accent"
+            >
+              {[8, 9, 10, 11, 12, 15, 16, 20, 30].map((count) => (
+                <option key={count} value={count}>{count} characters</option>
+              ))}
+            </select>
+            <p className="mt-2 text-xs text-text-muted">Common: 9 TFN, 11 ABN, 10 Medicare</p>
+          </>
+        )}
+      </Section>
+
+      <Divider />
+      <RangeControl
+        label="Cell Width"
+        min={12}
+        max={50}
+        value={currentCellWidth}
+        suffix="px"
+        onChange={(newWidth) => onFieldUpdate(selectedField.id, {
+          cellWidth: newWidth,
+          width: newWidth * charCount,
+          cellPositions: undefined,
+          cellWidths: undefined,
+        } as Partial<EditorField>)}
+      />
+      <Divider />
+      <RangeControl
+        label="X Offset"
+        min={-20}
+        max={20}
+        value={combField.offsetX ?? 0}
+        suffix="px"
+        onChange={(offsetX) => onFieldUpdate(selectedField.id, { offsetX } as Partial<EditorField>)}
+      />
+      <Divider />
+      <RangeControl
+        label="Char Offset"
+        min={-10}
+        max={10}
+        value={combField.charOffsetX ?? 0}
+        suffix="px"
+        onChange={(charOffsetX) => onFieldUpdate(selectedField.id, { charOffsetX } as Partial<EditorField>)}
+      />
+      <Divider />
+      <Section>
+        <p className="text-center text-xs text-text-muted">{combField.value?.replace(/ +$/, "").length || 0} / {charCount} characters filled</p>
+      </Section>
+    </>
+  );
+}
+
+function RangeControl({ label, min, max, value, suffix, onChange }: { label: string; min: number; max: number; value: number; suffix: string; onChange: (value: number) => void }) {
+  return (
+    <Section>
+      <label className="text-[10px] font-semibold uppercase tracking-widest text-text-muted">{label}</label>
+      <div className="mt-1 flex items-center gap-2">
+        <input
+          type="range"
+          min={min}
+          max={max}
+          step={1}
+          value={value}
+          onChange={(event) => onChange(parseInt(event.target.value, 10))}
+          className="h-2 flex-1 cursor-pointer appearance-none rounded-lg bg-surface-alt accent-accent"
+        />
+        <span className="w-10 text-right text-xs text-text-muted">{value}{suffix}</span>
+      </div>
+    </Section>
+  );
+}
+
+function SizeControls({
+  selectedField,
+  expanded,
+  onExpandedChange,
+  onFieldUpdate,
+}: {
+  selectedField: EditorField;
+  expanded: boolean;
+  onExpandedChange: (value: boolean) => void;
+  onFieldUpdate: (id: string, updates: Partial<EditorField>) => void;
+}) {
+  return (
+    <Section>
+      <button
+        onClick={() => onExpandedChange(!expanded)}
+        className="flex w-full items-center justify-between text-[10px] font-semibold uppercase tracking-widest text-text-muted hover:text-text transition-colors"
+      >
+        Size
+        {expanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+      </button>
+      {expanded && (
+        <div className="mt-2 flex gap-2">
+          <SizeInput
+            label="W"
+            value={selectedField.width}
+            min={20}
+            onChange={(value) => {
+              if (selectedField.type === "signature") {
+                const ratio = selectedField.height / selectedField.width;
+                onFieldUpdate(selectedField.id, { width: value, height: Math.round(value * ratio) } as Partial<EditorField>);
+              } else {
+                onFieldUpdate(selectedField.id, { width: value } as Partial<EditorField>);
+              }
+            }}
+          />
+          <SizeInput
+            label="H"
+            value={selectedField.height}
+            min={10}
+            onChange={(value) => {
+              if (selectedField.type === "signature") {
+                const ratio = selectedField.width / selectedField.height;
+                onFieldUpdate(selectedField.id, { height: value, width: Math.round(value * ratio) } as Partial<EditorField>);
+              } else {
+                onFieldUpdate(selectedField.id, { height: value } as Partial<EditorField>);
+              }
+            }}
+          />
+        </div>
+      )}
+    </Section>
+  );
+}
+
+function SizeInput({ label, value, min, onChange }: { label: string; value: number; min: number; onChange: (value: number) => void }) {
+  return (
+    <div className="flex flex-1 flex-col gap-1">
+      <label className="text-[10px] text-text-muted">{label}</label>
+      <input
+        type="number"
+        min={min}
+        max={2000}
+        value={Math.round(value)}
+        onChange={(event) => onChange(Math.max(min, parseInt(event.target.value, 10) || min))}
+        className="w-full rounded-lg border border-border bg-surface-alt px-2 py-1.5 text-sm text-text focus:border-accent focus:outline-none"
+      />
+    </div>
+  );
+}
+
+function Panel({ children }: { children: ReactNode }) {
   return (
     <div className="hidden sm:flex flex-col w-64 flex-shrink-0 h-full border-l border-border bg-surface overflow-y-auto">
       {children}
@@ -528,7 +575,7 @@ function Panel({ children }: { children: React.ReactNode }) {
   );
 }
 
-function Section({ children, label }: { children: React.ReactNode; label?: string }) {
+function Section({ children, label }: { children: ReactNode; label?: string }) {
   return (
     <div className="px-4 py-4">
       {label && (
@@ -545,19 +592,15 @@ function Divider() {
   return <div className="mx-4 h-px bg-border flex-shrink-0" />;
 }
 
-function StampCard({
-  active, onClick, char, label,
-}: {
-  active: boolean; onClick: () => void; char: string; label: string;
-}) {
+function StampCard({ active, onClick, char, label }: { active: boolean; onClick: () => void; char: string; label: string }) {
   return (
     <button
       onClick={onClick}
-      className={`flex flex-col items-center gap-1 rounded-xl border-2 py-3 transition-colors
-        ${active
+      className={`flex flex-col items-center gap-1 rounded-xl border-2 py-3 transition-colors ${
+        active
           ? "border-accent bg-accent/5 text-accent"
           : "border-border bg-surface hover:border-accent/40 hover:bg-surface-alt text-text-muted"
-        }`}
+      }`}
     >
       <span className="text-xl font-bold leading-none">{char}</span>
       <span className="text-[10px] font-medium">{label}</span>
