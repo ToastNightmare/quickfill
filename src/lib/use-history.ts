@@ -1,6 +1,6 @@
-import { useReducer, useCallback } from "react";
+import { useEffect, useReducer, useCallback } from "react";
 import type { EditorField } from "./types";
-import { orderFieldsForLayering } from "./field-layering";
+import { moveFieldInLayer, orderFieldsForLayering, type FieldLayerDirection } from "./field-layering";
 
 const MAX_HISTORY = 50;
 
@@ -56,6 +56,8 @@ function reducer(state: HistoryState, action: HistoryAction): HistoryState {
   }
 }
 
+type LayerMoveEvent = CustomEvent<{ fieldId: string; direction: FieldLayerDirection }>;
+
 export function useHistory(initial: EditorField[] = []) {
   const [state, dispatch] = useReducer(reducer, {
     past: [],
@@ -69,6 +71,20 @@ export function useHistory(initial: EditorField[] = []) {
     },
     []
   );
+
+  useEffect(() => {
+    const handleLayerMove = (event: Event) => {
+      const { fieldId, direction } = (event as LayerMoveEvent).detail ?? {};
+      if (!fieldId || !direction) return;
+      dispatch({
+        type: "SET",
+        updater: (prev) => moveFieldInLayer(prev, fieldId, direction),
+      });
+    };
+
+    window.addEventListener("quickfill:move-field-layer", handleLayerMove);
+    return () => window.removeEventListener("quickfill:move-field-layer", handleLayerMove);
+  }, []);
 
   const undo = useCallback(() => dispatch({ type: "UNDO" }), []);
   const redo = useCallback(() => dispatch({ type: "REDO" }), []);
