@@ -28,10 +28,11 @@ describe("autofill shadow reporting", () => {
 
     expect(trackAutofillShadowReport(result, { surface: "mobile" })).toBe(true);
     expect(trackEvent).toHaveBeenCalledWith(
-      "profile_autofill_shadow_reported",
+      "profile_autofill_used",
       expect.objectContaining({
         mode: "shadow",
         fieldCount: 1,
+        shadowReported: true,
         surface: "mobile",
       }),
     );
