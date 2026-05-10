@@ -1,4 +1,4 @@
-import { autofillModeFromFlag, runProfileAutofill } from "../profile-autofill";
+import { autofillModeFromFlag, runProfileAutofill, shouldReportAutofillShadowMode } from "../profile-autofill";
 
 const profile = {
   fullName: "Jane Smith",
@@ -20,6 +20,7 @@ describe("profile autofill rollout adapter", () => {
     expect(result.fields.find((field) => field.id === "name")?.value).toBe("Jane Smith");
     expect(result.fields.find((field) => field.id === "dob")?.value).toBe("");
     expect(result.summary["auto-fill"]).toBeGreaterThanOrEqual(1);
+    expect(result.shadowReport.mode).toBe("legacy");
   });
 
   it("can run the intelligence engine when explicitly enabled", () => {
@@ -27,6 +28,29 @@ describe("profile autofill rollout adapter", () => {
 
     expect(result.fields.find((field) => field.id === "business")?.value).toBe("Smith Bookkeeping");
     expect(result.fields.find((field) => field.id === "dob")?.value).toBe("01/02/1990");
+  });
+
+  it("builds a privacy-safe shadow report without profile values", () => {
+    const result = runProfileAutofill(fields, profile, "shadow");
+
+    expect(result.fields.find((field) => field.id === "dob")?.value).toBe("");
+    expect(result.shadowReport).toMatchObject({
+      mode: "shadow",
+      fieldCount: 3,
+      legacyMatched: 2,
+      intelligenceAutoFill: 3,
+      intelligenceSkip: 0,
+      highConfidenceWithoutLegacyCount: 1,
+    });
+    expect(result.shadowReport.profileKeys).toContain("dateOfBirth");
+    expect(JSON.stringify(result.shadowReport)).not.toContain("Jane Smith");
+    expect(JSON.stringify(result.shadowReport)).not.toContain("01/02/1990");
+  });
+
+  it("reports only rollout modes that intentionally collect shadow data", () => {
+    expect(shouldReportAutofillShadowMode("legacy")).toBe(false);
+    expect(shouldReportAutofillShadowMode("shadow")).toBe(true);
+    expect(shouldReportAutofillShadowMode("intelligence")).toBe(true);
   });
 
   it("maps flags to safe rollout modes", () => {
