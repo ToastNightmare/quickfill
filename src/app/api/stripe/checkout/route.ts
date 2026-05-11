@@ -5,6 +5,7 @@ import { getRedis, isRedisConfigured } from "@/lib/redis";
 import { APP_CONFIG } from "@/lib/config";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { trackServerEvent } from "@/lib/server-analytics";
+import { alertAdmins } from "@/lib/admin-alerts";
 import { log } from "@/lib/log";
 
 function appOrigin(req: NextRequest) {
@@ -57,6 +58,12 @@ export async function POST(req: NextRequest) {
   const priceId = priceForPlan(plan, annual);
   if (!priceId) {
     log.error("stripe_checkout_missing_price", { plan, billing });
+    await alertAdmins({
+      subject: "Checkout price is missing",
+      title: "Stripe checkout price is not configured",
+      message: "A user tried to start checkout, but the required Stripe price ID is missing from production environment variables.",
+      fields: { plan, billing, userId, email: email ?? "unknown" },
+    });
     return NextResponse.json(
       { error: `${plan} ${billing} billing is not configured yet.` },
       { status: 500 },
@@ -84,6 +91,12 @@ export async function POST(req: NextRequest) {
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     log.error("stripe_checkout_session_failed", { plan, billing, error: message });
+    await alertAdmins({
+      subject: "Checkout session failed",
+      title: "Stripe checkout could not be started",
+      message: "A signed-in user could not be sent to Stripe Checkout.",
+      fields: { plan, billing, userId, email: email ?? "unknown", error: message },
+    });
     return NextResponse.json({ error: "Checkout could not be started. Please try again." }, { status: 500 });
   }
 }
