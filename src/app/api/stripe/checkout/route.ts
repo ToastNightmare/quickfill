@@ -4,6 +4,8 @@ import { getStripe } from "@/lib/stripe";
 import { getRedis, isRedisConfigured } from "@/lib/redis";
 import { APP_CONFIG } from "@/lib/config";
 import { checkRateLimit } from "@/lib/rate-limit";
+import { trackServerEvent } from "@/lib/server-analytics";
+import { log } from "@/lib/log";
 
 function appOrigin(req: NextRequest) {
   const configured = APP_CONFIG.url;
@@ -33,11 +35,12 @@ export async function POST(req: NextRequest) {
 
   const limited = await checkRateLimit(requesterId(req, userId), "checkout");
   if (!limited.success) {
+    await trackServerEvent("checkout_session_failed", { reason: "rate_limited" });
     return NextResponse.json({ error: "Too many checkout attempts, try again in a minute" }, { status: 429 });
   }
 
   const user = await currentUser();
-  const email = user?.emailAddresses?.[0]?.emailAddress;
+  const email = user?.primaryEmailAddress?.emailAddress ?? user?.emailAddresses?.[0]?.emailAddress;
   const firstName = user?.firstName ?? "";
   const origin = appOrigin(req);
 
@@ -51,27 +54,38 @@ export async function POST(req: NextRequest) {
     // Default to Pro monthly when no JSON body is supplied.
   }
 
+  const billing = annual ? "annual" : "monthly";
   const priceId = priceForPlan(plan, annual);
   if (!priceId) {
+    await trackServerEvent("checkout_session_failed", { reason: "missing_price", plan, billing });
     return NextResponse.json(
-      { error: `${plan} ${annual ? "annual" : "monthly"} billing is not configured yet.` },
+      { error: `${plan} ${billing} billing is not configured yet.` },
       { status: 500 },
     );
   }
 
-  const metadata = { userId, plan, billing: annual ? "annual" : "monthly", firstName };
-  const existingCustomerId = isRedisConfigured() ? await getRedis().get<string>(`stripe_customer:${userId}`) : null;
+  try {
+    const metadata = { userId, plan, billing, firstName };
+    const existingCustomerId = isRedisConfigured() ? await getRedis().get<string>(`stripe_customer:${userId}`) : null;
 
-  const session = await getStripe().checkout.sessions.create({
-    mode: "subscription",
-    payment_method_types: ["card"],
-    line_items: [{ price: priceId, quantity: 1 }],
-    ...(existingCustomerId ? { customer: existingCustomerId } : { customer_email: email ?? undefined }),
-    success_url: `${origin}/dashboard?upgraded=true`,
-    cancel_url: `${origin}/pricing`,
-    metadata,
-    subscription_data: { metadata },
-  });
+    const session = await getStripe().checkout.sessions.create({
+      mode: "subscription",
+      payment_method_types: ["card"],
+      line_items: [{ price: priceId, quantity: 1 }],
+      ...(existingCustomerId ? { customer: existingCustomerId } : { customer_email: email ?? undefined }),
+      success_url: `${origin}/dashboard?upgraded=true`,
+      cancel_url: `${origin}/pricing`,
+      allow_promotion_codes: true,
+      metadata,
+      subscription_data: { metadata },
+    });
 
-  return NextResponse.json({ url: session.url });
+    await trackServerEvent("checkout_session_created", { plan, billing });
+    return NextResponse.json({ url: session.url });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    log.error("stripe_checkout_session_failed", { plan, billing, error: message });
+    await trackServerEvent("checkout_session_failed", { reason: "stripe_error", plan, billing });
+    return NextResponse.json({ error: "Checkout could not be started. Please try again." }, { status: 500 });
+  }
 }
