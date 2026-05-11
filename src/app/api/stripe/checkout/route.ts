@@ -35,7 +35,6 @@ export async function POST(req: NextRequest) {
 
   const limited = await checkRateLimit(requesterId(req, userId), "checkout");
   if (!limited.success) {
-    await trackServerEvent("checkout_session_failed", { reason: "rate_limited" });
     return NextResponse.json({ error: "Too many checkout attempts, try again in a minute" }, { status: 429 });
   }
 
@@ -57,7 +56,7 @@ export async function POST(req: NextRequest) {
   const billing = annual ? "annual" : "monthly";
   const priceId = priceForPlan(plan, annual);
   if (!priceId) {
-    await trackServerEvent("checkout_session_failed", { reason: "missing_price", plan, billing });
+    log.error("stripe_checkout_missing_price", { plan, billing });
     return NextResponse.json(
       { error: `${plan} ${billing} billing is not configured yet.` },
       { status: 500 },
@@ -80,12 +79,11 @@ export async function POST(req: NextRequest) {
       subscription_data: { metadata },
     });
 
-    await trackServerEvent("checkout_session_created", { plan, billing });
+    await trackServerEvent("checkout_start", { source: "server", plan, billing });
     return NextResponse.json({ url: session.url });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     log.error("stripe_checkout_session_failed", { plan, billing, error: message });
-    await trackServerEvent("checkout_session_failed", { reason: "stripe_error", plan, billing });
     return NextResponse.json({ error: "Checkout could not be started. Please try again." }, { status: 500 });
   }
 }
