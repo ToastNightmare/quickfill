@@ -63,4 +63,48 @@ function patchMobileFiller() {
   writeIfChanged(path, text);
 }
 
+function patchEditorPage() {
+  const path = "src/app/editor/page.tsx";
+  let text = read(path);
+
+  text = ensureImport(
+    text,
+    'import { trackEvent } from "@/lib/analytics";\n',
+    'import { trackAutofillShadowReport } from "@/lib/autofill-shadow-reporting";\nimport { autofillModeFromFlag, runProfileAutofill } from "@/lib/profile-autofill";\n',
+  );
+
+  const replacement = lines([
+    '  const handleAutoFillFromProfile = useCallback(async () => {',
+    '    try {',
+    '      const res = await fetch("/api/profile");',
+    '      if (!res.ok) {',
+    '        showToast("Sign in and save your profile first");',
+    '        return;',
+    '      }',
+    '      const profile = await res.json();',
+    '      if (!profile?.fullName) {',
+    '        showToast("No profile saved, go to Profile to set one up");',
+    '        return;',
+    '      }',
+    '',
+    '      const mode = autofillModeFromFlag(process.env.NEXT_PUBLIC_QUICKFILL_AUTOFILL_MODE);',
+    '      const result = runProfileAutofill(fields, profile, mode);',
+    '      setFields(result.fields);',
+    '      trackAutofillShadowReport(result, {',
+    '        surface: "desktop",',
+    '        hasAcroForm,',
+    '        totalPages,',
+    '      });',
+    '      showToast(result.matched > 0 ? `Auto-filled ${result.matched} field${result.matched > 1 ? "s" : ""}` : "No matching profile fields found");',
+    '    } catch {',
+    '      showToast("Failed to load profile");',
+    '    }',
+    '  }, [fields, hasAcroForm, setFields, showToast, totalPages]);',
+  ]);
+
+  text = replaceBefore(text, "  const handleAutoFillFromProfile = useCallback(async () => {", "  const handleDetectFields", replacement);
+  writeIfChanged(path, text);
+}
+
 patchMobileFiller();
+patchEditorPage();
