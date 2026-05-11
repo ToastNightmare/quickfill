@@ -5,6 +5,7 @@ import { getStripe } from "@/lib/stripe";
 import { getRedis, isRedisConfigured } from "@/lib/redis";
 import { trackServerEvent } from "@/lib/server-analytics";
 import { claimStripeEvent, saveSubscriptionSnapshot, tierFromPriceId, type QuickFillTier } from "@/lib/billing-store";
+import { alertAdmins } from "@/lib/admin-alerts";
 import { log } from "@/lib/log";
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? "https://getquickfill.com";
@@ -96,6 +97,12 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
   const userId = session.metadata?.userId;
   if (!userId) {
     log.warn("stripe_checkout_missing_user", { sessionId: session.id });
+    await alertAdmins({
+      subject: "Checkout completed without user",
+      title: "Stripe checkout completed but no QuickFill user ID was present",
+      message: "A checkout.session.completed event could not be attached to a QuickFill user.",
+      fields: { sessionId: session.id, customerId: session.customer ? String(session.customer) : "unknown" },
+    });
     return;
   }
 
@@ -148,6 +155,16 @@ async function handleSubscriptionUpdated(subscription: Stripe.Subscription) {
   const userId = await getUserIdForSubscription(subscription);
   if (!userId) {
     log.warn("stripe_subscription_missing_user", { subscriptionId: subscription.id, status: subscription.status });
+    await alertAdmins({
+      subject: "Subscription update missing user",
+      title: "Stripe subscription update could not be matched to a QuickFill user",
+      message: "QuickFill received a subscription update but could not find the linked user ID.",
+      fields: {
+        subscriptionId: subscription.id,
+        customerId: subscription.customer ? String(subscription.customer) : "unknown",
+        status: subscription.status,
+      },
+    });
     return;
   }
 
@@ -175,6 +192,16 @@ async function handleSubscriptionDeleted(subscription: Stripe.Subscription) {
   const userId = await getUserIdForSubscription(subscription);
   if (!userId) {
     log.warn("stripe_subscription_deleted_missing_user", { subscriptionId: subscription.id });
+    await alertAdmins({
+      subject: "Subscription deletion missing user",
+      title: "Stripe subscription deletion could not be matched to a QuickFill user",
+      message: "QuickFill received a cancellation/deletion event but could not find the linked user ID.",
+      fields: {
+        subscriptionId: subscription.id,
+        customerId: subscription.customer ? String(subscription.customer) : "unknown",
+        status: subscription.status,
+      },
+    });
     return;
   }
 
@@ -235,10 +262,17 @@ export async function POST(req: NextRequest) {
     log.info("stripe_webhook_processed", { eventId: event.id, eventType: event.type });
     return NextResponse.json({ received: true });
   } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
     log.error("stripe_webhook_failed", {
       eventId: event.id,
       eventType: event.type,
-      error: error instanceof Error ? error.message : String(error),
+      error: message,
+    });
+    await alertAdmins({
+      subject: "Stripe webhook failed",
+      title: "Stripe webhook processing failed",
+      message: "A Stripe event reached QuickFill but failed while being processed. A paid user may need manual attention.",
+      fields: { eventId: event.id, eventType: event.type, error: message },
     });
     return NextResponse.json({ error: "Webhook processing failed" }, { status: 500 });
   }
