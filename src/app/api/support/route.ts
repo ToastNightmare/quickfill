@@ -3,7 +3,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { Resend } from "resend";
 import { recordSupportMessage, type AdminSupportMessage } from "@/lib/admin-logs";
 import { checkRateLimit } from "@/lib/rate-limit";
-import { trackServerEvent } from "@/lib/server-analytics";
 import { log } from "@/lib/log";
 
 export const runtime = "nodejs";
@@ -94,10 +93,7 @@ export async function POST(request: NextRequest) {
     source: clean(body.source, 80) || request.headers.get("referer") || "api",
   });
 
-  await Promise.all([
-    notifyAdmins(entry),
-    trackServerEvent("support_request_submitted", { source: entry.source ?? "api", signedIn: Boolean(userId) }),
-  ]);
+  await notifyAdmins(entry);
 
   return NextResponse.json({ ok: true, id: entry.id });
 }
