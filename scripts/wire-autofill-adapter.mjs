@@ -73,6 +73,8 @@ function patchEditorPage() {
     'import { trackAutofillShadowReport } from "@/lib/autofill-shadow-reporting";\nimport { autofillModeFromFlag, runProfileAutofill } from "@/lib/profile-autofill";\n',
   );
 
+  text = text.replace(/\/\/ Profile field matching keywords\nconst PROFILE_MATCHERS:[\s\S]*?\n}\n\n\/\/ Poll the canvas/, "// Poll the canvas");
+
   const replacement = lines([
     '  const handleAutoFillFromProfile = useCallback(async () => {',
     '    try {',
