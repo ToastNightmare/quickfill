@@ -71,17 +71,17 @@ export function matchLegacyProfileKey(name: string | undefined): string | null {
   return null;
 }
 
-function isAutofillCandidateField(field: ProfileAutofillField): field is ProfileAutofillField & { type: AutofillFieldType } {
+function isAutofillCandidateField(field: ProfileAutofillField) {
   return field.type !== "whiteout";
 }
 
-function toCandidate(field: ProfileAutofillField & { type: AutofillFieldType }): AutofillFieldCandidate {
+function toCandidate(field: ProfileAutofillField): AutofillFieldCandidate {
   return {
     id: field.id,
     name: field.name ?? field.id,
     label: field.label,
     nearbyText: field.nearbyText,
-    type: field.type,
+    type: field.type as AutofillFieldType,
     value: field.value,
   };
 }
@@ -154,7 +154,7 @@ export function runProfileAutofill<T extends ProfileAutofillField>(
   profile: AutofillProfile,
   mode: ProfileAutofillMode = "legacy",
 ): ProfileAutofillResult<T> {
-  const candidateFields = fields.filter(isAutofillCandidateField);
+  const candidateFields = fields.filter(isAutofillCandidateField) as Array<T & { type: AutofillFieldType }>;
   const candidates = candidateFields.map(toCandidate);
   const predictions = predictAutofillFields(candidates, profile);
   const summary = summarizeAutofillPredictions(predictions);
