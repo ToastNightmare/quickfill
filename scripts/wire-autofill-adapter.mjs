@@ -9,11 +9,11 @@ function writeIfChanged(path, next) {
   if (current !== next) writeFileSync(path, next);
 }
 
-function replaceBlock(text, start, end, replacement) {
+function replaceBefore(text, start, nextMarker, replacement) {
   const startIndex = text.indexOf(start);
   if (startIndex === -1) throw new Error(`Missing start marker: ${start}`);
-  const endIndex = text.indexOf(end, startIndex);
-  if (endIndex === -1) throw new Error(`Missing end marker after ${start}: ${end}`);
+  const endIndex = text.indexOf(nextMarker, startIndex + start.length);
+  if (endIndex === -1) throw new Error(`Missing next marker after ${start}: ${nextMarker}`);
   return text.slice(0, startIndex) + replacement + text.slice(endIndex);
 }
 
@@ -24,7 +24,7 @@ function ensureImport(text, after, addition) {
 }
 
 function lines(values) {
-  return `${values.join("\n")}\n`;
+  return `${values.join("\n")}\n\n`;
 }
 
 function patchMobileFiller() {
@@ -58,7 +58,7 @@ function patchMobileFiller() {
     '  }, [fields, hasAcroForm, showToast]);',
   ]);
 
-  text = replaceBlock(text, "  const handleAutoFill = useCallback(async () => {", "\n\n  // ── Signature", replacement);
+  text = replaceBefore(text, "  const handleAutoFill = useCallback(async () => {", "  // ── Signature", replacement);
   writeIfChanged(path, text);
 }
 
@@ -103,7 +103,7 @@ function patchEditorPage() {
     '  }, [fields, hasAcroForm, setFields, showToast, totalPages]);',
   ]);
 
-  text = replaceBlock(text, "  const handleAutoFillFromProfile = useCallback(async () => {", "\n\n  const handleDetectFields", replacement);
+  text = replaceBefore(text, "  const handleAutoFillFromProfile = useCallback(async () => {", "  const handleDetectFields", replacement);
   writeIfChanged(path, text);
 }
 
