@@ -37,7 +37,8 @@ function patchMobileFiller() {
     'import { trackAutofillShadowReport } from "@/lib/autofill-shadow-reporting";\nimport { autofillModeFromFlag, runProfileAutofill } from "@/lib/profile-autofill";\n',
   );
 
-  text = text.replace(/\/\/ .+ Profile matcher[\s\S]*?function isSignatureField\(name: string\): boolean \{/, 'function isSignatureField(name: string): boolean {');
+  text = text.replace(/\/\/ .+ Profile matcher[\s\S]*?const SIG_KEYWORDS/, 'const SIG_KEYWORDS');
+  text = text.replace(/\nfunction matchProfileKey\(name: string\): string \| null \{[\s\S]*?\n}\n\nfunction isSignatureField/, '\nfunction isSignatureField');
 
   const replacement = lines([
     '  const handleAutoFill = useCallback(async () => {',
