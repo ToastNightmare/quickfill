@@ -3,6 +3,7 @@ import {
   predictAutofillFields,
   summarizeAutofillPredictions,
   type AutofillFieldCandidate,
+  type AutofillFieldType,
   type AutofillPrediction,
   type AutofillProfile,
 } from "./autofill-intelligence";
@@ -14,7 +15,7 @@ export interface ProfileAutofillField {
   name?: string;
   label?: string;
   nearbyText?: string;
-  type: "text" | "checkbox" | "signature" | "date" | "comb";
+  type: AutofillFieldType | "whiteout";
   value?: string;
 }
 
@@ -70,10 +71,14 @@ export function matchLegacyProfileKey(name: string | undefined): string | null {
   return null;
 }
 
-function toCandidate(field: ProfileAutofillField): AutofillFieldCandidate {
+function isAutofillCandidateField(field: ProfileAutofillField): field is ProfileAutofillField & { type: AutofillFieldType } {
+  return field.type !== "whiteout";
+}
+
+function toCandidate(field: ProfileAutofillField & { type: AutofillFieldType }): AutofillFieldCandidate {
   return {
     id: field.id,
-    name: field.name,
+    name: field.name ?? field.id,
     label: field.label,
     nearbyText: field.nearbyText,
     type: field.type,
@@ -83,7 +88,7 @@ function toCandidate(field: ProfileAutofillField): AutofillFieldCandidate {
 
 function legacyKeyForField(field: ProfileAutofillField) {
   if (field.type !== "text") return null;
-  return matchLegacyProfileKey(field.name ?? field.label);
+  return matchLegacyProfileKey(field.name ?? field.label ?? field.id);
 }
 
 function applyLegacyProfileAutofill<T extends ProfileAutofillField>(fields: T[], profile: AutofillProfile) {
@@ -149,14 +154,18 @@ export function runProfileAutofill<T extends ProfileAutofillField>(
   profile: AutofillProfile,
   mode: ProfileAutofillMode = "legacy",
 ): ProfileAutofillResult<T> {
-  const candidates = fields.map(toCandidate);
+  const candidateFields = fields.filter(isAutofillCandidateField);
+  const candidates = candidateFields.map(toCandidate);
   const predictions = predictAutofillFields(candidates, profile);
   const summary = summarizeAutofillPredictions(predictions);
   const legacy = applyLegacyProfileAutofill(fields, profile);
 
   if (mode === "intelligence") {
-    const next = applyAutofillPredictions(fields, profile, predictions, "auto-fill");
-    const matched = next.filter((field, index) => field.value !== fields[index]?.value).length;
+    const intelligentFields = applyAutofillPredictions(candidateFields, profile, predictions, "auto-fill");
+    const intelligentFieldsById = new Map(intelligentFields.map((field) => [field.id, field]));
+    const next = fields.map((field) => (intelligentFieldsById.get(field.id) as T | undefined) ?? field);
+    const previousValuesById = new Map(fields.map((field) => [field.id, field.value]));
+    const matched = next.filter((field) => field.value !== previousValuesById.get(field.id)).length;
     return {
       fields: next,
       matched,
