@@ -20,7 +20,7 @@ This checklist is the standing launch pass for QuickFill before paid marketing, 
 - Confirm `/api/stripe/checkout` returns JSON errors, never raw server failures.
 - Confirm checkout attempts are rate-limited.
 - Confirm Stripe Checkout has promotion codes enabled.
-- Confirm `checkout_session_created`, `checkout_session_failed`, and `subscription_started` are visible in analytics.
+- Confirm `checkout_start` and `subscription_started` are visible in analytics.
 - Confirm webhook events are idempotent through `stripe_events`.
 - Confirm customer and subscription mappings are stored for future billing changes.
 
@@ -43,11 +43,10 @@ This checklist is the standing launch pass for QuickFill before paid marketing, 
 - Confirm `/api/support` stores support requests.
 - Confirm `QUICKFILL_ADMIN_EMAILS` and `RESEND_API_KEY` are configured so support requests notify admins.
 - Confirm support messages from download failures include filename, field count, page count, and error context.
-- Confirm `support_request_submitted` appears in analytics.
 
 ## Analytics
 
-- Confirm these core funnel events are present: `home_cta_click`, `template_start`, `editor_upload_started`, `editor_pdf_loaded`, `profile_autofill_used`, `download_attempt`, `download_success`, `download_failed`, `free_limit_hit`, `checkout_start`, `checkout_session_created`, `checkout_session_failed`, `subscription_started`, `support_request_submitted`.
+- Confirm these core funnel events are present: `home_cta_click`, `template_start`, `editor_upload_started`, `editor_pdf_loaded`, `profile_autofill_used`, `download_attempt`, `download_success`, `download_failed`, `free_limit_hit`, `checkout_start`, `subscription_started`.
 - Confirm analytics ingestion tolerates missing Redis without breaking user flows where possible.
 - Review `analytics:recent` after every launch test session.
 
