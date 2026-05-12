@@ -16,6 +16,16 @@ function requesterId(req: NextRequest) {
   return forwarded?.split(",")[0] || realIp || "admin-login";
 }
 
+function missingPasscodeResponse() {
+  return NextResponse.json(
+    {
+      error:
+        "Admin passcode is not configured in Vercel yet. Add QUICKFILL_ADMIN_PASSWORD to Production and redeploy.",
+    },
+    { status: 503 },
+  );
+}
+
 export async function POST(req: NextRequest) {
   const limited = await checkRateLimit(`admin-login:${requesterId(req)}`);
   if (!limited.success) {
@@ -23,10 +33,7 @@ export async function POST(req: NextRequest) {
   }
 
   if (!isAdminPasswordConfigured()) {
-    return NextResponse.json(
-      { error: "Admin passcode is not configured yet." },
-      { status: 503 },
-    );
+    return missingPasscodeResponse();
   }
 
   const body = await req.json().catch(() => null);
@@ -39,10 +46,7 @@ export async function POST(req: NextRequest) {
 
   const token = adminSessionToken();
   if (!token) {
-    return NextResponse.json(
-      { error: "Admin passcode is not configured yet." },
-      { status: 503 },
-    );
+    return missingPasscodeResponse();
   }
 
   const response = NextResponse.json({ ok: true });
