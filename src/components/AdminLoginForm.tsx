@@ -82,7 +82,7 @@ export function AdminLoginForm() {
         </form>
 
         <div className="mt-6 rounded-lg border border-border bg-surface-alt p-4 text-sm text-text-muted">
-          Signed-in admins can also enter through their configured admin email. Passcode access expires after 12 hours.
+          Passcode access expires after 12 hours. Clerk admin details are checked only after passcode access is active.
         </div>
 
         <Link href="/" className="mt-6 inline-flex text-sm font-semibold text-accent hover:underline">

@@ -87,8 +87,17 @@ export function isAdminUser(user: ClerkUserLike | null | undefined) {
 }
 
 export async function getAdminUser() {
-  const user = await currentUser();
-  if (isAdminUser(user)) return user;
-  if (await hasAdminSessionCookie()) return user ?? { primaryEmailAddress: { emailAddress: "admin-session" } };
-  return null;
+  if (!(await hasAdminSessionCookie())) return null;
+
+  try {
+    const user = await currentUser();
+    if (isAdminUser(user)) return user;
+  } catch (error) {
+    console.warn(
+      "Admin session is valid, but Clerk user lookup failed.",
+      error instanceof Error ? error.message : String(error),
+    );
+  }
+
+  return { primaryEmailAddress: { emailAddress: "admin-session" } };
 }
