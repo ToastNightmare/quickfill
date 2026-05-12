@@ -23,7 +23,7 @@ export function getAdminEmails() {
 }
 
 function adminPassword() {
-  return process.env.QUICKFILL_ADMIN_PASSWORD ?? process.env.ADMIN_PASSWORD ?? "";
+  return (process.env.QUICKFILL_ADMIN_PASSWORD ?? process.env.ADMIN_PASSWORD ?? "").trim();
 }
 
 function timingSafeStringEqual(left: string, right: string) {
@@ -34,18 +34,18 @@ function timingSafeStringEqual(left: string, right: string) {
 }
 
 export function isAdminPasswordConfigured() {
-  return adminPassword().length >= 12;
+  return adminPassword().length > 0;
 }
 
 export function verifyAdminPassword(password: string) {
   const expected = adminPassword();
-  if (expected.length < 12 || password.length === 0) return false;
-  return timingSafeStringEqual(password, expected);
+  if (expected.length === 0 || password.length === 0) return false;
+  return timingSafeStringEqual(password.trim(), expected);
 }
 
 export function adminSessionToken() {
   const password = adminPassword();
-  if (password.length < 12) return null;
+  if (password.length === 0) return null;
   return crypto.createHmac("sha256", password).update("quickfill-admin-session-v1").digest("hex");
 }
 
