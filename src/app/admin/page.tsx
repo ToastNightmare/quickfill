@@ -1,8 +1,10 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { AlertTriangle, BarChart3, CreditCard, Inbox, ServerCog, ShieldCheck, Users } from "lucide-react";
-import { notFound } from "next/navigation";
 import { getAdminUser } from "@/lib/admin";
+import { AdminLoginForm } from "@/components/AdminLoginForm";
+
+export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
   title: "Admin | QuickFill",
@@ -53,7 +55,7 @@ const adminCards = [
 
 export default async function AdminPage() {
   const admin = await getAdminUser();
-  if (!admin) notFound();
+  if (!admin) return <AdminLoginForm />;
 
   return (
     <div className="px-4 py-10 sm:px-6 lg:px-8">
