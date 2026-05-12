@@ -1,4 +1,8 @@
+import crypto from "crypto";
 import { currentUser } from "@clerk/nextjs/server";
+import { cookies } from "next/headers";
+
+export const ADMIN_SESSION_COOKIE = "qf_admin_session";
 
 interface ClerkEmail {
   emailAddress?: string | null;
@@ -16,6 +20,43 @@ export function getAdminEmails() {
     .split(",")
     .map((email) => email.trim().toLowerCase())
     .filter(Boolean);
+}
+
+function adminPassword() {
+  return process.env.QUICKFILL_ADMIN_PASSWORD ?? process.env.ADMIN_PASSWORD ?? "";
+}
+
+function timingSafeStringEqual(left: string, right: string) {
+  const leftBuffer = Buffer.from(left);
+  const rightBuffer = Buffer.from(right);
+  if (leftBuffer.length !== rightBuffer.length) return false;
+  return crypto.timingSafeEqual(leftBuffer, rightBuffer);
+}
+
+export function isAdminPasswordConfigured() {
+  return adminPassword().length >= 12;
+}
+
+export function verifyAdminPassword(password: string) {
+  const expected = adminPassword();
+  if (expected.length < 12 || password.length === 0) return false;
+  return timingSafeStringEqual(password, expected);
+}
+
+export function adminSessionToken() {
+  const password = adminPassword();
+  if (password.length < 12) return null;
+  return crypto.createHmac("sha256", password).update("quickfill-admin-session-v1").digest("hex");
+}
+
+export async function hasAdminSessionCookie() {
+  const expected = adminSessionToken();
+  if (!expected) return false;
+
+  const cookieStore = await cookies();
+  const provided = cookieStore.get(ADMIN_SESSION_COOKIE)?.value;
+  if (!provided) return false;
+  return timingSafeStringEqual(provided, expected);
 }
 
 function hasAdminMetadata(user: ClerkUserLike) {
@@ -47,5 +88,7 @@ export function isAdminUser(user: ClerkUserLike | null | undefined) {
 
 export async function getAdminUser() {
   const user = await currentUser();
-  return isAdminUser(user) ? user : null;
+  if (isAdminUser(user)) return user;
+  if (await hasAdminSessionCookie()) return user ?? { primaryEmailAddress: { emailAddress: "admin-session" } };
+  return null;
 }
