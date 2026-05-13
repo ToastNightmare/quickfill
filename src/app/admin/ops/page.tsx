@@ -7,12 +7,14 @@ import {
   CircleHelp,
   Database,
   Gauge,
+  Inbox,
   KeyRound,
   Mail,
   ServerCog,
   ShieldCheck,
 } from "lucide-react";
 import { requireAdminUser } from "@/lib/admin-routing";
+import { getSupportQueueHealth } from "@/lib/admin-logs";
 import { checkDatabaseConnection, isDatabaseConfigured, query } from "@/lib/db";
 import { isRedisConfigured } from "@/lib/redis";
 
@@ -189,6 +191,7 @@ export default async function AdminOpsPage() {
 
   const database = await checkDatabaseConnection();
   const billingSync = await loadLatestBillingSync();
+  const supportQueue = database.ok ? await getSupportQueueHealth() : null;
   const redisReady = isRedisConfigured();
   const cronReady = hasEnv("CRON_SECRET");
   const stripeCoreReady = hasEnv(
@@ -231,6 +234,21 @@ export default async function AdminOpsPage() {
       detail: database.message,
       icon: Database,
       items: ["Neon Postgres stores users, subscriptions, usage, Stripe events, and audit events.", "If this fails, billing state and usage tracking cannot be trusted."],
+    },
+    {
+      name: "Support queue",
+      status: supportQueue?.status ?? "warn",
+      detail: supportQueue?.message ?? "Support queue health needs the database to be reachable.",
+      icon: Inbox,
+      items: supportQueue
+        ? [
+            `${supportQueue.newCount} new, ${supportQueue.openCount} open, ${supportQueue.unassignedCount} unassigned.`,
+            supportQueue.oldestUnresolvedAt
+              ? `Oldest unresolved request: ${formatDateTime(supportQueue.oldestUnresolvedAt)} (${supportQueue.oldestUnresolvedHours ?? 0}h old).`
+              : "No unresolved support requests right now.",
+            `Warns when requests are older than ${supportQueue.staleHours} hours or the queue reaches launch-volume thresholds.`,
+          ]
+        : ["Database health must be green before support queue health can be trusted."],
     },
     {
       name: "Redis rate limits",
@@ -327,7 +345,7 @@ export default async function AdminOpsPage() {
             <p>Visit the homepage, pricing page, sign-in, dashboard, editor, and checkout start after every production deploy.</p>
             <p>Review Vercel runtime logs, Stripe webhook delivery, and admin analytics before calling a release complete.</p>
             <p>Run a real PDF upload/fill/download smoke test before paid traffic or public announcements.</p>
-            <p>Keep the database, Redis, Stripe, Clerk, and monitor checks green before scaling toward high user volume.</p>
+            <p>Keep the database, Redis, Stripe, Clerk, monitor, and support queue checks green before scaling toward high user volume.</p>
           </div>
         </section>
       </div>
