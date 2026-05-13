@@ -2,6 +2,7 @@ import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { checkDatabaseConnection, isDatabaseConfigured, query } from "@/lib/db";
 import { getRedis, isRedisConfigured } from "@/lib/redis";
+import { isAuthorizedCronRequest } from "@/lib/cron-auth";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -209,10 +210,7 @@ async function sendAlertIfNeeded(report: Omit<HealthReport, "alert">) {
 }
 
 export async function GET(request: NextRequest) {
-  const cronSecret = process.env.CRON_SECRET;
-  const authHeader = request.headers.get("authorization");
-
-  if (!cronSecret || authHeader !== `Bearer ${cronSecret}`) {
+  if (!isAuthorizedCronRequest(request)) {
     return unauthorized();
   }
 

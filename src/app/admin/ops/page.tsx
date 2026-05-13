@@ -139,6 +139,7 @@ export default async function AdminOpsPage() {
       detail: cronReady ? "Cron secret is configured." : "CRON_SECRET is missing.",
       icon: ServerCog,
       items: [
+        cronReady ? "CRON_SECRET is configured for authorized monitor requests." : "Add CRON_SECRET so scheduled monitor requests can authenticate.",
         "Vercel runs /api/cron/health-check daily on the current Hobby plan.",
         "The monitor records audit events and checks the homepage, database, Redis, Stripe, and Clerk.",
         alertReady ? "Alert recipients are configured." : "Add QUICKFILL_ALERT_EMAILS to send failure alerts.",
