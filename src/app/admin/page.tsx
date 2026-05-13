@@ -28,6 +28,12 @@ const adminCards = [
     icon: ServerCog,
   },
   {
+    href: "/admin/billing-sync",
+    title: "Billing repair",
+    body: "Run a safe Stripe sync when plan access or payment state needs immediate correction.",
+    icon: CreditCard,
+  },
+  {
     href: "/admin/users",
     title: "User management",
     body: "Search users, check plan state, usage, and safe customer details.",
