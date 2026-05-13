@@ -1,10 +1,48 @@
-import { PDFDocument, rgb, StandardFonts, PDFName } from "pdf-lib";
+import { PDFDocument, rgb, StandardFonts, PDFName, type RGB } from "pdf-lib";
 import type { EditorField } from "./types";
 import { APP_CONFIG } from "./config";
 
 /** Replace control characters (including newlines) with a space, keeps text WinAnsi-safe */
 function sanitize(text: string): string {
   return text.replace(/[\x00-\x09\x0b-\x1f\x7f\n\r]/g, " ");
+}
+
+/**
+ * Keep eraser/whiteout marks behind everything the customer adds afterwards.
+ * This makes the final PDF match the editor: whiteout first, text/signature/checks on top.
+ */
+export function orderFieldsForPdfDraw(editorFields: EditorField[]): EditorField[] {
+  const whiteoutFields = editorFields.filter((field) => field.type === "whiteout");
+  const overlayFields = editorFields.filter((field) => field.type !== "whiteout");
+  return [...whiteoutFields, ...overlayFields];
+}
+
+function parsePdfColor(color?: string | null): RGB {
+  if (!color) return rgb(1, 1, 1);
+  const value = color.trim().toLowerCase();
+
+  const hexMatch = value.match(/^#([0-9a-f]{3}|[0-9a-f]{6})$/i);
+  if (hexMatch) {
+    const raw = hexMatch[1];
+    const full = raw.length === 3 ? raw.split("").map((char) => char + char).join("") : raw;
+    const intValue = Number.parseInt(full, 16);
+    return rgb(
+      ((intValue >> 16) & 255) / 255,
+      ((intValue >> 8) & 255) / 255,
+      (intValue & 255) / 255
+    );
+  }
+
+  const rgbaMatch = value.match(/^rgba?\(([^)]+)\)$/i);
+  if (rgbaMatch) {
+    const [r, g, b] = rgbaMatch[1]
+      .split(",")
+      .slice(0, 3)
+      .map((part) => Math.max(0, Math.min(255, Number.parseFloat(part.trim()) || 0)) / 255);
+    return rgb(r ?? 1, g ?? 1, b ?? 1);
+  }
+
+  return rgb(1, 1, 1);
 }
 
 /**
@@ -95,6 +133,7 @@ export async function fillPdf(
   const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
   const signatureFont = await pdfDoc.embedFont(StandardFonts.HelveticaOblique);
   const watermarkFont = await pdfDoc.embedFont(StandardFonts.Helvetica);
+  const orderedFields = orderFieldsForPdfDraw(editorFields);
 
   if (hasAcroForm) {
     const form = pdfDoc.getForm();
@@ -110,10 +149,12 @@ export async function fillPdf(
       }
     }
 
-    // Set user-filled values (also sanitized)
-    for (const field of editorFields) {
+    // Set user-filled values (also sanitized). Ordered draw keeps whiteout behind overlays.
+    for (const field of orderedFields) {
       try {
-        if (field.type === "signature" && field.signatureDataUrl) {
+        if (field.type === "whiteout") {
+          await drawFieldOnPage(pdfDoc, field, pageScales, font, signatureFont);
+        } else if (field.type === "signature" && field.signatureDataUrl) {
           await drawFieldOnPage(pdfDoc, field, pageScales, font, signatureFont);
         } else if (field.type === "text" || field.type === "date" || field.type === "signature") {
           try {
@@ -130,6 +171,8 @@ export async function fillPdf(
           } catch {
             await drawFieldOnPage(pdfDoc, field, pageScales, font, signatureFont);
           }
+        } else {
+          await drawFieldOnPage(pdfDoc, field, pageScales, font, signatureFont);
         }
       } catch {
         await drawFieldOnPage(pdfDoc, field, pageScales, font, signatureFont);
@@ -160,7 +203,7 @@ export async function fillPdf(
       // AcroForm removal not critical - read-only fields are still protected
     }
   } else {
-    for (const field of editorFields) {
+    for (const field of orderedFields) {
       await drawFieldOnPage(pdfDoc, field, pageScales, font, signatureFont);
     }
   }
@@ -213,7 +256,16 @@ async function drawFieldOnPage(
   const pdfW = field.width;
   const pdfH = field.height;
 
-  if (field.type === "signature" && field.signatureDataUrl) {
+  if (field.type === "whiteout") {
+    page.drawRectangle({
+      x: pdfX,
+      y: pdfY,
+      width: pdfW,
+      height: pdfH,
+      color: parsePdfColor(field.fillColor),
+      borderWidth: 0,
+    });
+  } else if (field.type === "signature" && field.signatureDataUrl) {
     try {
       const imgBytes = dataUrlToBytes(field.signatureDataUrl);
       if (imgBytes.length === 0) throw new Error("Empty signature data");
