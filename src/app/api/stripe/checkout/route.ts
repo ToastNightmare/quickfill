@@ -6,6 +6,7 @@ import { APP_CONFIG } from "@/lib/config";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { trackServerEvent } from "@/lib/server-analytics";
 import { alertAdmins } from "@/lib/admin-alerts";
+import { getStoredSubscriptionSnapshot } from "@/lib/billing-store";
 import { log } from "@/lib/log";
 
 function appOrigin(req: NextRequest) {
@@ -72,7 +73,11 @@ export async function POST(req: NextRequest) {
 
   try {
     const metadata = { userId, plan, billing, firstName };
-    const existingCustomerId = isRedisConfigured() ? await getRedis().get<string>(`stripe_customer:${userId}`) : null;
+    const [snapshot, cachedCustomerId] = await Promise.all([
+      getStoredSubscriptionSnapshot(userId),
+      isRedisConfigured() ? getRedis().get<string>(`stripe_customer:${userId}`) : Promise.resolve(null),
+    ]);
+    const existingCustomerId = snapshot?.stripeCustomerId ?? cachedCustomerId;
 
     const session = await getStripe().checkout.sessions.create({
       mode: "subscription",
