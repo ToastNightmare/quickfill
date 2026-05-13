@@ -28,6 +28,7 @@ export function SupportForm({
   const [email, setEmail] = useState("");
   const [subject, setSubject] = useState(defaultSubject);
   const [message, setMessage] = useState(defaultMessage);
+  const [company, setCompany] = useState("");
   const [status, setStatus] = useState<"idle" | "sending" | "sent" | "error">("idle");
   const [error, setError] = useState("");
 
@@ -67,11 +68,13 @@ export function SupportForm({
           subject,
           message,
           source,
+          company,
         }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || "Could not send support message.");
       setStatus("sent");
+      setCompany("");
       if (!defaultMessage) setMessage("");
       onSent?.();
     } catch (err) {
@@ -93,6 +96,18 @@ export function SupportForm({
           <h2 className="text-lg font-semibold">{title}</h2>
           <p className="mt-1 text-sm text-text-muted">{description}</p>
         </div>
+      </div>
+
+      <div className="hidden" aria-hidden="true">
+        <label>
+          Company
+          <input
+            tabIndex={-1}
+            autoComplete="off"
+            value={company}
+            onChange={(event) => setCompany(event.target.value)}
+          />
+        </label>
       </div>
 
       <div className="mt-4 grid gap-3 sm:grid-cols-2">
