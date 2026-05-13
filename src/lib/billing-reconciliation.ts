@@ -39,6 +39,10 @@ export type BillingReconciliationResult = {
   message: string;
 };
 
+type BillingReconciliationForUserOptions = {
+  email?: string | null;
+};
+
 const LIVE_SUBSCRIPTION_STATUSES = new Set<Stripe.Subscription.Status>(["active", "trialing"]);
 
 function clampLimit(limit?: number) {
@@ -139,6 +143,25 @@ async function fetchCurrentSubscription(candidate: SubscriptionCandidate) {
   return storedSubscription;
 }
 
+async function stripeCustomerCandidateFromEmail(userId: string, email?: string | null): Promise<SubscriptionCandidate | null> {
+  const cleanEmail = email?.trim().toLowerCase();
+  if (!cleanEmail) return null;
+
+  const customers = await getStripe().customers.list({ email: cleanEmail, limit: 10 });
+  const customer = customers.data[0];
+  if (!customer) return null;
+
+  return {
+    user_id: userId,
+    tier: null,
+    status: null,
+    current_period_end: null,
+    stripe_customer_id: customer.id,
+    stripe_subscription_id: null,
+    updated_at: null,
+  };
+}
+
 async function reconcileCandidate(candidate: SubscriptionCandidate, result: BillingReconciliationResult) {
   if (!candidate.user_id) {
     result.skipped += 1;
@@ -225,7 +248,10 @@ export async function reconcileStripeBilling(options: { limit?: number } = {}): 
   return finalizeResult(result);
 }
 
-export async function reconcileStripeBillingForUser(userId: string): Promise<BillingReconciliationResult> {
+export async function reconcileStripeBillingForUser(
+  userId: string,
+  options: BillingReconciliationForUserOptions = {},
+): Promise<BillingReconciliationResult> {
   const result = createResult("Customer billing record synced from Stripe.");
   const configError = requiredConfigError(result);
   if (configError) return configError;
@@ -239,13 +265,15 @@ export async function reconcileStripeBillingForUser(userId: string): Promise<Bil
     [userId],
   );
 
-  const candidate = candidates[0];
+  const candidate = candidates[0] ?? (await stripeCustomerCandidateFromEmail(userId, options.email));
   if (!candidate) {
     return {
       ...result,
       ok: false,
       skipped: 1,
-      message: "No stored billing record found for this user.",
+      message: options.email
+        ? "No stored billing record or Stripe customer found for this user."
+        : "No stored billing record found for this user.",
     };
   }
 
