@@ -72,6 +72,16 @@ describe("billing entitlements", () => {
     expect(redis.get).not.toHaveBeenCalledWith("sub:user_123");
   });
 
+  it("returns free when the database has no subscription row even if Redis has stale Pro cache", async () => {
+    mockQuery.mockResolvedValueOnce([] as never);
+    redis.get.mockResolvedValue("pro");
+
+    await expect(getStoredTier("user_123")).resolves.toBe("free");
+
+    expect(redis.get).not.toHaveBeenCalledWith("sub:user_123");
+    expect(redis.del).toHaveBeenCalledWith("sub:user_123");
+  });
+
   it("flags active stored subscriptions with missing billing periods for admin review", async () => {
     mockQuery.mockResolvedValueOnce([
       {
