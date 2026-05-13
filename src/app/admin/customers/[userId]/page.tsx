@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft, CreditCard, FileText, LockKeyhole, ShieldCheck, UserRound } from "lucide-react";
-import { getAdminUser } from "@/lib/admin";
+import { requireAdminUser } from "@/lib/admin-routing";
 import { getAdminCustomer } from "@/lib/admin-console";
 
 export const metadata: Metadata = {
@@ -24,8 +24,7 @@ function money(cents: number) {
 }
 
 export default async function AdminCustomerPage({ params }: PageProps) {
-  const admin = await getAdminUser();
-  if (!admin) notFound();
+  await requireAdminUser();
 
   const { userId } = await params;
   const customer = await getAdminCustomer(userId).catch(() => null);
