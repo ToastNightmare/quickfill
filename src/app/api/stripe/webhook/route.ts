@@ -4,7 +4,13 @@ import type Stripe from "stripe";
 import { getStripe } from "@/lib/stripe";
 import { getRedis, isRedisConfigured } from "@/lib/redis";
 import { trackServerEvent } from "@/lib/server-analytics";
-import { claimStripeEvent, saveSubscriptionSnapshot, tierFromPriceId, type QuickFillTier } from "@/lib/billing-store";
+import {
+  claimStripeEvent,
+  saveSubscriptionSnapshot,
+  stripeSubscriptionPeriodEnd,
+  tierFromPriceId,
+  type QuickFillTier,
+} from "@/lib/billing-store";
 import { alertAdmins } from "@/lib/admin-alerts";
 import { log } from "@/lib/log";
 
@@ -42,10 +48,6 @@ function emailWrapper(content: string) {
       </div>
     </div>
   `;
-}
-
-function subscriptionPeriodEnd(subscription: Stripe.Subscription) {
-  return (subscription as unknown as { current_period_end?: number | null }).current_period_end ?? null;
 }
 
 function subscriptionTier(subscription: Stripe.Subscription): QuickFillTier {
@@ -87,7 +89,7 @@ async function saveSubscriptionForUser(userId: string, subscription: Stripe.Subs
     subscriptionId: subscription.id,
     tier,
     status: subscription.status,
-    currentPeriodEnd: subscriptionPeriodEnd(subscription),
+    currentPeriodEnd: stripeSubscriptionPeriodEnd(subscription),
   });
 
   return { tier, customerId };
@@ -128,7 +130,7 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
     subscriptionId: subscription?.id ?? (session.subscription ? String(session.subscription) : null),
     tier,
     status: subscription?.status ?? "active",
-    currentPeriodEnd: subscription ? subscriptionPeriodEnd(subscription) : null,
+    currentPeriodEnd: subscription ? stripeSubscriptionPeriodEnd(subscription) : null,
   });
 
   const email = session.customer_email ?? (customerId ? await getEmailForCustomer(customerId) : null);
@@ -211,7 +213,7 @@ async function handleSubscriptionDeleted(subscription: Stripe.Subscription) {
     subscriptionId: subscription.id,
     tier: "free",
     status: "canceled",
-    currentPeriodEnd: subscriptionPeriodEnd(subscription),
+    currentPeriodEnd: stripeSubscriptionPeriodEnd(subscription),
   });
 
   const email = subscription.customer ? await getEmailForCustomer(String(subscription.customer)) : null;
