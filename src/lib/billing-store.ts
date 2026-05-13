@@ -83,20 +83,28 @@ export function tierFromPriceId(priceId?: string | null): QuickFillTier | null {
   return null;
 }
 
-export async function claimStripeEvent(eventId: string, eventType: string) {
-  if (!isDatabaseConfigured()) return true;
+export async function hasProcessedStripeEvent(eventId: string) {
+  if (!isDatabaseConfigured()) return false;
 
-  try {
-    await query(
-      "insert into stripe_events (stripe_event_id, event_type, processed_at) values ($1, $2, now())",
-      [eventId, eventType],
-    );
-    return true;
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    if (message.includes("duplicate") || message.includes("unique")) return false;
-    throw error;
-  }
+  const rows = await query<{ stripe_event_id: string }>(
+    "select stripe_event_id from stripe_events where stripe_event_id = $1 and processed_at is not null limit 1",
+    [eventId],
+  );
+
+  return Boolean(rows[0]);
+}
+
+export async function markStripeEventProcessed(eventId: string, eventType: string) {
+  if (!isDatabaseConfigured()) return;
+
+  await query(
+    `insert into stripe_events (stripe_event_id, event_type, processed_at)
+     values ($1, $2, now())
+     on conflict (stripe_event_id) do update set
+       event_type = excluded.event_type,
+       processed_at = now()`,
+    [eventId, eventType],
+  );
 }
 
 export async function saveSubscriptionSnapshot(input: {
