@@ -213,7 +213,6 @@ export function AdminSupportInbox({
             <div className="mt-5 flex flex-wrap gap-2">
               <a
                 href={`mailto:${message.email}?subject=${encodeURIComponent("Re: " + message.subject)}`}
-                onClick={() => void updateMessage(message, { replySent: true })}
                 className="inline-flex items-center justify-center gap-2 rounded-lg border border-border px-3 py-2 text-sm font-semibold text-text transition-colors hover:border-accent hover:text-accent"
               >
                 <Reply className="h-4 w-4" />
