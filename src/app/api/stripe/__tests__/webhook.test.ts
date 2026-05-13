@@ -2,7 +2,13 @@ import { NextRequest } from "next/server";
 
 import { POST } from "../webhook/route";
 import { alertAdmins } from "@/lib/admin-alerts";
-import { saveSubscriptionSnapshot, hasProcessedStripeEvent, markStripeEventProcessed, stripeSubscriptionPeriodEnd, tierFromPriceId } from "@/lib/billing-store";
+import {
+  saveSubscriptionSnapshot,
+  hasProcessedStripeEvent,
+  markStripeEventProcessed,
+  stripeSubscriptionPeriodEnd,
+  tierFromPriceId,
+} from "@/lib/billing-store";
 import { isDatabaseConfigured, query } from "@/lib/db";
 import { getRedis, isRedisConfigured } from "@/lib/redis";
 import { trackServerEvent } from "@/lib/server-analytics";
@@ -137,7 +143,7 @@ describe("Stripe webhook payment truth", () => {
     mockIsRedisConfigured.mockReturnValue(true);
     mockGetRedis.mockReturnValue({ get: jest.fn().mockResolvedValue("user_test") } as never);
     mockIsDatabaseConfigured.mockReturnValue(false);
-    mockQuery.mockResolvedValue({ rows: [] } as never);
+    mockQuery.mockResolvedValue([] as never);
     mockTrackServerEvent.mockResolvedValue(undefined);
     mockAlertAdmins.mockResolvedValue(undefined);
   });
@@ -155,8 +161,8 @@ describe("Stripe webhook payment truth", () => {
     expect(mockSaveSubscriptionSnapshot).toHaveBeenCalledWith(
       expect.objectContaining({
         status: "past_due",
-        stripeCustomerId: "cus_test",
-        stripeSubscriptionId: "sub_test",
+        customerId: "cus_test",
+        subscriptionId: "sub_test",
         tier: "pro",
         userId: "user_test",
       }),
@@ -208,6 +214,45 @@ describe("Stripe webhook payment truth", () => {
     expect(mockMarkStripeEventProcessed).toHaveBeenCalledWith("evt_test", "invoice.payment_succeeded");
   });
 
+  it("keeps unpaid subscription updates from being treated as healthy Pro", async () => {
+    stripe.webhooks.constructEvent.mockReturnValue(
+      makeEvent("customer.subscription.updated", makeSubscription({ status: "unpaid" })),
+    );
+
+    const response = await POST(makeRequest());
+
+    expect(response.status).toBe(200);
+    expect(mockSaveSubscriptionSnapshot).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: "unpaid",
+        tier: "pro",
+        userId: "user_test",
+      }),
+    );
+    expect(mockMarkStripeEventProcessed).toHaveBeenCalledWith("evt_test", "customer.subscription.updated");
+  });
+
+  it("reverts cancelled subscriptions to free", async () => {
+    stripe.webhooks.constructEvent.mockReturnValue(
+      makeEvent("customer.subscription.deleted", makeSubscription({ status: "canceled" })),
+    );
+
+    const response = await POST(makeRequest());
+
+    expect(response.status).toBe(200);
+    expect(mockSaveSubscriptionSnapshot).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: "canceled",
+        customerId: "cus_test",
+        subscriptionId: "sub_test",
+        tier: "free",
+        userId: "user_test",
+      }),
+    );
+    expect(mockTrackServerEvent).toHaveBeenCalledWith("subscription_cancelled", { source: "stripe_subscription" });
+    expect(mockMarkStripeEventProcessed).toHaveBeenCalledWith("evt_test", "customer.subscription.deleted");
+  });
+
   it("skips duplicate webhook events before touching Stripe again", async () => {
     stripe.webhooks.constructEvent.mockReturnValue(makeEvent("invoice.payment_failed", makeInvoice()));
     mockHasProcessedStripeEvent.mockResolvedValue(true);
@@ -230,11 +275,11 @@ describe("Stripe webhook payment truth", () => {
     const body = await response.json();
 
     expect(response.status).toBe(500);
-    expect(body).toEqual({ error: "Webhook handling failed" });
+    expect(body).toEqual({ error: "Webhook processing failed" });
     expect(mockMarkStripeEventProcessed).not.toHaveBeenCalled();
     expect(mockAlertAdmins).toHaveBeenCalledWith(
       expect.objectContaining({
-        title: "Stripe webhook handler failed",
+        title: "Stripe webhook processing failed",
       }),
     );
   });
