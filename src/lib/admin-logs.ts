@@ -19,6 +19,7 @@ export interface AdminDownloadLog {
 export type AdminSupportStatus = "new" | "open" | "closed";
 export type AdminSupportPriority = "low" | "normal" | "high" | "urgent";
 export type AdminSupportCategory = "general" | "pdf" | "billing" | "account" | "bug";
+export type AdminSupportStatusFilter = AdminSupportStatus | "all";
 
 export interface AdminSupportMessage {
   id: string;
@@ -33,6 +34,20 @@ export interface AdminSupportMessage {
   status: AdminSupportStatus;
   priority: AdminSupportPriority;
   category: AdminSupportCategory;
+}
+
+export interface AdminSupportMessageFilters {
+  limit?: number;
+  offset?: number;
+  status?: AdminSupportStatusFilter;
+  search?: string;
+}
+
+export interface AdminSupportMessagePage {
+  messages: AdminSupportMessage[];
+  total: number;
+  limit: number;
+  offset: number;
 }
 
 type SupportMessageInput = Omit<
@@ -82,6 +97,11 @@ function cleanSupportStatus(value: unknown): AdminSupportStatus {
     : "new";
 }
 
+function cleanSupportStatusFilter(value: unknown): AdminSupportStatusFilter {
+  if (value === "all" || value === undefined || value === null || value === "") return "all";
+  return cleanSupportStatus(value);
+}
+
 function cleanSupportPriority(value: unknown): AdminSupportPriority {
   return typeof value === "string" && SUPPORT_PRIORITIES.has(value as AdminSupportPriority)
     ? (value as AdminSupportPriority)
@@ -92,6 +112,21 @@ function cleanSupportCategory(value: unknown): AdminSupportCategory {
   return typeof value === "string" && SUPPORT_CATEGORIES.has(value as AdminSupportCategory)
     ? (value as AdminSupportCategory)
     : "general";
+}
+
+function cleanLimit(value: unknown) {
+  const next = Number(value ?? 100);
+  return Math.min(Math.max(Number.isFinite(next) ? Math.trunc(next) : 100, 1), 100);
+}
+
+function cleanOffset(value: unknown) {
+  const next = Number(value ?? 0);
+  return Math.max(Number.isFinite(next) ? Math.trunc(next) : 0, 0);
+}
+
+function parseCount(value: unknown) {
+  const next = Number(value ?? 0);
+  return Number.isFinite(next) ? next : 0;
 }
 
 function toIsoDate(value: string | Date) {
@@ -129,6 +164,33 @@ function mapSupportRow(row: SupportMessageRow): AdminSupportMessage {
     status: cleanSupportStatus(row.status),
     priority: cleanSupportPriority(row.priority),
     category: cleanSupportCategory(row.category),
+  };
+}
+
+function supportWhere(filters: AdminSupportMessageFilters) {
+  const params: unknown[] = [];
+  const clauses: string[] = [];
+  const status = cleanSupportStatusFilter(filters.status);
+  const search = cleanText(filters.search, 120);
+
+  if (status !== "all") {
+    params.push(status);
+    clauses.push(`status = $${params.length}`);
+  }
+
+  if (search) {
+    params.push(`%${search}%`);
+    const index = params.length;
+    clauses.push(
+      `(name ilike $${index} or email ilike $${index} or subject ilike $${index} or message ilike $${index})`,
+    );
+  }
+
+  return {
+    whereSql: clauses.length ? `where ${clauses.join(" and ")}` : "",
+    params,
+    search,
+    status,
   };
 }
 
@@ -247,24 +309,49 @@ export async function recordSupportMessage(input: SupportMessageInput) {
   return mapSupportRow(rows[0]);
 }
 
-export async function getSupportMessages(limit = 100) {
+export async function getSupportMessagePage(filters: AdminSupportMessageFilters = {}): Promise<AdminSupportMessagePage> {
   await ensureSupportMessagesTable();
 
-  const cappedLimit = Math.min(Math.max(1, limit), 500);
+  const limit = cleanLimit(filters.limit);
+  const offset = cleanOffset(filters.offset);
+  const { whereSql, params, search, status } = supportWhere(filters);
+  const includeLegacyMessages = offset === 0 && !search && status === "all";
+
+  const countRows = await query<{ count: number | string }>(
+    `select count(*)::int as count from support_messages ${whereSql}`,
+    params,
+  );
+  const totalFromDatabase = parseCount(countRows[0]?.count);
+
   const rows = await query<SupportMessageRow>(
     `
       select id, created_at, updated_at, name, email, subject, message, user_id, source, status, priority, category
       from support_messages
+      ${whereSql}
       order by
         case status when 'new' then 0 when 'open' then 1 else 2 end,
         created_at desc
-      limit $1
+      limit $${params.length + 1}
+      offset $${params.length + 2}
     `,
-    [cappedLimit],
+    [...params, limit, offset],
   );
 
-  const legacyMessages = await getLegacySupportMessages(Math.max(0, cappedLimit - rows.length));
-  return [...rows.map(mapSupportRow), ...legacyMessages].slice(0, cappedLimit);
+  const messages = rows.map(mapSupportRow);
+  const legacyMessages = includeLegacyMessages ? await getLegacySupportMessages(Math.max(0, limit - messages.length)) : [];
+  const visibleMessages = [...messages, ...legacyMessages].slice(0, limit);
+
+  return {
+    messages: visibleMessages,
+    total: totalFromDatabase + (includeLegacyMessages ? legacyMessages.length : 0),
+    limit,
+    offset,
+  };
+}
+
+export async function getSupportMessages(limit = 100) {
+  const page = await getSupportMessagePage({ limit });
+  return page.messages;
 }
 
 export async function updateSupportMessageStatus(id: string, status: AdminSupportStatus) {
