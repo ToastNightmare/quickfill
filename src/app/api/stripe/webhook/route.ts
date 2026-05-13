@@ -3,6 +3,7 @@ import { Resend } from "resend";
 import type Stripe from "stripe";
 import { getStripe } from "@/lib/stripe";
 import { getRedis, isRedisConfigured } from "@/lib/redis";
+import { isDatabaseConfigured, query } from "@/lib/db";
 import { trackServerEvent } from "@/lib/server-analytics";
 import {
   claimStripeEvent,
@@ -68,8 +69,30 @@ async function getEmailForCustomer(customerId: string): Promise<string | null> {
 }
 
 async function getUserIdForCustomer(customerId: string): Promise<string | null> {
-  if (!isRedisConfigured()) return null;
-  return getRedis().get<string>(`stripe_customer_user:${customerId}`);
+  if (isRedisConfigured()) {
+    const redisUserId = await getRedis().get<string>(`stripe_customer_user:${customerId}`);
+    if (redisUserId) return redisUserId;
+  }
+
+  if (!isDatabaseConfigured()) return null;
+
+  try {
+    const rows = await query<{ user_id: string | null }>(
+      `select user_id
+       from subscriptions
+       where stripe_customer_id = $1 and user_id is not null
+       order by updated_at desc nulls last
+       limit 1`,
+      [customerId],
+    );
+    return rows[0]?.user_id ?? null;
+  } catch (error) {
+    log.warn("stripe_customer_user_lookup_failed", {
+      customerId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return null;
+  }
 }
 
 async function getUserIdForSubscription(subscription: Stripe.Subscription): Promise<string | null> {
