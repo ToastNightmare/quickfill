@@ -49,6 +49,18 @@ export function adminSessionToken() {
   return crypto.createHmac("sha256", password).update("quickfill-admin-session-v1").digest("hex");
 }
 
+export function adminSessionCookieOptions(value: string) {
+  return {
+    name: ADMIN_SESSION_COOKIE,
+    value,
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "strict" as const,
+    path: "/",
+    maxAge: 60 * 60 * 12,
+  };
+}
+
 export async function hasAdminSessionCookie() {
   const expected = adminSessionToken();
   if (!expected) return false;

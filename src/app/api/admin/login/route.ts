@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
-  ADMIN_SESSION_COOKIE,
+  adminSessionCookieOptions,
   adminSessionToken,
   isAdminPasswordConfigured,
   verifyAdminPassword,
@@ -50,15 +50,7 @@ export async function POST(req: NextRequest) {
   }
 
   const response = NextResponse.json({ ok: true });
-  response.cookies.set({
-    name: ADMIN_SESSION_COOKIE,
-    value: token,
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "strict",
-    path: "/admin",
-    maxAge: 60 * 60 * 12,
-  });
+  response.cookies.set(adminSessionCookieOptions(token));
 
   log.info("admin_login_success", { ip: requesterId(req) });
   return response;
