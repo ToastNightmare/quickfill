@@ -78,6 +78,20 @@ export async function POST(req: NextRequest) {
       isRedisConfigured() ? getRedis().get<string>(`stripe_customer:${userId}`) : Promise.resolve(null),
     ]);
     const existingCustomerId = snapshot?.stripeCustomerId ?? cachedCustomerId;
+
+    if (snapshot?.entitled && existingCustomerId) {
+      const portalSession = await getStripe().billingPortal.sessions.create({
+        customer: existingCustomerId,
+        return_url: `${origin}/dashboard`,
+      });
+      await trackServerEvent("billing_portal_opened", {
+        source: "checkout_guard",
+        plan: snapshot.tier,
+        status: snapshot.status,
+      });
+      return NextResponse.json({ url: portalSession.url, alreadySubscribed: true });
+    }
+
     const successReturnTo = encodeURIComponent("/dashboard?upgraded=true");
 
     const session = await getStripe().checkout.sessions.create({
