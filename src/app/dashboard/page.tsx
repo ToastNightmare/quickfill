@@ -4,15 +4,27 @@ import { useUser } from "@clerk/nextjs";
 import { Suspense, useEffect, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { FileText, Sparkles, ExternalLink, Lock, Clock, User, RotateCcw } from "lucide-react";
+import { AlertTriangle, FileText, Sparkles, ExternalLink, Lock, Clock, User, RotateCcw } from "lucide-react";
 import { ProSuccessModal } from "@/components/ProSuccessModal";
 import { SupportForm } from "@/components/SupportForm";
+
+interface BillingState {
+  status: string;
+  currentPeriodEnd: string | null;
+  updatedAt: string | null;
+  entitled: boolean;
+  needsReview: boolean;
+  reviewReason: string | null;
+  hasStripeCustomer: boolean;
+  delinquent: boolean;
+}
 
 interface UsageData {
   used: number;
   limit: number;
   isPro: boolean;
   tier?: string;
+  billing?: BillingState | null;
 }
 
 interface FillEntry {
@@ -20,6 +32,11 @@ interface FillEntry {
   filledAt: string;
   fieldCount: number;
   pageCount: number;
+}
+
+function friendlyBillingStatus(status?: string | null) {
+  if (!status) return "Not active";
+  return status.replace(/_/g, " ").replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
 export default function DashboardPage() {
@@ -61,7 +78,6 @@ function DashboardContent() {
       .catch(() => {});
   }, []);
 
-  // Re-fetch usage when upgraded=true to get fresh Pro status
   useEffect(() => {
     if (upgraded === "true" && !usageError) {
       const timer = setTimeout(() => {
@@ -69,22 +85,19 @@ function DashboardContent() {
           .then((r) => r.json())
           .then((data) => {
             setUsage(data);
-            // Show success modal if now Pro
             if (data.tier === "pro" || data.tier === "business") {
               setShowSuccessModal(true);
             }
-            // Clear URL param after refreshing
             router.replace("/dashboard", { scroll: false });
           })
           .catch(() => setUsageError(true));
-      }, 1000); // Wait 1 second for webhook to process
+      }, 1000);
       return () => clearTimeout(timer);
     }
   }, [upgraded, usageError, router]);
 
   useEffect(() => {
     if (fills.length === 0) return;
-    // Fetch session statuses for all fills
     const promises = fills.map((fill) =>
       fetch(`/api/session?filename=${encodeURIComponent(fill.filename)}`)
         .then((r) => r.json())
@@ -113,25 +126,34 @@ function DashboardContent() {
   };
 
   const handleManageBilling = async () => {
-    const res = await fetch("/api/stripe/portal", { method: "POST" });
-    const data = await res.json();
-    if (data.url) {
+    try {
+      setBillingError(null);
+      const res = await fetch("/api/stripe/portal", { method: "POST" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.url) {
+        throw new Error(data.error || "Could not open billing portal.");
+      }
       window.location.href = data.url;
-    } else {
-      setBillingError(data.error || "Could not open billing portal.");
+    } catch (error) {
+      setBillingError(error instanceof Error ? error.message : "Could not open billing portal.");
       setTimeout(() => setBillingError(null), 5000);
     }
   };
 
   const tier = usage?.tier ?? "free";
   const isPaid = tier === "pro" || tier === "business";
+  const billing = usage?.billing ?? null;
+  const hasBillingIssue = Boolean(
+    billing &&
+      !isPaid &&
+      (billing.delinquent || billing.needsReview || billing.status === "canceled" || billing.status === "incomplete_expired")
+  );
   const usedPct = usage && !isPaid ? Math.min(100, (usage.used / usage.limit) * 100) : 0;
   const visibleFills = isPaid ? fills : fills.slice(0, 3);
   const lockedFills = isPaid ? [] : fills.slice(3);
 
   return (
     <div className="mx-auto max-w-4xl px-4 py-10 sm:px-6 lg:px-8">
-      {/* Welcome header */}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold sm:text-3xl">
@@ -141,7 +163,6 @@ function DashboardContent() {
             {usage?.isPro ? "You're on Pro. Fill as many PDFs as you need, no limits." : "Manage your usage and fill history."}
           </p>
         </div>
-        {/* Plan badge */}
         {usage && (
           <div className={`flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold shadow-sm ${
             isPaid
@@ -154,10 +175,40 @@ function DashboardContent() {
         )}
       </div>
 
-      {/* Upgrade success message - only show if not showing modal */}
       {upgraded === "true" && !showSuccessModal && (
-        <div className="mb-6 mt-4 rounded-xl bg-green-50 border border-green-200 px-5 py-4 text-sm text-green-800 font-medium">
-          Welcome to Pro! Your account has been upgraded. Enjoy unlimited fills.
+        <div className={`mb-6 mt-4 rounded-xl border px-5 py-4 text-sm font-medium ${isPaid ? "border-green-200 bg-green-50 text-green-800" : "border-blue-200 bg-blue-50 text-blue-800"}`}>
+          {!usage
+            ? "Checking your payment with Stripe. Your plan will update here as soon as the payment is confirmed."
+            : isPaid
+              ? "Welcome to Pro. Your account has been upgraded."
+              : "Stripe has not confirmed an active paid plan yet. If you just paid, refresh in a moment or open billing to finish payment."}
+        </div>
+      )}
+
+      {hasBillingIssue && (
+        <div className="mb-6 mt-4 rounded-xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm text-amber-900">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex gap-3">
+              <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0" />
+              <div>
+                <p className="font-semibold">Your Pro access is paused</p>
+                <p className="mt-1">
+                  Stripe shows this subscription as {friendlyBillingStatus(billing?.status)}. Update payment to restore unlimited fills.
+                </p>
+                {billing?.reviewReason && <p className="mt-1 text-xs">{billing.reviewReason}</p>}
+              </div>
+            </div>
+            {billing?.hasStripeCustomer && (
+              <button
+                onClick={handleManageBilling}
+                className="flex h-10 shrink-0 items-center justify-center gap-2 rounded-lg bg-amber-900 px-4 text-sm font-semibold text-white hover:bg-amber-800"
+              >
+                <ExternalLink className="h-4 w-4" />
+                Fix billing
+              </button>
+            )}
+          </div>
+          {billingError && <p className="mt-2 text-xs font-medium text-red-600">{billingError}</p>}
         </div>
       )}
 
@@ -168,7 +219,6 @@ function DashboardContent() {
       )}
 
       <div className="mt-8 grid gap-6 lg:grid-cols-2">
-        {/* Usage card */}
         <div className="rounded-xl border border-border bg-surface p-6 shadow-sm">
           <h2 className="text-lg font-semibold">Usage This Month</h2>
           {usageError ? (
@@ -178,7 +228,7 @@ function DashboardContent() {
               {isPaid ? (
                 <>
                   <p className="mt-2 text-sm font-semibold text-accent">
-                    ✓ Pro Plan: Unlimited fills
+                    Pro Plan: Unlimited fills
                   </p>
                   <button
                     onClick={handleManageBilling}
@@ -196,6 +246,11 @@ function DashboardContent() {
                   <p className="mt-2 text-sm text-text-muted">
                     {usage.used} of {usage.limit} free fills used
                   </p>
+                  {billing && (
+                    <p className="mt-1 text-xs text-text-muted">
+                      Billing status: {friendlyBillingStatus(billing.status)}
+                    </p>
+                  )}
                   <p className="mt-1 text-xs text-text-muted">
                     Resets {new Date(new Date().getFullYear(), new Date().getMonth() + 1, 1).toLocaleDateString("en-AU", { month: "long", day: "numeric" })}
                   </p>
@@ -220,7 +275,6 @@ function DashboardContent() {
           )}
         </div>
 
-        {/* Recent fills */}
         <div className="rounded-xl border border-border bg-surface p-6 shadow-sm">
           <h2 className="text-lg font-semibold">Recent Fills</h2>
           {fills.length === 0 ? (
@@ -288,7 +342,6 @@ function DashboardContent() {
         </div>
       </div>
 
-      {/* Quick links */}
       <div className="mt-6 grid gap-4 sm:grid-cols-2">
         <Link
           href="/profile"
@@ -325,7 +378,6 @@ function DashboardContent() {
         />
       </div>
 
-      {/* Upgrade banner for free users */}
       {usage && !isPaid && (
         <div className="mt-6 rounded-xl bg-navy p-6 text-white">
           <div className="flex flex-col items-start gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -346,7 +398,6 @@ function DashboardContent() {
         </div>
       )}
 
-      {/* Pro success modal */}
       <ProSuccessModal
         open={showSuccessModal}
         onClose={() => setShowSuccessModal(false)}
