@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useMemo, useState } from "react";
 import { Archive, CheckCircle2, CircleDot, Inbox, Mail, Reply } from "lucide-react";
 import type { AdminSupportMessage, AdminSupportStatus } from "@/lib/admin-logs";
 
@@ -47,7 +47,6 @@ export function AdminSupportInbox({ initialMessages }: { initialMessages: AdminS
   const [messages, setMessages] = useState(initialMessages);
   const [error, setError] = useState("");
   const [pendingId, setPendingId] = useState<string | null>(null);
-  const [isPending, startTransition] = useTransition();
 
   const sortedMessages = useMemo(
     () =>
@@ -59,31 +58,30 @@ export function AdminSupportInbox({ initialMessages }: { initialMessages: AdminS
     [messages],
   );
 
-  function setStatus(message: AdminSupportMessage, status: AdminSupportStatus) {
+  async function setStatus(message: AdminSupportMessage, status: AdminSupportStatus) {
     setError("");
     setPendingId(message.id);
-    startTransition(async () => {
-      try {
-        const response = await fetch(`/api/admin/support/${message.id}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ status }),
-        });
 
-        const payload = await response.json().catch(() => null);
-        if (!response.ok || !payload?.message) {
-          throw new Error(payload?.error || "Could not update support message");
-        }
+    try {
+      const response = await fetch(`/api/admin/support/${message.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status }),
+      });
 
-        setMessages((current) =>
-          current.map((item) => (item.id === message.id ? (payload.message as AdminSupportMessage) : item)),
-        );
-      } catch (nextError) {
-        setError(nextError instanceof Error ? nextError.message : "Could not update support message");
-      } finally {
-        setPendingId(null);
+      const payload = await response.json().catch(() => null);
+      if (!response.ok || !payload?.message) {
+        throw new Error(payload?.error || "Could not update support message");
       }
-    });
+
+      setMessages((current) =>
+        current.map((item) => (item.id === message.id ? (payload.message as AdminSupportMessage) : item)),
+      );
+    } catch (nextError) {
+      setError(nextError instanceof Error ? nextError.message : "Could not update support message");
+    } finally {
+      setPendingId(null);
+    }
   }
 
   if (messages.length === 0) {
@@ -110,7 +108,7 @@ export function AdminSupportInbox({ initialMessages }: { initialMessages: AdminS
       </div>
 
       {sortedMessages.map((message) => {
-        const isBusy = isPending && pendingId === message.id;
+        const isBusy = pendingId === message.id;
         return (
           <article key={message.id} className="rounded-lg border border-border bg-surface p-5 shadow-sm">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
