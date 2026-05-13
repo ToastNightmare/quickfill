@@ -2,7 +2,7 @@ import { clerkClient } from "@clerk/nextjs/server";
 import type Stripe from "stripe";
 import { getRedis } from "@/lib/redis";
 import { getStripe } from "@/lib/stripe";
-import { getDownloadLogs, getSupportMessages } from "@/lib/admin-logs";
+import { getDownloadLogs, getSupportMessagePage, type AdminSupportMessageFilters } from "@/lib/admin-logs";
 import { getStoredTier } from "@/lib/billing-store";
 
 type ClerkUser = Awaited<ReturnType<Awaited<ReturnType<typeof clerkClient>>["users"]["getUser"]>>;
@@ -240,8 +240,8 @@ export async function getAdminCustomer(userId: string): Promise<AdminCustomerDet
   };
 }
 
-export async function getAdminSupportInbox() {
-  return getSupportMessages(100);
+export async function getAdminSupportInbox(filters: AdminSupportMessageFilters = {}) {
+  return getSupportMessagePage(filters);
 }
 
 export async function getAdminFailureLogs() {
