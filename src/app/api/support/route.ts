@@ -102,7 +102,7 @@ export async function POST(request: NextRequest) {
     const forwarded = request.headers.get("x-forwarded-for");
     const realIp = request.headers.get("x-real-ip");
     const identifier = forwarded?.split(",")[0] || realIp || "support";
-    const { success } = await checkRateLimit("support:" + identifier, "default");
+    const { success } = await checkRateLimit("support:" + identifier, "support");
     if (!success) {
       return NextResponse.json({ error: "Too many support requests, try again soon" }, { status: 429 });
     }
@@ -110,6 +110,11 @@ export async function POST(request: NextRequest) {
     const body = await request.json().catch(() => null);
     if (!body || typeof body !== "object") {
       return NextResponse.json({ error: "Invalid support request" }, { status: 400 });
+    }
+
+    if (clean((body as Record<string, unknown>).company, 100)) {
+      log.warn("support_honeypot_triggered", { identifier });
+      return NextResponse.json({ ok: true });
     }
 
     const { userId, user } = await getRequestUser();
