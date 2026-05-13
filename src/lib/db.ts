@@ -1,18 +1,23 @@
 type SqlQuery = (query: string, params?: unknown[]) => Promise<unknown[]>;
+type SqlTaggedTemplate = (strings: TemplateStringsArray, ...values: unknown[]) => Promise<unknown[]>;
+
+type NeonClient = SqlTaggedTemplate & {
+  query: SqlQuery;
+};
 
 type NeonFactory = (connectionString: string) => unknown;
 
-let sqlPromise: Promise<SqlQuery> | null = null;
+let sqlPromise: Promise<NeonClient> | null = null;
 
 export function isDatabaseConfigured() {
   return Boolean(process.env.DATABASE_URL);
 }
 
-function asSqlQuery(client: unknown): SqlQuery {
-  return client as unknown as SqlQuery;
+function asNeonClient(client: unknown): NeonClient {
+  return client as unknown as NeonClient;
 }
 
-async function getSql(): Promise<SqlQuery> {
+async function getSql(): Promise<NeonClient> {
   if (!process.env.DATABASE_URL) {
     throw new Error("DATABASE_URL is not configured");
   }
@@ -20,7 +25,7 @@ async function getSql(): Promise<SqlQuery> {
   if (!sqlPromise) {
     sqlPromise = import("@neondatabase/serverless").then(({ neon }) => {
       const createClient = neon as unknown as NeonFactory;
-      return asSqlQuery(createClient(process.env.DATABASE_URL!));
+      return asNeonClient(createClient(process.env.DATABASE_URL!));
     });
   }
 
@@ -29,7 +34,7 @@ async function getSql(): Promise<SqlQuery> {
 
 export async function query<T = Record<string, unknown>>(sqlText: string, params: unknown[] = []): Promise<T[]> {
   const sql = await getSql();
-  return (await sql(sqlText, params)) as T[];
+  return (await sql.query(sqlText, params)) as T[];
 }
 
 export async function checkDatabaseConnection() {
@@ -38,7 +43,8 @@ export async function checkDatabaseConnection() {
   }
 
   try {
-    await query("select 1 as ok");
+    const sql = await getSql();
+    await sql`select 1 as ok`;
     return { ok: true, configured: true, message: "Database connection is healthy" };
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown database error";
