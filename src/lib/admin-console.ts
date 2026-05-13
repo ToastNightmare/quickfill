@@ -116,13 +116,21 @@ function toNumber(value: unknown) {
 
 async function summarizeUser(user: ClerkUser): Promise<AdminUserSummary> {
   const redis = getRedis();
-  const [snapshot, used, fills, stripeCustomerId] = await Promise.all([
+  const [snapshot, storedTier, used, fills, stripeCustomerId] = await Promise.all([
     getStoredSubscriptionSnapshot(user.id),
+    getStoredTier(user.id),
     redis.get<number>(monthKey(user.id)),
     redis.lrange<{ filename: string; filledAt: string; fieldCount: number; pageCount: number }>(`fills:${user.id}`, 0, 2),
     redis.get<string>(`stripe_customer:${user.id}`),
   ]);
-  const tier = snapshot ? (snapshot.entitled ? snapshot.tier : "free") : await getStoredTier(user.id);
+  const storedStripeCustomerId = snapshot?.stripeCustomerId ?? stripeCustomerId ?? null;
+  const missingBillingSnapshot = !snapshot && (Boolean(storedStripeCustomerId) || storedTier !== "free");
+  const tier = snapshot ? (snapshot.entitled ? snapshot.tier : "free") : "free";
+  const billingStatus = snapshot?.status ?? (missingBillingSnapshot ? "needs_sync" : null);
+  const billingNeedsReview = snapshot?.needsReview ?? missingBillingSnapshot;
+  const billingReviewReason =
+    snapshot?.reviewReason ??
+    (missingBillingSnapshot ? "Stored plan data needs billing sync before access can be trusted." : null);
 
   return {
     id: user.id,
@@ -138,13 +146,13 @@ async function summarizeUser(user: ClerkUser): Promise<AdminUserSummary> {
     tier,
     usedThisMonth: used ?? 0,
     recentFillCount: fills?.length ?? 0,
-    stripeCustomerId: snapshot?.stripeCustomerId ?? stripeCustomerId ?? null,
-    billingStatus: snapshot?.status ?? null,
+    stripeCustomerId: storedStripeCustomerId,
+    billingStatus,
     billingPeriodEnd: snapshot?.currentPeriodEnd ?? null,
     billingUpdatedAt: snapshot?.updatedAt ?? null,
     billingEntitled: snapshot?.entitled ?? false,
-    billingNeedsReview: snapshot?.needsReview ?? false,
-    billingReviewReason: snapshot?.reviewReason ?? null,
+    billingNeedsReview,
+    billingReviewReason,
   };
 }
 
@@ -274,7 +282,7 @@ export async function getAdminRevenueSummary(): Promise<AdminRevenueSummary> {
     stripe.invoices.list({ limit: 100 }),
   ]);
 
-  const activeLike = subscriptions.data.filter((sub) => ["active", "trialing", "past_due"].includes(sub.status));
+  const activeLike = subscriptions.data.filter((sub) => ["active", "trialing"].includes(sub.status));
   const monthlyRunRateCents = activeLike.reduce((total, sub) => {
     const amount = stripeAmount(sub);
     const interval = stripeInterval(sub);
