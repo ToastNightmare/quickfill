@@ -183,6 +183,11 @@ export async function getStoredTier(userId: string): Promise<QuickFillTier> {
     return "free";
   }
 
+  if (isDatabaseConfigured()) {
+    await clearCachedTier(userId);
+    return "free";
+  }
+
   if (isRedisConfigured()) {
     const tier = await getRedis().get<QuickFillTier>(`sub:${userId}`);
     if (tier === "pro" || tier === "business") return tier;
