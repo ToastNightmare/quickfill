@@ -43,6 +43,7 @@ function DashboardContent() {
   const [usageError, setUsageError] = useState(false);
   const [fills, setFills] = useState<FillEntry[]>([]);
   const [billingError, setBillingError] = useState<string | null>(null);
+  const [checkoutError, setCheckoutError] = useState<string | null>(null);
   const [savedSessions, setSavedSessions] = useState<Set<string>>(new Set());
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const router = useRouter();
@@ -97,9 +98,18 @@ function DashboardContent() {
   }, [fills]);
 
   const handleUpgrade = async () => {
-    const res = await fetch("/api/stripe/checkout", { method: "POST" });
-    const { url } = await res.json();
-    if (url) window.location.href = url;
+    try {
+      setCheckoutError(null);
+      const res = await fetch("/api/stripe/checkout", { method: "POST" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.url) {
+        throw new Error(data.error || "Checkout could not be started. Please try again.");
+      }
+      window.location.href = data.url;
+    } catch (error) {
+      setCheckoutError(error instanceof Error ? error.message : "Checkout could not be started. Please try again.");
+      setTimeout(() => setCheckoutError(null), 7000);
+    }
   };
 
   const handleManageBilling = async () => {
@@ -148,6 +158,12 @@ function DashboardContent() {
       {upgraded === "true" && !showSuccessModal && (
         <div className="mb-6 mt-4 rounded-xl bg-green-50 border border-green-200 px-5 py-4 text-sm text-green-800 font-medium">
           Welcome to Pro! Your account has been upgraded. Enjoy unlimited fills.
+        </div>
+      )}
+
+      {checkoutError && (
+        <div className="mb-6 mt-4 rounded-xl border border-red-200 bg-red-50 px-5 py-4 text-sm font-medium text-red-700">
+          {checkoutError}
         </div>
       )}
 
