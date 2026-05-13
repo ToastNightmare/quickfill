@@ -15,6 +15,8 @@ export interface AdminDownloadLog {
   message?: string | null;
 }
 
+export type AdminSupportStatus = "new" | "open" | "closed";
+
 export interface AdminSupportMessage {
   id: string;
   createdAt: string;
@@ -24,11 +26,12 @@ export interface AdminSupportMessage {
   message: string;
   userId?: string | null;
   source?: string | null;
-  status: "new" | "open" | "closed";
+  status: AdminSupportStatus;
 }
 
 const DOWNLOAD_LOG_KEY = "admin:download_logs";
 const SUPPORT_KEY = "admin:support_messages";
+const SUPPORT_STATUSES = new Set<AdminSupportStatus>(["new", "open", "closed"]);
 
 function cleanText(value: unknown, max = 180) {
   if (typeof value !== "string") return "";
@@ -38,6 +41,19 @@ function cleanText(value: unknown, max = 180) {
 function cleanNumber(value: unknown) {
   const next = Number(value ?? 0);
   return Number.isFinite(next) ? next : 0;
+}
+
+function cleanSupportStatus(value: unknown): AdminSupportStatus {
+  return typeof value === "string" && SUPPORT_STATUSES.has(value as AdminSupportStatus)
+    ? (value as AdminSupportStatus)
+    : "new";
+}
+
+function normalizeSupportMessage(message: AdminSupportMessage): AdminSupportMessage {
+  return {
+    ...message,
+    status: cleanSupportStatus(message.status),
+  };
 }
 
 export async function recordDownloadLog(input: Omit<AdminDownloadLog, "id" | "createdAt">) {
@@ -74,7 +90,7 @@ export async function recordSupportMessage(input: Omit<AdminSupportMessage, "id"
     subject: cleanText(input.subject, 140) || "Support request",
     message: cleanText(input.message, 2000),
     userId: cleanText(input.userId, 80) || null,
-    source: cleanText(input.source, 80) || null,
+    source: cleanText(input.source, 160) || null,
     status: "new",
   };
 
@@ -85,5 +101,26 @@ export async function recordSupportMessage(input: Omit<AdminSupportMessage, "id"
 }
 
 export async function getSupportMessages(limit = 100) {
-  return (await getRedis().lrange<AdminSupportMessage>(SUPPORT_KEY, 0, Math.max(0, limit - 1))) ?? [];
+  const messages =
+    (await getRedis().lrange<AdminSupportMessage>(SUPPORT_KEY, 0, Math.max(0, limit - 1))) ?? [];
+  return messages.map(normalizeSupportMessage);
+}
+
+export async function updateSupportMessageStatus(id: string, status: AdminSupportStatus) {
+  const cleanId = cleanText(id, 120);
+  const cleanStatus = cleanSupportStatus(status);
+  if (!cleanId) return null;
+
+  const redis = getRedis();
+  const messages = await getSupportMessages(300);
+  const index = messages.findIndex((message) => message.id === cleanId);
+  if (index === -1) return null;
+
+  const updated: AdminSupportMessage = {
+    ...messages[index],
+    status: cleanStatus,
+  };
+
+  await redis.lset(SUPPORT_KEY, index, updated);
+  return updated;
 }

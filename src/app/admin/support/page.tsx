@@ -1,16 +1,13 @@
 import type { Metadata } from "next";
-import { Inbox, Mail } from "lucide-react";
+import { Inbox } from "lucide-react";
 import { requireAdminUser } from "@/lib/admin-routing";
 import { getAdminSupportInbox } from "@/lib/admin-console";
+import { AdminSupportInbox } from "@/components/AdminSupportInbox";
 
 export const metadata: Metadata = {
   title: "Support Inbox | QuickFill",
   robots: { index: false, follow: false },
 };
-
-function formatDate(value: string) {
-  return new Date(value).toLocaleString("en-AU", { dateStyle: "medium", timeStyle: "short" });
-}
 
 export default async function AdminSupportPage() {
   await requireAdminUser();
@@ -29,30 +26,8 @@ export default async function AdminSupportPage() {
         </p>
       </div>
 
-      <div className="mt-8 space-y-4">
-        {messages.map((message) => (
-          <article key={message.id} className="rounded-lg border border-border bg-surface p-5 shadow-sm">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-              <div>
-                <p className="text-sm font-semibold text-accent">{message.status}</p>
-                <h2 className="mt-1 text-lg font-semibold">{message.subject}</h2>
-                <p className="mt-1 text-sm text-text-muted">
-                  {message.name} | <a className="hover:text-text" href={"mailto:" + message.email}>{message.email}</a>
-                </p>
-              </div>
-              <p className="text-sm text-text-muted">{formatDate(message.createdAt)}</p>
-            </div>
-            <p className="mt-4 whitespace-pre-wrap text-sm leading-6 text-text-muted">{message.message}</p>
-            {message.userId && <p className="mt-4 text-xs text-text-muted">User ID: {message.userId}</p>}
-          </article>
-        ))}
-        {messages.length === 0 && (
-          <div className="rounded-lg border border-dashed border-border bg-surface p-12 text-center">
-            <Mail className="mx-auto mb-3 h-8 w-8 text-text-muted/50" />
-            <p className="font-semibold">No support messages yet</p>
-            <p className="mt-1 text-sm text-text-muted">The inbox is ready once support forms start sending here.</p>
-          </div>
-        )}
+      <div className="mt-8">
+        <AdminSupportInbox initialMessages={messages} />
       </div>
     </div>
   );
