@@ -1,7 +1,7 @@
 import { isDatabaseConfigured, query } from "../db";
 import { getStripe } from "../stripe";
 import { isSubscriptionEntitled, saveSubscriptionSnapshot, tierFromPriceId } from "../billing-store";
-import { reconcileStripeBilling, subscriptionTier } from "../billing-reconciliation";
+import { reconcileStripeBilling, reconcileStripeBillingForUser, subscriptionTier } from "../billing-reconciliation";
 
 jest.mock("../db", () => ({
   isDatabaseConfigured: jest.fn(),
@@ -26,6 +26,9 @@ const mockSaveSubscriptionSnapshot = jest.mocked(saveSubscriptionSnapshot);
 const mockTierFromPriceId = jest.mocked(tierFromPriceId);
 
 const stripe = {
+  customers: {
+    list: jest.fn(),
+  },
   subscriptions: {
     retrieve: jest.fn(),
     list: jest.fn(),
@@ -55,6 +58,7 @@ describe("Stripe billing reconciliation", () => {
     mockGetStripe.mockReturnValue(stripe as never);
     mockTierFromPriceId.mockReturnValue("pro");
     mockIsSubscriptionEntitled.mockReturnValue(true);
+    stripe.customers.list.mockResolvedValue({ data: [] });
     stripe.subscriptions.list.mockResolvedValue({ data: [] });
   });
 
@@ -132,6 +136,26 @@ describe("Stripe billing reconciliation", () => {
     expect(stripe.subscriptions.list).toHaveBeenCalledWith({ customer: "cus_123", status: "all", limit: 10 });
     expect(mockSaveSubscriptionSnapshot).toHaveBeenCalledWith(
       expect.objectContaining({ subscriptionId: "sub_new", tier: "business", status: "active" }),
+    );
+  });
+
+  it("recovers user billing from Stripe email when the local billing record is missing", async () => {
+    mockQuery.mockResolvedValueOnce([] as never);
+    stripe.customers.list.mockResolvedValueOnce({ data: [{ id: "cus_from_email" }] });
+    stripe.subscriptions.list.mockResolvedValueOnce({
+      data: [subscription({ id: "sub_from_email", customer: "cus_from_email", status: "active" })],
+    });
+
+    await expect(reconcileStripeBillingForUser("user_123", { email: "User@Example.com" })).resolves.toMatchObject({
+      ok: true,
+      checked: 1,
+      updated: 1,
+      skipped: 0,
+    });
+
+    expect(stripe.customers.list).toHaveBeenCalledWith({ email: "user@example.com", limit: 10 });
+    expect(mockSaveSubscriptionSnapshot).toHaveBeenCalledWith(
+      expect.objectContaining({ userId: "user_123", customerId: "cus_from_email", subscriptionId: "sub_from_email" }),
     );
   });
 
