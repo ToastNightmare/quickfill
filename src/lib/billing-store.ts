@@ -4,6 +4,34 @@ import { getRedis, isRedisConfigured } from "@/lib/redis";
 
 export type QuickFillTier = "free" | "pro" | "business";
 
+type StoredSubscriptionStatus = Stripe.Subscription.Status | "active" | "canceled" | "unknown";
+
+type PeriodEndValue = Date | number | string | null | undefined;
+
+const ENTITLED_STATUSES = new Set<string>(["active", "trialing"]);
+
+function periodEndToTime(value: PeriodEndValue) {
+  if (value === null || value === undefined) return null;
+  if (value instanceof Date) return value.getTime();
+  if (typeof value === "number") return value * 1000;
+  const time = new Date(value).getTime();
+  return Number.isFinite(time) ? time : null;
+}
+
+export function isSubscriptionEntitled(status: StoredSubscriptionStatus | string, currentPeriodEnd?: PeriodEndValue) {
+  if (!ENTITLED_STATUSES.has(status)) return false;
+
+  const periodEnd = periodEndToTime(currentPeriodEnd);
+  if (periodEnd === null) return true;
+
+  return periodEnd > Date.now();
+}
+
+async function clearCachedTier(userId: string) {
+  if (!isRedisConfigured()) return;
+  await getRedis().del(`sub:${userId}`);
+}
+
 export function tierFromPriceId(priceId?: string | null): QuickFillTier | null {
   if (!priceId) return null;
   if (priceId === process.env.STRIPE_PRO_PRICE_ID) return "pro";
@@ -34,12 +62,12 @@ export async function saveSubscriptionSnapshot(input: {
   customerId?: string | null;
   subscriptionId?: string | null;
   tier: QuickFillTier;
-  status: Stripe.Subscription.Status | "active" | "canceled" | "unknown";
+  status: StoredSubscriptionStatus;
   currentPeriodEnd?: number | null;
 }) {
   if (isRedisConfigured()) {
     const redis = getRedis();
-    if (input.status === "active" || input.status === "trialing") {
+    if (isSubscriptionEntitled(input.status, input.currentPeriodEnd)) {
       await redis.set(`sub:${input.userId}`, input.tier);
     } else {
       await redis.del(`sub:${input.userId}`);
@@ -68,11 +96,14 @@ export async function saveSubscriptionSnapshot(input: {
 
 export async function getStoredTier(userId: string): Promise<QuickFillTier> {
   if (isDatabaseConfigured()) {
-    const rows = await query<{ tier: QuickFillTier }>(
-      "select tier from subscriptions where user_id = $1 and status in ('active', 'trialing') order by updated_at desc limit 1",
+    const rows = await query<{ tier: QuickFillTier; status: string; current_period_end: Date | string | null }>(
+      "select tier, status, current_period_end from subscriptions where user_id = $1 order by updated_at desc limit 1",
       [userId],
     );
-    if (rows[0]?.tier) return rows[0].tier;
+    const latest = rows[0];
+    if (latest?.tier && isSubscriptionEntitled(latest.status, latest.current_period_end)) return latest.tier;
+    await clearCachedTier(userId);
+    return "free";
   }
 
   if (isRedisConfigured()) {

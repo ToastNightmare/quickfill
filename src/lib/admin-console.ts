@@ -3,6 +3,7 @@ import type Stripe from "stripe";
 import { getRedis } from "@/lib/redis";
 import { getStripe } from "@/lib/stripe";
 import { getDownloadLogs, getSupportMessages } from "@/lib/admin-logs";
+import { getStoredTier } from "@/lib/billing-store";
 
 type ClerkUser = Awaited<ReturnType<Awaited<ReturnType<typeof clerkClient>>["users"]["getUser"]>>;
 
@@ -110,7 +111,7 @@ function toNumber(value: unknown) {
 async function summarizeUser(user: ClerkUser): Promise<AdminUserSummary> {
   const redis = getRedis();
   const [tier, used, fills, stripeCustomerId] = await Promise.all([
-    redis.get<string>(`sub:${user.id}`),
+    getStoredTier(user.id),
     redis.get<number>(monthKey(user.id)),
     redis.lrange<{ filename: string; filledAt: string; fieldCount: number; pageCount: number }>(`fills:${user.id}`, 0, 2),
     redis.get<string>(`stripe_customer:${user.id}`),
@@ -127,7 +128,7 @@ async function summarizeUser(user: ClerkUser): Promise<AdminUserSummary> {
     banned: user.banned,
     locked: user.locked,
     twoFactorEnabled: user.twoFactorEnabled,
-    tier: tier ?? "free",
+    tier,
     usedThisMonth: used ?? 0,
     recentFillCount: fills?.length ?? 0,
     stripeCustomerId: stripeCustomerId ?? null,
