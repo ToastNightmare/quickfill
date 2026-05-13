@@ -61,11 +61,12 @@ describe("billing entitlements", () => {
   });
 
   it("reads Stripe period end from subscription items when needed", () => {
+    const periodEnd = Math.floor(new Date("2026-06-12T00:00:00.000Z").getTime() / 1000);
     const subscription = {
-      items: { data: [{ current_period_end: Math.floor(new Date("2026-06-12T00:00:00.000Z").getTime() / 1000) }] },
+      items: { data: [{ current_period_end: periodEnd }] },
     };
 
-    expect(stripeSubscriptionPeriodEnd(subscription as never)).toBe(1770681600);
+    expect(stripeSubscriptionPeriodEnd(subscription as never)).toBe(periodEnd);
   });
 
   it("returns free for stale database subscriptions without falling back to old Redis Pro cache", async () => {
