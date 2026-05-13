@@ -27,6 +27,11 @@ export function isSubscriptionEntitled(status: StoredSubscriptionStatus | string
   return periodEnd > Date.now();
 }
 
+async function clearCachedTier(userId: string) {
+  if (!isRedisConfigured()) return;
+  await getRedis().del(`sub:${userId}`);
+}
+
 export function tierFromPriceId(priceId?: string | null): QuickFillTier | null {
   if (!priceId) return null;
   if (priceId === process.env.STRIPE_PRO_PRICE_ID) return "pro";
@@ -97,6 +102,7 @@ export async function getStoredTier(userId: string): Promise<QuickFillTier> {
     );
     const latest = rows[0];
     if (latest?.tier && isSubscriptionEntitled(latest.status, latest.current_period_end)) return latest.tier;
+    await clearCachedTier(userId);
     return "free";
   }
 
