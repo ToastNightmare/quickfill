@@ -1,6 +1,12 @@
 import { getRedis, isRedisConfigured } from "../redis";
 import { isDatabaseConfigured, query } from "../db";
-import { getStoredSubscriptionSnapshot, getStoredTier, isSubscriptionEntitled, saveSubscriptionSnapshot } from "../billing-store";
+import {
+  getStoredSubscriptionSnapshot,
+  getStoredTier,
+  isSubscriptionEntitled,
+  saveSubscriptionSnapshot,
+  stripeSubscriptionPeriodEnd,
+} from "../billing-store";
 
 jest.mock("../redis", () => ({
   getRedis: jest.fn(),
@@ -52,6 +58,14 @@ describe("billing entitlements", () => {
   it("keeps paid access for current active subscriptions", () => {
     expect(isSubscriptionEntitled("active", "2026-06-12T00:00:00.000Z")).toBe(true);
     expect(isSubscriptionEntitled("trialing", "2026-06-12T00:00:00.000Z")).toBe(true);
+  });
+
+  it("reads Stripe period end from subscription items when needed", () => {
+    const subscription = {
+      items: { data: [{ current_period_end: Math.floor(new Date("2026-06-12T00:00:00.000Z").getTime() / 1000) }] },
+    };
+
+    expect(stripeSubscriptionPeriodEnd(subscription as never)).toBe(1770681600);
   });
 
   it("returns free for stale database subscriptions without falling back to old Redis Pro cache", async () => {
