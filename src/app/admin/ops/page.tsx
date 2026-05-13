@@ -13,7 +13,7 @@ import {
   ShieldCheck,
 } from "lucide-react";
 import { requireAdminUser } from "@/lib/admin-routing";
-import { checkDatabaseConnection } from "@/lib/db";
+import { checkDatabaseConnection, isDatabaseConfigured, query } from "@/lib/db";
 import { isRedisConfigured } from "@/lib/redis";
 
 export const dynamic = "force-dynamic";
@@ -37,6 +37,28 @@ type ServiceCard = {
   icon: typeof ServerCog;
 };
 
+type BillingSyncAudit = {
+  ok?: boolean;
+  checked?: number;
+  updated?: number;
+  downgraded?: number;
+  skipped?: number;
+  message?: string;
+  completedAt?: string;
+  errors?: unknown[];
+};
+
+type BillingSyncSnapshot = {
+  ok: boolean;
+  checked: number;
+  updated: number;
+  downgraded: number;
+  skipped: number;
+  errorCount: number;
+  message: string;
+  completedAt: string | null;
+};
+
 function hasEnv(...keys: string[]) {
   return keys.every((key) => Boolean(process.env[key]));
 }
@@ -50,6 +72,65 @@ function formatCommit() {
   const message = process.env.VERCEL_GIT_COMMIT_MESSAGE;
   if (!sha && !message) return "Commit metadata is not available outside Vercel.";
   return [sha, message].filter(Boolean).join(" - ");
+}
+
+function formatDateTime(value: string | null) {
+  if (!value) return "time not recorded";
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "time not recorded";
+
+  return new Intl.DateTimeFormat("en-AU", {
+    dateStyle: "medium",
+    timeStyle: "short",
+    timeZone: "Australia/Perth",
+  }).format(date);
+}
+
+function normalizeBillingSyncMetadata(metadata: BillingSyncAudit | string | null | undefined): BillingSyncAudit {
+  if (!metadata) return {};
+  if (typeof metadata !== "string") return metadata;
+
+  try {
+    return JSON.parse(metadata) as BillingSyncAudit;
+  } catch {
+    return { message: metadata };
+  }
+}
+
+async function loadLatestBillingSync(): Promise<BillingSyncSnapshot | null> {
+  if (!isDatabaseConfigured()) return null;
+
+  try {
+    const rows = await query<{
+      event_type: string;
+      metadata: BillingSyncAudit | string | null;
+      created_at: Date | string | null;
+    }>(
+      "select event_type, metadata, created_at from audit_events where event_type in ($1, $2) order by created_at desc limit 1",
+      ["billing_sync_ok", "billing_sync_failed"],
+    );
+    const row = rows[0];
+    if (!row) return null;
+
+    const metadata = normalizeBillingSyncMetadata(row.metadata);
+    const completedAt =
+      metadata.completedAt ??
+      (row.created_at instanceof Date ? row.created_at.toISOString() : row.created_at ? String(row.created_at) : null);
+
+    return {
+      ok: Boolean(metadata.ok),
+      checked: Number(metadata.checked ?? 0),
+      updated: Number(metadata.updated ?? 0),
+      downgraded: Number(metadata.downgraded ?? 0),
+      skipped: Number(metadata.skipped ?? 0),
+      errorCount: Array.isArray(metadata.errors) ? metadata.errors.length : 0,
+      message: metadata.message ?? (row.event_type === "billing_sync_ok" ? "Billing sync completed." : "Billing sync needs review."),
+      completedAt,
+    };
+  } catch {
+    return null;
+  }
 }
 
 function statusClass(status: ServiceStatus) {
@@ -107,6 +188,7 @@ export default async function AdminOpsPage() {
   await requireAdminUser();
 
   const database = await checkDatabaseConnection();
+  const billingSync = await loadLatestBillingSync();
   const redisReady = isRedisConfigured();
   const cronReady = hasEnv("CRON_SECRET");
   const stripeCoreReady = hasEnv(
@@ -166,6 +248,23 @@ export default async function AdminOpsPage() {
         "Pro monthly, Pro annual, and Business monthly are required for the public checkout path.",
         businessAnnualReady ? "Business annual pricing is configured." : "Business annual pricing is not configured yet; add it or keep annual Business hidden.",
         "Webhook delivery should be checked after every billing change.",
+      ],
+    },
+    {
+      name: "Billing sync",
+      status: !cronReady ? "fail" : billingSync ? (billingSync.ok ? "ok" : "fail") : "warn",
+      detail: !cronReady
+        ? "CRON_SECRET is required before billing sync can run."
+        : billingSync
+          ? billingSync.message
+          : "Billing sync is scheduled but has not recorded a run yet.",
+      icon: KeyRound,
+      items: [
+        "Runs daily to repair missed Stripe webhook state and stale access.",
+        billingSync ? `Last run: ${formatDateTime(billingSync.completedAt)}.` : "The first recorded result will appear after the next scheduled run.",
+        billingSync
+          ? `Checked ${billingSync.checked}, updated ${billingSync.updated}, downgraded ${billingSync.downgraded}, skipped ${billingSync.skipped}, errors ${billingSync.errorCount}.`
+          : "Use the protected cron endpoint for manual checks when needed.",
       ],
     },
     {
