@@ -4,6 +4,7 @@ import { getStripe } from "@/lib/stripe";
 import {
   isSubscriptionEntitled,
   saveSubscriptionSnapshot,
+  stripeSubscriptionPeriodEnd,
   tierFromPriceId,
   type QuickFillTier,
 } from "@/lib/billing-store";
@@ -44,12 +45,44 @@ function clampLimit(limit?: number) {
   return Math.min(Math.max(whole, 1), BILLING_RECONCILIATION_MAX_LIMIT);
 }
 
+function createResult(message = "Billing reconciliation completed."): BillingReconciliationResult {
+  return {
+    ok: true,
+    checked: 0,
+    updated: 0,
+    downgraded: 0,
+    skipped: 0,
+    errors: [],
+    message,
+  };
+}
+
 function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : String(error);
 }
 
+function requiredConfigError(result: BillingReconciliationResult) {
+  if (!isDatabaseConfigured()) {
+    return {
+      ...result,
+      ok: false,
+      message: "DATABASE_URL is not configured; billing reconciliation cannot run.",
+    } satisfies BillingReconciliationResult;
+  }
+
+  if (!process.env.STRIPE_SECRET_KEY) {
+    return {
+      ...result,
+      ok: false,
+      message: "STRIPE_SECRET_KEY is not configured; billing reconciliation cannot run.",
+    } satisfies BillingReconciliationResult;
+  }
+
+  return null;
+}
+
 export function subscriptionPeriodEnd(subscription: Stripe.Subscription) {
-  return (subscription as unknown as { current_period_end?: number | null }).current_period_end ?? null;
+  return stripeSubscriptionPeriodEnd(subscription);
 }
 
 export function subscriptionTier(subscription: Stripe.Subscription, fallback: QuickFillTier = "pro"): QuickFillTier {
@@ -78,33 +111,73 @@ async function fetchCurrentSubscription(candidate: SubscriptionCandidate) {
   return subscriptions.data.sort((a, b) => b.created - a.created)[0] ?? null;
 }
 
+async function reconcileCandidate(candidate: SubscriptionCandidate, result: BillingReconciliationResult) {
+  if (!candidate.user_id) {
+    result.skipped += 1;
+    result.errors.push({
+      userId: null,
+      stripeCustomerId: candidate.stripe_customer_id,
+      stripeSubscriptionId: candidate.stripe_subscription_id,
+      message: "Subscription row has no QuickFill user ID.",
+    });
+    return;
+  }
+
+  try {
+    const subscription = await fetchCurrentSubscription(candidate);
+    if (!subscription) {
+      result.skipped += 1;
+      result.errors.push({
+        userId: candidate.user_id,
+        stripeCustomerId: candidate.stripe_customer_id,
+        stripeSubscriptionId: candidate.stripe_subscription_id,
+        message: "No Stripe subscription found for stored billing record.",
+      });
+      return;
+    }
+
+    const customerId = subscription.customer ? String(subscription.customer) : candidate.stripe_customer_id;
+    const periodEnd = subscriptionPeriodEnd(subscription);
+    const tier = subscriptionTier(subscription, candidate.tier ?? "pro");
+
+    await saveSubscriptionSnapshot({
+      userId: candidate.user_id,
+      customerId,
+      subscriptionId: subscription.id,
+      tier,
+      status: subscription.status,
+      currentPeriodEnd: periodEnd,
+    });
+
+    result.updated += 1;
+    if (!isSubscriptionEntitled(subscription.status, periodEnd)) {
+      result.downgraded += 1;
+    }
+  } catch (error) {
+    result.skipped += 1;
+    result.errors.push({
+      userId: candidate.user_id,
+      stripeCustomerId: candidate.stripe_customer_id,
+      stripeSubscriptionId: candidate.stripe_subscription_id,
+      message: errorMessage(error),
+    });
+  }
+}
+
+function finalizeResult(result: BillingReconciliationResult) {
+  if (result.errors.length > 0) {
+    result.ok = false;
+    result.message = "Billing reconciliation completed with records that need review.";
+  }
+
+  return result;
+}
+
 export async function reconcileStripeBilling(options: { limit?: number } = {}): Promise<BillingReconciliationResult> {
   const limit = clampLimit(options.limit);
-  const result: BillingReconciliationResult = {
-    ok: true,
-    checked: 0,
-    updated: 0,
-    downgraded: 0,
-    skipped: 0,
-    errors: [],
-    message: "Billing reconciliation completed.",
-  };
-
-  if (!isDatabaseConfigured()) {
-    return {
-      ...result,
-      ok: false,
-      message: "DATABASE_URL is not configured; billing reconciliation cannot run.",
-    };
-  }
-
-  if (!process.env.STRIPE_SECRET_KEY) {
-    return {
-      ...result,
-      ok: false,
-      message: "STRIPE_SECRET_KEY is not configured; billing reconciliation cannot run.",
-    };
-  }
+  const result = createResult();
+  const configError = requiredConfigError(result);
+  if (configError) return configError;
 
   const candidates = await query<SubscriptionCandidate>(
     `select user_id, tier, status, current_period_end, stripe_customer_id, stripe_subscription_id, updated_at
@@ -118,62 +191,37 @@ export async function reconcileStripeBilling(options: { limit?: number } = {}): 
   result.checked = candidates.length;
 
   for (const candidate of candidates) {
-    if (!candidate.user_id) {
-      result.skipped += 1;
-      result.errors.push({
-        userId: null,
-        stripeCustomerId: candidate.stripe_customer_id,
-        stripeSubscriptionId: candidate.stripe_subscription_id,
-        message: "Subscription row has no QuickFill user ID.",
-      });
-      continue;
-    }
-
-    try {
-      const subscription = await fetchCurrentSubscription(candidate);
-      if (!subscription) {
-        result.skipped += 1;
-        result.errors.push({
-          userId: candidate.user_id,
-          stripeCustomerId: candidate.stripe_customer_id,
-          stripeSubscriptionId: candidate.stripe_subscription_id,
-          message: "No Stripe subscription found for stored billing record.",
-        });
-        continue;
-      }
-
-      const customerId = subscription.customer ? String(subscription.customer) : candidate.stripe_customer_id;
-      const periodEnd = subscriptionPeriodEnd(subscription);
-      const tier = subscriptionTier(subscription, candidate.tier ?? "pro");
-
-      await saveSubscriptionSnapshot({
-        userId: candidate.user_id,
-        customerId,
-        subscriptionId: subscription.id,
-        tier,
-        status: subscription.status,
-        currentPeriodEnd: periodEnd,
-      });
-
-      result.updated += 1;
-      if (!isSubscriptionEntitled(subscription.status, periodEnd)) {
-        result.downgraded += 1;
-      }
-    } catch (error) {
-      result.skipped += 1;
-      result.errors.push({
-        userId: candidate.user_id,
-        stripeCustomerId: candidate.stripe_customer_id,
-        stripeSubscriptionId: candidate.stripe_subscription_id,
-        message: errorMessage(error),
-      });
-    }
+    await reconcileCandidate(candidate, result);
   }
 
-  if (result.errors.length > 0) {
-    result.ok = false;
-    result.message = "Billing reconciliation completed with records that need review.";
+  return finalizeResult(result);
+}
+
+export async function reconcileStripeBillingForUser(userId: string): Promise<BillingReconciliationResult> {
+  const result = createResult("Customer billing record synced from Stripe.");
+  const configError = requiredConfigError(result);
+  if (configError) return configError;
+
+  const candidates = await query<SubscriptionCandidate>(
+    `select user_id, tier, status, current_period_end, stripe_customer_id, stripe_subscription_id, updated_at
+     from subscriptions
+     where user_id = $1 and (stripe_subscription_id is not null or stripe_customer_id is not null)
+     order by updated_at desc nulls last
+     limit 1`,
+    [userId],
+  );
+
+  const candidate = candidates[0];
+  if (!candidate) {
+    return {
+      ...result,
+      ok: false,
+      skipped: 1,
+      message: "No stored billing record found for this user.",
+    };
   }
 
-  return result;
+  result.checked = 1;
+  await reconcileCandidate(candidate, result);
+  return finalizeResult(result);
 }
