@@ -1,8 +1,20 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Archive, CheckCircle2, CircleDot, Inbox, Mail, Reply, Tag } from "lucide-react";
-import type { AdminSupportMessage, AdminSupportStatus } from "@/lib/admin-logs";
+import {
+  Archive,
+  CheckCircle2,
+  CircleDot,
+  Clock3,
+  Inbox,
+  Mail,
+  NotebookPen,
+  Reply,
+  Send,
+  Tag,
+  UserRound,
+} from "lucide-react";
+import type { AdminSupportMessage, AdminSupportMessagePatch, AdminSupportStatus } from "@/lib/admin-logs";
 
 const STATUS_META: Record<AdminSupportStatus, { label: string; className: string; icon: typeof CircleDot }> = {
   new: {
@@ -29,7 +41,10 @@ const PRIORITY_META = {
   urgent: "bg-red-50 text-red-700 border-red-200",
 } as const;
 
-function formatDate(value: string) {
+type DraftState = Record<string, { assignee: string; internalNotes: string }>;
+
+function formatDate(value: string | null | undefined) {
+  if (!value) return "Not yet";
   return new Date(value).toLocaleString("en-AU", { dateStyle: "medium", timeStyle: "short" });
 }
 
@@ -37,6 +52,18 @@ function statusSort(status: AdminSupportStatus) {
   if (status === "new") return 0;
   if (status === "open") return 1;
   return 2;
+}
+
+function initialDrafts(messages: AdminSupportMessage[]): DraftState {
+  return Object.fromEntries(
+    messages.map((message) => [
+      message.id,
+      {
+        assignee: message.assignee ?? "",
+        internalNotes: message.internalNotes ?? "",
+      },
+    ]),
+  );
 }
 
 function StatusBadge({ status }: { status: AdminSupportStatus }) {
@@ -67,6 +94,7 @@ export function AdminSupportInbox({
   totalMessages?: number;
 }) {
   const [messages, setMessages] = useState(initialMessages);
+  const [drafts, setDrafts] = useState<DraftState>(() => initialDrafts(initialMessages));
   const [error, setError] = useState("");
   const [pendingId, setPendingId] = useState<string | null>(null);
 
@@ -80,7 +108,18 @@ export function AdminSupportInbox({
     [messages],
   );
 
-  async function setStatus(message: AdminSupportMessage, status: AdminSupportStatus) {
+  function updateDraft(id: string, draft: Partial<DraftState[string]>) {
+    setDrafts((current) => ({
+      ...current,
+      [id]: {
+        assignee: current[id]?.assignee ?? "",
+        internalNotes: current[id]?.internalNotes ?? "",
+        ...draft,
+      },
+    }));
+  }
+
+  async function updateMessage(message: AdminSupportMessage, patch: AdminSupportMessagePatch) {
     setError("");
     setPendingId(message.id);
 
@@ -88,7 +127,7 @@ export function AdminSupportInbox({
       const response = await fetch(`/api/admin/support/${message.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status }),
+        body: JSON.stringify(patch),
       });
 
       const payload = await response.json().catch(() => null);
@@ -96,9 +135,12 @@ export function AdminSupportInbox({
         throw new Error(payload?.error || "Could not update support message");
       }
 
-      setMessages((current) =>
-        current.map((item) => (item.id === message.id ? (payload.message as AdminSupportMessage) : item)),
-      );
+      const nextMessage = payload.message as AdminSupportMessage;
+      setMessages((current) => current.map((item) => (item.id === message.id ? nextMessage : item)));
+      updateDraft(message.id, {
+        assignee: nextMessage.assignee ?? "",
+        internalNotes: nextMessage.internalNotes ?? "",
+      });
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : "Could not update support message");
     } finally {
@@ -135,6 +177,7 @@ export function AdminSupportInbox({
         const isBusy = pendingId === message.id;
         const priority = message.priority || "normal";
         const priorityClass = PRIORITY_META[priority] ?? PRIORITY_META.normal;
+        const draft = drafts[message.id] ?? { assignee: message.assignee ?? "", internalNotes: message.internalNotes ?? "" };
         return (
           <article key={message.id} className="rounded-lg border border-border bg-surface p-5 shadow-sm">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -154,24 +197,42 @@ export function AdminSupportInbox({
 
             <p className="mt-4 whitespace-pre-wrap text-sm leading-6 text-text-muted">{message.message}</p>
 
-            <div className="mt-4 grid gap-2 text-xs text-text-muted sm:grid-cols-2">
+            <div className="mt-4 grid gap-2 text-xs text-text-muted sm:grid-cols-2 lg:grid-cols-4">
               <p>User ID: {message.userId || "guest"}</p>
               <p>Source: {message.source || "unknown"}</p>
+              <p className="inline-flex items-center gap-1">
+                <UserRound className="h-3.5 w-3.5" />
+                {message.assignee || "Unassigned"}
+              </p>
+              <p className="inline-flex items-center gap-1">
+                <Clock3 className="h-3.5 w-3.5" />
+                Replied: {formatDate(message.lastReplyAt)}
+              </p>
             </div>
 
             <div className="mt-5 flex flex-wrap gap-2">
               <a
                 href={`mailto:${message.email}?subject=${encodeURIComponent("Re: " + message.subject)}`}
+                onClick={() => void updateMessage(message, { replySent: true })}
                 className="inline-flex items-center justify-center gap-2 rounded-lg border border-border px-3 py-2 text-sm font-semibold text-text transition-colors hover:border-accent hover:text-accent"
               >
                 <Reply className="h-4 w-4" />
                 Reply
               </a>
+              <button
+                type="button"
+                disabled={isBusy}
+                onClick={() => updateMessage(message, { replySent: true })}
+                className="inline-flex items-center justify-center gap-2 rounded-lg border border-border px-3 py-2 text-sm font-semibold text-text transition-colors hover:border-accent hover:text-accent disabled:opacity-60"
+              >
+                <Send className="h-4 w-4" />
+                Mark replied
+              </button>
               {message.status !== "open" && (
                 <button
                   type="button"
                   disabled={isBusy}
-                  onClick={() => setStatus(message, "open")}
+                  onClick={() => updateMessage(message, { status: "open" })}
                   className="inline-flex items-center justify-center gap-2 rounded-lg border border-border px-3 py-2 text-sm font-semibold text-text transition-colors hover:border-amber-300 hover:text-amber-700 disabled:opacity-60"
                 >
                   <CheckCircle2 className="h-4 w-4" />
@@ -182,7 +243,7 @@ export function AdminSupportInbox({
                 <button
                   type="button"
                   disabled={isBusy}
-                  onClick={() => setStatus(message, "closed")}
+                  onClick={() => updateMessage(message, { status: "closed" })}
                   className="inline-flex items-center justify-center gap-2 rounded-lg border border-border px-3 py-2 text-sm font-semibold text-text transition-colors hover:border-emerald-300 hover:text-emerald-700 disabled:opacity-60"
                 >
                   <Archive className="h-4 w-4" />
@@ -193,7 +254,7 @@ export function AdminSupportInbox({
                 <button
                   type="button"
                   disabled={isBusy}
-                  onClick={() => setStatus(message, "new")}
+                  onClick={() => updateMessage(message, { status: "new" })}
                   className="inline-flex items-center justify-center gap-2 rounded-lg border border-border px-3 py-2 text-sm font-semibold text-text transition-colors hover:border-blue-300 hover:text-blue-700 disabled:opacity-60"
                 >
                   <CircleDot className="h-4 w-4" />
@@ -201,6 +262,52 @@ export function AdminSupportInbox({
                 </button>
               )}
             </div>
+
+            <form
+              className="mt-5 grid gap-3 border-t border-border pt-4"
+              onSubmit={(event) => {
+                event.preventDefault();
+                void updateMessage(message, {
+                  assignee: draft.assignee,
+                  internalNotes: draft.internalNotes,
+                });
+              }}
+            >
+              <div className="grid gap-3 md:grid-cols-[minmax(0,240px)_1fr_auto] md:items-end">
+                <label className="block">
+                  <span className="mb-1 flex items-center gap-1 text-xs font-semibold text-text-muted">
+                    <UserRound className="h-3.5 w-3.5" />
+                    Owner
+                  </span>
+                  <input
+                    value={draft.assignee}
+                    onChange={(event) => updateDraft(message.id, { assignee: event.target.value })}
+                    placeholder="Assign owner"
+                    className="h-10 w-full rounded-lg border border-border bg-white px-3 text-sm outline-none transition-colors focus:border-accent"
+                  />
+                </label>
+                <label className="block">
+                  <span className="mb-1 flex items-center gap-1 text-xs font-semibold text-text-muted">
+                    <NotebookPen className="h-3.5 w-3.5" />
+                    Internal notes
+                  </span>
+                  <textarea
+                    value={draft.internalNotes}
+                    onChange={(event) => updateDraft(message.id, { internalNotes: event.target.value })}
+                    placeholder="Add private follow-up notes"
+                    rows={2}
+                    className="min-h-10 w-full resize-y rounded-lg border border-border bg-white px-3 py-2 text-sm outline-none transition-colors focus:border-accent"
+                  />
+                </label>
+                <button
+                  type="submit"
+                  disabled={isBusy}
+                  className="inline-flex h-10 items-center justify-center rounded-lg bg-accent px-4 text-sm font-semibold text-white transition-colors hover:bg-accent-hover disabled:opacity-60"
+                >
+                  Save
+                </button>
+              </div>
+            </form>
           </article>
         );
       })}
