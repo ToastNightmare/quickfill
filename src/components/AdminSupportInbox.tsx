@@ -59,7 +59,13 @@ function SupportTag({ label, className }: { label: string; className: string }) 
   );
 }
 
-export function AdminSupportInbox({ initialMessages }: { initialMessages: AdminSupportMessage[] }) {
+export function AdminSupportInbox({
+  initialMessages,
+  totalMessages = initialMessages.length,
+}: {
+  initialMessages: AdminSupportMessage[];
+  totalMessages?: number;
+}) {
   const [messages, setMessages] = useState(initialMessages);
   const [error, setError] = useState("");
   const [pendingId, setPendingId] = useState<string | null>(null);
@@ -104,8 +110,8 @@ export function AdminSupportInbox({ initialMessages }: { initialMessages: AdminS
     return (
       <div className="rounded-lg border border-dashed border-border bg-surface p-12 text-center">
         <Mail className="mx-auto mb-3 h-8 w-8 text-text-muted/50" />
-        <p className="font-semibold">No support messages yet</p>
-        <p className="mt-1 text-sm text-text-muted">The inbox is ready once support forms start sending here.</p>
+        <p className="font-semibold">No support messages in this view</p>
+        <p className="mt-1 text-sm text-text-muted">Try another status filter or search term.</p>
       </div>
     );
   }
@@ -116,7 +122,9 @@ export function AdminSupportInbox({ initialMessages }: { initialMessages: AdminS
         <div className="flex items-center gap-3">
           <Inbox className="h-5 w-5 text-accent" />
           <div>
-            <p className="text-sm font-semibold">{messages.length} support message{messages.length === 1 ? "" : "s"}</p>
+            <p className="text-sm font-semibold">
+              Showing {messages.length} of {totalMessages} support message{totalMessages === 1 ? "" : "s"}
+            </p>
             <p className="text-xs text-text-muted">Newest requests stay at the top until you open or close them.</p>
           </div>
         </div>
