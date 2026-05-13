@@ -13,7 +13,7 @@ function clean(value: unknown, max = 200) {
 }
 
 function adminEmails() {
-  return (process.env.QUICKFILL_ADMIN_EMAILS ?? "")
+  return (process.env.QUICKFILL_ALERT_EMAILS ?? process.env.QUICKFILL_ADMIN_EMAILS ?? "")
     .split(",")
     .map((email) => email.trim())
     .filter(Boolean);
@@ -31,6 +31,25 @@ function escapeHtml(value: string) {
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#039;");
+}
+
+async function getRequestUser() {
+  try {
+    const { userId } = await auth();
+    if (!userId) return { userId: null, user: null };
+
+    try {
+      return { userId, user: await currentUser() };
+    } catch (error) {
+      log.warn("support_current_user_lookup_failed", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return { userId, user: null };
+    }
+  } catch (error) {
+    log.warn("support_auth_lookup_failed", { error: error instanceof Error ? error.message : String(error) });
+    return { userId: null, user: null };
+  }
 }
 
 async function notifyAdmins(entry: AdminSupportMessage) {
@@ -62,38 +81,42 @@ async function notifyAdmins(entry: AdminSupportMessage) {
 }
 
 export async function POST(request: NextRequest) {
-  const forwarded = request.headers.get("x-forwarded-for");
-  const realIp = request.headers.get("x-real-ip");
-  const identifier = forwarded?.split(",")[0] || realIp || "support";
-  const { success } = await checkRateLimit("support:" + identifier);
-  if (!success) {
-    return NextResponse.json({ error: "Too many support requests, try again soon" }, { status: 429 });
+  try {
+    const forwarded = request.headers.get("x-forwarded-for");
+    const realIp = request.headers.get("x-real-ip");
+    const identifier = forwarded?.split(",")[0] || realIp || "support";
+    const { success } = await checkRateLimit("support:" + identifier, "default");
+    if (!success) {
+      return NextResponse.json({ error: "Too many support requests, try again soon" }, { status: 429 });
+    }
+
+    const body = await request.json().catch(() => null);
+    if (!body || typeof body !== "object") {
+      return NextResponse.json({ error: "Invalid support request" }, { status: 400 });
+    }
+
+    const { userId, user } = await getRequestUser();
+    const email = clean(body.email, 160) || user?.primaryEmailAddress?.emailAddress || "";
+    const message = clean(body.message, 2000);
+
+    if (!email || !message) {
+      return NextResponse.json({ error: "Email and message are required" }, { status: 400 });
+    }
+
+    const entry = await recordSupportMessage({
+      name: clean(body.name, 100) || user?.firstName || "QuickFill user",
+      email,
+      subject: clean(body.subject, 140) || "Support request",
+      message,
+      userId,
+      source: clean(body.source, 160) || request.headers.get("referer") || "api",
+    });
+
+    await notifyAdmins(entry);
+
+    return NextResponse.json({ ok: true, id: entry.id });
+  } catch (error) {
+    log.error("support_request_failed", { error: error instanceof Error ? error.message : String(error) });
+    return NextResponse.json({ error: "Could not send support message" }, { status: 500 });
   }
-
-  const body = await request.json().catch(() => null);
-  if (!body || typeof body !== "object") {
-    return NextResponse.json({ error: "Invalid support request" }, { status: 400 });
-  }
-
-  const { userId } = await auth();
-  const user = userId ? await currentUser() : null;
-  const email = clean(body.email, 160) || user?.primaryEmailAddress?.emailAddress || "";
-  const message = clean(body.message, 2000);
-
-  if (!email || !message) {
-    return NextResponse.json({ error: "Email and message are required" }, { status: 400 });
-  }
-
-  const entry = await recordSupportMessage({
-    name: clean(body.name, 100) || user?.firstName || "QuickFill user",
-    email,
-    subject: clean(body.subject, 140) || "Support request",
-    message,
-    userId,
-    source: clean(body.source, 80) || request.headers.get("referer") || "api",
-  });
-
-  await notifyAdmins(entry);
-
-  return NextResponse.json({ ok: true, id: entry.id });
 }
