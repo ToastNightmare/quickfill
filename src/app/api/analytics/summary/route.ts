@@ -44,6 +44,11 @@ function toNumber(value: unknown) {
   return Number.isFinite(numberValue) ? numberValue : 0;
 }
 
+function boundedRate(numerator: number, denominator: number) {
+  if (denominator <= 0) return null;
+  return Math.min(Math.max(Math.round((numerator / denominator) * 100), 0), 100);
+}
+
 function sumCounts(rows: Record<string, string | number>[]) {
   const counts = Object.fromEntries(ANALYTICS_EVENTS.map((name) => [name, 0])) as Record<AnalyticsEventName, number>;
   for (const row of rows) {
@@ -145,10 +150,10 @@ export async function GET(request: NextRequest) {
     limitHits,
     checkoutStarts,
     paidConversions,
-    uploadToLoadedRate: uploads > 0 ? Math.round((pdfLoaded / uploads) * 100) : null,
-    downloadSuccessRate: totalDownloads > 0 ? Math.round((successfulDownloads / totalDownloads) * 100) : null,
-    checkoutFromLimitRate: limitHits > 0 ? Math.round((checkoutStarts / limitHits) * 100) : null,
-    paidFromCheckoutRate: checkoutStarts > 0 ? Math.round((paidConversions / checkoutStarts) * 100) : null,
+    uploadToLoadedRate: boundedRate(pdfLoaded, uploads),
+    downloadSuccessRate: boundedRate(successfulDownloads, totalDownloads),
+    checkoutFromLimitRate: boundedRate(checkoutStarts, limitHits),
+    paidFromCheckoutRate: boundedRate(paidConversions, checkoutStarts),
   };
 
   return NextResponse.json({
