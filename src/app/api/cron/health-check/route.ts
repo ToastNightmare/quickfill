@@ -1,5 +1,6 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
+import { getSupportQueueHealth } from "@/lib/admin-logs";
 import { checkDatabaseConnection, isDatabaseConfigured, query } from "@/lib/db";
 import { getRedis, isRedisConfigured } from "@/lib/redis";
 import { isAuthorizedCronRequest } from "@/lib/cron-auth";
@@ -140,6 +141,47 @@ async function checkRedis(): Promise<HealthCheck> {
   }
 }
 
+async function checkSupportQueue(databaseOk: boolean): Promise<HealthCheck> {
+  if (!databaseOk) {
+    return {
+      name: "supportQueue",
+      status: "warn",
+      required: false,
+      message: "Support queue health skipped because the database check failed.",
+    };
+  }
+
+  const startedAt = Date.now();
+  try {
+    const health = await getSupportQueueHealth();
+    return {
+      name: "supportQueue",
+      status: health.status,
+      required: false,
+      message: health.message,
+      durationMs: Date.now() - startedAt,
+      metadata: {
+        newCount: health.newCount,
+        openCount: health.openCount,
+        unresolvedCount: health.unresolvedCount,
+        unassignedCount: health.unassignedCount,
+        staleCount: health.staleCount,
+        staleHours: health.staleHours,
+        oldestUnresolvedAt: health.oldestUnresolvedAt,
+        oldestUnresolvedHours: health.oldestUnresolvedHours,
+      },
+    };
+  } catch (error) {
+    return {
+      name: "supportQueue",
+      status: "warn",
+      required: false,
+      message: error instanceof Error ? error.message : String(error),
+      durationMs: Date.now() - startedAt,
+    };
+  }
+}
+
 async function recordAuditEvent(report: Omit<HealthReport, "alert">) {
   if (!isDatabaseConfigured()) return;
 
@@ -223,6 +265,7 @@ export async function GET(request: NextRequest) {
       required: true,
       message: database.message,
     },
+    await checkSupportQueue(database.ok),
     await checkRedis(),
     requiredEnvCheck(
       "stripe",
