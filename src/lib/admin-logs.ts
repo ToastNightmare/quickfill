@@ -60,6 +60,19 @@ export interface AdminSupportMessagePatch {
   replySent?: boolean;
 }
 
+export interface AdminSupportQueueHealth {
+  status: "ok" | "warn" | "fail";
+  message: string;
+  newCount: number;
+  openCount: number;
+  unresolvedCount: number;
+  unassignedCount: number;
+  staleCount: number;
+  staleHours: number;
+  oldestUnresolvedAt: string | null;
+  oldestUnresolvedHours: number | null;
+}
+
 type SupportMessageInput = Omit<
   AdminSupportMessage,
   | "id"
@@ -92,6 +105,15 @@ type SupportMessageRow = {
   assignee?: string | null;
   internal_notes?: string | null;
   last_reply_at?: string | Date | null;
+};
+
+type SupportQueueHealthRow = {
+  new_count: number | string;
+  open_count: number | string;
+  unresolved_count: number | string;
+  unassigned_count: number | string;
+  stale_count: number | string;
+  oldest_unresolved_at: string | Date | null;
 };
 
 const DOWNLOAD_LOG_KEY = "admin:download_logs";
@@ -165,6 +187,10 @@ function toIsoDate(value: string | Date) {
 
 function nullableIsoDate(value: string | Date | null | undefined) {
   return value ? toIsoDate(value) : null;
+}
+
+function pluralize(count: number, singular: string, plural = `${singular}s`) {
+  return `${count} ${count === 1 ? singular : plural}`;
 }
 
 function normalizeSupportMessage(message: Partial<AdminSupportMessage>): AdminSupportMessage {
@@ -400,6 +426,62 @@ export async function getSupportMessagePage(filters: AdminSupportMessageFilters 
 export async function getSupportMessages(limit = 100) {
   const page = await getSupportMessagePage({ limit });
   return page.messages;
+}
+
+export async function getSupportQueueHealth(options: { staleHours?: number; warnAt?: number; failAt?: number } = {}): Promise<AdminSupportQueueHealth> {
+  await ensureSupportMessagesTable();
+
+  const staleHours = Math.max(1, Math.trunc(options.staleHours ?? 24));
+  const warnAt = Math.max(1, Math.trunc(options.warnAt ?? 25));
+  const failAt = Math.max(warnAt + 1, Math.trunc(options.failAt ?? 100));
+  const rows = await query<SupportQueueHealthRow>(
+    `
+      select
+        count(*) filter (where status = 'new')::int as new_count,
+        count(*) filter (where status = 'open')::int as open_count,
+        count(*) filter (where status <> 'closed')::int as unresolved_count,
+        count(*) filter (where status <> 'closed' and assignee is null)::int as unassigned_count,
+        count(*) filter (where status <> 'closed' and created_at < now() - make_interval(hours => $1::int))::int as stale_count,
+        min(created_at) filter (where status <> 'closed') as oldest_unresolved_at
+      from support_messages
+    `,
+    [staleHours],
+  );
+
+  const row = rows[0];
+  const newCount = parseCount(row?.new_count);
+  const openCount = parseCount(row?.open_count);
+  const unresolvedCount = parseCount(row?.unresolved_count);
+  const unassignedCount = parseCount(row?.unassigned_count);
+  const staleCount = parseCount(row?.stale_count);
+  const oldestUnresolvedAt = nullableIsoDate(row?.oldest_unresolved_at);
+  const oldestUnresolvedDate = oldestUnresolvedAt ? new Date(oldestUnresolvedAt) : null;
+  const oldestUnresolvedHours =
+    oldestUnresolvedDate && !Number.isNaN(oldestUnresolvedDate.getTime())
+      ? Math.max(0, Math.round((Date.now() - oldestUnresolvedDate.getTime()) / (60 * 60 * 1000)))
+      : null;
+
+  const status: AdminSupportQueueHealth["status"] =
+    unresolvedCount >= failAt ? "fail" : unresolvedCount >= warnAt || staleCount > 0 ? "warn" : "ok";
+  const message =
+    unresolvedCount === 0
+      ? "No unresolved support requests."
+      : staleCount > 0
+        ? `${pluralize(unresolvedCount, "unresolved request")} with ${pluralize(staleCount, "request")} older than ${staleHours} hours.`
+        : `${pluralize(unresolvedCount, "unresolved support request")} in the queue.`;
+
+  return {
+    status,
+    message,
+    newCount,
+    openCount,
+    unresolvedCount,
+    unassignedCount,
+    staleCount,
+    staleHours,
+    oldestUnresolvedAt,
+    oldestUnresolvedHours,
+  };
 }
 
 export async function updateSupportMessageStatus(id: string, status: AdminSupportStatus) {
