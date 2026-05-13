@@ -1,7 +1,7 @@
 import type { BillingReconciliationResult } from "@/lib/billing-reconciliation";
 import { isDatabaseConfigured, query } from "@/lib/db";
 
-export async function recordBillingSync(result: BillingReconciliationResult, source: "cron" | "admin" = "cron") {
+export async function recordBillingSync(result: BillingReconciliationResult, source: "cron" | "admin" | "customer" = "cron") {
   if (!isDatabaseConfigured()) return;
 
   try {
