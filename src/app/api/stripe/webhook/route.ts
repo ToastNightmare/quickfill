@@ -6,7 +6,8 @@ import { getRedis, isRedisConfigured } from "@/lib/redis";
 import { isDatabaseConfigured, query } from "@/lib/db";
 import { trackServerEvent } from "@/lib/server-analytics";
 import {
-  claimStripeEvent,
+  hasProcessedStripeEvent,
+  markStripeEventProcessed,
   saveSubscriptionSnapshot,
   stripeSubscriptionPeriodEnd,
   tierFromPriceId,
@@ -16,6 +17,19 @@ import { alertAdmins } from "@/lib/admin-alerts";
 import { log } from "@/lib/log";
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? "https://getquickfill.com";
+
+type StripeInvoiceWithSubscription = Stripe.Invoice & {
+  subscription?: string | Stripe.Subscription | null;
+  lines?: {
+    data?: Array<{
+      parent?: {
+        subscription_item_details?: {
+          subscription?: string | null;
+        };
+      };
+    }>;
+  };
+};
 
 function getResend() {
   if (!process.env.RESEND_API_KEY) return null;
@@ -57,6 +71,20 @@ function subscriptionTier(subscription: Stripe.Subscription): QuickFillTier {
 
   const priceId = subscription.items.data[0]?.price?.id;
   return tierFromPriceId(priceId) ?? "pro";
+}
+
+function subscriptionIdFromInvoice(invoice: Stripe.Invoice) {
+  const invoiceWithSubscription = invoice as StripeInvoiceWithSubscription;
+  const subscription = invoiceWithSubscription.subscription;
+  if (typeof subscription === "string") return subscription;
+  if (subscription?.id) return subscription.id;
+
+  for (const line of invoiceWithSubscription.lines?.data ?? []) {
+    const lineSubscription = line.parent?.subscription_item_details?.subscription;
+    if (lineSubscription) return lineSubscription;
+  }
+
+  return null;
 }
 
 async function getEmailForCustomer(customerId: string): Promise<string | null> {
@@ -255,6 +283,35 @@ async function handleSubscriptionDeleted(subscription: Stripe.Subscription) {
   await trackServerEvent("subscription_cancelled", { source: "stripe_subscription" });
 }
 
+async function handleInvoiceSubscriptionEvent(invoice: Stripe.Invoice, eventType: string) {
+  const subscriptionId = subscriptionIdFromInvoice(invoice);
+  if (!subscriptionId) {
+    log.warn("stripe_invoice_missing_subscription", { invoiceId: invoice.id, eventType });
+    await alertAdmins({
+      subject: "Stripe invoice missing subscription",
+      title: "Stripe invoice event could not be matched to a subscription",
+      message: "QuickFill received an invoice billing event without a subscription ID, so entitlement was not changed automatically.",
+      fields: {
+        invoiceId: invoice.id ?? "unknown",
+        customerId: invoice.customer ? String(invoice.customer) : "unknown",
+        eventType,
+      },
+    });
+    return;
+  }
+
+  const subscription = await getStripe().subscriptions.retrieve(subscriptionId);
+  await handleSubscriptionUpdated(subscription);
+}
+
+function handleCheckoutExpired(session: Stripe.Checkout.Session) {
+  log.info("stripe_checkout_expired", {
+    sessionId: session.id,
+    customerId: session.customer ? String(session.customer) : null,
+    userId: session.metadata?.userId ?? null,
+  });
+}
+
 export async function POST(req: NextRequest) {
   const body = await req.text();
   const sig = req.headers.get("stripe-signature");
@@ -270,20 +327,24 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid signature" }, { status: 400 });
   }
 
-  const claimed = await claimStripeEvent(event.id, event.type);
-  if (!claimed) {
+  if (await hasProcessedStripeEvent(event.id)) {
     return NextResponse.json({ received: true, duplicate: true });
   }
 
   try {
     if (event.type === "checkout.session.completed") {
       await handleCheckoutCompleted(event.data.object as Stripe.Checkout.Session);
-    } else if (event.type === "customer.subscription.updated") {
+    } else if (event.type === "checkout.session.expired") {
+      handleCheckoutExpired(event.data.object as Stripe.Checkout.Session);
+    } else if (event.type === "customer.subscription.created" || event.type === "customer.subscription.updated") {
       await handleSubscriptionUpdated(event.data.object as Stripe.Subscription);
     } else if (event.type === "customer.subscription.deleted") {
       await handleSubscriptionDeleted(event.data.object as Stripe.Subscription);
+    } else if (event.type === "invoice.payment_failed" || event.type === "invoice.payment_succeeded") {
+      await handleInvoiceSubscriptionEvent(event.data.object as Stripe.Invoice, event.type);
     }
 
+    await markStripeEventProcessed(event.id, event.type);
     log.info("stripe_webhook_processed", { eventId: event.id, eventType: event.type });
     return NextResponse.json({ received: true });
   } catch (error) {
