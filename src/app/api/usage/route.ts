@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getRedis, isRedisConfigured } from "@/lib/redis";
 import { getRequestEntitlement } from "@/lib/entitlements";
 import { getStoredSubscriptionSnapshot, recordUsageEvent } from "@/lib/billing-store";
+import { checkRateLimit } from "@/lib/rate-limit";
 
 const TTL_SECONDS = 35 * 24 * 60 * 60;
 const GUEST_TTL_SECONDS = 30 * 24 * 60 * 60;
@@ -15,6 +16,12 @@ function usageKey(entitlement: Awaited<ReturnType<typeof getRequestEntitlement>>
   if (entitlement.userId) return `usage:${entitlement.userId}:${monthKey()}`;
   if (entitlement.anonymousId) return `guest:fills:${entitlement.anonymousId}`;
   return null;
+}
+
+function requestIdentifier(request: NextRequest) {
+  const forwarded = request.headers.get("x-forwarded-for");
+  const realIp = request.headers.get("x-real-ip");
+  return forwarded?.split(",")[0] || realIp || "anonymous";
 }
 
 function isDelinquentBillingStatus(status?: string | null) {
@@ -52,6 +59,11 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  const { success } = await checkRateLimit(requestIdentifier(request), "usage");
+  if (!success) {
+    return NextResponse.json({ error: "Too many usage updates. Please try again shortly." }, { status: 429 });
+  }
+
   const entitlement = await getRequestEntitlement(request);
   const key = usageKey(entitlement);
   let used = 0;
