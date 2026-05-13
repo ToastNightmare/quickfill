@@ -140,6 +140,11 @@ function rate(value: number | null) {
   return value === null ? "n/a" : `${value}%`;
 }
 
+function progressWidth(value: number | null) {
+  if (value === null) return "0%";
+  return `${Math.min(Math.max(value, 0), 100)}%`;
+}
+
 function insightText(summary: SummaryResponse | null) {
   if (!summary) return [];
   const items: { title: string; body: string; tone: "good" | "warn" | "info" }[] = [];
@@ -357,8 +362,8 @@ export default function AdminAnalyticsClient() {
                     <span className="text-text-muted">{label as string}</span>
                     <span className="font-semibold">{rate(value as number | null)}</span>
                   </div>
-                  <div className="mt-2 h-2 rounded-full bg-surface-alt">
-                    <div className="h-2 rounded-full bg-accent" style={{ width: `${value ?? 0}%` }} />
+                  <div className="mt-2 h-2 overflow-hidden rounded-full bg-surface-alt">
+                    <div className="h-2 rounded-full bg-accent" style={{ width: progressWidth(value as number | null) }} />
                   </div>
                 </div>
               ))}
