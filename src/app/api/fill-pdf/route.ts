@@ -5,13 +5,14 @@ export const runtime = "nodejs";
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import crypto from "crypto";
-import { PDFDocument, rgb, StandardFonts, degrees, PDFName, PDFArray, PDFDict } from "pdf-lib";
+import { PDFDocument, rgb, StandardFonts, PDFName, PDFArray, PDFDict } from "pdf-lib";
 import type { EditorField } from "@/lib/types";
 import { APP_CONFIG } from "@/lib/config";
 import { applyBorderWatermark } from "@/lib/watermark";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { getRedis } from "@/lib/redis";
 import { recordDownloadLog } from "@/lib/admin-logs";
+import { orderFieldsForPdfDraw } from "@/lib/pdf-utils";
 
 /** Replace control characters (including newlines) with a space */
 function sanitize(text: string): string {
@@ -141,7 +142,7 @@ export async function POST(request: NextRequest) {
     fileForLog = { name: pdfFile.name, size: pdfFile.size };
 
     // Check file size limit (15MB max)
-    const MAX_SIZE = 15 * 1024 * 1024; // 15MB in bytes
+    const MAX_SIZE = 15 * 1024 * 1024;
     if (pdfFile.size > MAX_SIZE) {
       await recordDownloadLog({
         status: "blocked",
@@ -166,10 +167,11 @@ export async function POST(request: NextRequest) {
     }
 
     const editorFields: EditorField[] = JSON.parse(fieldsJson);
+    const orderedFields = orderFieldsForPdfDraw(editorFields);
     fieldsForLog = editorFields;
     const pageScaleEntries: [number, number][] = JSON.parse(pageScalesJson);
     const pageScales = new Map(pageScaleEntries);
-    
+
     // Parse viewport dimensions if provided (for coordinate transformation)
     let viewportDims: Map<number, { width: number; height: number }> | null = null;
     if (viewportDimsJson) {
@@ -214,7 +216,7 @@ export async function POST(request: NextRequest) {
       cleanupAcroFormArtifacts(pdfDoc);
 
       const wrappedPages = new Set<number>();
-      for (const field of editorFields) {
+      for (const field of orderedFields) {
         if (!wrappedPages.has(field.page)) {
           const page = pdfDoc.getPages()[field.page];
           if (page) preparePageForDrawing(page, pdfDoc);
@@ -225,7 +227,7 @@ export async function POST(request: NextRequest) {
     } else {
       // Track which pages have been wrapped to avoid duplicate wrapping
       const wrappedPages = new Set<number>();
-      for (const field of editorFields) {
+      for (const field of orderedFields) {
         // Prepare page for drawing by popping unbalanced graphics states once per page
         if (!wrappedPages.has(field.page)) {
           const page = pdfDoc.getPages()[field.page];
@@ -277,7 +279,7 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// ─── Helpers ────────────────────────────────────────────────────────────────
+// Helpers
 
 type PDFPage = ReturnType<PDFDocument["getPages"]>[number];
 type PDFFont = Awaited<ReturnType<PDFDocument["embedFont"]>>;
@@ -446,19 +448,19 @@ function preparePageForDrawing(page: PDFPage, pdfDoc: PDFDocument) {
   const node = page.node;
   const context = pdfDoc.context;
   const contents = node.Contents();
-  
+
   if (!contents) return;
-  
+
   // Gather all existing content bytes
   let allBytes: Uint8Array;
   const contentRefs: any[] = [];
-  
+
   if (contents instanceof PDFArray) {
     const chunks: Uint8Array[] = [];
     for (const ref of contents.asArray()) {
       contentRefs.push(ref);
       const stream = context.lookup(ref);
-      if (stream && typeof (stream as any).getContents === 'function') {
+      if (stream && typeof (stream as any).getContents === "function") {
         chunks.push((stream as any).getContents());
       }
     }
@@ -472,15 +474,15 @@ function preparePageForDrawing(page: PDFPage, pdfDoc: PDFDocument) {
     }
   } else {
     contentRefs.push(contents);
-    if (typeof (contents as any).getContents === 'function') {
+    if (typeof (contents as any).getContents === "function") {
       allBytes = (contents as any).getContents();
     } else {
       return;
     }
   }
-  
-  const text = new TextDecoder('latin1').decode(allBytes);
-  
+
+  const text = new TextDecoder("latin1").decode(allBytes);
+
   // Count q/Q imbalance
   const qMatches = text.match(/(?:^|\s)q(?:\s|$)/g) || [];
   const QMatches = text.match(/(?:^|\s)Q(?:\s|$)/g) || [];
@@ -491,15 +493,15 @@ function preparePageForDrawing(page: PDFPage, pdfDoc: PDFDocument) {
   const qRef = context.register(qStream);
 
   // Close the wrapper plus any leaked states from the original content.
-  let bridgeOps = '\n';
+  let bridgeOps = "\n";
   for (let i = 0; i < Math.max(1, unbalanced + 1); i++) {
-    bridgeOps += 'Q\n';
+    bridgeOps += "Q\n";
   }
-  
+
   // Append the bridge after existing content, leaving following draws clean.
   const bridgeStream = context.stream(new TextEncoder().encode(bridgeOps));
   const bridgeRef = context.register(bridgeStream);
-  
+
   const newArray = context.obj([qRef, ...contentRefs, bridgeRef]);
   node.set(PDFName.of("Contents"), newArray);
 }
