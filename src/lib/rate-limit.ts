@@ -1,7 +1,7 @@
 import { Ratelimit } from "@upstash/ratelimit";
 import { getRedis, isRedisConfigured } from "@/lib/redis";
 
-type RateLimitPolicy = "default" | "abn" | "detectFields" | "fillPdf" | "checkout";
+type RateLimitPolicy = "default" | "abn" | "detectFields" | "fillPdf" | "checkout" | "billingSync";
 
 const policyWindows: Record<RateLimitPolicy, { requests: number; window: `${number} ${"s" | "m" | "h"}` }> = {
   default: { requests: 30, window: "60 s" },
@@ -9,6 +9,7 @@ const policyWindows: Record<RateLimitPolicy, { requests: number; window: `${numb
   detectFields: { requests: 20, window: "60 s" },
   fillPdf: { requests: 20, window: "60 s" },
   checkout: { requests: 8, window: "60 s" },
+  billingSync: { requests: 6, window: "60 s" },
 };
 
 const limiters = new Map<RateLimitPolicy, Ratelimit>();
