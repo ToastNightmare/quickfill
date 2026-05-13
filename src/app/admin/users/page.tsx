@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { Search, ShieldCheck, UserRound } from "lucide-react";
 import { requireAdminUser } from "@/lib/admin-routing";
 import { getAdminUsers } from "@/lib/admin-console";
@@ -95,13 +96,13 @@ export default async function AdminUsersPage({ searchParams }: PageProps) {
               {data.users.map((user) => (
                 <tr key={user.id} className="hover:bg-surface-alt/60">
                   <td className="px-5 py-4">
-                    <div className="flex items-center gap-3">
+                    <Link href={`/admin/customers/${user.id}`} className="flex items-center gap-3 rounded-md outline-none focus-visible:ring-2 focus-visible:ring-accent">
                       <img src={user.imageUrl} alt="" className="h-9 w-9 rounded-full border border-border bg-surface-alt" />
                       <span>
-                        <span className="block font-semibold text-text">{user.name}</span>
+                        <span className="block font-semibold text-text hover:text-accent">{user.name}</span>
                         <span className="block text-xs text-text-muted">{user.email || user.id}</span>
                       </span>
-                    </div>
+                    </Link>
                   </td>
                   <td className="px-5 py-4">
                     <span className="rounded-full bg-accent/10 px-2.5 py-1 text-xs font-semibold uppercase text-accent">
