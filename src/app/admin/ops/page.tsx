@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { notFound } from "next/navigation";
 import {
   AlertTriangle,
   ArrowLeft,
@@ -13,7 +12,7 @@ import {
   ServerCog,
   ShieldCheck,
 } from "lucide-react";
-import { getAdminUser } from "@/lib/admin";
+import { requireAdminUser } from "@/lib/admin-routing";
 import { checkDatabaseConnection } from "@/lib/db";
 import { isRedisConfigured } from "@/lib/redis";
 
@@ -105,8 +104,7 @@ function OpsCard({ service }: { service: ServiceCard }) {
 }
 
 export default async function AdminOpsPage() {
-  const admin = await getAdminUser();
-  if (!admin) notFound();
+  await requireAdminUser();
 
   const database = await checkDatabaseConnection();
   const redisReady = isRedisConfigured();
