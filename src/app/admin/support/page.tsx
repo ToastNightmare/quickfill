@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
-import { notFound } from "next/navigation";
 import { Inbox, Mail } from "lucide-react";
-import { getAdminUser } from "@/lib/admin";
+import { requireAdminUser } from "@/lib/admin-routing";
 import { getAdminSupportInbox } from "@/lib/admin-console";
 
 export const metadata: Metadata = {
@@ -14,8 +13,7 @@ function formatDate(value: string) {
 }
 
 export default async function AdminSupportPage() {
-  const admin = await getAdminUser();
-  if (!admin) notFound();
+  await requireAdminUser();
   const messages = await getAdminSupportInbox();
 
   return (
