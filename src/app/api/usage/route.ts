@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getRedis, isRedisConfigured } from "@/lib/redis";
 import { getRequestEntitlement } from "@/lib/entitlements";
-import { recordUsageEvent } from "@/lib/billing-store";
+import { getStoredSubscriptionSnapshot, recordUsageEvent } from "@/lib/billing-store";
 
 const TTL_SECONDS = 35 * 24 * 60 * 60;
 const GUEST_TTL_SECONDS = 30 * 24 * 60 * 60;
@@ -17,10 +17,17 @@ function usageKey(entitlement: Awaited<ReturnType<typeof getRequestEntitlement>>
   return null;
 }
 
+function isDelinquentBillingStatus(status?: string | null) {
+  return status === "past_due" || status === "unpaid" || status === "incomplete";
+}
+
 export async function GET(request: NextRequest) {
   const entitlement = await getRequestEntitlement(request);
   const key = usageKey(entitlement);
-  const used = key && isRedisConfigured() ? await getRedis().get<number>(key) : 0;
+  const [used, subscription] = await Promise.all([
+    key && isRedisConfigured() ? getRedis().get<number>(key) : Promise.resolve(0),
+    entitlement.userId ? getStoredSubscriptionSnapshot(entitlement.userId) : Promise.resolve(null),
+  ]);
 
   return NextResponse.json({
     used: used ?? 0,
@@ -29,6 +36,18 @@ export async function GET(request: NextRequest) {
     tier: entitlement.tier,
     guest: entitlement.tier === "guest",
     qa: entitlement.qa,
+    billing: subscription
+      ? {
+          status: subscription.status,
+          currentPeriodEnd: subscription.currentPeriodEnd,
+          updatedAt: subscription.updatedAt,
+          entitled: subscription.entitled,
+          needsReview: subscription.needsReview,
+          reviewReason: subscription.reviewReason,
+          hasStripeCustomer: Boolean(subscription.stripeCustomerId),
+          delinquent: isDelinquentBillingStatus(subscription.status),
+        }
+      : null,
   });
 }
 
