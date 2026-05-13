@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Archive, CheckCircle2, CircleDot, Inbox, Mail, Reply } from "lucide-react";
+import { Archive, CheckCircle2, CircleDot, Inbox, Mail, Reply, Tag } from "lucide-react";
 import type { AdminSupportMessage, AdminSupportStatus } from "@/lib/admin-logs";
 
 const STATUS_META: Record<AdminSupportStatus, { label: string; className: string; icon: typeof CircleDot }> = {
@@ -22,6 +22,13 @@ const STATUS_META: Record<AdminSupportStatus, { label: string; className: string
   },
 };
 
+const PRIORITY_META = {
+  low: "bg-slate-50 text-slate-600 border-slate-200",
+  normal: "bg-slate-50 text-slate-600 border-slate-200",
+  high: "bg-red-50 text-red-700 border-red-200",
+  urgent: "bg-red-50 text-red-700 border-red-200",
+} as const;
+
 function formatDate(value: string) {
   return new Date(value).toLocaleString("en-AU", { dateStyle: "medium", timeStyle: "short" });
 }
@@ -39,6 +46,15 @@ function StatusBadge({ status }: { status: AdminSupportStatus }) {
     <span className={"inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-semibold " + meta.className}>
       <Icon className="h-3.5 w-3.5" />
       {meta.label}
+    </span>
+  );
+}
+
+function SupportTag({ label, className }: { label: string; className: string }) {
+  return (
+    <span className={"inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-semibold " + className}>
+      <Tag className="h-3.5 w-3.5" />
+      {label}
     </span>
   );
 }
@@ -109,11 +125,17 @@ export function AdminSupportInbox({ initialMessages }: { initialMessages: AdminS
 
       {sortedMessages.map((message) => {
         const isBusy = pendingId === message.id;
+        const priority = message.priority || "normal";
+        const priorityClass = PRIORITY_META[priority] ?? PRIORITY_META.normal;
         return (
           <article key={message.id} className="rounded-lg border border-border bg-surface p-5 shadow-sm">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
               <div>
-                <StatusBadge status={message.status} />
+                <div className="flex flex-wrap gap-2">
+                  <StatusBadge status={message.status} />
+                  <SupportTag label={priority} className={priorityClass} />
+                  <SupportTag label={message.category || "general"} className="bg-blue-50 text-blue-700 border-blue-200" />
+                </div>
                 <h2 className="mt-3 text-lg font-semibold">{message.subject}</h2>
                 <p className="mt-1 text-sm text-text-muted">
                   {message.name} | <a className="hover:text-text" href={"mailto:" + message.email}>{message.email}</a>
