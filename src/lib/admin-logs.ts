@@ -34,6 +34,9 @@ export interface AdminSupportMessage {
   status: AdminSupportStatus;
   priority: AdminSupportPriority;
   category: AdminSupportCategory;
+  assignee?: string | null;
+  internalNotes: string;
+  lastReplyAt?: string | null;
 }
 
 export interface AdminSupportMessageFilters {
@@ -50,9 +53,24 @@ export interface AdminSupportMessagePage {
   offset: number;
 }
 
+export interface AdminSupportMessagePatch {
+  status?: AdminSupportStatus;
+  assignee?: string | null;
+  internalNotes?: string;
+  replySent?: boolean;
+}
+
 type SupportMessageInput = Omit<
   AdminSupportMessage,
-  "id" | "createdAt" | "updatedAt" | "status" | "priority" | "category"
+  | "id"
+  | "createdAt"
+  | "updatedAt"
+  | "status"
+  | "priority"
+  | "category"
+  | "assignee"
+  | "internalNotes"
+  | "lastReplyAt"
 > & {
   priority?: AdminSupportPriority;
   category?: AdminSupportCategory;
@@ -71,6 +89,9 @@ type SupportMessageRow = {
   status: string;
   priority: string;
   category: string;
+  assignee?: string | null;
+  internal_notes?: string | null;
+  last_reply_at?: string | Date | null;
 };
 
 const DOWNLOAD_LOG_KEY = "admin:download_logs";
@@ -84,6 +105,15 @@ let supportSchemaPromise: Promise<void> | null = null;
 function cleanText(value: unknown, max = 180) {
   if (typeof value !== "string") return "";
   return value.replace(/[\x00-\x1f\x7f]/g, " ").trim().slice(0, max);
+}
+
+function cleanLongText(value: unknown, max = 4000) {
+  if (typeof value !== "string") return "";
+  return value
+    .replace(/\r\n/g, "\n")
+    .replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/g, " ")
+    .trim()
+    .slice(0, max);
 }
 
 function cleanNumber(value: unknown) {
@@ -133,6 +163,10 @@ function toIsoDate(value: string | Date) {
   return value instanceof Date ? value.toISOString() : new Date(value).toISOString();
 }
 
+function nullableIsoDate(value: string | Date | null | undefined) {
+  return value ? toIsoDate(value) : null;
+}
+
 function normalizeSupportMessage(message: Partial<AdminSupportMessage>): AdminSupportMessage {
   return {
     id: cleanText(message.id, 120),
@@ -141,12 +175,15 @@ function normalizeSupportMessage(message: Partial<AdminSupportMessage>): AdminSu
     name: cleanText(message.name, 100) || "Unknown",
     email: cleanText(message.email, 160),
     subject: cleanText(message.subject, 140) || "Support request",
-    message: cleanText(message.message, 2000),
+    message: cleanLongText(message.message, 2000),
     userId: cleanText(message.userId, 80) || null,
     source: cleanText(message.source, 160) || null,
     status: cleanSupportStatus(message.status),
     priority: cleanSupportPriority(message.priority),
     category: cleanSupportCategory(message.category),
+    assignee: cleanText(message.assignee, 120) || null,
+    internalNotes: cleanLongText(message.internalNotes, 4000),
+    lastReplyAt: message.lastReplyAt ? toIsoDate(message.lastReplyAt) : null,
   };
 }
 
@@ -164,6 +201,9 @@ function mapSupportRow(row: SupportMessageRow): AdminSupportMessage {
     status: cleanSupportStatus(row.status),
     priority: cleanSupportPriority(row.priority),
     category: cleanSupportCategory(row.category),
+    assignee: cleanText(row.assignee, 120) || null,
+    internalNotes: cleanLongText(row.internal_notes, 4000),
+    lastReplyAt: nullableIsoDate(row.last_reply_at),
   };
 }
 
@@ -182,7 +222,7 @@ function supportWhere(filters: AdminSupportMessageFilters) {
     params.push(`%${search}%`);
     const index = params.length;
     clauses.push(
-      `(name ilike $${index} or email ilike $${index} or subject ilike $${index} or message ilike $${index})`,
+      `(name ilike $${index} or email ilike $${index} or subject ilike $${index} or message ilike $${index} or assignee ilike $${index} or internal_notes ilike $${index})`,
     );
   }
 
@@ -214,6 +254,9 @@ async function ensureSupportMessagesTable() {
           category text not null default 'general'
         )
       `);
+      await query("alter table support_messages add column if not exists assignee text");
+      await query("alter table support_messages add column if not exists internal_notes text not null default ''");
+      await query("alter table support_messages add column if not exists last_reply_at timestamptz");
       await query(
         "create index if not exists support_messages_status_created_at_idx on support_messages(status, created_at desc)",
       );
@@ -222,6 +265,9 @@ async function ensureSupportMessagesTable() {
       );
       await query(
         "create index if not exists support_messages_user_created_at_idx on support_messages(user_id, created_at desc)",
+      );
+      await query(
+        "create index if not exists support_messages_assignee_status_idx on support_messages(assignee, status, updated_at desc)",
       );
     })().catch((error) => {
       supportSchemaPromise = null;
@@ -292,13 +338,14 @@ export async function recordSupportMessage(input: SupportMessageInput) {
     `
       insert into support_messages (name, email, subject, message, user_id, source, status, priority, category)
       values ($1, $2, $3, $4, $5, $6, 'new', $7, $8)
-      returning id, created_at, updated_at, name, email, subject, message, user_id, source, status, priority, category
+      returning id, created_at, updated_at, name, email, subject, message, user_id, source, status, priority, category,
+        assignee, internal_notes, last_reply_at
     `,
     [
       cleanText(input.name, 100) || "Unknown",
       cleanText(input.email, 160),
       cleanText(input.subject, 140) || "Support request",
-      cleanText(input.message, 2000),
+      cleanLongText(input.message, 2000),
       cleanText(input.userId, 80) || null,
       cleanText(input.source, 160) || null,
       priority,
@@ -325,7 +372,8 @@ export async function getSupportMessagePage(filters: AdminSupportMessageFilters 
 
   const rows = await query<SupportMessageRow>(
     `
-      select id, created_at, updated_at, name, email, subject, message, user_id, source, status, priority, category
+      select id, created_at, updated_at, name, email, subject, message, user_id, source, status, priority, category,
+        assignee, internal_notes, last_reply_at
       from support_messages
       ${whereSql}
       order by
@@ -355,21 +403,64 @@ export async function getSupportMessages(limit = 100) {
 }
 
 export async function updateSupportMessageStatus(id: string, status: AdminSupportStatus) {
+  return updateSupportMessage(id, { status });
+}
+
+export async function updateSupportMessage(id: string, patch: AdminSupportMessagePatch) {
   const cleanId = cleanText(id, 120);
-  const cleanStatus = cleanSupportStatus(status);
   if (!cleanId) return null;
 
+  const hasStatus = typeof patch.status === "string" && SUPPORT_STATUSES.has(patch.status);
+  const hasAssignee = Object.prototype.hasOwnProperty.call(patch, "assignee");
+  const hasInternalNotes = typeof patch.internalNotes === "string";
+  const replySent = Boolean(patch.replySent);
+
+  if (!hasStatus && !hasAssignee && !hasInternalNotes && !replySent) return null;
+
   await ensureSupportMessagesTable();
+
+  const updates: string[] = [];
+  const params: unknown[] = [cleanId];
+
+  if (hasStatus) {
+    params.push(patch.status);
+    updates.push(`status = $${params.length}`);
+  } else if (replySent) {
+    updates.push("status = case when status = 'closed' then status else 'open' end");
+  }
+
+  if (hasAssignee) {
+    params.push(cleanText(patch.assignee, 120) || null);
+    updates.push(`assignee = $${params.length}`);
+  }
+
+  if (hasInternalNotes) {
+    params.push(cleanLongText(patch.internalNotes, 4000));
+    updates.push(`internal_notes = $${params.length}`);
+  }
+
+  if (replySent) {
+    updates.push("last_reply_at = now()");
+  }
+
+  updates.push("updated_at = now()");
+
   const rows = await query<SupportMessageRow>(
     `
       update support_messages
-      set status = $2, updated_at = now()
+      set ${updates.join(", ")}
       where id::text = $1
-      returning id, created_at, updated_at, name, email, subject, message, user_id, source, status, priority, category
+      returning id, created_at, updated_at, name, email, subject, message, user_id, source, status, priority, category,
+        assignee, internal_notes, last_reply_at
     `,
-    [cleanId, cleanStatus],
+    params,
   );
 
   if (rows[0]) return mapSupportRow(rows[0]);
-  return updateLegacySupportMessageStatus(cleanId, cleanStatus);
+
+  if (hasStatus) {
+    return updateLegacySupportMessageStatus(cleanId, patch.status as AdminSupportStatus);
+  }
+
+  return null;
 }
