@@ -21,7 +21,7 @@ export default async function AdminRevenuePage() {
   const revenue = await getAdminRevenueSummary();
 
   const cards = [
-    { title: "Monthly run rate", value: money(revenue.monthlyRunRateCents), sub: "Active, trialing, and past due subs", icon: TrendingUp },
+    { title: "Healthy monthly run rate", value: money(revenue.monthlyRunRateCents), sub: "Active and trialing subscriptions only", icon: TrendingUp },
     { title: "Paid invoices", value: money(revenue.last30InvoiceCents), sub: "Paid invoice volume in the last 30 days", icon: DollarSign },
     { title: "Active subscriptions", value: String(revenue.activeSubscriptions), sub: revenue.trialingSubscriptions + " trialing, " + revenue.pastDueSubscriptions + " past due", icon: CreditCard },
   ];
