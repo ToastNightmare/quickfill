@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
-import { notFound } from "next/navigation";
 import { Search, ShieldCheck, UserRound } from "lucide-react";
-import { getAdminUser } from "@/lib/admin";
+import { requireAdminUser } from "@/lib/admin-routing";
 import { getAdminUsers } from "@/lib/admin-console";
 
 export const metadata: Metadata = {
@@ -19,8 +18,7 @@ function formatDate(value: string | null) {
 }
 
 export default async function AdminUsersPage({ searchParams }: PageProps) {
-  const admin = await getAdminUser();
-  if (!admin) notFound();
+  await requireAdminUser();
 
   const { q = "" } = await searchParams;
   const data = await getAdminUsers(q);

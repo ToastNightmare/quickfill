@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
-import { notFound } from "next/navigation";
 import { CreditCard, DollarSign, TrendingUp } from "lucide-react";
-import { getAdminUser } from "@/lib/admin";
+import { requireAdminUser } from "@/lib/admin-routing";
 import { getAdminRevenueSummary } from "@/lib/admin-console";
 
 export const metadata: Metadata = {
@@ -18,8 +17,7 @@ function formatDate(value: string) {
 }
 
 export default async function AdminRevenuePage() {
-  const admin = await getAdminUser();
-  if (!admin) notFound();
+  await requireAdminUser();
   const revenue = await getAdminRevenueSummary();
 
   const cards = [
