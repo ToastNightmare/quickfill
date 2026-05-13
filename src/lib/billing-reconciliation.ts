@@ -39,6 +39,8 @@ export type BillingReconciliationResult = {
   message: string;
 };
 
+const LIVE_SUBSCRIPTION_STATUSES = new Set<Stripe.Subscription.Status>(["active", "trialing"]);
+
 function clampLimit(limit?: number) {
   if (!Number.isFinite(limit)) return BILLING_RECONCILIATION_DEFAULT_LIMIT;
   const whole = Math.trunc(limit ?? BILLING_RECONCILIATION_DEFAULT_LIMIT);
@@ -93,22 +95,48 @@ export function subscriptionTier(subscription: Stripe.Subscription, fallback: Qu
   return tierFromPriceId(priceId) ?? fallback;
 }
 
-async function fetchCurrentSubscription(candidate: SubscriptionCandidate) {
-  const stripe = getStripe();
+function newestSubscription(subscriptions: Stripe.Subscription[]) {
+  return subscriptions.sort((a, b) => b.created - a.created)[0] ?? null;
+}
 
-  if (candidate.stripe_subscription_id) {
-    return stripe.subscriptions.retrieve(candidate.stripe_subscription_id);
-  }
+function bestCustomerSubscription(subscriptions: Stripe.Subscription[]) {
+  const live = subscriptions.filter((subscription) => LIVE_SUBSCRIPTION_STATUSES.has(subscription.status));
+  return newestSubscription(live) ?? newestSubscription(subscriptions);
+}
 
-  if (!candidate.stripe_customer_id) return null;
-
-  const subscriptions = await stripe.subscriptions.list({
-    customer: candidate.stripe_customer_id,
+async function listCustomerSubscriptions(customerId: string) {
+  const subscriptions = await getStripe().subscriptions.list({
+    customer: customerId,
     status: "all",
     limit: 10,
   });
 
-  return subscriptions.data.sort((a, b) => b.created - a.created)[0] ?? null;
+  return subscriptions.data;
+}
+
+async function fetchCurrentSubscription(candidate: SubscriptionCandidate) {
+  const stripe = getStripe();
+  let storedSubscription: Stripe.Subscription | null = null;
+
+  if (candidate.stripe_subscription_id) {
+    storedSubscription = await stripe.subscriptions.retrieve(candidate.stripe_subscription_id);
+  }
+
+  if (!candidate.stripe_customer_id) return storedSubscription;
+
+  const customerSubscriptions = await listCustomerSubscriptions(candidate.stripe_customer_id);
+  const bestCustomerMatch = bestCustomerSubscription(customerSubscriptions);
+  if (!bestCustomerMatch) return storedSubscription;
+
+  if (!storedSubscription) return bestCustomerMatch;
+  if (LIVE_SUBSCRIPTION_STATUSES.has(bestCustomerMatch.status) && !LIVE_SUBSCRIPTION_STATUSES.has(storedSubscription.status)) {
+    return bestCustomerMatch;
+  }
+  if (bestCustomerMatch.created > storedSubscription.created && LIVE_SUBSCRIPTION_STATUSES.has(bestCustomerMatch.status)) {
+    return bestCustomerMatch;
+  }
+
+  return storedSubscription;
 }
 
 async function reconcileCandidate(candidate: SubscriptionCandidate, result: BillingReconciliationResult) {
