@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft, CreditCard, FileText, LockKeyhole, ShieldCheck, UserRound } from "lucide-react";
+import { AdminBillingSyncButton } from "@/components/AdminBillingSyncButton";
 import { requireAdminUser } from "@/lib/admin-routing";
 import { getAdminCustomer } from "@/lib/admin-console";
 
@@ -102,23 +103,51 @@ export default async function AdminCustomerPage({ params }: PageProps) {
         </section>
 
         <section className="rounded-lg border border-border bg-surface p-5 shadow-sm">
-          <div className="flex items-center gap-2">
-            <CreditCard className="h-5 w-5 text-accent" />
-            <h2 className="font-semibold">Billing</h2>
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <CreditCard className="h-5 w-5 text-accent" />
+              <h2 className="font-semibold">Billing truth</h2>
+            </div>
+            <AdminBillingSyncButton userId={customer.id} />
           </div>
-          {customer.stripeCustomer ? (
-            <dl className="mt-4 space-y-3 text-sm">
-              <div>
-                <dt className="text-text-muted">Stripe customer</dt>
-                <dd className="break-all font-medium">{customer.stripeCustomer.id}</dd>
-              </div>
-              <div>
-                <dt className="text-text-muted">Delinquent</dt>
-                <dd className="font-medium">{customer.stripeCustomer.delinquent ? "Yes" : "No"}</dd>
-              </div>
-            </dl>
-          ) : (
-            <p className="mt-4 text-sm text-text-muted">No Stripe customer linked.</p>
+          <dl className="mt-4 space-y-3 text-sm">
+            <div>
+              <dt className="text-text-muted">Local access</dt>
+              <dd className="font-medium uppercase">{customer.tier}</dd>
+            </div>
+            <div>
+              <dt className="text-text-muted">Stripe status</dt>
+              <dd className="font-medium">{customer.billingStatus ?? "No stored subscription"}</dd>
+            </div>
+            <div>
+              <dt className="text-text-muted">Entitled now</dt>
+              <dd className="font-medium">{customer.billingEntitled ? "Yes" : "No"}</dd>
+            </div>
+            <div>
+              <dt className="text-text-muted">Current period end</dt>
+              <dd className="font-medium">{formatDate(customer.billingPeriodEnd)}</dd>
+            </div>
+            <div>
+              <dt className="text-text-muted">Last local sync</dt>
+              <dd className="font-medium">{formatDate(customer.billingUpdatedAt)}</dd>
+            </div>
+            {customer.stripeCustomer && (
+              <>
+                <div>
+                  <dt className="text-text-muted">Stripe customer</dt>
+                  <dd className="break-all font-medium">{customer.stripeCustomer.id}</dd>
+                </div>
+                <div>
+                  <dt className="text-text-muted">Delinquent</dt>
+                  <dd className="font-medium">{customer.stripeCustomer.delinquent ? "Yes" : "No"}</dd>
+                </div>
+              </>
+            )}
+          </dl>
+          {customer.billingNeedsReview && customer.billingReviewReason && (
+            <p className="mt-4 rounded-lg bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800">
+              {customer.billingReviewReason}
+            </p>
           )}
         </section>
       </div>
