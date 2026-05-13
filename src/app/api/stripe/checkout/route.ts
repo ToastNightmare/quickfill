@@ -78,13 +78,14 @@ export async function POST(req: NextRequest) {
       isRedisConfigured() ? getRedis().get<string>(`stripe_customer:${userId}`) : Promise.resolve(null),
     ]);
     const existingCustomerId = snapshot?.stripeCustomerId ?? cachedCustomerId;
+    const successReturnTo = encodeURIComponent("/dashboard?upgraded=true");
 
     const session = await getStripe().checkout.sessions.create({
       mode: "subscription",
       payment_method_types: ["card"],
       line_items: [{ price: priceId, quantity: 1 }],
       ...(existingCustomerId ? { customer: existingCustomerId } : { customer_email: email ?? undefined }),
-      success_url: `${origin}/dashboard?upgraded=true`,
+      success_url: `${origin}/api/billing/sync?returnTo=${successReturnTo}`,
       cancel_url: `${origin}/pricing`,
       allow_promotion_codes: true,
       metadata,
