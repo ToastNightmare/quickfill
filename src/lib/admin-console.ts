@@ -3,7 +3,7 @@ import type Stripe from "stripe";
 import { getRedis } from "@/lib/redis";
 import { getStripe } from "@/lib/stripe";
 import { getDownloadLogs, getSupportMessagePage, type AdminSupportMessageFilters } from "@/lib/admin-logs";
-import { getStoredSubscriptionSnapshot, getStoredTier } from "@/lib/billing-store";
+import { getStoredSubscriptionSnapshot, getStoredTier, stripeSubscriptionPeriodEnd } from "@/lib/billing-store";
 
 type ClerkUser = Awaited<ReturnType<Awaited<ReturnType<typeof clerkClient>>["users"]["getUser"]>>;
 
@@ -207,16 +207,17 @@ export async function getAdminCustomer(userId: string): Promise<AdminCustomerDet
     redis.lrange<{ filename: string; filledAt: string; fieldCount: number; pageCount: number }>(`fills:${userId}`, 0, 29),
     redis.get<string>(`stripe_customer:${userId}`),
   ]);
+  const storedStripeCustomerId = summary.stripeCustomerId ?? stripeCustomerId ?? null;
 
   let stripeCustomer: AdminCustomerDetail["stripeCustomer"] = null;
   let subscriptions: AdminCustomerDetail["subscriptions"] = [];
 
-  if (stripeCustomerId) {
+  if (storedStripeCustomerId) {
     try {
       const stripe = getStripe();
       const [customer, subList] = await Promise.all([
-        stripe.customers.retrieve(stripeCustomerId),
-        stripe.subscriptions.list({ customer: stripeCustomerId, status: "all", limit: 10 }),
+        stripe.customers.retrieve(storedStripeCustomerId),
+        stripe.subscriptions.list({ customer: storedStripeCustomerId, status: "all", limit: 10 }),
       ]);
 
       if (!customer.deleted) {
@@ -229,14 +230,18 @@ export async function getAdminCustomer(userId: string): Promise<AdminCustomerDet
         };
       }
 
-      subscriptions = subList.data.map((subscription) => ({
-        id: subscription.id,
-        status: subscription.status,
-        currentPeriodEnd: subscription.items.data[0]?.current_period_end ? new Date(subscription.items.data[0].current_period_end * 1000).toISOString() : null,
-        price: subscription.items.data[0]?.price?.nickname ?? subscription.items.data[0]?.price?.id ?? "Unknown price",
-        amount: stripeAmount(subscription),
-        interval: stripeInterval(subscription),
-      }));
+      subscriptions = subList.data.map((subscription) => {
+        const currentPeriodEnd = stripeSubscriptionPeriodEnd(subscription);
+
+        return {
+          id: subscription.id,
+          status: subscription.status,
+          currentPeriodEnd: currentPeriodEnd ? new Date(currentPeriodEnd * 1000).toISOString() : null,
+          price: subscription.items.data[0]?.price?.nickname ?? subscription.items.data[0]?.price?.id ?? "Unknown price",
+          amount: stripeAmount(subscription),
+          interval: stripeInterval(subscription),
+        };
+      });
     } catch {
       stripeCustomer = null;
       subscriptions = [];
