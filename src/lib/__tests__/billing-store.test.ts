@@ -1,6 +1,6 @@
 import { getRedis, isRedisConfigured } from "../redis";
 import { isDatabaseConfigured, query } from "../db";
-import { getStoredTier, isSubscriptionEntitled, saveSubscriptionSnapshot } from "../billing-store";
+import { getStoredSubscriptionSnapshot, getStoredTier, isSubscriptionEntitled, saveSubscriptionSnapshot } from "../billing-store";
 
 jest.mock("../redis", () => ({
   getRedis: jest.fn(),
@@ -44,7 +44,8 @@ describe("billing entitlements", () => {
     expect(isSubscriptionEntitled("canceled", Math.floor(Date.now() / 1000) + 3600)).toBe(false);
   });
 
-  it("does not grant paid access when an active subscription period is already expired", () => {
+  it("does not grant paid access when an active subscription period is missing or expired", () => {
+    expect(isSubscriptionEntitled("active", null)).toBe(false);
     expect(isSubscriptionEntitled("active", "2026-05-12T00:00:00.000Z")).toBe(false);
   });
 
@@ -59,6 +60,9 @@ describe("billing entitlements", () => {
         tier: "pro",
         status: "active",
         current_period_end: new Date("2026-05-12T00:00:00.000Z"),
+        stripe_customer_id: "cus_123",
+        stripe_subscription_id: "sub_123",
+        updated_at: new Date("2026-05-12T00:00:00.000Z"),
       },
     ] as never);
     redis.get.mockResolvedValue("pro");
@@ -66,6 +70,27 @@ describe("billing entitlements", () => {
     await expect(getStoredTier("user_123")).resolves.toBe("free");
 
     expect(redis.get).not.toHaveBeenCalledWith("sub:user_123");
+  });
+
+  it("flags active stored subscriptions with missing billing periods for admin review", async () => {
+    mockQuery.mockResolvedValueOnce([
+      {
+        tier: "pro",
+        status: "active",
+        current_period_end: null,
+        stripe_customer_id: "cus_123",
+        stripe_subscription_id: "sub_123",
+        updated_at: new Date("2026-05-12T00:00:00.000Z"),
+      },
+    ] as never);
+
+    await expect(getStoredSubscriptionSnapshot("user_123")).resolves.toMatchObject({
+      tier: "pro",
+      status: "active",
+      entitled: false,
+      needsReview: true,
+      reviewReason: "Missing renewal/end date from Stripe",
+    });
   });
 
   it("clears Redis paid cache when saving a past-due subscription snapshot", async () => {

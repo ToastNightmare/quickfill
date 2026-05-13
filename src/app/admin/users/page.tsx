@@ -17,6 +17,25 @@ function formatDate(value: string | null) {
   return new Date(value).toLocaleString("en-AU", { dateStyle: "medium", timeStyle: "short" });
 }
 
+function formatBillingDate(value: string | null) {
+  if (!value) return "No billing end date";
+  return new Date(value).toLocaleDateString("en-AU", { dateStyle: "medium" });
+}
+
+function billingTone(user: Awaited<ReturnType<typeof getAdminUsers>>["users"][number]) {
+  if (user.billingNeedsReview) return "bg-amber-100 text-amber-800";
+  if (user.billingEntitled) return "bg-emerald-100 text-emerald-800";
+  if (user.billingStatus) return "bg-surface-alt text-text-muted";
+  return "bg-surface-alt text-text-muted";
+}
+
+function billingLabel(user: Awaited<ReturnType<typeof getAdminUsers>>["users"][number]) {
+  if (user.billingNeedsReview) return "Review";
+  if (user.billingEntitled) return "Active";
+  if (user.billingStatus && user.billingStatus !== "active" && user.billingStatus !== "trialing") return user.billingStatus;
+  return "Free";
+}
+
 export default async function AdminUsersPage({ searchParams }: PageProps) {
   await requireAdminUser();
 
@@ -33,7 +52,7 @@ export default async function AdminUsersPage({ searchParams }: PageProps) {
           </p>
           <h1 className="mt-4 text-3xl font-bold tracking-tight">User management</h1>
           <p className="mt-2 max-w-2xl text-sm text-text-muted">
-            Search customers, check plan state, and review safe customer lookup without touching the Pro dashboard.
+            Search customers, check exact billing state, and spot stale subscription data before it affects access.
           </p>
         </div>
         <form className="flex w-full gap-2 sm:w-auto">
@@ -60,11 +79,12 @@ export default async function AdminUsersPage({ searchParams }: PageProps) {
           </div>
         </div>
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[920px] text-left text-sm">
+          <table className="w-full min-w-[1040px] text-left text-sm">
             <thead className="bg-surface-alt text-xs uppercase text-text-muted">
               <tr>
                 <th className="px-5 py-3 font-semibold">User</th>
-                <th className="px-5 py-3 font-semibold">Plan</th>
+                <th className="px-5 py-3 font-semibold">Access</th>
+                <th className="px-5 py-3 font-semibold">Billing truth</th>
                 <th className="px-5 py-3 font-semibold">Usage</th>
                 <th className="px-5 py-3 font-semibold">Last sign in</th>
                 <th className="px-5 py-3 font-semibold">Security</th>
@@ -88,6 +108,19 @@ export default async function AdminUsersPage({ searchParams }: PageProps) {
                       {user.tier}
                     </span>
                   </td>
+                  <td className="px-5 py-4">
+                    <div className="flex flex-col gap-1">
+                      <span className={`w-fit rounded-full px-2.5 py-1 text-xs font-semibold capitalize ${billingTone(user)}`}>
+                        {billingLabel(user)}
+                      </span>
+                      <span className="text-xs text-text-muted">
+                        {user.billingStatus ? `${user.billingStatus} - ${formatBillingDate(user.billingPeriodEnd)}` : "No stored subscription"}
+                      </span>
+                      {user.billingNeedsReview && user.billingReviewReason && (
+                        <span className="text-xs font-medium text-amber-700">{user.billingReviewReason}</span>
+                      )}
+                    </div>
+                  </td>
                   <td className="px-5 py-4 text-text-muted">
                     {user.usedThisMonth} fills this month, {user.recentFillCount} recent
                   </td>
@@ -100,7 +133,7 @@ export default async function AdminUsersPage({ searchParams }: PageProps) {
               ))}
               {data.users.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="px-5 py-12 text-center text-text-muted">
+                  <td colSpan={7} className="px-5 py-12 text-center text-text-muted">
                     <UserRound className="mx-auto mb-3 h-8 w-8 opacity-40" />
                     No users found.
                   </td>

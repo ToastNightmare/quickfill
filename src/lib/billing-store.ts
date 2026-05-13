@@ -8,6 +8,18 @@ type StoredSubscriptionStatus = Stripe.Subscription.Status | "active" | "cancele
 
 type PeriodEndValue = Date | number | string | null | undefined;
 
+export interface StoredSubscriptionSnapshot {
+  tier: QuickFillTier;
+  status: string;
+  currentPeriodEnd: string | null;
+  stripeCustomerId: string | null;
+  stripeSubscriptionId: string | null;
+  updatedAt: string | null;
+  entitled: boolean;
+  needsReview: boolean;
+  reviewReason: string | null;
+}
+
 const ENTITLED_STATUSES = new Set<string>(["active", "trialing"]);
 
 function periodEndToTime(value: PeriodEndValue) {
@@ -18,11 +30,28 @@ function periodEndToTime(value: PeriodEndValue) {
   return Number.isFinite(time) ? time : null;
 }
 
+function toIso(value: Date | string | null | undefined) {
+  if (!value) return null;
+  const date = value instanceof Date ? value : new Date(value);
+  const time = date.getTime();
+  return Number.isFinite(time) ? date.toISOString() : null;
+}
+
+function reviewReason(status: string, currentPeriodEnd?: PeriodEndValue) {
+  if (!ENTITLED_STATUSES.has(status)) return null;
+
+  const periodEnd = periodEndToTime(currentPeriodEnd);
+  if (periodEnd === null) return "Missing renewal/end date from Stripe";
+  if (periodEnd <= Date.now()) return "Billing period has ended";
+
+  return null;
+}
+
 export function isSubscriptionEntitled(status: StoredSubscriptionStatus | string, currentPeriodEnd?: PeriodEndValue) {
   if (!ENTITLED_STATUSES.has(status)) return false;
 
   const periodEnd = periodEndToTime(currentPeriodEnd);
-  if (periodEnd === null) return true;
+  if (periodEnd === null) return false;
 
   return periodEnd > Date.now();
 }
@@ -94,14 +123,62 @@ export async function saveSubscriptionSnapshot(input: {
   );
 }
 
+export async function getStoredSubscriptionSnapshot(userId: string): Promise<StoredSubscriptionSnapshot | null> {
+  if (!isDatabaseConfigured()) {
+    if (!isRedisConfigured()) return null;
+    const [tier, stripeCustomerId] = await Promise.all([
+      getRedis().get<QuickFillTier>(`sub:${userId}`),
+      getRedis().get<string>(`stripe_customer:${userId}`),
+    ]);
+    if (tier !== "pro" && tier !== "business") return null;
+    return {
+      tier,
+      status: "redis_cache",
+      currentPeriodEnd: null,
+      stripeCustomerId: stripeCustomerId ?? null,
+      stripeSubscriptionId: null,
+      updatedAt: null,
+      entitled: true,
+      needsReview: true,
+      reviewReason: "Redis-only subscription cache has no billing period",
+    };
+  }
+
+  const rows = await query<{
+    tier: QuickFillTier;
+    status: string;
+    current_period_end: Date | string | null;
+    stripe_customer_id: string | null;
+    stripe_subscription_id: string | null;
+    updated_at: Date | string | null;
+  }>(
+    "select tier, status, current_period_end, stripe_customer_id, stripe_subscription_id, updated_at from subscriptions where user_id = $1 order by updated_at desc limit 1",
+    [userId],
+  );
+
+  const latest = rows[0];
+  if (!latest) return null;
+
+  const reason = reviewReason(latest.status, latest.current_period_end);
+  const entitled = isSubscriptionEntitled(latest.status, latest.current_period_end);
+
+  return {
+    tier: latest.tier,
+    status: latest.status,
+    currentPeriodEnd: toIso(latest.current_period_end),
+    stripeCustomerId: latest.stripe_customer_id,
+    stripeSubscriptionId: latest.stripe_subscription_id,
+    updatedAt: toIso(latest.updated_at),
+    entitled,
+    needsReview: Boolean(reason),
+    reviewReason: reason,
+  };
+}
+
 export async function getStoredTier(userId: string): Promise<QuickFillTier> {
-  if (isDatabaseConfigured()) {
-    const rows = await query<{ tier: QuickFillTier; status: string; current_period_end: Date | string | null }>(
-      "select tier, status, current_period_end from subscriptions where user_id = $1 order by updated_at desc limit 1",
-      [userId],
-    );
-    const latest = rows[0];
-    if (latest?.tier && isSubscriptionEntitled(latest.status, latest.current_period_end)) return latest.tier;
+  const snapshot = await getStoredSubscriptionSnapshot(userId);
+  if (snapshot) {
+    if (snapshot.entitled) return snapshot.tier;
     await clearCachedTier(userId);
     return "free";
   }

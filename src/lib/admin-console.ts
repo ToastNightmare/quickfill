@@ -3,7 +3,7 @@ import type Stripe from "stripe";
 import { getRedis } from "@/lib/redis";
 import { getStripe } from "@/lib/stripe";
 import { getDownloadLogs, getSupportMessagePage, type AdminSupportMessageFilters } from "@/lib/admin-logs";
-import { getStoredTier } from "@/lib/billing-store";
+import { getStoredSubscriptionSnapshot, getStoredTier } from "@/lib/billing-store";
 
 type ClerkUser = Awaited<ReturnType<Awaited<ReturnType<typeof clerkClient>>["users"]["getUser"]>>;
 
@@ -22,6 +22,12 @@ export interface AdminUserSummary {
   usedThisMonth: number;
   recentFillCount: number;
   stripeCustomerId: string | null;
+  billingStatus: string | null;
+  billingPeriodEnd: string | null;
+  billingUpdatedAt: string | null;
+  billingEntitled: boolean;
+  billingNeedsReview: boolean;
+  billingReviewReason: string | null;
 }
 
 export interface AdminCustomerDetail extends AdminUserSummary {
@@ -110,12 +116,13 @@ function toNumber(value: unknown) {
 
 async function summarizeUser(user: ClerkUser): Promise<AdminUserSummary> {
   const redis = getRedis();
-  const [tier, used, fills, stripeCustomerId] = await Promise.all([
-    getStoredTier(user.id),
+  const [snapshot, used, fills, stripeCustomerId] = await Promise.all([
+    getStoredSubscriptionSnapshot(user.id),
     redis.get<number>(monthKey(user.id)),
     redis.lrange<{ filename: string; filledAt: string; fieldCount: number; pageCount: number }>(`fills:${user.id}`, 0, 2),
     redis.get<string>(`stripe_customer:${user.id}`),
   ]);
+  const tier = snapshot ? (snapshot.entitled ? snapshot.tier : "free") : await getStoredTier(user.id);
 
   return {
     id: user.id,
@@ -131,7 +138,13 @@ async function summarizeUser(user: ClerkUser): Promise<AdminUserSummary> {
     tier,
     usedThisMonth: used ?? 0,
     recentFillCount: fills?.length ?? 0,
-    stripeCustomerId: stripeCustomerId ?? null,
+    stripeCustomerId: snapshot?.stripeCustomerId ?? stripeCustomerId ?? null,
+    billingStatus: snapshot?.status ?? null,
+    billingPeriodEnd: snapshot?.currentPeriodEnd ?? null,
+    billingUpdatedAt: snapshot?.updatedAt ?? null,
+    billingEntitled: snapshot?.entitled ?? false,
+    billingNeedsReview: snapshot?.needsReview ?? false,
+    billingReviewReason: snapshot?.reviewReason ?? null,
   };
 }
 
