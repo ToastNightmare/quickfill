@@ -1,7 +1,7 @@
 import { auth, currentUser } from "@clerk/nextjs/server";
 import { NextRequest, NextResponse } from "next/server";
 import { Resend } from "resend";
-import { recordSupportMessage, type AdminSupportMessage } from "@/lib/admin-logs";
+import { recordSupportMessage, type AdminSupportCategory, type AdminSupportMessage } from "@/lib/admin-logs";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { log } from "@/lib/log";
 
@@ -29,8 +29,23 @@ function escapeHtml(value: string) {
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
+    .replace(/\"/g, "&quot;")
     .replace(/'/g, "&#039;");
+}
+
+function inferCategory(subject: string, message: string): AdminSupportCategory {
+  const text = `${subject} ${message}`.toLowerCase();
+  if (/bill|checkout|charge|charged|payment|price|pricing|pro|stripe|subscription|refund/.test(text)) return "billing";
+  if (/pdf|form|field|download|upload|whiteout|signature|editor/.test(text)) return "pdf";
+  if (/account|login|log in|sign in|signup|sign up|password|email/.test(text)) return "account";
+  if (/bug|broken|crash|error|fail|failed|issue|problem|not working/.test(text)) return "bug";
+  return "general";
+}
+
+function inferPriority(subject: string, message: string) {
+  const text = `${subject} ${message}`.toLowerCase();
+  if (/urgent|emergency|can't access|cannot access|charged|refund|payment failed|locked out/.test(text)) return "high";
+  return "normal";
 }
 
 async function getRequestUser() {
@@ -67,6 +82,8 @@ async function notifyAdmins(entry: AdminSupportMessage) {
         <div style="font-family: Arial, sans-serif; max-width: 640px; margin: 0 auto; color: #111827;">
           <h1 style="font-size: 20px; margin-bottom: 16px;">New QuickFill support request</h1>
           <p><strong>From:</strong> ${escapeHtml(entry.name)} &lt;${escapeHtml(entry.email)}&gt;</p>
+          <p><strong>Category:</strong> ${escapeHtml(entry.category)}</p>
+          <p><strong>Priority:</strong> ${escapeHtml(entry.priority)}</p>
           <p><strong>Source:</strong> ${escapeHtml(entry.source ?? "unknown")}</p>
           <p><strong>User ID:</strong> ${escapeHtml(entry.userId ?? "guest")}</p>
           <p><strong>Created:</strong> ${escapeHtml(entry.createdAt)}</p>
@@ -97,6 +114,7 @@ export async function POST(request: NextRequest) {
 
     const { userId, user } = await getRequestUser();
     const email = clean(body.email, 160) || user?.primaryEmailAddress?.emailAddress || "";
+    const subject = clean(body.subject, 140) || "Support request";
     const message = clean(body.message, 2000);
 
     if (!email || !message) {
@@ -106,10 +124,12 @@ export async function POST(request: NextRequest) {
     const entry = await recordSupportMessage({
       name: clean(body.name, 100) || user?.firstName || "QuickFill user",
       email,
-      subject: clean(body.subject, 140) || "Support request",
+      subject,
       message,
       userId,
       source: clean(body.source, 160) || request.headers.get("referer") || "api",
+      category: inferCategory(subject, message),
+      priority: inferPriority(subject, message),
     });
 
     await notifyAdmins(entry);
