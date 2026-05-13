@@ -55,6 +55,7 @@ describe("Stripe billing reconciliation", () => {
     mockGetStripe.mockReturnValue(stripe as never);
     mockTierFromPriceId.mockReturnValue("pro");
     mockIsSubscriptionEntitled.mockReturnValue(true);
+    stripe.subscriptions.list.mockResolvedValue({ data: [] });
   });
 
   afterAll(() => {
@@ -131,6 +132,33 @@ describe("Stripe billing reconciliation", () => {
     expect(stripe.subscriptions.list).toHaveBeenCalledWith({ customer: "cus_123", status: "all", limit: 10 });
     expect(mockSaveSubscriptionSnapshot).toHaveBeenCalledWith(
       expect.objectContaining({ subscriptionId: "sub_new", tier: "business", status: "active" }),
+    );
+  });
+
+  it("prefers a live customer subscription over a stale stored subscription id", async () => {
+    mockQuery.mockResolvedValueOnce([
+      {
+        user_id: "user_123",
+        tier: "pro",
+        status: "canceled",
+        current_period_end: new Date("2026-05-12T00:00:00.000Z"),
+        stripe_customer_id: "cus_123",
+        stripe_subscription_id: "sub_old",
+        updated_at: new Date("2026-05-12T00:00:00.000Z"),
+      },
+    ] as never);
+    stripe.subscriptions.retrieve.mockResolvedValueOnce(subscription({ id: "sub_old", created: 1760000000, status: "canceled" }));
+    stripe.subscriptions.list.mockResolvedValueOnce({
+      data: [
+        subscription({ id: "sub_old", created: 1760000000, status: "canceled" }),
+        subscription({ id: "sub_new", created: 1770000000, status: "trialing", metadata: { plan: "pro" } }),
+      ],
+    });
+
+    await expect(reconcileStripeBilling()).resolves.toMatchObject({ ok: true, checked: 1, updated: 1 });
+
+    expect(mockSaveSubscriptionSnapshot).toHaveBeenCalledWith(
+      expect.objectContaining({ subscriptionId: "sub_new", tier: "pro", status: "trialing" }),
     );
   });
 
