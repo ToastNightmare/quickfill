@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
-import { notFound } from "next/navigation";
-import { getAdminUser } from "@/lib/admin";
+import { requireAdminUser } from "@/lib/admin-routing";
 import AdminAnalyticsClient from "./AdminAnalyticsClient";
 
 export const metadata: Metadata = {
@@ -12,8 +11,7 @@ export const metadata: Metadata = {
 };
 
 export default async function AdminAnalyticsPage() {
-  const admin = await getAdminUser();
-  if (!admin) notFound();
+  await requireAdminUser();
 
   return <AdminAnalyticsClient />;
 }
