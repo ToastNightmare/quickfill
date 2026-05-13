@@ -1,4 +1,4 @@
-import { getAdminUser } from "../admin";
+import { adminSessionCookieOptions, getAdminUser } from "../admin";
 import { currentUser } from "@clerk/nextjs/server";
 import { cookies } from "next/headers";
 
@@ -75,5 +75,33 @@ describe("getAdminUser", () => {
 
     expect(mockCurrentUser).toHaveBeenCalledTimes(1);
     warn.mockRestore();
+  });
+});
+
+describe("adminSessionCookieOptions", () => {
+  const originalNodeEnv = process.env.NODE_ENV;
+
+  afterAll(() => {
+    Object.defineProperty(process.env, "NODE_ENV", {
+      value: originalNodeEnv,
+      configurable: true,
+    });
+  });
+
+  it("scopes admin passcode sessions across admin pages and admin API requests", () => {
+    Object.defineProperty(process.env, "NODE_ENV", {
+      value: "production",
+      configurable: true,
+    });
+
+    expect(adminSessionCookieOptions("session-token")).toEqual({
+      name: "qf_admin_session",
+      value: "session-token",
+      httpOnly: true,
+      secure: true,
+      sameSite: "strict",
+      path: "/",
+      maxAge: 60 * 60 * 12,
+    });
   });
 });
