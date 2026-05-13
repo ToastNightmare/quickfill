@@ -7,6 +7,7 @@ export type QuickFillTier = "free" | "pro" | "business";
 type StoredSubscriptionStatus = Stripe.Subscription.Status | "active" | "canceled" | "unknown";
 
 type PeriodEndValue = Date | number | string | null | undefined;
+type StripePeriodShape = { current_period_end?: number | null };
 
 export interface StoredSubscriptionSnapshot {
   tier: QuickFillTier;
@@ -28,6 +29,18 @@ function periodEndToTime(value: PeriodEndValue) {
   if (typeof value === "number") return value * 1000;
   const time = new Date(value).getTime();
   return Number.isFinite(time) ? time : null;
+}
+
+export function stripeSubscriptionPeriodEnd(subscription: Stripe.Subscription) {
+  const subscriptionPeriodEnd = (subscription as StripePeriodShape).current_period_end;
+  if (typeof subscriptionPeriodEnd === "number") return subscriptionPeriodEnd;
+
+  for (const item of subscription.items.data) {
+    const itemPeriodEnd = (item as StripePeriodShape).current_period_end;
+    if (typeof itemPeriodEnd === "number") return itemPeriodEnd;
+  }
+
+  return null;
 }
 
 function toIso(value: Date | string | null | undefined) {
