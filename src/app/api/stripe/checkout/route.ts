@@ -6,8 +6,10 @@ import { APP_CONFIG } from "@/lib/config";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { trackServerEvent } from "@/lib/server-analytics";
 import { alertAdmins } from "@/lib/admin-alerts";
-import { getStoredSubscriptionSnapshot } from "@/lib/billing-store";
+import { getStoredSubscriptionSnapshot, type StoredSubscriptionSnapshot } from "@/lib/billing-store";
 import { log } from "@/lib/log";
+
+const BILLING_REPAIR_STATUSES = new Set(["past_due", "unpaid", "incomplete", "paused"]);
 
 function appOrigin(req: NextRequest) {
   const configured = APP_CONFIG.url;
@@ -27,6 +29,13 @@ function priceForPlan(plan: "pro" | "business", annual: boolean) {
   }
 
   return annual ? process.env.STRIPE_PRO_ANNUAL_PRICE_ID : process.env.STRIPE_PRO_PRICE_ID;
+}
+
+function shouldUseBillingPortal(snapshot: StoredSubscriptionSnapshot | null) {
+  if (!snapshot?.stripeCustomerId) return false;
+  if (snapshot.entitled) return true;
+  if (!snapshot.stripeSubscriptionId) return false;
+  return BILLING_REPAIR_STATUSES.has(snapshot.status);
 }
 
 export async function POST(req: NextRequest) {
@@ -79,12 +88,16 @@ export async function POST(req: NextRequest) {
     ]);
     const existingCustomerId = snapshot?.stripeCustomerId ?? cachedCustomerId;
 
-    if (snapshot?.entitled && existingCustomerId) {
+    if (shouldUseBillingPortal(snapshot) && snapshot?.stripeCustomerId) {
       const portalSession = await getStripe().billingPortal.sessions.create({
-        customer: existingCustomerId,
+        customer: snapshot.stripeCustomerId,
         return_url: `${origin}/dashboard`,
       });
-      return NextResponse.json({ url: portalSession.url, alreadySubscribed: true });
+      return NextResponse.json({
+        url: portalSession.url,
+        alreadySubscribed: snapshot.entitled,
+        needsBillingRepair: !snapshot.entitled,
+      });
     }
 
     const successReturnTo = encodeURIComponent("/dashboard?upgraded=true");
