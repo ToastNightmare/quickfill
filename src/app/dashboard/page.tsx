@@ -1,7 +1,7 @@
 "use client";
 
 import { useUser } from "@clerk/nextjs";
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useCallback, useEffect, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { AlertTriangle, FileText, Sparkles, ExternalLink, Lock, Clock, User, RotateCcw } from "lucide-react";
@@ -39,6 +39,13 @@ function friendlyBillingStatus(status?: string | null) {
   return status.replace(/_/g, " ").replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
+function billingSyncMessage(reason?: string | null) {
+  if (reason === "rate_limited") return "Billing was checked too many times in a short window. Try again in a minute.";
+  if (reason === "not_signed_in") return "Sign in again so QuickFill can check your Stripe billing status.";
+  if (reason === "sync_error") return "QuickFill could not check Stripe billing just now. Try again in a moment.";
+  return null;
+}
+
 const BILLING_ISSUE_STATUSES = new Set(["past_due", "unpaid", "canceled", "incomplete", "incomplete_expired"]);
 
 export default function DashboardPage() {
@@ -57,46 +64,71 @@ function DashboardContent() {
   const { user } = useUser();
   const searchParams = useSearchParams();
   const upgraded = searchParams.get("upgraded");
+  const billingSync = searchParams.get("billingSync");
 
   const [usage, setUsage] = useState<UsageData | null>(null);
   const [usageError, setUsageError] = useState(false);
   const [fills, setFills] = useState<FillEntry[]>([]);
   const [billingError, setBillingError] = useState<string | null>(null);
+  const [billingSyncing, setBillingSyncing] = useState(false);
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
   const [savedSessions, setSavedSessions] = useState<Set<string>>(new Set());
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const router = useRouter();
 
+  const refreshUsage = useCallback(async () => {
+    setUsageError(false);
+    const res = await fetch("/api/usage", { cache: "no-store" });
+    if (!res.ok) throw new Error("Could not load usage data.");
+    const data = await res.json();
+    setUsage(data);
+    return data as UsageData;
+  }, []);
+
   useEffect(() => {
-    fetch("/api/usage")
-      .then((r) => r.json())
-      .then(setUsage)
-      .catch(() => setUsageError(true));
+    refreshUsage().catch(() => setUsageError(true));
     fetch("/api/fills")
       .then((r) => r.json())
       .then((data) => {
         if (data && data.fills) setFills(data.fills);
       })
       .catch(() => {});
-  }, []);
+  }, [refreshUsage]);
 
   useEffect(() => {
-    if (upgraded === "true" && !usageError) {
-      const timer = setTimeout(() => {
-        fetch("/api/usage")
-          .then((r) => r.json())
-          .then((data) => {
-            setUsage(data);
-            if (data.tier === "pro" || data.tier === "business") {
-              setShowSuccessModal(true);
-            }
+    if (upgraded !== "true" || usageError) return;
+
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    let attempts = 0;
+
+    const checkBilling = async () => {
+      attempts += 1;
+      try {
+        const data = await refreshUsage();
+        if (data.tier === "pro" || data.tier === "business") {
+          if (!cancelled) {
+            setShowSuccessModal(true);
             router.replace("/dashboard", { scroll: false });
-          })
-          .catch(() => setUsageError(true));
-      }, 1000);
-      return () => clearTimeout(timer);
-    }
-  }, [upgraded, usageError, router]);
+          }
+          return;
+        }
+      } catch {
+        if (!cancelled) setUsageError(true);
+        return;
+      }
+
+      if (!cancelled && attempts < 5) {
+        timer = setTimeout(checkBilling, 1500);
+      }
+    };
+
+    timer = setTimeout(checkBilling, 500);
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+    };
+  }, [upgraded, usageError, refreshUsage, router]);
 
   useEffect(() => {
     if (fills.length === 0) return;
@@ -111,6 +143,27 @@ function DashboardContent() {
       setSavedSessions(sessionSet);
     });
   }, [fills]);
+
+  const handleBillingSync = async () => {
+    try {
+      setBillingError(null);
+      setBillingSyncing(true);
+      const res = await fetch("/api/billing/sync", { method: "POST" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || data.ok === false) {
+        throw new Error(data.error || data.result?.message || "Billing could not be checked.");
+      }
+      const updatedUsage = await refreshUsage();
+      if (updatedUsage.tier === "pro" || updatedUsage.tier === "business") {
+        setShowSuccessModal(true);
+      }
+      router.replace("/dashboard", { scroll: false });
+    } catch (error) {
+      setBillingError(error instanceof Error ? error.message : "Billing could not be checked.");
+    } finally {
+      setBillingSyncing(false);
+    }
+  };
 
   const handleUpgrade = async () => {
     try {
@@ -153,6 +206,7 @@ function DashboardContent() {
   const usedPct = usage && !isPaid ? Math.min(100, (usage.used / usage.limit) * 100) : 0;
   const visibleFills = isPaid ? fills : fills.slice(0, 3);
   const lockedFills = isPaid ? [] : fills.slice(3);
+  const billingSyncError = billingSyncMessage(billingSync);
 
   return (
     <div className="mx-auto max-w-4xl px-4 py-10 sm:px-6 lg:px-8">
@@ -179,11 +233,30 @@ function DashboardContent() {
 
       {upgraded === "true" && !showSuccessModal && (
         <div className={`mb-6 mt-4 rounded-xl border px-5 py-4 text-sm font-medium ${isPaid ? "border-green-200 bg-green-50 text-green-800" : "border-blue-200 bg-blue-50 text-blue-800"}`}>
-          {!usage
-            ? "Checking your payment with Stripe. Your plan will update here as soon as the payment is confirmed."
-            : isPaid
-              ? "Welcome to Pro. Your account has been upgraded."
-              : "Stripe has not confirmed an active paid plan yet. If you just paid, refresh in a moment or open billing to finish payment."}
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <p>
+              {!usage
+                ? "Checking your payment with Stripe. Your plan will update here as soon as the payment is confirmed."
+                : isPaid
+                  ? "Welcome to Pro. Your account has been upgraded."
+                  : "Stripe has not confirmed an active paid plan yet. QuickFill is checking again automatically."}
+            </p>
+            {usage && !isPaid && (
+              <button
+                onClick={handleBillingSync}
+                disabled={billingSyncing}
+                className="flex h-10 shrink-0 items-center justify-center gap-2 rounded-lg bg-accent px-4 text-sm font-semibold text-white hover:bg-accent-hover disabled:opacity-60"
+              >
+                {billingSyncing ? "Checking..." : "Check billing again"}
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {billingSyncError && (
+        <div className="mb-6 mt-4 rounded-xl border border-red-200 bg-red-50 px-5 py-4 text-sm font-medium text-red-700">
+          {billingSyncError}
         </div>
       )}
 
@@ -200,15 +273,24 @@ function DashboardContent() {
                 {billing?.reviewReason && <p className="mt-1 text-xs">{billing.reviewReason}</p>}
               </div>
             </div>
-            {billing?.hasStripeCustomer && (
+            <div className="flex flex-wrap gap-2">
               <button
-                onClick={handleManageBilling}
-                className="flex h-10 shrink-0 items-center justify-center gap-2 rounded-lg bg-amber-900 px-4 text-sm font-semibold text-white hover:bg-amber-800"
+                onClick={handleBillingSync}
+                disabled={billingSyncing}
+                className="flex h-10 shrink-0 items-center justify-center rounded-lg border border-amber-300 px-4 text-sm font-semibold text-amber-900 hover:bg-amber-100 disabled:opacity-60"
               >
-                <ExternalLink className="h-4 w-4" />
-                Fix billing
+                {billingSyncing ? "Checking..." : "Recheck status"}
               </button>
-            )}
+              {billing?.hasStripeCustomer && (
+                <button
+                  onClick={handleManageBilling}
+                  className="flex h-10 shrink-0 items-center justify-center gap-2 rounded-lg bg-amber-900 px-4 text-sm font-semibold text-white hover:bg-amber-800"
+                >
+                  <ExternalLink className="h-4 w-4" />
+                  Fix billing
+                </button>
+              )}
+            </div>
           </div>
           {billingError && <p className="mt-2 text-xs font-medium text-red-600">{billingError}</p>}
         </div>
