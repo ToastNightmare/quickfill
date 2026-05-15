@@ -70,6 +70,8 @@ export default function PricingPage() {
   const [annual, setAnnual] = useState(true);
   const [upgrading, setUpgrading] = useState(false);
   const [usage, setUsage] = useState<UsageState | null>(null);
+  const [checkoutNotice, setCheckoutNotice] = useState<string | null>(null);
+  const [checkoutError, setCheckoutError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!isSignedIn) return;
@@ -80,11 +82,28 @@ export default function PricingPage() {
       .catch(() => setUsage({ tier: "free", isPro: false }));
   }, [isSignedIn]);
 
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("checkout") !== "cancelled") return;
+
+    const billing = params.get("billing") ?? "unknown";
+    setCheckoutNotice("Checkout was cancelled. No charge was made, and you can restart whenever you are ready.");
+    trackEvent("checkout_cancelled", { source: "pricing", billing });
+
+    const cleanUrl = new URL(window.location.href);
+    cleanUrl.searchParams.delete("checkout");
+    cleanUrl.searchParams.delete("plan");
+    cleanUrl.searchParams.delete("billing");
+    window.history.replaceState(null, "", `${cleanUrl.pathname}${cleanUrl.search}${cleanUrl.hash}`);
+  }, []);
+
   const isPro = usage?.isPro ?? false;
   const priceLabel = annual ? "A$100/year" : "A$12/month";
 
   const handleUpgrade = async () => {
     trackEvent("checkout_start", { source: "pricing", plan: annual ? "annual" : "monthly" });
+    setCheckoutNotice(null);
+    setCheckoutError(null);
 
     if (!isLoaded) return;
 
@@ -100,14 +119,20 @@ export default function PricingPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ plan: "pro", annual }),
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        throw new Error(data.error ?? "Checkout could not be started. Please try again.");
+      }
 
       if (data.url) {
         window.location.href = data.url;
         return;
       }
 
-      window.location.href = `/checkout?plan=pro&billing=${annual ? "annual" : "monthly"}&source=pricing`;
+      throw new Error("Checkout could not be started. Please try again.");
+    } catch (error) {
+      setCheckoutError(error instanceof Error ? error.message : "Checkout could not be started. Please try again.");
     } finally {
       setUpgrading(false);
     }
@@ -162,6 +187,16 @@ export default function PricingPage() {
 
         <section className="bg-surface px-4 py-14 sm:px-6 lg:px-8">
           <div className="mx-auto max-w-5xl">
+            {checkoutNotice && (
+              <div className="mb-6 rounded-lg border border-blue-200 bg-blue-50 px-5 py-4 text-sm font-medium text-blue-800">
+                {checkoutNotice}
+              </div>
+            )}
+            {checkoutError && (
+              <div className="mb-6 rounded-lg border border-red-200 bg-red-50 px-5 py-4 text-sm font-medium text-red-700">
+                {checkoutError}
+              </div>
+            )}
             {isSignedIn && isPro ? (
               <div className="rounded-lg border border-accent bg-accent/5 px-6 py-8 text-center">
                 <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-accent">
