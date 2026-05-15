@@ -126,6 +126,19 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Email and message are required" }, { status: 400 });
     }
 
+    const normalizedEmail = email.toLowerCase();
+    const emailLimit = await checkRateLimit("support-email:" + normalizedEmail, "support");
+    if (!emailLimit.success) {
+      return NextResponse.json({ error: "Too many support requests, try again soon" }, { status: 429 });
+    }
+
+    if (userId) {
+      const userLimit = await checkRateLimit("support-user:" + userId, "support");
+      if (!userLimit.success) {
+        return NextResponse.json({ error: "Too many support requests, try again soon" }, { status: 429 });
+      }
+    }
+
     const entry = await recordSupportMessage({
       name: clean(body.name, 100) || user?.firstName || "QuickFill user",
       email,
