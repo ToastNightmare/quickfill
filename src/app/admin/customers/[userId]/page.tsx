@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft, CreditCard, FileText, LockKeyhole, ShieldCheck, UserRound } from "lucide-react";
+import { ArrowLeft, CreditCard, ExternalLink, FileText, LockKeyhole, ShieldCheck, UserRound } from "lucide-react";
 import { AdminBillingSyncButton } from "@/components/AdminBillingSyncButton";
 import { requireAdminUser } from "@/lib/admin-routing";
 import { getAdminCustomer } from "@/lib/admin-console";
@@ -22,6 +22,13 @@ function formatDate(value: string | null) {
 
 function money(cents: number) {
   return new Intl.NumberFormat("en-AU", { style: "currency", currency: "AUD" }).format(cents / 100);
+}
+
+function invoiceTone(status: string | null) {
+  if (status === "paid") return "bg-emerald-50 text-emerald-700";
+  if (status === "open" || status === "uncollectible") return "bg-amber-50 text-amber-800";
+  if (status === "void") return "bg-surface-alt text-text-muted";
+  return "bg-surface-alt text-text-muted";
 }
 
 export default async function AdminCustomerPage({ params }: PageProps) {
@@ -174,6 +181,56 @@ export default async function AdminCustomerPage({ params }: PageProps) {
         </section>
 
         <section className="rounded-lg border border-border bg-surface p-5 shadow-sm">
+          <div className="flex items-center gap-2">
+            <CreditCard className="h-5 w-5 text-accent" />
+            <h2 className="font-semibold">Recent invoices</h2>
+          </div>
+          <div className="mt-4 space-y-3">
+            {customer.invoices.map((invoice) => (
+              <div key={invoice.id} className="rounded-lg border border-border p-4 text-sm">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <span className={`rounded-full px-2.5 py-1 text-xs font-semibold uppercase ${invoiceTone(invoice.status)}`}>
+                    {invoice.status ?? "unknown"}
+                  </span>
+                  <p className="font-semibold">Due {money(invoice.amountDue)}</p>
+                </div>
+                <dl className="mt-3 grid gap-2 text-xs text-text-muted sm:grid-cols-2">
+                  <div>
+                    <dt>Created</dt>
+                    <dd className="font-medium text-text">{formatDate(invoice.createdAt)}</dd>
+                  </div>
+                  <div>
+                    <dt>Paid</dt>
+                    <dd className="font-medium text-text">{money(invoice.amountPaid)}</dd>
+                  </div>
+                  <div>
+                    <dt>Due date</dt>
+                    <dd className="font-medium text-text">{formatDate(invoice.dueDate)}</dd>
+                  </div>
+                  <div>
+                    <dt>Invoice</dt>
+                    <dd className="break-all font-medium text-text">{invoice.id}</dd>
+                  </div>
+                </dl>
+                <div className="mt-3 flex flex-wrap gap-3 text-xs font-semibold text-accent">
+                  {invoice.hostedInvoiceUrl && (
+                    <a href={invoice.hostedInvoiceUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 hover:underline">
+                      Open invoice <ExternalLink className="h-3 w-3" />
+                    </a>
+                  )}
+                  {invoice.invoicePdf && (
+                    <a href={invoice.invoicePdf} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 hover:underline">
+                      PDF <ExternalLink className="h-3 w-3" />
+                    </a>
+                  )}
+                </div>
+              </div>
+            ))}
+            {customer.invoices.length === 0 && <p className="text-sm text-text-muted">No invoices found.</p>}
+          </div>
+        </section>
+
+        <section className="rounded-lg border border-border bg-surface p-5 shadow-sm lg:col-span-2">
           <div className="flex items-center gap-2">
             <FileText className="h-5 w-5 text-accent" />
             <h2 className="font-semibold">Recent fills</h2>
