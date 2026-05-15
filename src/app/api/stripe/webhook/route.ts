@@ -360,11 +360,20 @@ export async function POST(req: NextRequest) {
       await handleCheckoutCompleted(event.data.object as Stripe.Checkout.Session);
     } else if (event.type === "checkout.session.expired") {
       handleCheckoutExpired(event.data.object as Stripe.Checkout.Session);
-    } else if (event.type === "customer.subscription.created" || event.type === "customer.subscription.updated") {
+    } else if (
+      event.type === "customer.subscription.created" ||
+      event.type === "customer.subscription.updated" ||
+      event.type === "customer.subscription.paused" ||
+      event.type === "customer.subscription.resumed"
+    ) {
       await handleSubscriptionUpdated(event.data.object as Stripe.Subscription);
     } else if (event.type === "customer.subscription.deleted") {
       await handleSubscriptionDeleted(event.data.object as Stripe.Subscription);
-    } else if (event.type === "invoice.payment_failed" || event.type === "invoice.payment_succeeded") {
+    } else if (
+      event.type === "invoice.payment_failed" ||
+      event.type === "invoice.payment_succeeded" ||
+      event.type === "invoice.paid"
+    ) {
       await handleInvoiceSubscriptionEvent(event.data.object as Stripe.Invoice, event.type);
     }
 
