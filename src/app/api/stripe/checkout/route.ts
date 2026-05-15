@@ -84,11 +84,6 @@ export async function POST(req: NextRequest) {
         customer: existingCustomerId,
         return_url: `${origin}/dashboard`,
       });
-      await trackServerEvent("billing_portal_opened", {
-        source: "checkout_guard",
-        plan: snapshot.tier,
-        status: snapshot.status,
-      });
       return NextResponse.json({ url: portalSession.url, alreadySubscribed: true });
     }
 
