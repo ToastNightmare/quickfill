@@ -61,6 +61,24 @@ type BillingSyncSnapshot = {
   completedAt: string | null;
 };
 
+type StripeWebhookAudit = {
+  eventId?: string;
+  eventType?: string;
+  status?: "processed" | "failed";
+  message?: string | null;
+  recordedAt?: string;
+};
+
+type StripeWebhookSnapshot = {
+  ok: boolean;
+  message: string;
+  lastSuccessAt: string | null;
+  lastSuccessType: string | null;
+  lastFailureAt: string | null;
+  lastFailureType: string | null;
+  lastFailureMessage: string | null;
+};
+
 function hasEnv(...keys: string[]) {
   return keys.every((key) => Boolean(process.env[key]));
 }
@@ -74,6 +92,19 @@ function formatCommit() {
   const message = process.env.VERCEL_GIT_COMMIT_MESSAGE;
   if (!sha && !message) return "Commit metadata is not available outside Vercel.";
   return [sha, message].filter(Boolean).join(" - ");
+}
+
+function toIso(value: Date | string | null | undefined) {
+  if (!value) return null;
+  const date = value instanceof Date ? value : new Date(value);
+  const time = date.getTime();
+  return Number.isFinite(time) ? date.toISOString() : null;
+}
+
+function timeValue(value: string | null) {
+  if (!value) return 0;
+  const time = new Date(value).getTime();
+  return Number.isFinite(time) ? time : 0;
 }
 
 function formatDateTime(value: string | null) {
@@ -95,6 +126,17 @@ function normalizeBillingSyncMetadata(metadata: BillingSyncAudit | string | null
 
   try {
     return JSON.parse(metadata) as BillingSyncAudit;
+  } catch {
+    return { message: metadata };
+  }
+}
+
+function normalizeStripeWebhookMetadata(metadata: StripeWebhookAudit | string | null | undefined): StripeWebhookAudit {
+  if (!metadata) return {};
+  if (typeof metadata !== "string") return metadata;
+
+  try {
+    return JSON.parse(metadata) as StripeWebhookAudit;
   } catch {
     return { message: metadata };
   }
@@ -132,6 +174,73 @@ async function loadLatestBillingSync(): Promise<BillingSyncSnapshot | null> {
     };
   } catch {
     return null;
+  }
+}
+
+async function loadLatestStripeWebhook(): Promise<StripeWebhookSnapshot | null> {
+  if (!isDatabaseConfigured()) return null;
+
+  try {
+    const [successRows, failureRows] = await Promise.all([
+      query<{ event_type: string | null; processed_at: Date | string | null }>(
+        "select event_type, processed_at from stripe_events where processed_at is not null order by processed_at desc limit 1",
+      ),
+      query<{ metadata: StripeWebhookAudit | string | null; created_at: Date | string | null }>(
+        "select metadata, created_at from audit_events where event_type = $1 order by created_at desc limit 1",
+        ["stripe_webhook_failed"],
+      ),
+    ]);
+
+    const success = successRows[0];
+    const failure = failureRows[0];
+    const failureMetadata = normalizeStripeWebhookMetadata(failure?.metadata);
+    const lastSuccessAt = toIso(success?.processed_at);
+    const lastFailureAt = failureMetadata.recordedAt ?? toIso(failure?.created_at);
+    const failureNewerThanSuccess = timeValue(lastFailureAt) > timeValue(lastSuccessAt);
+
+    if (failureNewerThanSuccess) {
+      return {
+        ok: false,
+        message: `Last Stripe webhook failed: ${failureMetadata.eventType ?? "unknown event"}.`,
+        lastSuccessAt,
+        lastSuccessType: success?.event_type ?? null,
+        lastFailureAt,
+        lastFailureType: failureMetadata.eventType ?? null,
+        lastFailureMessage: failureMetadata.message ?? "No failure message recorded.",
+      };
+    }
+
+    if (lastSuccessAt) {
+      return {
+        ok: true,
+        message: `Last Stripe webhook processed: ${success?.event_type ?? "event"}.`,
+        lastSuccessAt,
+        lastSuccessType: success?.event_type ?? null,
+        lastFailureAt,
+        lastFailureType: failureMetadata.eventType ?? null,
+        lastFailureMessage: failureMetadata.message ?? null,
+      };
+    }
+
+    return {
+      ok: false,
+      message: "No Stripe webhook deliveries have been recorded yet.",
+      lastSuccessAt: null,
+      lastSuccessType: null,
+      lastFailureAt,
+      lastFailureType: failureMetadata.eventType ?? null,
+      lastFailureMessage: failureMetadata.message ?? null,
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      message: error instanceof Error ? error.message : "Could not load Stripe webhook health.",
+      lastSuccessAt: null,
+      lastSuccessType: null,
+      lastFailureAt: null,
+      lastFailureType: null,
+      lastFailureMessage: null,
+    };
   }
 }
 
@@ -191,6 +300,7 @@ export default async function AdminOpsPage() {
 
   const database = await checkDatabaseConnection();
   const billingSync = await loadLatestBillingSync();
+  const stripeWebhook = await loadLatestStripeWebhook();
   const supportQueue = database.ok ? await getSupportQueueHealth() : null;
   const redisReady = isRedisConfigured();
   const cronReady = hasEnv("CRON_SECRET");
@@ -266,6 +376,21 @@ export default async function AdminOpsPage() {
         "Pro monthly, Pro annual, and Business monthly are required for the public checkout path.",
         businessAnnualReady ? "Business annual pricing is configured." : "Business annual pricing is not configured yet; add it or keep annual Business hidden.",
         "Webhook delivery should be checked after every billing change.",
+      ],
+    },
+    {
+      name: "Stripe webhooks",
+      status: !stripeCoreReady ? "fail" : stripeWebhook ? (stripeWebhook.ok ? "ok" : "warn") : "warn",
+      detail: !stripeCoreReady ? "Stripe billing variables must be configured first." : (stripeWebhook?.message ?? "Stripe webhook delivery has not been recorded yet."),
+      icon: KeyRound,
+      items: [
+        stripeWebhook?.lastSuccessAt
+          ? `Last successful event: ${stripeWebhook.lastSuccessType ?? "unknown"} at ${formatDateTime(stripeWebhook.lastSuccessAt)}.`
+          : "No successful Stripe webhook has been recorded yet.",
+        stripeWebhook?.lastFailureAt
+          ? `Last failed event: ${stripeWebhook.lastFailureType ?? "unknown"} at ${formatDateTime(stripeWebhook.lastFailureAt)}.`
+          : "No failed Stripe webhook has been recorded yet.",
+        stripeWebhook?.lastFailureMessage ? `Last failure: ${stripeWebhook.lastFailureMessage}` : "Failed webhooks alert admins and can affect Pro/free truth.",
       ],
     },
     {
