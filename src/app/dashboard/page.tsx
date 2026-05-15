@@ -39,6 +39,8 @@ function friendlyBillingStatus(status?: string | null) {
   return status.replace(/_/g, " ").replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
+const BILLING_ISSUE_STATUSES = new Set(["past_due", "unpaid", "canceled", "incomplete", "incomplete_expired"]);
+
 export default function DashboardPage() {
   return (
     <Suspense fallback={<div className="flex min-h-[50vh] items-center justify-center"><div className="h-8 w-8 animate-spin rounded-full border-2 border-accent border-t-transparent" /></div>}>
@@ -146,7 +148,7 @@ function DashboardContent() {
   const hasBillingIssue = Boolean(
     billing &&
       !isPaid &&
-      (billing.delinquent || billing.needsReview || billing.status === "canceled" || billing.status === "incomplete_expired")
+      (billing.delinquent || billing.needsReview || BILLING_ISSUE_STATUSES.has(billing.status))
   );
   const usedPct = usage && !isPaid ? Math.min(100, (usage.used / usage.limit) * 100) : 0;
   const visibleFills = isPaid ? fills : fills.slice(0, 3);
