@@ -312,6 +312,30 @@ function handleCheckoutExpired(session: Stripe.Checkout.Session) {
   });
 }
 
+async function recordStripeWebhookAudit(input: {
+  eventId: string;
+  eventType: string;
+  status: "processed" | "failed";
+  message?: string;
+}) {
+  if (!isDatabaseConfigured()) return;
+
+  try {
+    await query("insert into audit_events (event_type, metadata) values ($1, $2::jsonb)", [
+      input.status === "processed" ? "stripe_webhook_processed" : "stripe_webhook_failed",
+      JSON.stringify({
+        eventId: input.eventId,
+        eventType: input.eventType,
+        status: input.status,
+        message: input.message ?? null,
+        recordedAt: new Date().toISOString(),
+      }),
+    ]);
+  } catch (error) {
+    log.warn("stripe_webhook_audit_failed", { error: error instanceof Error ? error.message : String(error) });
+  }
+}
+
 export async function POST(req: NextRequest) {
   const body = await req.text();
   const sig = req.headers.get("stripe-signature");
@@ -345,6 +369,7 @@ export async function POST(req: NextRequest) {
     }
 
     await markStripeEventProcessed(event.id, event.type);
+    await recordStripeWebhookAudit({ eventId: event.id, eventType: event.type, status: "processed" });
     log.info("stripe_webhook_processed", { eventId: event.id, eventType: event.type });
     return NextResponse.json({ received: true });
   } catch (error) {
@@ -354,6 +379,7 @@ export async function POST(req: NextRequest) {
       eventType: event.type,
       error: message,
     });
+    await recordStripeWebhookAudit({ eventId: event.id, eventType: event.type, status: "failed", message });
     await alertAdmins({
       subject: "Stripe webhook failed",
       title: "Stripe webhook processing failed",
