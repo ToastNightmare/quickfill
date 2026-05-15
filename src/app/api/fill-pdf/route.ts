@@ -3,7 +3,6 @@
 export const runtime = "nodejs";
 
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@clerk/nextjs/server";
 import crypto from "crypto";
 import { PDFDocument, rgb, StandardFonts, PDFName, PDFArray, PDFDict } from "pdf-lib";
 import type { EditorField } from "@/lib/types";
@@ -12,6 +11,7 @@ import { applyBorderWatermark } from "@/lib/watermark";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { getRedis } from "@/lib/redis";
 import { recordDownloadLog } from "@/lib/admin-logs";
+import { getRequestEntitlement } from "@/lib/entitlements";
 import { orderFieldsForPdfDraw } from "@/lib/pdf-utils";
 
 /** Replace control characters (including newlines) with a space */
@@ -69,20 +69,24 @@ async function getDownloadAccess(request: NextRequest): Promise<DownloadAccess> 
     return { isPro: true, used: 0, limit: FREE_FILL_LIMIT, key: null, userId: null, guest: false, isQaBypass: true };
   }
 
-  const { userId } = await auth();
+  const entitlement = await getRequestEntitlement(request);
 
-  if (!userId) {
-    const key = getGuestIdentifier(request);
+  if (!entitlement.userId) {
+    const key = entitlement.anonymousId ? `guest:fills:${entitlement.anonymousId}` : getGuestIdentifier(request);
     const used = await getRedis().get<number>(key);
-    return { isPro: false, used: used ?? 0, limit: FREE_FILL_LIMIT, key, userId: null, guest: true };
+    return { isPro: false, used: used ?? 0, limit: entitlement.limit, key, userId: null, guest: true };
   }
 
-  const [used, sub] = await Promise.all([
-    getRedis().get<number>(usageKey(userId)),
-    getRedis().get<string>(`sub:${userId}`),
-  ]);
-  const isPro = sub === "pro" || sub === "business";
-  return { isPro, used: used ?? 0, limit: FREE_FILL_LIMIT, key: isPro ? null : usageKey(userId), userId, guest: false };
+  const used = await getRedis().get<number>(usageKey(entitlement.userId));
+  const isPro = entitlement.tier === "pro" || entitlement.tier === "business";
+  return {
+    isPro,
+    used: used ?? 0,
+    limit: entitlement.limit,
+    key: isPro ? null : usageKey(entitlement.userId),
+    userId: entitlement.userId,
+    guest: false,
+  };
 }
 
 async function incrementDownloadUsage(access: DownloadAccess) {
