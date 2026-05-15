@@ -88,6 +88,7 @@ export async function POST(req: NextRequest) {
     }
 
     const successReturnTo = encodeURIComponent("/dashboard?upgraded=true");
+    const cancelParams = new URLSearchParams({ checkout: "cancelled", plan, billing });
 
     const session = await getStripe().checkout.sessions.create({
       mode: "subscription",
@@ -95,7 +96,7 @@ export async function POST(req: NextRequest) {
       line_items: [{ price: priceId, quantity: 1 }],
       ...(existingCustomerId ? { customer: existingCustomerId } : { customer_email: email ?? undefined }),
       success_url: `${origin}/api/billing/sync?returnTo=${successReturnTo}`,
-      cancel_url: `${origin}/pricing`,
+      cancel_url: `${origin}/pricing?${cancelParams.toString()}`,
       allow_promotion_codes: true,
       metadata,
       subscription_data: { metadata },
