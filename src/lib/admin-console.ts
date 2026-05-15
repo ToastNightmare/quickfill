@@ -63,6 +63,16 @@ export interface AdminCustomerDetail extends AdminUserSummary {
     amount: number;
     interval: string;
   }[];
+  invoices: {
+    id: string;
+    status: string | null;
+    amountDue: number;
+    amountPaid: number;
+    createdAt: string;
+    dueDate: string | null;
+    hostedInvoiceUrl: string | null;
+    invoicePdf: string | null;
+  }[];
 }
 
 export interface AdminRevenueSummary {
@@ -219,13 +229,15 @@ export async function getAdminCustomer(userId: string): Promise<AdminCustomerDet
 
   let stripeCustomer: AdminCustomerDetail["stripeCustomer"] = null;
   let subscriptions: AdminCustomerDetail["subscriptions"] = [];
+  let invoices: AdminCustomerDetail["invoices"] = [];
 
   if (storedStripeCustomerId) {
     try {
       const stripe = getStripe();
-      const [customer, subList] = await Promise.all([
+      const [customer, subList, invoiceList] = await Promise.all([
         stripe.customers.retrieve(storedStripeCustomerId),
         stripe.subscriptions.list({ customer: storedStripeCustomerId, status: "all", limit: 10 }),
+        stripe.invoices.list({ customer: storedStripeCustomerId, limit: 10 }),
       ]);
 
       if (!customer.deleted) {
@@ -250,9 +262,21 @@ export async function getAdminCustomer(userId: string): Promise<AdminCustomerDet
           interval: stripeInterval(subscription),
         };
       });
+
+      invoices = invoiceList.data.map((invoice) => ({
+        id: invoice.id ?? "invoice",
+        status: invoice.status ?? null,
+        amountDue: invoice.amount_due ?? 0,
+        amountPaid: invoice.amount_paid ?? 0,
+        createdAt: new Date(invoice.created * 1000).toISOString(),
+        dueDate: invoice.due_date ? new Date(invoice.due_date * 1000).toISOString() : null,
+        hostedInvoiceUrl: invoice.hosted_invoice_url ?? null,
+        invoicePdf: invoice.invoice_pdf ?? null,
+      }));
     } catch {
       stripeCustomer = null;
       subscriptions = [];
+      invoices = [];
     }
   }
 
@@ -263,6 +287,7 @@ export async function getAdminCustomer(userId: string): Promise<AdminCustomerDet
     fills: fills ?? [],
     stripeCustomer,
     subscriptions,
+    invoices,
   };
 }
 
