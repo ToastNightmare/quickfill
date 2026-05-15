@@ -1,5 +1,6 @@
 import { auth, currentUser } from "@clerk/nextjs/server";
 import { NextRequest, NextResponse } from "next/server";
+import type Stripe from "stripe";
 import { getStripe } from "@/lib/stripe";
 import { getRedis, isRedisConfigured } from "@/lib/redis";
 import { APP_CONFIG } from "@/lib/config";
@@ -10,6 +11,7 @@ import { getStoredSubscriptionSnapshot, type StoredSubscriptionSnapshot } from "
 import { log } from "@/lib/log";
 
 const BILLING_REPAIR_STATUSES = new Set(["past_due", "unpaid", "incomplete", "paused"]);
+const BILLING_PORTAL_SUBSCRIPTION_STATUSES = new Set(["active", "trialing", ...BILLING_REPAIR_STATUSES]);
 
 function appOrigin(req: NextRequest) {
   const configured = APP_CONFIG.url;
@@ -36,6 +38,29 @@ function shouldUseBillingPortal(snapshot: StoredSubscriptionSnapshot | null) {
   if (snapshot.entitled) return true;
   if (!snapshot.stripeSubscriptionId) return false;
   return BILLING_REPAIR_STATUSES.has(snapshot.status);
+}
+
+function shouldUseBillingPortalForStripeSubscription(subscription: Stripe.Subscription) {
+  return BILLING_PORTAL_SUBSCRIPTION_STATUSES.has(subscription.status);
+}
+
+async function findPortalEligibleStripeSubscription(customerId: string) {
+  const subscriptions = await getStripe().subscriptions.list({
+    customer: customerId,
+    status: "all",
+    limit: 10,
+  });
+
+  return subscriptions.data.find(shouldUseBillingPortalForStripeSubscription) ?? null;
+}
+
+function portalResponse(subscription: StoredSubscriptionSnapshot | Stripe.Subscription) {
+  const status = subscription.status;
+  const alreadySubscribed = status === "active" || status === "trialing";
+  return {
+    alreadySubscribed,
+    needsBillingRepair: !alreadySubscribed,
+  };
 }
 
 export async function POST(req: NextRequest) {
@@ -95,9 +120,28 @@ export async function POST(req: NextRequest) {
       });
       return NextResponse.json({
         url: portalSession.url,
-        alreadySubscribed: snapshot.entitled,
-        needsBillingRepair: !snapshot.entitled,
+        ...portalResponse(snapshot),
       });
+    }
+
+    if (existingCustomerId) {
+      const existingSubscription = await findPortalEligibleStripeSubscription(existingCustomerId);
+      if (existingSubscription) {
+        log.info("stripe_checkout_existing_subscription_found", {
+          userId,
+          customerId: existingCustomerId,
+          subscriptionId: existingSubscription.id,
+          status: existingSubscription.status,
+        });
+        const portalSession = await getStripe().billingPortal.sessions.create({
+          customer: existingCustomerId,
+          return_url: `${origin}/dashboard`,
+        });
+        return NextResponse.json({
+          url: portalSession.url,
+          ...portalResponse(existingSubscription),
+        });
+      }
     }
 
     const successReturnTo = encodeURIComponent("/dashboard?upgraded=true");
