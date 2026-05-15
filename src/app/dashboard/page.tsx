@@ -349,7 +349,7 @@ function DashboardContent() {
                     className="mt-4 flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-accent text-sm font-semibold text-white hover:bg-accent-hover transition-colors"
                   >
                     <Sparkles className="h-4 w-4" />
-                    Upgrade to Pro: $12/mo
+                    Upgrade to Pro: A$12/month
                   </button>
                 </>
               )}
@@ -468,7 +468,7 @@ function DashboardContent() {
             <div>
               <h3 className="text-lg font-semibold">Unlock unlimited fills</h3>
               <p className="mt-1 text-sm text-gray-300">
-                Upgrade to Pro for $12/month and never hit a limit. No watermarks on downloads.
+                Upgrade to Pro for A$12/month and never hit a limit. No watermarks on downloads.
               </p>
             </div>
             <button
