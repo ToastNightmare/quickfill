@@ -4,7 +4,7 @@ import { useUser } from "@clerk/nextjs";
 import { Suspense, useCallback, useEffect, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { AlertTriangle, FileText, Sparkles, ExternalLink, Lock, Clock, User, RotateCcw } from "lucide-react";
+import { AlertTriangle, FileText, Sparkles, ExternalLink, Lock, Clock, User, RotateCcw, Loader2 } from "lucide-react";
 import { ProSuccessModal } from "@/components/ProSuccessModal";
 import { SupportForm } from "@/components/SupportForm";
 
@@ -24,6 +24,8 @@ interface UsageData {
   limit: number;
   isPro: boolean;
   tier?: string;
+  guest?: boolean;
+  degraded?: boolean;
   billing?: BillingState | null;
 }
 
@@ -47,6 +49,7 @@ function billingSyncMessage(reason?: string | null) {
 }
 
 const BILLING_ISSUE_STATUSES = new Set(["past_due", "unpaid", "canceled", "incomplete", "incomplete_expired"]);
+const BILLING_SYNC_COOLDOWN_MS = 5 * 60 * 1000;
 
 export default function DashboardPage() {
   return (
@@ -71,6 +74,7 @@ function DashboardContent() {
   const [fills, setFills] = useState<FillEntry[]>([]);
   const [billingError, setBillingError] = useState<string | null>(null);
   const [billingSyncing, setBillingSyncing] = useState(false);
+  const [backgroundBillingCheck, setBackgroundBillingCheck] = useState(false);
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
   const [savedSessions, setSavedSessions] = useState<Set<string>>(new Set());
   const [showSuccessModal, setShowSuccessModal] = useState(false);
@@ -84,6 +88,31 @@ function DashboardContent() {
     setUsage(data);
     return data as UsageData;
   }, []);
+
+  const syncBillingAndRefresh = useCallback(async (options: { quiet?: boolean; showSuccess?: boolean } = {}) => {
+    const res = await fetch("/api/billing/sync", { method: "POST" });
+    const data = await res.json().catch(() => ({}));
+    const updated = Number(data.result?.updated ?? 0);
+    const syncLooksSuccessful = res.ok && (data.ok !== false || updated > 0);
+
+    const updatedUsage = await refreshUsage();
+    const updatedTier = updatedUsage.tier ?? "free";
+    const updatedIsPaid = updatedTier === "pro" || updatedTier === "business" || updatedUsage.isPro;
+
+    if (options.showSuccess && updatedIsPaid) {
+      setShowSuccessModal(true);
+    }
+
+    if (!res.ok && !options.quiet) {
+      throw new Error(data.error || "Billing could not be checked.");
+    }
+
+    if (!syncLooksSuccessful && !updatedIsPaid && !options.quiet) {
+      throw new Error(data.result?.message || "Stripe has not confirmed an active paid plan yet.");
+    }
+
+    return updatedUsage;
+  }, [refreshUsage]);
 
   useEffect(() => {
     refreshUsage().catch(() => setUsageError(true));
@@ -105,8 +134,10 @@ function DashboardContent() {
     const checkBilling = async () => {
       attempts += 1;
       try {
-        const data = await refreshUsage();
-        if (data.tier === "pro" || data.tier === "business") {
+        const data = attempts === 1
+          ? await syncBillingAndRefresh({ quiet: true, showSuccess: true })
+          : await refreshUsage();
+        if (data.tier === "pro" || data.tier === "business" || data.isPro) {
           if (!cancelled) {
             setShowSuccessModal(true);
             router.replace("/dashboard", { scroll: false });
@@ -114,8 +145,10 @@ function DashboardContent() {
           return;
         }
       } catch {
-        if (!cancelled) setUsageError(true);
-        return;
+        if (!cancelled && attempts >= 5) {
+          setBillingError("QuickFill could not confirm Stripe billing yet. Try Check Pro status in a moment.");
+        }
+        if (attempts >= 5) return;
       }
 
       if (!cancelled && attempts < 5) {
@@ -128,7 +161,35 @@ function DashboardContent() {
       cancelled = true;
       if (timer) clearTimeout(timer);
     };
-  }, [upgraded, usageError, refreshUsage, router]);
+  }, [upgraded, usageError, refreshUsage, syncBillingAndRefresh, router]);
+
+  useEffect(() => {
+    if (!user?.id || !usage || usageError || upgraded === "true") return;
+    if (usage.tier === "pro" || usage.tier === "business" || usage.isPro || usage.guest) return;
+
+    const storageKey = `quickfill:billing-sync:${user.id}`;
+    const lastChecked = Number(window.sessionStorage.getItem(storageKey) ?? 0);
+    if (Date.now() - lastChecked < BILLING_SYNC_COOLDOWN_MS) return;
+
+    let cancelled = false;
+    window.sessionStorage.setItem(storageKey, String(Date.now()));
+    setBackgroundBillingCheck(true);
+
+    syncBillingAndRefresh({ quiet: true })
+      .then((data) => {
+        if (!cancelled && (data.tier === "pro" || data.tier === "business" || data.isPro)) {
+          setShowSuccessModal(true);
+        }
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (!cancelled) setBackgroundBillingCheck(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.id, usage, usageError, upgraded, syncBillingAndRefresh]);
 
   useEffect(() => {
     if (fills.length === 0) return;
@@ -148,17 +209,10 @@ function DashboardContent() {
     try {
       setBillingError(null);
       setBillingSyncing(true);
-      const res = await fetch("/api/billing/sync", { method: "POST" });
-      const data = await res.json().catch(() => ({}));
-      const syncLooksSuccessful = data.ok !== false || data.result?.updated > 0;
-      if (!res.ok || !syncLooksSuccessful) {
-        throw new Error(data.error || data.result?.message || "Billing could not be checked.");
+      const updatedUsage = await syncBillingAndRefresh({ showSuccess: true });
+      if (updatedUsage.tier === "pro" || updatedUsage.tier === "business" || updatedUsage.isPro) {
+        router.replace("/dashboard", { scroll: false });
       }
-      const updatedUsage = await refreshUsage();
-      if (updatedUsage.tier === "pro" || updatedUsage.tier === "business") {
-        setShowSuccessModal(true);
-      }
-      router.replace("/dashboard", { scroll: false });
     } catch (error) {
       setBillingError(error instanceof Error ? error.message : "Billing could not be checked.");
     } finally {
@@ -197,17 +251,21 @@ function DashboardContent() {
   };
 
   const tier = usage?.tier ?? "free";
-  const isPaid = tier === "pro" || tier === "business";
+  const isPaid = tier === "pro" || tier === "business" || Boolean(usage?.isPro);
   const billing = usage?.billing ?? null;
+  const checkoutActivationPending = upgraded === "true" && !isPaid;
+  const billingCheckActive = billingSyncing || backgroundBillingCheck || checkoutActivationPending;
+  const showFreeUpgradeState = Boolean(usage && !isPaid && !billingCheckActive);
   const hasBillingIssue = Boolean(
     billing &&
       !isPaid &&
+      !billingCheckActive &&
       (billing.delinquent || billing.needsReview || BILLING_ISSUE_STATUSES.has(billing.status))
   );
-  const usedPct = usage && !isPaid ? Math.min(100, (usage.used / usage.limit) * 100) : 0;
-  const visibleFills = isPaid ? fills : fills.slice(0, 3);
-  const lockedFills = isPaid ? [] : fills.slice(3);
-  const billingSyncError = isPaid ? null : billingSyncMessage(billingSync);
+  const usedPct = usage && showFreeUpgradeState ? Math.min(100, (usage.used / usage.limit) * 100) : 0;
+  const visibleFills = isPaid || billingCheckActive ? fills : fills.slice(0, 3);
+  const lockedFills = isPaid || billingCheckActive ? [] : fills.slice(3);
+  const billingSyncError = isPaid || billingCheckActive ? null : billingSyncMessage(billingSync);
 
   return (
     <div className="mx-auto max-w-4xl px-4 py-10 sm:px-6 lg:px-8">
@@ -217,17 +275,29 @@ function DashboardContent() {
             Welcome back{user?.firstName ? `, ${user.firstName}` : ""}
           </h1>
           <p className="mt-1 text-text-muted">
-            {usage?.isPro ? "You're on Pro. Fill as many PDFs as you need, no limits." : "Manage your usage and fill history."}
+            {isPaid
+              ? "You're on Pro. Fill as many PDFs as you need, no limits."
+              : billingCheckActive
+                ? "QuickFill is checking your Pro access with Stripe."
+                : "Manage your usage and fill history."}
           </p>
         </div>
         {usage && (
           <div className={`flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold shadow-sm ${
             isPaid
               ? "bg-gradient-to-r from-accent to-blue-600 text-white"
-              : "bg-surface-alt text-text-muted border border-border"
+              : billingCheckActive
+                ? "border border-blue-200 bg-blue-50 text-blue-800"
+                : "bg-surface-alt text-text-muted border border-border"
           }`}>
-            {isPaid ? <Sparkles className="h-4 w-4" /> : <User className="h-4 w-4" />}
-            {isPaid ? "Pro" : "Free"}
+            {isPaid ? (
+              <Sparkles className="h-4 w-4" />
+            ) : billingCheckActive ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <User className="h-4 w-4" />
+            )}
+            {isPaid ? "Pro" : billingCheckActive ? "Checking Pro" : "Free"}
           </div>
         )}
       </div>
@@ -236,8 +306,8 @@ function DashboardContent() {
         <div className={`mb-6 mt-4 rounded-xl border px-5 py-4 text-sm font-medium ${isPaid ? "border-green-200 bg-green-50 text-green-800" : "border-blue-200 bg-blue-50 text-blue-800"}`}>
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <p>
-              {!usage
-                ? "Checking your payment with Stripe. Your plan will update here as soon as the payment is confirmed."
+              {!usage || billingCheckActive
+                ? "Payment received. QuickFill is syncing your Pro access with Stripe now."
                 : isPaid
                   ? "Welcome to Pro. Your account has been upgraded."
                   : "Stripe has not confirmed an active paid plan yet. QuickFill is checking again automatically."}
@@ -248,7 +318,7 @@ function DashboardContent() {
                 disabled={billingSyncing}
                 className="flex h-10 shrink-0 items-center justify-center gap-2 rounded-lg bg-accent px-4 text-sm font-semibold text-white hover:bg-accent-hover disabled:opacity-60"
               >
-                {billingSyncing ? "Checking..." : "Check billing again"}
+                {billingSyncing ? "Checking..." : "Check Pro status"}
               </button>
             )}
           </div>
@@ -321,6 +391,26 @@ function DashboardContent() {
                   >
                     <ExternalLink className="h-4 w-4" />
                     Manage Billing
+                  </button>
+                  {billingError && (
+                    <p className="mt-2 text-xs text-red-500">{billingError}</p>
+                  )}
+                </>
+              ) : billingCheckActive ? (
+                <>
+                  <p className="mt-2 text-sm font-semibold text-blue-700">
+                    Checking Pro access with Stripe
+                  </p>
+                  <p className="mt-2 text-sm text-text-muted">
+                    Your payment is being matched to this QuickFill account. Pro will unlock automatically as soon as Stripe confirms it.
+                  </p>
+                  <button
+                    onClick={handleBillingSync}
+                    disabled={billingSyncing}
+                    className="mt-4 flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-accent text-sm font-semibold text-white hover:bg-accent-hover transition-colors disabled:opacity-60"
+                  >
+                    {billingSyncing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+                    {billingSyncing ? "Checking..." : "Check Pro status"}
                   </button>
                   {billingError && (
                     <p className="mt-2 text-xs text-red-500">{billingError}</p>
@@ -463,7 +553,7 @@ function DashboardContent() {
         />
       </div>
 
-      {usage && !isPaid && (
+      {showFreeUpgradeState && (
         <div className="mt-6 rounded-xl bg-navy p-6 text-white">
           <div className="flex flex-col items-start gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
