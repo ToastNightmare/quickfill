@@ -24,8 +24,6 @@ import { Minimap } from "@/components/Minimap";
 import type { RefObject } from "react";
 import { useState, useEffect } from "react";
 
-
-
 interface ToolbarProps {
   activeTool: ToolType | null;
   onToolSelect: (tool: ToolType | null) => void;
@@ -64,6 +62,11 @@ const tools: { type: ToolType; icon: typeof Type; label: string; title: string }
   { type: "whiteout", icon: Eraser, label: "Whiteout", title: "Whiteout: cover pre-printed text with background colour" },
 ];
 
+function isPaidUsage(data: { isPro?: boolean; tier?: string | null } | null): boolean {
+  const tier = data?.tier ?? "free";
+  return Boolean(data?.isPro || tier === "pro" || tier === "business");
+}
+
 export function Toolbar({
   activeTool,
   onToolSelect,
@@ -95,16 +98,16 @@ export function Toolbar({
   const currentFontSize = showFontSize
     ? (selectedField as { fontSize?: number }).fontSize ?? 14
     : null;
-  const [isPro, setIsPro] = useState(false);
+  const [isPro, setIsPro] = useState<boolean | null>(null);
 
   useEffect(() => {
     fetch("/api/usage")
-      .then((r) => r.json())
-      .then((data) => setIsPro(data.isPro))
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => setIsPro(isPaidUsage(data)))
       .catch(() => setIsPro(false));
   }, []);
 
-  // ── Mobile bottom bar ──────────────────────────────────────────────────────
+  // -- Mobile bottom bar -----------------------------------------------------
   if (mobile) {
     return (
       <div className="sm:hidden fixed bottom-0 left-0 right-0 z-40 flex items-center gap-2 overflow-x-auto border-t border-border bg-surface px-3 pt-2 pb-[max(env(safe-area-inset-bottom),8px)]">
@@ -178,11 +181,13 @@ export function Toolbar({
             </button>
           </>
         )}
-        <div className="w-px h-6 bg-border shrink-0" />
-        {isPro && (
-          <span className="shrink-0 rounded-full bg-accent/10 px-2.5 py-1 text-xs font-semibold text-accent">
-            ✦ Pro
-          </span>
+        {isPro === true && (
+          <>
+            <div className="w-px h-6 bg-border shrink-0" />
+            <span className="shrink-0 rounded-full bg-accent/10 px-2.5 py-1 text-xs font-semibold text-accent">
+              Pro
+            </span>
+          </>
         )}
         <div className="w-px h-6 bg-border shrink-0" />
         <button
@@ -210,16 +215,12 @@ export function Toolbar({
     );
   }
 
-  // ── Desktop sidebar ─────────────────────────────────────────────────────────
+  // -- Desktop sidebar -------------------------------------------------------
   const showMinimap = !!(minimapCanvas && viewerRef && zoom !== undefined);
 
   return (
     <div className="flex flex-col border-r border-border bg-surface w-16 sm:w-64 h-full">
-
-      {/* ── Fixed top: tools + actions ───────────────────────────────────── */}
       <div className="flex flex-col gap-px px-2 pt-3 pb-2 overflow-y-auto flex-shrink min-h-0">
-
-        {/* Place Fields */}
         <p className="px-2 pt-1 pb-1 text-[10px] font-semibold uppercase tracking-widest text-text-muted hidden sm:block">
           Place Fields
         </p>
@@ -241,7 +242,6 @@ export function Toolbar({
 
         <div className="my-1 h-px bg-border mx-1" />
 
-        {/* Actions */}
         <p className="px-2 pb-1 text-[10px] font-semibold uppercase tracking-widest text-text-muted hidden sm:block">
           Actions
         </p>
@@ -290,7 +290,6 @@ export function Toolbar({
           <span className="hidden sm:inline">Clear Fields</span>
         </button>
 
-        {/* Field count indicator */}
         {fields && fields.length > 0 && (
           <p className="px-2 py-1 text-[10px] text-text-muted hidden sm:block">
             {fields.length} field{fields.length !== 1 ? "s" : ""} placed
@@ -299,7 +298,6 @@ export function Toolbar({
 
         <div className="my-1 h-px bg-border mx-1" />
 
-        {/* Save Progress */}
         {onSaveProgress && (
           <button
             onClick={onSaveProgress}
@@ -311,7 +309,6 @@ export function Toolbar({
           </button>
         )}
 
-        {/* Start Over */}
         {onStartOver && (
           <button
             onClick={onStartOver}
@@ -323,7 +320,6 @@ export function Toolbar({
           </button>
         )}
 
-        {/* Download */}
         <button
           onClick={onDownload}
           disabled={isDownloading}
@@ -335,25 +331,24 @@ export function Toolbar({
             {isDownloading ? "Saving..." : "Download PDF"}
           </span>
         </button>
-
       </div>
 
-      {/* Pro indicator */}
-      {isPro ? (
+      {isPro === true ? (
         <div className="px-2 py-2 border-t border-border">
           <span className="hidden sm:inline-block rounded-full bg-accent/10 px-2.5 py-1 text-xs font-semibold text-accent">
             PRO
           </span>
         </div>
-      ) : (
+      ) : isPro === false ? (
         <div className="px-2 py-2 border-t border-border hidden sm:block">
           <a href="/pricing" className="flex items-center gap-2 rounded-lg bg-accent/10 px-3 py-2 text-xs font-semibold text-accent hover:bg-accent hover:text-white transition-colors">
             Upgrade to Pro
           </a>
         </div>
+      ) : (
+        <div className="hidden sm:block border-t border-border px-2 py-2" aria-hidden="true" />
       )}
 
-      {/* Help button at bottom */}
       {onShowHelp && (
         <div className="mt-auto p-2 border-t border-border">
           <button
@@ -366,7 +361,6 @@ export function Toolbar({
         </div>
       )}
 
-      {/* ── Overview: flex-1, fills all remaining space ───────────────────── */}
       {showMinimap && (
         <div className="hidden sm:flex flex-col min-h-0 border-t border-border px-2 pb-2" style={{ height: "240px", flexShrink: 0 }}>
           <div className="flex items-center gap-1.5 px-1 py-2 flex-shrink-0">
@@ -388,7 +382,6 @@ export function Toolbar({
           </div>
         </div>
       )}
-
     </div>
   );
 }
