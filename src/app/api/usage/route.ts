@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getRedis, isRedisConfigured } from "@/lib/redis";
-import { getRequestEntitlement } from "@/lib/entitlements";
+import { getRequestEntitlement, TIER_LIMITS } from "@/lib/entitlements";
 import { getStoredSubscriptionSnapshot, recordUsageEvent } from "@/lib/billing-store";
 import { checkRateLimit } from "@/lib/rate-limit";
 
@@ -37,6 +37,10 @@ function logUsageReadError(stage: string, error: unknown) {
   });
 }
 
+function limitForTier(tier: Entitlement["tier"], fallback: number) {
+  return TIER_LIMITS[tier] ?? fallback;
+}
+
 export async function GET(request: NextRequest) {
   try {
     const entitlement = await getRequestEntitlement(request);
@@ -51,13 +55,17 @@ export async function GET(request: NextRequest) {
 
     const used = usedResult.status === "fulfilled" ? usedResult.value ?? 0 : 0;
     const subscription = subscriptionResult.status === "fulfilled" ? subscriptionResult.value : null;
+    const subscriptionEntitled = Boolean(subscription?.entitled);
+    const tier = subscriptionEntitled ? subscription!.tier : entitlement.tier;
+    const isPaid = entitlement.isPaid || subscriptionEntitled;
+    const limit = limitForTier(tier, entitlement.limit);
 
     return NextResponse.json({
       used,
-      limit: entitlement.limit,
-      isPro: entitlement.isPaid,
-      tier: entitlement.tier,
-      guest: entitlement.tier === "guest",
+      limit,
+      isPro: isPaid,
+      tier,
+      guest: tier === "guest",
       qa: entitlement.qa,
       degraded: usedResult.status === "rejected" || subscriptionResult.status === "rejected",
       billing: subscription
