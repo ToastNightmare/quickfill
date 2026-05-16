@@ -10,6 +10,9 @@ import { alertAdmins } from "@/lib/admin-alerts";
 import { getStoredSubscriptionSnapshot, type StoredSubscriptionSnapshot } from "@/lib/billing-store";
 import { log } from "@/lib/log";
 
+export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
+
 const BILLING_REPAIR_STATUSES = new Set(["past_due", "unpaid", "incomplete", "paused"]);
 const BILLING_PORTAL_SUBSCRIPTION_STATUSES = new Set(["active", "trialing", ...BILLING_REPAIR_STATUSES]);
 
@@ -44,21 +47,105 @@ function shouldUseBillingPortalForStripeSubscription(subscription: Stripe.Subscr
   return BILLING_PORTAL_SUBSCRIPTION_STATUSES.has(subscription.status);
 }
 
+function stripeSearchValue(value: string) {
+  return value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+}
+
+async function safeAlertAdmins(input: Parameters<typeof alertAdmins>[0]) {
+  try {
+    await alertAdmins(input);
+  } catch (error) {
+    log.error("admin_alert_failed", { error: error instanceof Error ? error.message : String(error) });
+  }
+}
+
+function checkoutErrorResponse(error: string, status: number, code: string, fields: Record<string, unknown> = {}) {
+  return NextResponse.json({ error, code, ...fields }, { status });
+}
+
+async function checkoutUserProfile(userId: string) {
+  try {
+    const user = await currentUser();
+    return {
+      email: user?.primaryEmailAddress?.emailAddress ?? user?.emailAddresses?.[0]?.emailAddress ?? null,
+      firstName: user?.firstName ?? "",
+    };
+  } catch (error) {
+    log.error("stripe_checkout_clerk_user_lookup_failed", {
+      userId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return { email: null, firstName: "" };
+  }
+}
+
+async function checkoutBillingContext(userId: string) {
+  const [snapshotResult, cachedCustomerResult] = await Promise.allSettled([
+    getStoredSubscriptionSnapshot(userId),
+    isRedisConfigured() ? getRedis().get<string>(`stripe_customer:${userId}`) : Promise.resolve(null),
+  ]);
+
+  if (snapshotResult.status === "rejected") {
+    log.error("stripe_checkout_subscription_snapshot_failed", {
+      userId,
+      error: snapshotResult.reason instanceof Error ? snapshotResult.reason.message : String(snapshotResult.reason),
+    });
+  }
+
+  if (cachedCustomerResult.status === "rejected") {
+    log.error("stripe_checkout_customer_cache_read_failed", {
+      userId,
+      error: cachedCustomerResult.reason instanceof Error ? cachedCustomerResult.reason.message : String(cachedCustomerResult.reason),
+    });
+  }
+
+  return {
+    snapshot: snapshotResult.status === "fulfilled" ? snapshotResult.value : null,
+    cachedCustomerId: cachedCustomerResult.status === "fulfilled" ? cachedCustomerResult.value : null,
+  };
+}
+
 async function findStripeCustomerIdByEmail(email?: string | null) {
   if (!email) return null;
 
-  const customers = await getStripe().customers.list({ email, limit: 1 });
-  return customers.data[0]?.id ?? null;
+  try {
+    const customers = await getStripe().customers.list({ email, limit: 1 });
+    if (customers.data[0]?.id) return customers.data[0].id;
+  } catch (error) {
+    log.error("stripe_checkout_customer_list_failed", {
+      email,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+
+  try {
+    const customers = await getStripe().customers.search({ query: `email:"${stripeSearchValue(email)}"`, limit: 1 });
+    return customers.data[0]?.id ?? null;
+  } catch (error) {
+    log.error("stripe_checkout_customer_search_failed", {
+      email,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return null;
+  }
 }
 
 async function cacheStripeCustomerForUser(userId: string, customerId: string) {
   if (!isRedisConfigured()) return;
 
-  const redis = getRedis();
-  await Promise.all([
-    redis.set(`stripe_customer:${userId}`, customerId),
-    redis.set(`stripe_customer_user:${customerId}`, userId),
-  ]);
+  try {
+    const redis = getRedis();
+    await Promise.all([
+      redis.set(`stripe_customer:${userId}`, customerId),
+      redis.set(`stripe_customer_user:${customerId}`, userId),
+    ]);
+  } catch (error) {
+    log.error("stripe_checkout_customer_cache_write_failed", {
+      userId,
+      customerId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
 }
 
 async function findPortalEligibleStripeSubscription(customerId: string) {
@@ -131,13 +218,11 @@ async function billingPortalOrRepairResponse(
         customerId,
         error: error instanceof Error ? error.message : String(error),
       });
-      return NextResponse.json(
-        {
-          error:
-            "Your previous Pro payment needs updating, but Stripe could not open the payment page. Please contact support and we will fix it for you.",
-          needsBillingRepair: true,
-        },
-        { status: 409 },
+      return checkoutErrorResponse(
+        "Your previous Pro payment needs updating before a new Pro checkout can start. Please contact support and we will fix it for you.",
+        409,
+        "billing_repair_required",
+        { needsBillingRepair: true },
       );
     }
 
@@ -148,17 +233,15 @@ async function billingPortalOrRepairResponse(
 export async function POST(req: NextRequest) {
   const { userId } = await auth();
   if (!userId) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    return checkoutErrorResponse("Please sign in before starting checkout.", 401, "auth_required");
   }
 
   const limited = await checkRateLimit(requesterId(req, userId), "checkout");
   if (!limited.success) {
-    return NextResponse.json({ error: "Too many checkout attempts, try again in a minute" }, { status: 429 });
+    return checkoutErrorResponse("Too many checkout attempts, try again in a minute.", 429, "checkout_rate_limited");
   }
 
-  const user = await currentUser();
-  const email = user?.primaryEmailAddress?.emailAddress ?? user?.emailAddresses?.[0]?.emailAddress;
-  const firstName = user?.firstName ?? "";
+  const { email, firstName } = await checkoutUserProfile(userId);
   const origin = appOrigin(req);
 
   let plan: "pro" | "business" = "pro";
@@ -175,10 +258,7 @@ export async function POST(req: NextRequest) {
 
   try {
     const metadata = { userId, plan, billing, firstName };
-    const [snapshot, cachedCustomerId] = await Promise.all([
-      getStoredSubscriptionSnapshot(userId),
-      isRedisConfigured() ? getRedis().get<string>(`stripe_customer:${userId}`) : Promise.resolve(null),
-    ]);
+    const { snapshot, cachedCustomerId } = await checkoutBillingContext(userId);
     let existingCustomerId = snapshot?.stripeCustomerId ?? cachedCustomerId;
 
     if (shouldUseBillingPortal(snapshot) && snapshot?.stripeCustomerId) {
@@ -209,16 +289,13 @@ export async function POST(req: NextRequest) {
     const priceId = priceForPlan(plan, annual);
     if (!priceId) {
       log.error("stripe_checkout_missing_price", { plan, billing });
-      await alertAdmins({
+      await safeAlertAdmins({
         subject: "Checkout price is missing",
         title: "Stripe checkout price is not configured",
         message: "A user tried to start checkout, but the required Stripe price ID is missing from production environment variables.",
         fields: { plan, billing, userId, email: email ?? "unknown" },
       });
-      return NextResponse.json(
-        { error: `${plan} ${billing} billing is not configured yet.` },
-        { status: 500 },
-      );
+      return checkoutErrorResponse(`${plan} ${billing} billing is not configured yet.`, 500, "checkout_price_missing");
     }
 
     const successReturnTo = encodeURIComponent("/dashboard?upgraded=true");
@@ -228,7 +305,7 @@ export async function POST(req: NextRequest) {
       mode: "subscription",
       payment_method_types: ["card"],
       line_items: [{ price: priceId, quantity: 1 }],
-      ...(existingCustomerId ? { customer: existingCustomerId } : { customer_email: email ?? undefined }),
+      ...(existingCustomerId ? { customer: existingCustomerId } : email ? { customer_email: email } : {}),
       success_url: `${origin}/api/billing/sync?returnTo=${successReturnTo}`,
       cancel_url: `${origin}/pricing?${cancelParams.toString()}`,
       allow_promotion_codes: true,
@@ -240,13 +317,17 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ url: session.url });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    log.error("stripe_checkout_session_failed", { plan, billing, error: message });
-    await alertAdmins({
+    log.error("stripe_checkout_session_failed", { plan, billing, userId, email, error: message });
+    await safeAlertAdmins({
       subject: "Checkout session failed",
       title: "Stripe checkout could not be started",
       message: "A signed-in user could not be sent to Stripe Checkout.",
       fields: { plan, billing, userId, email: email ?? "unknown", error: message },
     });
-    return NextResponse.json({ error: "Checkout could not be started. Please try again." }, { status: 500 });
+    return checkoutErrorResponse(
+      "Checkout could not be started. Please contact support if this keeps happening.",
+      500,
+      "checkout_unexpected_failure",
+    );
   }
 }
