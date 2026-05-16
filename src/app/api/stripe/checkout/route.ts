@@ -183,37 +183,45 @@ async function billingPortalOrRepairResponse(
   subscription: StoredSubscriptionSnapshot | Stripe.Subscription,
 ) {
   const response = portalResponse(subscription);
-
-  if (response.needsBillingRepair) {
-    try {
-      const invoiceUrl = await openInvoicePaymentUrl(customerId);
-      if (invoiceUrl) {
-        return NextResponse.json({
-          url: invoiceUrl,
-          paymentRepair: true,
-          ...response,
-        });
-      }
-    } catch (error) {
-      log.error("stripe_checkout_invoice_lookup_failed", {
-        customerId,
-        error: error instanceof Error ? error.message : String(error),
-      });
-    }
-  }
+  const successReturnTo = encodeURIComponent("/dashboard?upgraded=true");
+  const returnUrl = response.needsBillingRepair
+    ? `${origin}/api/billing/sync?returnTo=${successReturnTo}`
+    : `${origin}/dashboard`;
 
   try {
     const portalSession = await getStripe().billingPortal.sessions.create({
       customer: customerId,
-      return_url: `${origin}/dashboard`,
+      return_url: returnUrl,
     });
 
     return NextResponse.json({
       url: portalSession.url,
+      paymentRepair: response.needsBillingRepair || undefined,
       ...response,
     });
   } catch (error) {
     if (response.needsBillingRepair) {
+      log.error("stripe_checkout_portal_repair_link_failed", {
+        customerId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+
+      try {
+        const invoiceUrl = await openInvoicePaymentUrl(customerId);
+        if (invoiceUrl) {
+          return NextResponse.json({
+            url: invoiceUrl,
+            paymentRepair: true,
+            ...response,
+          });
+        }
+      } catch (invoiceError) {
+        log.error("stripe_checkout_invoice_lookup_failed", {
+          customerId,
+          error: invoiceError instanceof Error ? invoiceError.message : String(invoiceError),
+        });
+      }
+
       log.error("stripe_checkout_repair_link_failed", {
         customerId,
         error: error instanceof Error ? error.message : String(error),
