@@ -19,6 +19,10 @@ type BillingSyncResponse = {
   error?: string;
 };
 
+type BillingSyncOptions = {
+  sessionId?: string | null;
+};
+
 function requesterId(req: NextRequest, userId: string) {
   const forwarded = req.headers.get("x-forwarded-for");
   const realIp = req.headers.get("x-real-ip");
@@ -53,7 +57,19 @@ function billingSyncSucceeded(result: BillingSyncResult | null) {
   return Boolean(result && (result.ok || result.updated > 0));
 }
 
-async function syncCurrentUserBilling(req: NextRequest): Promise<BillingSyncResponse> {
+async function parseBillingSyncOptions(req: NextRequest): Promise<BillingSyncOptions> {
+  const contentType = req.headers.get("content-type") ?? "";
+  if (!contentType.toLowerCase().includes("application/json")) return {};
+
+  try {
+    const body = await req.json();
+    return typeof body?.sessionId === "string" ? { sessionId: body.sessionId } : {};
+  } catch {
+    return {};
+  }
+}
+
+async function syncCurrentUserBilling(req: NextRequest, options: BillingSyncOptions = {}): Promise<BillingSyncResponse> {
   try {
     const { userId } = await auth();
     if (!userId) return { userId: null, status: 401, reason: "not_signed_in", result: null };
@@ -69,7 +85,7 @@ async function syncCurrentUserBilling(req: NextRequest): Promise<BillingSyncResp
       console.warn("billing_sync_current_user_lookup_failed", { userId, error: errorMessage(error) });
     }
 
-    const result = await reconcileStripeBillingForUser(userId, { email });
+    const result = await reconcileStripeBillingForUser(userId, { email, sessionId: options.sessionId });
 
     if (result.checked > 0 || result.updated > 0 || result.errors.length > 0) {
       try {
@@ -93,7 +109,8 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const synced = await syncCurrentUserBilling(req);
+  const options = await parseBillingSyncOptions(req);
+  const synced = await syncCurrentUserBilling(req, options);
   if (synced.status === 401) {
     return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
   }
