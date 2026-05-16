@@ -7,6 +7,12 @@ import { CheckCircle2, FileText, Loader2, RefreshCw, Sparkles } from "lucide-rea
 
 type SyncStatus = "checking" | "ready" | "waiting" | "error";
 
+const BILLING_SYNC_MESSAGES: Record<string, string> = {
+  not_signed_in: "Your payment went through. Sign in again and QuickFill will finish checking your Pro access.",
+  rate_limited: "QuickFill is checking billing a little too often. Wait a moment, then check again.",
+  sync_error: "Your payment went through, but QuickFill could not refresh billing yet.",
+};
+
 export default function CheckoutSuccessPage() {
   return (
     <Suspense
@@ -23,15 +29,26 @@ export default function CheckoutSuccessPage() {
 
 function CheckoutSuccessContent() {
   const searchParams = useSearchParams();
-  const [status, setStatus] = useState<SyncStatus>("checking");
-  const [message, setMessage] = useState("Confirming your payment with Stripe...");
+  const syncAlreadyRan = searchParams.get("synced") === "true";
+  const billingSyncReason = searchParams.get("billingSync");
+  const initialSyncError = billingSyncReason ? BILLING_SYNC_MESSAGES[billingSyncReason] : null;
+  const [status, setStatus] = useState<SyncStatus>(() => {
+    if (initialSyncError) return "error";
+    if (syncAlreadyRan) return "ready";
+    return "checking";
+  });
+  const [message, setMessage] = useState(() => {
+    if (initialSyncError) return initialSyncError;
+    if (syncAlreadyRan) return "Stripe has been checked. Your Pro access should be ready now.";
+    return "Confirming your payment with Stripe...";
+  });
   const [retrying, setRetrying] = useState(false);
 
   const alreadyPro = searchParams.get("alreadyPro") === "true";
   const repairedBilling = searchParams.get("repair") === "true";
 
   const contextText = useMemo(() => {
-    if (alreadyPro) return "You already have an active Pro subscription. We are refreshing QuickFill now.";
+    if (alreadyPro) return "You already have an active Pro subscription. We refreshed QuickFill for you.";
     if (repairedBilling) return "Your billing update is being checked so your Pro access can be restored.";
     return "Payment received. QuickFill is refreshing your account in the background.";
   }, [alreadyPro, repairedBilling]);
@@ -70,8 +87,9 @@ function CheckoutSuccessContent() {
   }, []);
 
   useEffect(() => {
+    if (syncAlreadyRan || initialSyncError) return;
     syncBilling();
-  }, [syncBilling]);
+  }, [initialSyncError, syncAlreadyRan, syncBilling]);
 
   const handleRetry = async () => {
     setRetrying(true);
