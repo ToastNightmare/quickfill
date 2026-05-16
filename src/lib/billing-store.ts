@@ -54,7 +54,7 @@ function reviewReason(status: string, currentPeriodEnd?: PeriodEndValue) {
   if (!ENTITLED_STATUSES.has(status)) return null;
 
   const periodEnd = periodEndToTime(currentPeriodEnd);
-  if (periodEnd === null) return "Missing renewal/end date from Stripe";
+  if (periodEnd === null) return "Stripe did not provide a renewal/end date; access is allowed while Stripe status is active.";
   if (periodEnd <= Date.now()) return "Billing period has ended";
 
   return null;
@@ -64,7 +64,7 @@ export function isSubscriptionEntitled(status: StoredSubscriptionStatus | string
   if (!ENTITLED_STATUSES.has(status)) return false;
 
   const periodEnd = periodEndToTime(currentPeriodEnd);
-  if (periodEnd === null) return false;
+  if (periodEnd === null) return true;
 
   return periodEnd > Date.now();
 }
