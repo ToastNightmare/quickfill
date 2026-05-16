@@ -148,18 +148,37 @@ async function stripeCustomerCandidateFromEmail(userId: string, email?: string |
   if (!cleanEmail) return null;
 
   const customers = await getStripe().customers.list({ email: cleanEmail, limit: 10 });
-  const customer = customers.data[0];
-  if (!customer) return null;
+  if (customers.data.length === 0) return null;
 
-  return {
-    user_id: userId,
-    tier: null,
-    status: null,
-    current_period_end: null,
-    stripe_customer_id: customer.id,
-    stripe_subscription_id: null,
-    updated_at: null,
-  };
+  let fallback: SubscriptionCandidate | null = null;
+
+  for (const customer of customers.data) {
+    const candidate: SubscriptionCandidate = {
+      user_id: userId,
+      tier: null,
+      status: null,
+      current_period_end: null,
+      stripe_customer_id: customer.id,
+      stripe_subscription_id: null,
+      updated_at: null,
+    };
+
+    fallback ??= candidate;
+
+    const subscription = bestCustomerSubscription(await listCustomerSubscriptions(customer.id));
+    if (!subscription) continue;
+
+    const subscriptionCandidate = {
+      ...candidate,
+      stripe_subscription_id: subscription.id,
+      status: subscription.status,
+    };
+
+    if (LIVE_SUBSCRIPTION_STATUSES.has(subscription.status)) return subscriptionCandidate;
+    fallback = subscriptionCandidate;
+  }
+
+  return fallback;
 }
 
 async function reconcileCandidate(candidate: SubscriptionCandidate, result: BillingReconciliationResult) {
@@ -256,25 +275,36 @@ export async function reconcileStripeBillingForUser(
   const configError = requiredConfigError(result);
   if (configError) return configError;
 
-  const candidates = await query<SubscriptionCandidate>(
-    `select user_id, tier, status, current_period_end, stripe_customer_id, stripe_subscription_id, updated_at
-     from subscriptions
-     where user_id = $1 and (stripe_subscription_id is not null or stripe_customer_id is not null)
-     order by updated_at desc nulls last
-     limit 1`,
-    [userId],
-  );
+  let candidates: SubscriptionCandidate[] = [];
+  try {
+    candidates = await query<SubscriptionCandidate>(
+      `select user_id, tier, status, current_period_end, stripe_customer_id, stripe_subscription_id, updated_at
+       from subscriptions
+       where user_id = $1 and (stripe_subscription_id is not null or stripe_customer_id is not null)
+       order by updated_at desc nulls last
+       limit 1`,
+      [userId],
+    );
+  } catch (error) {
+    result.errors.push({
+      userId,
+      stripeCustomerId: null,
+      stripeSubscriptionId: null,
+      message: errorMessage(error),
+    });
+  }
 
-  const candidate = candidates[0] ?? (await stripeCustomerCandidateFromEmail(userId, options.email));
+  const emailCandidate = candidates[0] ? null : await stripeCustomerCandidateFromEmail(userId, options.email);
+  const candidate = candidates[0] ?? emailCandidate;
   if (!candidate) {
-    return {
+    return finalizeResult({
       ...result,
       ok: false,
       skipped: 1,
       message: options.email
         ? "No stored billing record or Stripe customer found for this user."
         : "No stored billing record found for this user.",
-    };
+    });
   }
 
   result.checked = 1;
