@@ -4,8 +4,8 @@ import { useEffect, type ReactNode } from "react";
 
 function isPaidTier(data: unknown) {
   if (!data || typeof data !== "object") return false;
-  const tier = (data as { tier?: unknown }).tier;
-  return tier === "pro" || tier === "business";
+  const record = data as { isPro?: unknown; tier?: unknown };
+  return record.isPro === true || record.tier === "pro" || record.tier === "business";
 }
 
 export default function DashboardTemplate({ children }: { children: ReactNode }) {
