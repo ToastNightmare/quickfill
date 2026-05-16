@@ -31,6 +31,7 @@ function CheckoutSuccessContent() {
   const searchParams = useSearchParams();
   const syncAlreadyRan = searchParams.get("synced") === "true";
   const billingSyncReason = searchParams.get("billingSync");
+  const sessionId = searchParams.get("session_id");
   const initialSyncError = billingSyncReason ? BILLING_SYNC_MESSAGES[billingSyncReason] : null;
   const [status, setStatus] = useState<SyncStatus>(() => {
     if (initialSyncError) return "error";
@@ -58,7 +59,15 @@ function CheckoutSuccessContent() {
     setMessage("Confirming your payment with Stripe...");
 
     try {
-      const res = await fetch("/api/billing/sync", { method: "POST" });
+      const res = await fetch("/api/billing/sync", {
+        method: "POST",
+        ...(sessionId
+          ? {
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ sessionId }),
+            }
+          : {}),
+      });
       const data = await res.json().catch(() => ({}));
 
       if (!res.ok) {
@@ -84,7 +93,7 @@ function CheckoutSuccessContent() {
           : "Your payment went through, but QuickFill could not refresh billing yet."
       );
     }
-  }, []);
+  }, [sessionId]);
 
   useEffect(() => {
     if (syncAlreadyRan || initialSyncError) return;
