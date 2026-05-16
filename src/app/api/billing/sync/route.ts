@@ -28,6 +28,14 @@ function requesterId(req: NextRequest, userId: string) {
 function safeReturnTo(req: NextRequest) {
   const returnTo = req.nextUrl.searchParams.get("returnTo") ?? "/dashboard?upgraded=true";
   if (!returnTo.startsWith("/") || returnTo.startsWith("//")) return "/dashboard?upgraded=true";
+
+  const url = new URL(returnTo, req.url);
+  if (url.pathname === "/dashboard" && url.searchParams.get("upgraded") === "true") {
+    const successUrl = new URL("/checkout/success", req.url);
+    successUrl.searchParams.set("synced", "true");
+    return `${successUrl.pathname}${successUrl.search}`;
+  }
+
   return returnTo;
 }
 
