@@ -4,7 +4,7 @@ import { useUser } from "@clerk/nextjs";
 import { Suspense, useCallback, useEffect, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { AlertTriangle, FileText, Sparkles, ExternalLink, Lock, Clock, User, RotateCcw, Loader2 } from "lucide-react";
+import { AlertTriangle, FileText, Sparkles, ExternalLink, Lock, Clock, User, RotateCcw } from "lucide-react";
 import { ProSuccessModal } from "@/components/ProSuccessModal";
 import { SupportForm } from "@/components/SupportForm";
 
@@ -42,9 +42,9 @@ function friendlyBillingStatus(status?: string | null) {
 }
 
 function billingSyncMessage(reason?: string | null) {
-  if (reason === "rate_limited") return "Billing was checked too many times in a short window. Try again in a minute.";
-  if (reason === "not_signed_in") return "Sign in again so QuickFill can check your Stripe billing status.";
-  if (reason === "sync_error") return "QuickFill could not check Stripe billing just now. Try again in a moment.";
+  if (reason === "rate_limited") return "Your account was refreshed too many times in a short window. Try again in a minute.";
+  if (reason === "not_signed_in") return "Sign in again so QuickFill can update your account.";
+  if (reason === "sync_error") return "QuickFill could not update your account just now. Try again in a moment.";
   return null;
 }
 
@@ -104,11 +104,11 @@ function DashboardContent() {
     }
 
     if (!res.ok && !options.quiet) {
-      throw new Error(data.error || "Billing could not be checked.");
+      throw new Error(data.error || "Your account could not be updated.");
     }
 
     if (!syncLooksSuccessful && !updatedIsPaid && !options.quiet) {
-      throw new Error(data.result?.message || "Stripe has not confirmed an active paid plan yet.");
+      throw new Error(data.result?.message || "Your plan is not active yet.");
     }
 
     return updatedUsage;
@@ -146,7 +146,7 @@ function DashboardContent() {
         }
       } catch {
         if (!cancelled && attempts >= 5) {
-          setBillingError("QuickFill could not confirm Stripe billing yet. Try Check Pro status in a moment.");
+          setBillingError("Your account could not be updated yet. Try again in a moment.");
         }
         if (attempts >= 5) return;
       }
@@ -214,7 +214,7 @@ function DashboardContent() {
         router.replace("/dashboard", { scroll: false });
       }
     } catch (error) {
-      setBillingError(error instanceof Error ? error.message : "Billing could not be checked.");
+      setBillingError(error instanceof Error ? error.message : "Your account could not be updated.");
     } finally {
       setBillingSyncing(false);
     }
@@ -277,51 +277,24 @@ function DashboardContent() {
           <p className="mt-1 text-text-muted">
             {isPaid
               ? "You're on Pro. Fill as many PDFs as you need, no limits."
-              : billingCheckActive
-                ? "QuickFill is checking your Pro access with Stripe."
-                : "Manage your usage and fill history."}
+              : "Manage your usage and fill history."}
           </p>
         </div>
-        {usage && (
+        {usage && !billingCheckActive && (
           <div className={`flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold shadow-sm ${
             isPaid
               ? "bg-gradient-to-r from-accent to-blue-600 text-white"
-              : billingCheckActive
-                ? "border border-blue-200 bg-blue-50 text-blue-800"
-                : "bg-surface-alt text-text-muted border border-border"
+              : "bg-surface-alt text-text-muted border border-border"
           }`}>
-            {isPaid ? (
-              <Sparkles className="h-4 w-4" />
-            ) : billingCheckActive ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <User className="h-4 w-4" />
-            )}
-            {isPaid ? "Pro" : billingCheckActive ? "Checking Pro" : "Free"}
+            {isPaid ? <Sparkles className="h-4 w-4" /> : <User className="h-4 w-4" />}
+            {isPaid ? "Pro" : "Free"}
           </div>
         )}
       </div>
 
-      {upgraded === "true" && !showSuccessModal && (
-        <div className={`mb-6 mt-4 rounded-xl border px-5 py-4 text-sm font-medium ${isPaid ? "border-green-200 bg-green-50 text-green-800" : "border-blue-200 bg-blue-50 text-blue-800"}`}>
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <p>
-              {!usage || billingCheckActive
-                ? "Payment received. QuickFill is syncing your Pro access with Stripe now."
-                : isPaid
-                  ? "Welcome to Pro. Your account has been upgraded."
-                  : "Stripe has not confirmed an active paid plan yet. QuickFill is checking again automatically."}
-            </p>
-            {usage && !isPaid && (
-              <button
-                onClick={handleBillingSync}
-                disabled={billingSyncing}
-                className="flex h-10 shrink-0 items-center justify-center gap-2 rounded-lg bg-accent px-4 text-sm font-semibold text-white hover:bg-accent-hover disabled:opacity-60"
-              >
-                {billingSyncing ? "Checking..." : "Check Pro status"}
-              </button>
-            )}
-          </div>
+      {upgraded === "true" && isPaid && !showSuccessModal && (
+        <div className="mb-6 mt-4 rounded-xl border border-green-200 bg-green-50 px-5 py-4 text-sm font-medium text-green-800">
+          Welcome to Pro. Your account has been upgraded.
         </div>
       )}
 
@@ -339,7 +312,7 @@ function DashboardContent() {
               <div>
                 <p className="font-semibold">Your Pro access is paused</p>
                 <p className="mt-1">
-                  Stripe shows this subscription as {friendlyBillingStatus(billing?.status)}. Update payment to restore unlimited fills.
+                  Your subscription is {friendlyBillingStatus(billing?.status)}. Update payment to restore unlimited fills.
                 </p>
                 {billing?.reviewReason && <p className="mt-1 text-xs">{billing.reviewReason}</p>}
               </div>
@@ -350,7 +323,7 @@ function DashboardContent() {
                 disabled={billingSyncing}
                 className="flex h-10 shrink-0 items-center justify-center rounded-lg border border-amber-300 px-4 text-sm font-semibold text-amber-900 hover:bg-amber-100 disabled:opacity-60"
               >
-                {billingSyncing ? "Checking..." : "Recheck status"}
+                {billingSyncing ? "Refreshing..." : "Refresh account"}
               </button>
               {billing?.hasStripeCustomer && (
                 <button
@@ -397,25 +370,11 @@ function DashboardContent() {
                   )}
                 </>
               ) : billingCheckActive ? (
-                <>
-                  <p className="mt-2 text-sm font-semibold text-blue-700">
-                    Checking Pro access with Stripe
-                  </p>
-                  <p className="mt-2 text-sm text-text-muted">
-                    Your payment is being matched to this QuickFill account. Pro will unlock automatically as soon as Stripe confirms it.
-                  </p>
-                  <button
-                    onClick={handleBillingSync}
-                    disabled={billingSyncing}
-                    className="mt-4 flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-accent text-sm font-semibold text-white hover:bg-accent-hover transition-colors disabled:opacity-60"
-                  >
-                    {billingSyncing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-                    {billingSyncing ? "Checking..." : "Check Pro status"}
-                  </button>
-                  {billingError && (
-                    <p className="mt-2 text-xs text-red-500">{billingError}</p>
-                  )}
-                </>
+                <div className="mt-4 space-y-3" aria-label="Loading account">
+                  <div className="h-4 w-32 animate-pulse rounded bg-surface-alt" />
+                  <div className="h-3 w-full animate-pulse rounded bg-surface-alt" />
+                  <div className="h-3 w-2/3 animate-pulse rounded bg-surface-alt" />
+                </div>
               ) : (
                 <>
                   <p className="mt-2 text-sm text-text-muted">
