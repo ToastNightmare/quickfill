@@ -7,12 +7,14 @@ import { checkRateLimit } from "@/lib/rate-limit";
 const TTL_SECONDS = 35 * 24 * 60 * 60;
 const GUEST_TTL_SECONDS = 30 * 24 * 60 * 60;
 
+type Entitlement = Awaited<ReturnType<typeof getRequestEntitlement>>;
+
 function monthKey() {
   const now = new Date();
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
 }
 
-function usageKey(entitlement: Awaited<ReturnType<typeof getRequestEntitlement>>) {
+function usageKey(entitlement: Entitlement) {
   if (entitlement.userId) return `usage:${entitlement.userId}:${monthKey()}`;
   if (entitlement.anonymousId) return `guest:fills:${entitlement.anonymousId}`;
   return null;
@@ -28,34 +30,62 @@ function isDelinquentBillingStatus(status?: string | null) {
   return status === "past_due" || status === "unpaid" || status === "incomplete";
 }
 
-export async function GET(request: NextRequest) {
-  const entitlement = await getRequestEntitlement(request);
-  const key = usageKey(entitlement);
-  const [used, subscription] = await Promise.all([
-    key && isRedisConfigured() ? getRedis().get<number>(key) : Promise.resolve(0),
-    entitlement.userId ? getStoredSubscriptionSnapshot(entitlement.userId) : Promise.resolve(null),
-  ]);
-
-  return NextResponse.json({
-    used: used ?? 0,
-    limit: entitlement.limit,
-    isPro: entitlement.isPaid,
-    tier: entitlement.tier,
-    guest: entitlement.tier === "guest",
-    qa: entitlement.qa,
-    billing: subscription
-      ? {
-          status: subscription.status,
-          currentPeriodEnd: subscription.currentPeriodEnd,
-          updatedAt: subscription.updatedAt,
-          entitled: subscription.entitled,
-          needsReview: subscription.needsReview,
-          reviewReason: subscription.reviewReason,
-          hasStripeCustomer: Boolean(subscription.stripeCustomerId),
-          delinquent: isDelinquentBillingStatus(subscription.status),
-        }
-      : null,
+function logUsageReadError(stage: string, error: unknown) {
+  console.error("usage_read_failed", {
+    stage,
+    error: error instanceof Error ? error.message : String(error),
   });
+}
+
+export async function GET(request: NextRequest) {
+  try {
+    const entitlement = await getRequestEntitlement(request);
+    const key = usageKey(entitlement);
+    const [usedResult, subscriptionResult] = await Promise.allSettled([
+      key && isRedisConfigured() ? getRedis().get<number>(key) : Promise.resolve(0),
+      entitlement.userId ? getStoredSubscriptionSnapshot(entitlement.userId) : Promise.resolve(null),
+    ]);
+
+    if (usedResult.status === "rejected") logUsageReadError("usage_counter", usedResult.reason);
+    if (subscriptionResult.status === "rejected") logUsageReadError("subscription_snapshot", subscriptionResult.reason);
+
+    const used = usedResult.status === "fulfilled" ? usedResult.value ?? 0 : 0;
+    const subscription = subscriptionResult.status === "fulfilled" ? subscriptionResult.value : null;
+
+    return NextResponse.json({
+      used,
+      limit: entitlement.limit,
+      isPro: entitlement.isPaid,
+      tier: entitlement.tier,
+      guest: entitlement.tier === "guest",
+      qa: entitlement.qa,
+      degraded: usedResult.status === "rejected" || subscriptionResult.status === "rejected",
+      billing: subscription
+        ? {
+            status: subscription.status,
+            currentPeriodEnd: subscription.currentPeriodEnd,
+            updatedAt: subscription.updatedAt,
+            entitled: subscription.entitled,
+            needsReview: subscription.needsReview,
+            reviewReason: subscription.reviewReason,
+            hasStripeCustomer: Boolean(subscription.stripeCustomerId),
+            delinquent: isDelinquentBillingStatus(subscription.status),
+          }
+        : null,
+    });
+  } catch (error) {
+    logUsageReadError("entitlement", error);
+    return NextResponse.json({
+      used: 0,
+      limit: 3,
+      isPro: false,
+      tier: "free",
+      guest: false,
+      qa: false,
+      degraded: true,
+      billing: null,
+    });
+  }
 }
 
 export async function POST(request: NextRequest) {
