@@ -68,13 +68,13 @@ export function ProUnlockModal({ open, onClose, featureName }: ProUnlockModalPro
         </div>
 
         <h2 className="text-xl font-bold mb-2">
-          {paidPlan ? "You're already Pro" : checkingPlan ? "Checking your plan" : "This is a Pro feature"}
+          {paidPlan ? "You're already Pro" : checkingPlan ? "Loading your account" : "This is a Pro feature"}
         </h2>
         <p className="text-text-muted text-sm mb-6">
           {paidPlan
             ? `${featureName ?? "This feature"} is included in your active Pro plan.`
             : checkingPlan
-              ? "QuickFill is confirming your plan before showing checkout options."
+              ? "One moment while QuickFill gets your account ready."
               : `${featureName ?? "This feature"} is available on the Pro plan. Upgrade for A$12/month to unlock unlimited fills and all templates.`}
         </p>
 
@@ -110,7 +110,7 @@ export function ProUnlockModal({ open, onClose, featureName }: ProUnlockModalPro
             className="flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-accent text-sm font-semibold text-white opacity-70"
           >
             <Loader2 className="h-4 w-4 animate-spin" />
-            Checking plan...
+            Loading...
           </button>
         ) : (
           <a
