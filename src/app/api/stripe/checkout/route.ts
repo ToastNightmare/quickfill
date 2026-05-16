@@ -63,6 +63,45 @@ function portalResponse(subscription: StoredSubscriptionSnapshot | Stripe.Subscr
   };
 }
 
+async function openInvoicePaymentUrl(customerId: string) {
+  const invoices = await getStripe().invoices.list({
+    customer: customerId,
+    status: "open",
+    limit: 10,
+  });
+
+  return invoices.data.find((invoice) => invoice.hosted_invoice_url)?.hosted_invoice_url ?? null;
+}
+
+async function billingPortalOrRepairResponse(
+  customerId: string,
+  origin: string,
+  subscription: StoredSubscriptionSnapshot | Stripe.Subscription,
+) {
+  const response = portalResponse(subscription);
+
+  if (response.needsBillingRepair) {
+    const invoiceUrl = await openInvoicePaymentUrl(customerId);
+    if (invoiceUrl) {
+      return NextResponse.json({
+        url: invoiceUrl,
+        paymentRepair: true,
+        ...response,
+      });
+    }
+  }
+
+  const portalSession = await getStripe().billingPortal.sessions.create({
+    customer: customerId,
+    return_url: `${origin}/dashboard`,
+  });
+
+  return NextResponse.json({
+    url: portalSession.url,
+    ...response,
+  });
+}
+
 export async function POST(req: NextRequest) {
   const { userId } = await auth();
   if (!userId) {
@@ -114,14 +153,7 @@ export async function POST(req: NextRequest) {
     const existingCustomerId = snapshot?.stripeCustomerId ?? cachedCustomerId;
 
     if (shouldUseBillingPortal(snapshot) && snapshot?.stripeCustomerId) {
-      const portalSession = await getStripe().billingPortal.sessions.create({
-        customer: snapshot.stripeCustomerId,
-        return_url: `${origin}/dashboard`,
-      });
-      return NextResponse.json({
-        url: portalSession.url,
-        ...portalResponse(snapshot),
-      });
+      return billingPortalOrRepairResponse(snapshot.stripeCustomerId, origin, snapshot);
     }
 
     if (existingCustomerId) {
@@ -133,14 +165,7 @@ export async function POST(req: NextRequest) {
           subscriptionId: existingSubscription.id,
           status: existingSubscription.status,
         });
-        const portalSession = await getStripe().billingPortal.sessions.create({
-          customer: existingCustomerId,
-          return_url: `${origin}/dashboard`,
-        });
-        return NextResponse.json({
-          url: portalSession.url,
-          ...portalResponse(existingSubscription),
-        });
+        return billingPortalOrRepairResponse(existingCustomerId, origin, existingSubscription);
       }
     }
 
