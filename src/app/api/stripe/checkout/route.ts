@@ -167,9 +167,12 @@ function portalResponse(subscription: StoredSubscriptionSnapshot | Stripe.Subscr
   };
 }
 
-function dashboardSyncUrl(origin: string) {
-  const successReturnTo = encodeURIComponent("/dashboard?upgraded=true");
-  return `${origin}/api/billing/sync?returnTo=${successReturnTo}`;
+function checkoutSuccessUrl(origin: string, params: Record<string, string> = {}) {
+  const url = new URL("/checkout/success", origin);
+  for (const [key, value] of Object.entries(params)) {
+    url.searchParams.set(key, value);
+  }
+  return url.toString();
 }
 
 async function openInvoicePaymentUrl(customerId: string) {
@@ -188,11 +191,11 @@ async function billingPortalOrRepairResponse(
   subscription: StoredSubscriptionSnapshot | Stripe.Subscription,
 ) {
   const response = portalResponse(subscription);
-  const syncUrl = dashboardSyncUrl(origin);
+  const successUrl = checkoutSuccessUrl(origin, response.alreadySubscribed ? { alreadyPro: "true" } : { repair: "true" });
 
   if (response.alreadySubscribed) {
     return NextResponse.json({
-      url: syncUrl,
+      url: successUrl,
       alreadySubscribed: true,
       needsBillingRepair: false,
     });
@@ -201,7 +204,7 @@ async function billingPortalOrRepairResponse(
   try {
     const portalSession = await getStripe().billingPortal.sessions.create({
       customer: customerId,
-      return_url: syncUrl,
+      return_url: successUrl,
     });
 
     return NextResponse.json({
@@ -312,7 +315,6 @@ export async function POST(req: NextRequest) {
       return checkoutErrorResponse(`${plan} ${billing} billing is not configured yet.`, 500, "checkout_price_missing");
     }
 
-    const successReturnTo = encodeURIComponent("/dashboard?upgraded=true");
     const cancelParams = new URLSearchParams({ checkout: "cancelled", plan, billing });
 
     const session = await getStripe().checkout.sessions.create({
@@ -320,7 +322,11 @@ export async function POST(req: NextRequest) {
       payment_method_types: ["card"],
       line_items: [{ price: priceId, quantity: 1 }],
       ...(existingCustomerId ? { customer: existingCustomerId } : email ? { customer_email: email } : {}),
-      success_url: `${origin}/api/billing/sync?returnTo=${successReturnTo}`,
+      success_url: checkoutSuccessUrl(origin, {
+        session_id: "{CHECKOUT_SESSION_ID}",
+        plan,
+        billing,
+      }),
       cancel_url: `${origin}/pricing?${cancelParams.toString()}`,
       allow_promotion_codes: true,
       metadata,
