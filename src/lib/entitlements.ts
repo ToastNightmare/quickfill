@@ -29,6 +29,13 @@ export function getAnonymousId(request: NextRequest) {
   return crypto.createHash("sha256").update(ip).digest("hex");
 }
 
+function logEntitlementError(userId: string, error: unknown) {
+  console.error("entitlement_lookup_failed", {
+    userId,
+    error: error instanceof Error ? error.message : String(error),
+  });
+}
+
 export async function getRequestEntitlement(request: NextRequest) {
   if (hasValidQaToken(request)) {
     return { userId: null, anonymousId: null, tier: "qa" as const, limit: TIER_LIMITS.qa, isPaid: true, qa: true };
@@ -39,6 +46,12 @@ export async function getRequestEntitlement(request: NextRequest) {
     return { userId: null, anonymousId: getAnonymousId(request), tier: "guest" as const, limit: TIER_LIMITS.guest, isPaid: false, qa: false };
   }
 
-  const tier = await getStoredTier(userId);
+  let tier: QuickFillTier = "free";
+  try {
+    tier = await getStoredTier(userId);
+  } catch (error) {
+    logEntitlementError(userId, error);
+  }
+
   return { userId, anonymousId: null, tier, limit: TIER_LIMITS[tier], isPaid: tier === "pro" || tier === "business", qa: false };
 }
