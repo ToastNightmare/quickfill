@@ -41,6 +41,7 @@ export type BillingReconciliationResult = {
 
 type BillingReconciliationForUserOptions = {
   email?: string | null;
+  sessionId?: string | null;
 };
 
 const LIVE_SUBSCRIPTION_STATUSES = new Set<Stripe.Subscription.Status>(["active", "trialing"]);
@@ -108,6 +109,18 @@ function bestCustomerSubscription(subscriptions: Stripe.Subscription[]) {
   return newestSubscription(live) ?? newestSubscription(subscriptions);
 }
 
+function objectId(value: string | { id?: string } | null | undefined) {
+  if (typeof value === "string") return value;
+  if (value && typeof value === "object" && typeof value.id === "string") return value.id;
+  return null;
+}
+
+function safeCheckoutSessionId(sessionId?: string | null) {
+  const value = sessionId?.trim();
+  if (!value || !value.startsWith("cs_")) return null;
+  return value;
+}
+
 async function listCustomerSubscriptions(customerId: string) {
   const subscriptions = await getStripe().subscriptions.list({
     customer: customerId,
@@ -141,6 +154,53 @@ async function fetchCurrentSubscription(candidate: SubscriptionCandidate) {
   }
 
   return storedSubscription;
+}
+
+async function stripeCustomerCandidateFromCheckoutSession(
+  userId: string,
+  sessionId?: string | null,
+): Promise<SubscriptionCandidate | null> {
+  const checkoutSessionId = safeCheckoutSessionId(sessionId);
+  if (!checkoutSessionId) return null;
+
+  const stripe = getStripe();
+  const session = await stripe.checkout.sessions.retrieve(checkoutSessionId, {
+    expand: ["subscription"],
+  });
+
+  if (session.mode !== "subscription") {
+    throw new Error("Checkout session is not a subscription checkout.");
+  }
+
+  const expandedSubscription =
+    typeof session.subscription === "object" && session.subscription && "id" in session.subscription
+      ? (session.subscription as Stripe.Subscription)
+      : null;
+  const subscription = expandedSubscription
+    ?? (typeof session.subscription === "string" ? await stripe.subscriptions.retrieve(session.subscription) : null);
+
+  if (!subscription) {
+    throw new Error("Checkout session has no subscription yet.");
+  }
+
+  const sessionUserId = session.metadata?.userId ?? null;
+  const subscriptionUserId = subscription.metadata?.userId ?? null;
+  if (sessionUserId && sessionUserId !== userId && subscriptionUserId !== userId) {
+    throw new Error("Checkout session belongs to a different QuickFill user.");
+  }
+
+  const metadataTier = session.metadata?.plan === "business" ? "business" : session.metadata?.plan === "pro" ? "pro" : null;
+  const customerId = objectId(subscription.customer) ?? objectId(session.customer);
+
+  return {
+    user_id: userId,
+    tier: metadataTier ?? subscriptionTier(subscription),
+    status: subscription.status,
+    current_period_end: null,
+    stripe_customer_id: customerId,
+    stripe_subscription_id: subscription.id,
+    updated_at: null,
+  };
 }
 
 async function stripeCustomerCandidateFromEmail(userId: string, email?: string | null): Promise<SubscriptionCandidate | null> {
@@ -206,7 +266,7 @@ async function reconcileCandidate(candidate: SubscriptionCandidate, result: Bill
       return;
     }
 
-    const customerId = subscription.customer ? String(subscription.customer) : candidate.stripe_customer_id;
+    const customerId = objectId(subscription.customer) ?? candidate.stripe_customer_id;
     const periodEnd = subscriptionPeriodEnd(subscription);
     const tier = subscriptionTier(subscription, candidate.tier ?? "pro");
 
@@ -275,16 +335,9 @@ export async function reconcileStripeBillingForUser(
   const configError = requiredConfigError(result);
   if (configError) return configError;
 
-  let candidates: SubscriptionCandidate[] = [];
+  let sessionCandidate: SubscriptionCandidate | null = null;
   try {
-    candidates = await query<SubscriptionCandidate>(
-      `select user_id, tier, status, current_period_end, stripe_customer_id, stripe_subscription_id, updated_at
-       from subscriptions
-       where user_id = $1 and (stripe_subscription_id is not null or stripe_customer_id is not null)
-       order by updated_at desc nulls last
-       limit 1`,
-      [userId],
-    );
+    sessionCandidate = await stripeCustomerCandidateFromCheckoutSession(userId, options.sessionId);
   } catch (error) {
     result.errors.push({
       userId,
@@ -294,8 +347,29 @@ export async function reconcileStripeBillingForUser(
     });
   }
 
-  const emailCandidate = candidates[0] ? null : await stripeCustomerCandidateFromEmail(userId, options.email);
-  const candidate = candidates[0] ?? emailCandidate;
+  let candidates: SubscriptionCandidate[] = [];
+  if (!sessionCandidate) {
+    try {
+      candidates = await query<SubscriptionCandidate>(
+        `select user_id, tier, status, current_period_end, stripe_customer_id, stripe_subscription_id, updated_at
+         from subscriptions
+         where user_id = $1 and (stripe_subscription_id is not null or stripe_customer_id is not null)
+         order by updated_at desc nulls last
+         limit 1`,
+        [userId],
+      );
+    } catch (error) {
+      result.errors.push({
+        userId,
+        stripeCustomerId: null,
+        stripeSubscriptionId: null,
+        message: errorMessage(error),
+      });
+    }
+  }
+
+  const emailCandidate = sessionCandidate || candidates[0] ? null : await stripeCustomerCandidateFromEmail(userId, options.email);
+  const candidate = sessionCandidate ?? candidates[0] ?? emailCandidate;
   if (!candidate) {
     return finalizeResult({
       ...result,
