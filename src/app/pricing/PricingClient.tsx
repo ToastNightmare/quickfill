@@ -3,7 +3,7 @@
 import { Check, CreditCard, Loader2, LockKeyhole, ShieldCheck, Sparkles, X } from "lucide-react";
 import { useAuth } from "@clerk/nextjs";
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { trackEvent } from "@/lib/analytics";
 
 const freeIncludes = [
@@ -65,21 +65,59 @@ type UsageState = {
   isPro: boolean;
 };
 
+function isPaidUsage(usage: UsageState | null): boolean {
+  const tier = usage?.tier ?? "free";
+  return Boolean(usage?.isPro || tier === "pro" || tier === "business");
+}
+
 export default function PricingPage() {
   const { isLoaded, isSignedIn } = useAuth();
   const [annual, setAnnual] = useState(true);
   const [upgrading, setUpgrading] = useState(false);
   const [usage, setUsage] = useState<UsageState | null>(null);
+  const [checkingPlan, setCheckingPlan] = useState(false);
   const [checkoutNotice, setCheckoutNotice] = useState<string | null>(null);
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!isSignedIn) return;
+    if (!isSignedIn) {
+      setUsage(null);
+      setCheckingPlan(false);
+      return;
+    }
 
-    fetch("/api/usage")
-      .then((res) => res.json())
-      .then((data) => setUsage({ tier: data.tier ?? "free", isPro: Boolean(data.isPro) }))
-      .catch(() => setUsage({ tier: "free", isPro: false }));
+    let cancelled = false;
+
+    const readUsage = async (): Promise<UsageState> => {
+      const res = await fetch("/api/usage");
+      if (!res.ok) throw new Error("Usage could not be loaded.");
+      const data = await res.json();
+      return { tier: data.tier ?? "free", isPro: Boolean(data.isPro) };
+    };
+
+    const loadPlan = async () => {
+      setCheckingPlan(true);
+      try {
+        let nextUsage = await readUsage();
+
+        if (!isPaidUsage(nextUsage)) {
+          await fetch("/api/billing/sync", { method: "POST" }).catch(() => null);
+          nextUsage = await readUsage();
+        }
+
+        if (!cancelled) setUsage(nextUsage);
+      } catch {
+        if (!cancelled) setUsage({ tier: "free", isPro: false });
+      } finally {
+        if (!cancelled) setCheckingPlan(false);
+      }
+    };
+
+    void loadPlan();
+
+    return () => {
+      cancelled = true;
+    };
   }, [isSignedIn]);
 
   useEffect(() => {
@@ -97,7 +135,8 @@ export default function PricingPage() {
     window.history.replaceState(null, "", `${cleanUrl.pathname}${cleanUrl.search}${cleanUrl.hash}`);
   }, []);
 
-  const isPro = usage?.isPro ?? false;
+  const isPro = isPaidUsage(usage);
+  const planStillLoading = Boolean(isSignedIn && (usage === null || checkingPlan));
   const priceLabel = annual ? "A$100/year" : "A$12/month";
 
   const handleUpgrade = async () => {
@@ -106,6 +145,11 @@ export default function PricingPage() {
     setCheckoutError(null);
 
     if (!isLoaded) return;
+
+    if (isPro) {
+      window.location.href = "/dashboard";
+      return;
+    }
 
     if (!isSignedIn) {
       window.location.href = `/checkout?plan=pro&billing=${annual ? "annual" : "monthly"}&source=pricing`;
@@ -172,10 +216,12 @@ export default function PricingPage() {
         <section className="bg-navy px-4 py-12 sm:px-6 sm:py-16 lg:px-8">
           <div className="mx-auto max-w-3xl text-center">
             <h1 className="text-3xl font-extrabold tracking-tight text-white sm:text-4xl lg:text-5xl">
-              Simple, transparent pricing
+              {isPro ? "Your Pro plan is active" : "Simple, transparent pricing"}
             </h1>
             <p className="mx-auto mt-4 max-w-xl text-lg text-gray-300">
-              Start free. Upgrade when you need unlimited downloads and no watermark.
+              {isPro
+                ? "You have unlimited downloads, no watermark, and priority support."
+                : "Start free. Upgrade when you need unlimited downloads and no watermark."}
             </p>
             <div className="mt-6 flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-sm text-gray-400">
               <TrustItem icon={Check} text="No credit card required" />
@@ -192,12 +238,20 @@ export default function PricingPage() {
                 {checkoutNotice}
               </div>
             )}
-            {checkoutError && (
+            {checkoutError && !planStillLoading && !isPro && (
               <div className="mb-6 rounded-lg border border-red-200 bg-red-50 px-5 py-4 text-sm font-medium text-red-700">
                 {checkoutError}
               </div>
             )}
-            {isSignedIn && isPro ? (
+            {planStillLoading ? (
+              <div className="rounded-lg border border-blue-200 bg-blue-50 px-6 py-8 text-center">
+                <Loader2 className="mx-auto mb-4 h-6 w-6 animate-spin text-accent" />
+                <h2 className="text-xl font-bold text-text">Checking your Pro status</h2>
+                <p className="mt-2 text-sm text-text-muted">
+                  QuickFill is confirming your current plan before showing checkout options.
+                </p>
+              </div>
+            ) : isSignedIn && isPro ? (
               <div className="rounded-lg border border-accent bg-accent/5 px-6 py-8 text-center">
                 <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-accent">
                   <Check className="h-6 w-6 text-white" />
@@ -206,22 +260,26 @@ export default function PricingPage() {
                 <p className="mt-2 text-sm text-text-muted">
                   You have unlimited fills, no watermarks, and priority support.
                 </p>
-                <Link
-                  href="/editor"
-                  className="mt-4 inline-flex h-11 items-center justify-center rounded-lg bg-accent px-6 text-sm font-semibold text-white transition-colors hover:bg-accent-hover"
-                >
-                  Open Editor
-                </Link>
+                <div className="mt-4 flex flex-col justify-center gap-3 sm:flex-row">
+                  <Link
+                    href="/dashboard"
+                    className="inline-flex h-11 items-center justify-center rounded-lg border border-border bg-surface px-6 text-sm font-semibold text-text transition-colors hover:border-accent hover:text-accent"
+                  >
+                    Go to dashboard
+                  </Link>
+                  <Link
+                    href="/editor"
+                    className="inline-flex h-11 items-center justify-center rounded-lg bg-accent px-6 text-sm font-semibold text-white transition-colors hover:bg-accent-hover"
+                  >
+                    Fill a PDF
+                  </Link>
+                </div>
               </div>
             ) : (
               <>
                 <div className="grid gap-6 lg:grid-cols-2 lg:items-stretch">
                   <PlanCard title="Free" price="$0" suffix="/month" description="For occasional PDF forms and quick one-off jobs." items={freeIncludes}>
-                    {usage === null && isSignedIn ? (
-                      <div className="flex h-11 items-center justify-center">
-                        <Loader2 className="h-4 w-4 animate-spin text-text-muted" />
-                      </div>
-                    ) : !isSignedIn ? (
+                    {!isSignedIn ? (
                       <Link
                         href="/sign-up"
                         className="flex h-11 items-center justify-center rounded-lg border-2 border-accent text-sm font-semibold text-accent transition-colors hover:bg-accent/10"
@@ -367,7 +425,7 @@ function PlanCard({
   suffix: string;
   description: string;
   items: string[];
-  children: React.ReactNode;
+  children: ReactNode;
 }) {
   return (
     <div className="flex flex-col rounded-lg border border-border bg-surface p-6 shadow-sm">
