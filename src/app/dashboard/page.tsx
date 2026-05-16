@@ -150,7 +150,8 @@ function DashboardContent() {
       setBillingSyncing(true);
       const res = await fetch("/api/billing/sync", { method: "POST" });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok || data.ok === false) {
+      const syncLooksSuccessful = data.ok !== false || data.result?.updated > 0;
+      if (!res.ok || !syncLooksSuccessful) {
         throw new Error(data.error || data.result?.message || "Billing could not be checked.");
       }
       const updatedUsage = await refreshUsage();
@@ -206,7 +207,7 @@ function DashboardContent() {
   const usedPct = usage && !isPaid ? Math.min(100, (usage.used / usage.limit) * 100) : 0;
   const visibleFills = isPaid ? fills : fills.slice(0, 3);
   const lockedFills = isPaid ? [] : fills.slice(3);
-  const billingSyncError = billingSyncMessage(billingSync);
+  const billingSyncError = isPaid ? null : billingSyncMessage(billingSync);
 
   return (
     <div className="mx-auto max-w-4xl px-4 py-10 sm:px-6 lg:px-8">
