@@ -8,9 +8,9 @@ import { CheckCircle2, FileText, Loader2, RefreshCw, Sparkles } from "lucide-rea
 type SyncStatus = "checking" | "ready" | "waiting" | "error";
 
 const BILLING_SYNC_MESSAGES: Record<string, string> = {
-  not_signed_in: "Your payment went through. Sign in again and QuickFill will finish checking your Pro access.",
-  rate_limited: "QuickFill is checking billing a little too often. Wait a moment, then check again.",
-  sync_error: "Your payment went through, but QuickFill could not refresh billing yet.",
+  not_signed_in: "Your payment went through. Sign in again and QuickFill will finish setting up Pro.",
+  rate_limited: "QuickFill is getting your account ready. Wait a moment, then check again.",
+  sync_error: "Your payment went through, but QuickFill could not finish setting up Pro yet.",
 };
 
 export default function CheckoutSuccessPage() {
@@ -40,8 +40,8 @@ function CheckoutSuccessContent() {
   });
   const [message, setMessage] = useState(() => {
     if (initialSyncError) return initialSyncError;
-    if (syncAlreadyRan) return "Stripe has been checked. Your Pro access should be ready now.";
-    return "Confirming your payment with Stripe...";
+    if (syncAlreadyRan) return "Your Pro access is ready.";
+    return "Getting your Pro workspace ready...";
   });
   const [retrying, setRetrying] = useState(false);
 
@@ -49,14 +49,14 @@ function CheckoutSuccessContent() {
   const repairedBilling = searchParams.get("repair") === "true";
 
   const contextText = useMemo(() => {
-    if (alreadyPro) return "You already have an active Pro subscription. We refreshed QuickFill for you.";
-    if (repairedBilling) return "Your billing update is being checked so your Pro access can be restored.";
-    return "Payment received. QuickFill is refreshing your account in the background.";
+    if (alreadyPro) return "You already have an active Pro subscription.";
+    if (repairedBilling) return "Your Pro access is being restored.";
+    return "Payment received. Your Pro workspace is being prepared.";
   }, [alreadyPro, repairedBilling]);
 
   const syncBilling = useCallback(async () => {
     setStatus("checking");
-    setMessage("Confirming your payment with Stripe...");
+    setMessage("Getting your account ready...");
 
     try {
       const res = await fetch("/api/billing/sync", {
@@ -71,7 +71,7 @@ function CheckoutSuccessContent() {
       const data = await res.json().catch(() => ({}));
 
       if (!res.ok) {
-        throw new Error(data.error || "QuickFill could not refresh billing yet.");
+        throw new Error(data.error || "QuickFill could not finish setting up Pro yet.");
       }
 
       const updated = Number(data.result?.updated ?? 0);
@@ -84,13 +84,13 @@ function CheckoutSuccessContent() {
       }
 
       setStatus("waiting");
-      setMessage("Your payment went through. QuickFill is finishing the account update now.");
+      setMessage("Your payment went through. QuickFill is finishing your Pro setup now.");
     } catch (error) {
       setStatus("error");
       setMessage(
         error instanceof Error
           ? error.message
-          : "Your payment went through, but QuickFill could not refresh billing yet."
+          : "Your payment went through, but QuickFill could not finish setting up Pro yet."
       );
     }
   }, [sessionId]);
