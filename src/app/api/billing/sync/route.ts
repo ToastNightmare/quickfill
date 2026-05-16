@@ -41,6 +41,10 @@ function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : String(error);
 }
 
+function billingSyncSucceeded(result: BillingSyncResult | null) {
+  return Boolean(result && (result.ok || result.updated > 0));
+}
+
 async function syncCurrentUserBilling(req: NextRequest): Promise<BillingSyncResponse> {
   try {
     const { userId } = await auth();
@@ -60,7 +64,11 @@ async function syncCurrentUserBilling(req: NextRequest): Promise<BillingSyncResp
     const result = await reconcileStripeBillingForUser(userId, { email });
 
     if (result.checked > 0 || result.updated > 0 || result.errors.length > 0) {
-      await recordBillingSync(result, "customer");
+      try {
+        await recordBillingSync(result, "customer");
+      } catch (error) {
+        console.warn("billing_sync_audit_record_failed", { userId, error: errorMessage(error) });
+      }
     }
 
     return { userId, status: 200, reason: "ok", result };
@@ -88,5 +96,5 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: false, error: "Billing sync failed" }, { status: 500 });
   }
 
-  return NextResponse.json({ ok: synced.result?.ok ?? false, result: synced.result });
+  return NextResponse.json({ ok: billingSyncSucceeded(synced.result), result: synced.result });
 }
