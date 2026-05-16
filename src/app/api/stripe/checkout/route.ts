@@ -119,7 +119,7 @@ async function findStripeCustomerIdByEmail(email?: string | null) {
   }
 
   try {
-    const customers = await getStripe().customers.search({ query: `email:"${stripeSearchValue(email)}"`, limit: 1 });
+    const customers = await getStripe().customers.search({ query: `email:\"${stripeSearchValue(email)}\"`, limit: 1 });
     return customers.data[0]?.id ?? null;
   } catch (error) {
     log.error("stripe_checkout_customer_search_failed", {
@@ -167,6 +167,11 @@ function portalResponse(subscription: StoredSubscriptionSnapshot | Stripe.Subscr
   };
 }
 
+function dashboardSyncUrl(origin: string) {
+  const successReturnTo = encodeURIComponent("/dashboard?upgraded=true");
+  return `${origin}/api/billing/sync?returnTo=${successReturnTo}`;
+}
+
 async function openInvoicePaymentUrl(customerId: string) {
   const invoices = await getStripe().invoices.list({
     customer: customerId,
@@ -183,58 +188,59 @@ async function billingPortalOrRepairResponse(
   subscription: StoredSubscriptionSnapshot | Stripe.Subscription,
 ) {
   const response = portalResponse(subscription);
-  const successReturnTo = encodeURIComponent("/dashboard?upgraded=true");
-  const returnUrl = response.needsBillingRepair
-    ? `${origin}/api/billing/sync?returnTo=${successReturnTo}`
-    : `${origin}/dashboard`;
+  const syncUrl = dashboardSyncUrl(origin);
+
+  if (response.alreadySubscribed) {
+    return NextResponse.json({
+      url: syncUrl,
+      alreadySubscribed: true,
+      needsBillingRepair: false,
+    });
+  }
 
   try {
     const portalSession = await getStripe().billingPortal.sessions.create({
       customer: customerId,
-      return_url: returnUrl,
+      return_url: syncUrl,
     });
 
     return NextResponse.json({
       url: portalSession.url,
-      paymentRepair: response.needsBillingRepair || undefined,
+      paymentRepair: true,
       ...response,
     });
   } catch (error) {
-    if (response.needsBillingRepair) {
-      log.error("stripe_checkout_portal_repair_link_failed", {
-        customerId,
-        error: error instanceof Error ? error.message : String(error),
-      });
+    log.error("stripe_checkout_portal_repair_link_failed", {
+      customerId,
+      error: error instanceof Error ? error.message : String(error),
+    });
 
-      try {
-        const invoiceUrl = await openInvoicePaymentUrl(customerId);
-        if (invoiceUrl) {
-          return NextResponse.json({
-            url: invoiceUrl,
-            paymentRepair: true,
-            ...response,
-          });
-        }
-      } catch (invoiceError) {
-        log.error("stripe_checkout_invoice_lookup_failed", {
-          customerId,
-          error: invoiceError instanceof Error ? invoiceError.message : String(invoiceError),
+    try {
+      const invoiceUrl = await openInvoicePaymentUrl(customerId);
+      if (invoiceUrl) {
+        return NextResponse.json({
+          url: invoiceUrl,
+          paymentRepair: true,
+          ...response,
         });
       }
-
-      log.error("stripe_checkout_repair_link_failed", {
+    } catch (invoiceError) {
+      log.error("stripe_checkout_invoice_lookup_failed", {
         customerId,
-        error: error instanceof Error ? error.message : String(error),
+        error: invoiceError instanceof Error ? invoiceError.message : String(invoiceError),
       });
-      return checkoutErrorResponse(
-        "Your previous Pro payment needs updating before a new Pro checkout can start. Please contact support and we will fix it for you.",
-        409,
-        "billing_repair_required",
-        { needsBillingRepair: true },
-      );
     }
 
-    throw error;
+    log.error("stripe_checkout_repair_link_failed", {
+      customerId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return checkoutErrorResponse(
+      "Your previous Pro payment needs updating before a new Pro checkout can start. Please contact support and we will fix it for you.",
+      409,
+      "billing_repair_required",
+      { needsBillingRepair: true },
+    );
   }
 }
 
