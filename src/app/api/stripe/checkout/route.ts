@@ -44,6 +44,23 @@ function shouldUseBillingPortalForStripeSubscription(subscription: Stripe.Subscr
   return BILLING_PORTAL_SUBSCRIPTION_STATUSES.has(subscription.status);
 }
 
+async function findStripeCustomerIdByEmail(email?: string | null) {
+  if (!email) return null;
+
+  const customers = await getStripe().customers.list({ email, limit: 1 });
+  return customers.data[0]?.id ?? null;
+}
+
+async function cacheStripeCustomerForUser(userId: string, customerId: string) {
+  if (!isRedisConfigured()) return;
+
+  const redis = getRedis();
+  await Promise.all([
+    redis.set(`stripe_customer:${userId}`, customerId),
+    redis.set(`stripe_customer_user:${customerId}`, userId),
+  ]);
+}
+
 async function findPortalEligibleStripeSubscription(customerId: string) {
   const subscriptions = await getStripe().subscriptions.list({
     customer: customerId,
@@ -81,25 +98,51 @@ async function billingPortalOrRepairResponse(
   const response = portalResponse(subscription);
 
   if (response.needsBillingRepair) {
-    const invoiceUrl = await openInvoicePaymentUrl(customerId);
-    if (invoiceUrl) {
-      return NextResponse.json({
-        url: invoiceUrl,
-        paymentRepair: true,
-        ...response,
+    try {
+      const invoiceUrl = await openInvoicePaymentUrl(customerId);
+      if (invoiceUrl) {
+        return NextResponse.json({
+          url: invoiceUrl,
+          paymentRepair: true,
+          ...response,
+        });
+      }
+    } catch (error) {
+      log.error("stripe_checkout_invoice_lookup_failed", {
+        customerId,
+        error: error instanceof Error ? error.message : String(error),
       });
     }
   }
 
-  const portalSession = await getStripe().billingPortal.sessions.create({
-    customer: customerId,
-    return_url: `${origin}/dashboard`,
-  });
+  try {
+    const portalSession = await getStripe().billingPortal.sessions.create({
+      customer: customerId,
+      return_url: `${origin}/dashboard`,
+    });
 
-  return NextResponse.json({
-    url: portalSession.url,
-    ...response,
-  });
+    return NextResponse.json({
+      url: portalSession.url,
+      ...response,
+    });
+  } catch (error) {
+    if (response.needsBillingRepair) {
+      log.error("stripe_checkout_repair_link_failed", {
+        customerId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return NextResponse.json(
+        {
+          error:
+            "Your previous Pro payment needs updating, but Stripe could not open the payment page. Please contact support and we will fix it for you.",
+          needsBillingRepair: true,
+        },
+        { status: 409 },
+      );
+    }
+
+    throw error;
+  }
 }
 
 export async function POST(req: NextRequest) {
@@ -129,20 +172,6 @@ export async function POST(req: NextRequest) {
   }
 
   const billing = annual ? "annual" : "monthly";
-  const priceId = priceForPlan(plan, annual);
-  if (!priceId) {
-    log.error("stripe_checkout_missing_price", { plan, billing });
-    await alertAdmins({
-      subject: "Checkout price is missing",
-      title: "Stripe checkout price is not configured",
-      message: "A user tried to start checkout, but the required Stripe price ID is missing from production environment variables.",
-      fields: { plan, billing, userId, email: email ?? "unknown" },
-    });
-    return NextResponse.json(
-      { error: `${plan} ${billing} billing is not configured yet.` },
-      { status: 500 },
-    );
-  }
 
   try {
     const metadata = { userId, plan, billing, firstName };
@@ -150,10 +179,18 @@ export async function POST(req: NextRequest) {
       getStoredSubscriptionSnapshot(userId),
       isRedisConfigured() ? getRedis().get<string>(`stripe_customer:${userId}`) : Promise.resolve(null),
     ]);
-    const existingCustomerId = snapshot?.stripeCustomerId ?? cachedCustomerId;
+    let existingCustomerId = snapshot?.stripeCustomerId ?? cachedCustomerId;
 
     if (shouldUseBillingPortal(snapshot) && snapshot?.stripeCustomerId) {
       return billingPortalOrRepairResponse(snapshot.stripeCustomerId, origin, snapshot);
+    }
+
+    if (!existingCustomerId) {
+      existingCustomerId = await findStripeCustomerIdByEmail(email);
+      if (existingCustomerId) {
+        await cacheStripeCustomerForUser(userId, existingCustomerId);
+        log.info("stripe_checkout_customer_matched_by_email", { userId, customerId: existingCustomerId, email });
+      }
     }
 
     if (existingCustomerId) {
@@ -167,6 +204,21 @@ export async function POST(req: NextRequest) {
         });
         return billingPortalOrRepairResponse(existingCustomerId, origin, existingSubscription);
       }
+    }
+
+    const priceId = priceForPlan(plan, annual);
+    if (!priceId) {
+      log.error("stripe_checkout_missing_price", { plan, billing });
+      await alertAdmins({
+        subject: "Checkout price is missing",
+        title: "Stripe checkout price is not configured",
+        message: "A user tried to start checkout, but the required Stripe price ID is missing from production environment variables.",
+        fields: { plan, billing, userId, email: email ?? "unknown" },
+      });
+      return NextResponse.json(
+        { error: `${plan} ${billing} billing is not configured yet.` },
+        { status: 500 },
+      );
     }
 
     const successReturnTo = encodeURIComponent("/dashboard?upgraded=true");
