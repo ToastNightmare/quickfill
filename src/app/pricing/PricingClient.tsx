@@ -246,9 +246,9 @@ export default function PricingPage() {
             {planStillLoading ? (
               <div className="rounded-lg border border-blue-200 bg-blue-50 px-6 py-8 text-center">
                 <Loader2 className="mx-auto mb-4 h-6 w-6 animate-spin text-accent" />
-                <h2 className="text-xl font-bold text-text">Checking your Pro status</h2>
+                <h2 className="text-xl font-bold text-text">Loading your account</h2>
                 <p className="mt-2 text-sm text-text-muted">
-                  QuickFill is confirming your current plan before showing checkout options.
+                  Getting your account ready before showing the right options.
                 </p>
               </div>
             ) : isSignedIn && isPro ? (
