@@ -42,14 +42,24 @@ text = replaceOnce(
 text = replaceOnce(
   text,
   'function removeWidgetAnnotations(pdfDoc: PDFDocument) {\n',
-  'function cleanupEditedDocumentArtifacts(pdfDoc: PDFDocument) {\n  try {\n    pdfDoc.catalog.delete(PDFName.of("Perms"));\n  } catch {\n    // Edited PDFs invalidate source document signatures/certification permissions.\n  }\n}\n\nfunction removeWidgetAnnotations(pdfDoc: PDFDocument) {\n',
+  'function cleanupEditedDocumentArtifacts(pdfDoc: PDFDocument) {\n  try {\n    pdfDoc.catalog.delete(PDFName.of("Perms"));\n  } catch {\n    // Edited PDFs invalidate source document signatures/certification permissions.\n  }\n}\n\nasync function createViewerSafePdfDocument(sourceDoc: PDFDocument) {\n  cleanupEditedDocumentArtifacts(sourceDoc);\n\n  const outputDoc = await PDFDocument.create();\n  const copiedPages = await outputDoc.copyPages(sourceDoc, sourceDoc.getPageIndices());\n  for (const page of copiedPages) {\n    // Completed downloads are static, so drop source annotations/actions for strict viewers.\n    page.node.delete(PDFName.of("Annots"));\n    outputDoc.addPage(page);\n  }\n\n  return outputDoc;\n}\n\nfunction removeWidgetAnnotations(pdfDoc: PDFDocument) {\n',
 );
 
-text = replaceOnce(
-  text,
-  '    const resultBytes = await pdfDoc.save({ updateFieldAppearances: false, useObjectStreams: false });\n    await incrementDownloadUsage(access);\n',
-  '    const resultBytes = await pdfDoc.save({ updateFieldAppearances: false, useObjectStreams: false });\n    const resultBuffer = Buffer.from(resultBytes);\n    assertValidGeneratedPdf(resultBuffer);\n\n    await incrementDownloadUsage(access);\n',
-);
+if (!text.includes("const resultBuffer = Buffer.from(resultBytes);")) {
+  text = replaceOnce(
+    text,
+    '    const resultBytes = await pdfDoc.save({ updateFieldAppearances: false, useObjectStreams: false });\n    await incrementDownloadUsage(access);\n',
+    '    const resultBytes = await pdfDoc.save({ updateFieldAppearances: false, useObjectStreams: false });\n    const resultBuffer = Buffer.from(resultBytes);\n    assertValidGeneratedPdf(resultBuffer);\n\n    await incrementDownloadUsage(access);\n',
+  );
+}
+
+if (!text.includes("createViewerSafePdfDocument(pdfDoc)")) {
+  text = replaceOnce(
+    text,
+    '    const resultBytes = await pdfDoc.save({ updateFieldAppearances: false, useObjectStreams: false });\n    const resultBuffer = Buffer.from(resultBytes);\n',
+    '    const outputDoc = await createViewerSafePdfDocument(pdfDoc);\n    const resultBytes = await outputDoc.save({ updateFieldAppearances: false, useObjectStreams: false });\n    const resultBuffer = Buffer.from(resultBytes);\n',
+  );
+}
 
 text = replaceOnce(
   text,
