@@ -48,18 +48,86 @@ function ensureImport(text, after, addition) {
   return text.slice(0, insertIndex) + normalizedAddition + text.slice(insertIndex);
 }
 
+function replaceOnce(text, search, replacement) {
+  if (text.replace(/\r\n/g, "\n").includes(replacement.trim().replace(/\r\n/g, "\n"))) return text;
+  if (!text.includes(search)) throw new Error(`Missing replacement target: ${search.slice(0, 80)}`);
+  return text.replace(search, replacement);
+}
+
 function lines(values) {
   return `${values.join("\n")}\n\n`;
 }
 
 function patchMobileFiller() {
   const path = "src/components/MobileFiller.tsx";
-  let text = read(path);
+  let text = read(path).replace(/\r\n/g, "\n");
 
   text = ensureImport(
     text,
     'import { SignatureModal } from "@/components/SignatureModal";\n',
     'import { trackAutofillShadowReport } from "@/lib/autofill-shadow-reporting";\nimport { autofillModeFromFlag, runProfileAutofill } from "@/lib/profile-autofill";\n',
+  );
+
+  text = ensureImport(
+    text,
+    'import { autofillModeFromFlag, runProfileAutofill } from "@/lib/profile-autofill";\n',
+    'import {\n  assertPdfDownload,\n  downloadPdfBuffer,\n  isGuestUsage,\n  loadUsageSnapshot,\n  refreshUsageAfterBillingSync,\n  shouldTryBillingSync,\n} from "@/lib/download-client";\n',
+  );
+
+  text = replaceOnce(
+    text,
+    '  const fileInputRef = useRef<HTMLInputElement>(null);\n',
+    '  const fileInputRef = useRef<HTMLInputElement>(null);\n  const billingSyncAttemptedRef = useRef(false);\n',
+  );
+
+  text = replaceOnce(
+    text,
+    `      const usageRes = await fetch("/api/usage");
+      if (usageRes.ok) {
+        const usage = await usageRes.json();
+        isPro = usage.isPro;
+        canSaveFillHistory = !usage.guest && !usage.qa;
+        if (!isPro && usage.used >= usage.limit) {
+          showToast("Free limit reached, upgrade to Pro for unlimited fills", 5000);
+          setIsDownloading(false);
+          return;
+        }
+      }
+`,
+    `      let usage = await loadUsageSnapshot();
+      if (usage && shouldTryBillingSync(usage) && !billingSyncAttemptedRef.current) {
+        billingSyncAttemptedRef.current = true;
+        usage = await refreshUsageAfterBillingSync(usage);
+      }
+
+      if (usage) {
+        isPro = Boolean(usage.isPro);
+        canSaveFillHistory = !isGuestUsage(usage) && !usage.qa;
+        if (!isPro && (usage.used ?? 0) >= (usage.limit ?? 3)) {
+          showToast("Free limit reached, upgrade to Pro for unlimited fills", 5000);
+          setIsDownloading(false);
+          return;
+        }
+      }
+`,
+  );
+
+  text = replaceOnce(
+    text,
+    `      const blob = new Blob([resultBuf], { type: "application/pdf" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = fileName.replace(/\\.pdf$/i, "") + "-filled.pdf";
+      a.click();
+      URL.revokeObjectURL(url);
+
+      await fetch("/api/usage", { method: "POST" });
+`,
+    `      assertPdfDownload(fillRes, resultBuf);
+      downloadPdfBuffer(resultBuf, fileName.replace(/\\.pdf$/i, "") + "-filled.pdf");
+
+`,
   );
 
   text = text.replace(/\/\/ .+ Profile matcher[\s\S]*?const SIG_KEYWORDS/, 'const SIG_KEYWORDS');
@@ -90,12 +158,111 @@ function patchMobileFiller() {
 
 function patchEditorPage() {
   const path = "src/app/editor/page.tsx";
-  let text = read(path);
+  let text = read(path).replace(/\r\n/g, "\n");
 
   text = ensureImport(
     text,
     'import { trackEvent } from "@/lib/analytics";\n',
     'import { runEditorProfileAutofill, trackEditorAutofillShadowReport } from "@/lib/editor-profile-autofill";\n',
+  );
+
+  text = ensureImport(
+    text,
+    'import { runEditorProfileAutofill, trackEditorAutofillShadowReport } from "@/lib/editor-profile-autofill";\n',
+    'import {\n  assertPdfDownload,\n  downloadPdfBuffer,\n  isGuestUsage,\n  loadUsageSnapshot,\n  refreshUsageAfterBillingSync,\n  shouldTryBillingSync,\n} from "@/lib/download-client";\n',
+  );
+
+  text = replaceOnce(
+    text,
+    '  const initialRestoreDoneRef = useRef(false);\n',
+    '  const initialRestoreDoneRef = useRef(false);\n  const billingSyncAttemptedRef = useRef(false);\n',
+  );
+
+  text = replaceOnce(
+    text,
+    `      // Check usage before downloading
+      let isPro = false;
+      let isGuest = false;
+      const usageRes = await fetch("/api/usage");
+      if (usageRes.ok) {
+        const usage = await usageRes.json();
+        isPro = usage.isPro;
+        isGuest = usage.tier === "guest";
+        
+        // Guest mode: check server-side fill count
+        if (isGuest && !isPro) {
+          const serverFillCount = usage.used || 0;
+          
+          // If this would be the 3rd fill, show upsell modal BEFORE download
+          // Pro users never see this modal
+          if (serverFillCount >= 3) {
+            trackEvent("free_limit_hit", { source: "guest_precheck", used: serverFillCount });
+            setShowGuestUpsellModal(true);
+            setIsDownloading(false);
+            return;
+          }
+        }
+        
+        if (!isPro && !isGuest && usage.used >= usage.limit) {
+          trackEvent("free_limit_hit", { source: "user_precheck", used: usage.used, limit: usage.limit });
+          setShowUpgradeModal(true);
+          setIsDownloading(false);
+          return;
+        }
+      }
+`,
+    `      let isPro = false;
+      let isGuest = false;
+      let usage = await loadUsageSnapshot();
+      if (usage && shouldTryBillingSync(usage) && !billingSyncAttemptedRef.current) {
+        billingSyncAttemptedRef.current = true;
+        usage = await refreshUsageAfterBillingSync(usage);
+      }
+
+      if (usage) {
+        isPro = Boolean(usage.isPro);
+        isGuest = isGuestUsage(usage);
+        const used = usage.used ?? 0;
+        const limit = usage.limit ?? 3;
+        
+        // Guest mode: check server-side fill count
+        if (isGuest && !isPro) {
+          // If this would be the 3rd fill, show upsell modal BEFORE download
+          // Pro users never see this modal
+          if (used >= limit) {
+            trackEvent("free_limit_hit", { source: "guest_precheck", used });
+            setShowGuestUpsellModal(true);
+            setIsDownloading(false);
+            return;
+          }
+        }
+        
+        if (!isPro && !isGuest && used >= limit) {
+          trackEvent("free_limit_hit", { source: "user_precheck", used, limit });
+          setShowUpgradeModal(true);
+          setIsDownloading(false);
+          return;
+        }
+      }
+`,
+  );
+
+  text = replaceOnce(
+    text,
+    `      const resultBuf = await fillRes.arrayBuffer();
+
+      const blob = new Blob([resultBuf], { type: "application/pdf" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = fileName.replace(/\\.pdf$/i, "") + "-filled.pdf";
+      a.click();
+      URL.revokeObjectURL(url);
+`,
+    `      const resultBuf = await fillRes.arrayBuffer();
+      assertPdfDownload(fillRes, resultBuf);
+      downloadPdfBuffer(resultBuf, fileName.replace(/\\.pdf$/i, "") + "-filled.pdf");
+`,
   );
 
   const replacement = lines([
@@ -137,5 +304,59 @@ function patchEditorPage() {
   writeIfChanged(path, text);
 }
 
+function patchFillPdfRoute() {
+  const path = "src/app/api/fill-pdf/route.ts";
+  let text = read(path).replace(/\r\n/g, "\n");
+
+  text = ensureImport(
+    text,
+    'import { orderFieldsForPdfDraw } from "@/lib/pdf-utils";\n',
+    'import { currentUser } from "@clerk/nextjs/server";\nimport { reconcileStripeBillingForUser } from "@/lib/billing-reconciliation";\n',
+  );
+
+  const refreshHelper = lines([
+    'async function refreshPaidAccessIfNeeded(request: NextRequest, access: DownloadAccess): Promise<DownloadAccess> {',
+    '  if (access.isPro || !access.userId) return access;',
+    '',
+    '  try {',
+    '    const user = await currentUser();',
+    '    const email = user?.primaryEmailAddress?.emailAddress ?? user?.emailAddresses?.[0]?.emailAddress ?? null;',
+    '    const result = await reconcileStripeBillingForUser(access.userId, { email });',
+    '',
+    '    if (result.ok || result.updated > 0) {',
+    '      return getDownloadAccess(request);',
+    '    }',
+    '  } catch (error) {',
+    '    console.warn("download_billing_sync_failed", {',
+    '      userId: access.userId,',
+    '      error: error instanceof Error ? error.message : String(error),',
+    '    });',
+    '  }',
+    '',
+    '  return access;',
+    '}',
+  ]);
+
+  text = replaceOnce(
+    text,
+    'async function incrementDownloadUsage(access: DownloadAccess) {\n',
+    `${refreshHelper}async function incrementDownloadUsage(access: DownloadAccess) {\n`,
+  );
+
+  text = replaceOnce(
+    text,
+    `    const access = await getDownloadAccess(request);
+    accessForLog = access;
+`,
+    `    let access = await getDownloadAccess(request);
+    access = await refreshPaidAccessIfNeeded(request, access);
+    accessForLog = access;
+`,
+  );
+
+  writeIfChanged(path, text);
+}
+
 patchMobileFiller();
 patchEditorPage();
+patchFillPdfRoute();
