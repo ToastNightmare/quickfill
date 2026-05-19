@@ -1,79 +1,62 @@
-import { PDFPage, PDFFont, rgb, degrees } from "pdf-lib";
+import { PDFPage, PDFFont, PDFString, rgb } from "pdf-lib";
 
 /**
- * Apply border watermark to all pages of a PDF for free/guest users.
+ * Apply a light, clickable border watermark for free/guest downloads.
  * Pro users get clean downloads with no watermark.
- * 
- * Watermark appears on all 4 edges of every page:
- * - Top edge: horizontal, centred, near top (y = page.getHeight() - 14)
- * - Bottom edge: horizontal, centred, near bottom (y = 8)
- * - Left edge: rotated 90 degrees, centred vertically, near left (x = 12)
- * - Right edge: rotated -90 degrees, centred vertically, near right (x = page.getWidth() - 12)
  */
+export const WATERMARK_TEXT = "QuickFill Free · getquickfill.com";
+export const WATERMARK_URL = "https://getquickfill.com/pricing?source=pdf_watermark";
+
+function addWatermarkLink(page: PDFPage, x: number, y: number, width: number, fontSize: number) {
+  const context = page.doc.context;
+  const annotation = context.obj({
+    Type: "Annot",
+    Subtype: "Link",
+    Rect: [x - 2, y - 2, x + width + 2, y + fontSize + 3],
+    Border: [0, 0, 0],
+    A: {
+      Type: "Action",
+      S: "URI",
+      URI: PDFString.of(WATERMARK_URL),
+    },
+  });
+
+  page.node.addAnnot(context.register(annotation));
+}
+
+function drawLinkedWatermark(page: PDFPage, font: PDFFont, y: number, fontSize: number, opacity: number) {
+  const { width } = page.getSize();
+  const textWidth = font.widthOfTextAtSize(WATERMARK_TEXT, fontSize);
+  const x = width / 2 - textWidth / 2;
+
+  page.drawText(WATERMARK_TEXT, {
+    x,
+    y,
+    size: fontSize,
+    font,
+    color: rgb(0.4, 0.4, 0.4),
+    opacity,
+  });
+
+  addWatermarkLink(page, x, y, textWidth, fontSize);
+}
+
 export function applyBorderWatermark(
   pages: PDFPage[],
   font: PDFFont,
   isPro: boolean
 ): void {
-  // Skip watermark for Pro users
   if (isPro) {
     return;
   }
 
-  const watermarkText = "QuickFill Free · getquickfill.com";
   const fontSize = 8;
-  const color = rgb(0.4, 0.4, 0.4);
-  const opacity = 0.35;
+  const opacity = 0.28;
 
   for (const page of pages) {
-    const { width, height } = page.getSize();
+    const { height } = page.getSize();
 
-    // Top edge: horizontal, centred, near top
-    const topY = height - 14;
-    page.drawText(watermarkText, {
-      x: width / 2 - font.widthOfTextAtSize(watermarkText, fontSize) / 2,
-      y: topY,
-      size: fontSize,
-      font,
-      color,
-      opacity,
-    });
-
-    // Bottom edge: horizontal, centred, near bottom
-    const bottomY = 8;
-    page.drawText(watermarkText, {
-      x: width / 2 - font.widthOfTextAtSize(watermarkText, fontSize) / 2,
-      y: bottomY,
-      size: fontSize,
-      font,
-      color,
-      opacity,
-    });
-
-    // Left edge: rotated 90 degrees, centred vertically, near left
-    const leftX = 12;
-    const leftY = height / 2 - font.widthOfTextAtSize(watermarkText, fontSize) / 2;
-    page.drawText(watermarkText, {
-      x: leftX,
-      y: leftY,
-      size: fontSize,
-      font,
-      color,
-      opacity,
-      rotate: degrees(90),
-    });
-
-    // Right edge: rotated -90 degrees, centred vertically, near right
-    const rightX = width - 12;
-    const rightY = height / 2 + font.widthOfTextAtSize(watermarkText, fontSize) / 2;
-    page.drawText(watermarkText, {
-      x: rightX,
-      y: rightY,
-      size: fontSize,
-      font,
-      color,
-      opacity,
-      rotate: degrees(-90),
-    });
+    drawLinkedWatermark(page, font, height - 14, fontSize, opacity);
+    drawLinkedWatermark(page, font, 8, fontSize, opacity);
   }
 }
