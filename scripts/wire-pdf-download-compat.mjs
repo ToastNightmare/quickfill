@@ -55,18 +55,20 @@ if (!text.includes("finalizePdfForDownload(pdfDoc")) {
   );
 }
 
-text = replaceOnce(
-  text,
-  `    return new NextResponse(Buffer.from(resultBytes), {
+if (!text.includes("buildPdfDownloadHeaders(resultBuffer")) {
+  text = replaceOnce(
+    text,
+    `    return new NextResponse(Buffer.from(resultBytes), {
       status: 200,
       headers: { "Content-Type": "application/pdf", "Content-Disposition": "inline" },
     });
 `,
-  `    return new NextResponse(resultBuffer, {
+    `    return new NextResponse(resultBuffer, {
       status: 200,
       headers: buildPdfDownloadHeaders(resultBuffer, filledPdfFilename(pdfFile.name)),
     });
 `,
-);
+  );
+}
 
 writeFileSync(path, text);
