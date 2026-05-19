@@ -1,3 +1,5 @@
+import { isLikelyCompletePdf } from "@/lib/pdf-download-response";
+
 export type UsageSnapshot = {
   used?: number;
   limit?: number;
@@ -38,6 +40,7 @@ export async function refreshUsageAfterBillingSync(fallback: UsageSnapshot) {
 function previewResponseBody(buffer: ArrayBuffer) {
   const preview = new TextDecoder().decode(buffer.slice(0, Math.min(buffer.byteLength, 500))).trim();
   if (!preview) return "Download failed before a PDF was created.";
+  if (preview.startsWith("%PDF-")) return "Download failed before a PDF was created.";
   if (preview.startsWith("<")) return "Download failed before a PDF was created.";
 
   try {
@@ -50,8 +53,7 @@ function previewResponseBody(buffer: ArrayBuffer) {
 
 export function assertPdfDownload(response: Response, buffer: ArrayBuffer) {
   const contentType = response.headers.get("content-type")?.toLowerCase() ?? "";
-  const signature = new TextDecoder().decode(buffer.slice(0, 5));
-  const looksLikePdf = signature === "%PDF-";
+  const looksLikePdf = isLikelyCompletePdf(buffer);
   const hasWrongContentType = contentType.length > 0 && !contentType.includes("application/pdf");
 
   if (!looksLikePdf || hasWrongContentType) {
