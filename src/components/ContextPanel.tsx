@@ -98,6 +98,12 @@ export function ContextPanel({
   const [sizeExpanded, setSizeExpanded] = useState(false);
   const [charCountExpanded, setCharCountExpanded] = useState(false);
 
+  void onAutoFill;
+  void onDetectFields;
+  void isDetecting;
+  void Sparkles;
+  void UserCheck;
+
   if (selectedField) {
     const fieldType = selectedField.type;
     const TypeIcon = fieldIcon(fieldType);
@@ -234,29 +240,6 @@ export function ContextPanel({
         <p className="mt-1 text-xs text-text-muted leading-relaxed">
           Click a tool on the left to start placing fields, or click an existing field to edit it.
         </p>
-      </Section>
-
-      <Divider />
-
-      <Section label="Quick Actions">
-        <button
-          onClick={onAutoFill}
-          className="flex w-full items-center gap-2 rounded-xl border border-border px-3 py-2.5 text-sm font-medium text-text-muted hover:bg-surface-alt hover:text-text transition-colors"
-        >
-          <UserCheck className="h-4 w-4 text-green-600 shrink-0" />
-          Auto-fill from Profile
-        </button>
-        <button
-          onClick={onDetectFields}
-          disabled={isDetecting}
-          className="mt-2 flex w-full items-center gap-2 rounded-xl border border-border px-3 py-2.5 text-sm font-medium text-text-muted hover:bg-surface-alt hover:text-text transition-colors disabled:opacity-50"
-        >
-          {isDetecting
-            ? <div className="h-4 w-4 animate-spin rounded-full border-2 border-accent border-t-transparent shrink-0" />
-            : <Sparkles className="h-4 w-4 text-accent shrink-0" />
-          }
-          {isDetecting ? "Detecting..." : "Auto-detect Fields"}
-        </button>
       </Section>
     </Panel>
   );
