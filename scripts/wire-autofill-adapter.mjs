@@ -354,6 +354,18 @@ function patchFillPdfRoute() {
 `,
   );
 
+  text = replaceOnce(
+    text,
+    '    const resultBytes = await pdfDoc.save({ updateFieldAppearances: false });\n',
+    '    const resultBytes = await pdfDoc.save({ updateFieldAppearances: false, useObjectStreams: false });\n',
+  );
+
+  text = replaceOnce(
+    text,
+    '      headers: { "Content-Type": "application/pdf", "Content-Disposition": "inline" },\n',
+    '      headers: { "Content-Type": "application/pdf", "Content-Disposition": "attachment" },\n',
+  );
+
   writeIfChanged(path, text);
 }
 
