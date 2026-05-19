@@ -3,11 +3,8 @@ import { readFileSync, writeFileSync } from "node:fs";
 const path = "src/app/api/fill-pdf/route.ts";
 const watermarkStart = "    // Apply border watermark for free/guest users. QA token requests act like Pro.\n";
 const incrementMarker = "    await incrementDownloadUsage(access);\n";
-
-function replaceOnce(text, search, replacement) {
-  if (!text.includes(search)) throw new Error(`Missing replacement target: ${search.slice(0, 80)}`);
-  return text.replace(search, replacement);
-}
+const responseStart = "    return new NextResponse";
+const catchStart = "  } catch (err) {";
 
 function replaceBetween(text, start, end, replacement) {
   const startIndex = text.indexOf(start);
@@ -65,13 +62,10 @@ if (!text.includes("finalizePdfForDownload(pdfDoc")) {
 }
 
 if (!text.includes("buildPdfDownloadHeaders(resultBuffer")) {
-  text = replaceOnce(
+  text = replaceBetween(
     text,
-    `    return new NextResponse(Buffer.from(resultBytes), {
-      status: 200,
-      headers: { "Content-Type": "application/pdf", "Content-Disposition": "inline" },
-    });
-`,
+    responseStart,
+    catchStart,
     `    return new NextResponse(resultBuffer, {
       status: 200,
       headers: buildPdfDownloadHeaders(resultBuffer, filledPdfFilename(pdfFile.name)),
