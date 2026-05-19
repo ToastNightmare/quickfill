@@ -9,16 +9,14 @@ import { trackEvent } from "@/lib/analytics";
 const freeIncludes = [
   "3 documents per month",
   "All field types",
-  "AcroForm detection",
+  "Built-in PDF fields",
   "Instant PDF download",
 ];
 
 const proAdds = [
   "Unlimited documents",
   "No watermarks",
-  "Auto-fill from profile",
   "Save and resume progress",
-  "Re-fill from history",
   "Unlimited fill history",
   "Priority support",
 ];
@@ -26,9 +24,9 @@ const proAdds = [
 const tableFeatures = [
   { name: "Documents per month", free: "3", pro: "Unlimited" },
   { name: "No watermark on downloads", free: false, pro: true },
-  { name: "Profile auto-fill", free: false, pro: true },
-  { name: "AcroForm auto-detection", free: true, pro: true },
-  { name: "All field types", free: true, pro: true },
+  { name: "Built-in PDF fields", free: true, pro: true },
+  { name: "Manual text, box, date, and signature tools", free: true, pro: true },
+  { name: "Save and resume progress", free: false, pro: true },
   { name: "Fill history", free: "Last 10", pro: "Unlimited" },
   { name: "Priority support", free: false, pro: true },
 ];
@@ -48,7 +46,7 @@ const faqs = [
   },
   {
     q: "What PDF forms does QuickFill support?",
-    a: "QuickFill works with tax forms, government applications, contracts, rental paperwork, and other PDFs. It detects AcroForm fields and supports manual field placement for flat PDFs.",
+    a: "QuickFill works with tax forms, government applications, contracts, rental paperwork, and other PDFs. It uses existing PDF form fields where available, and the full editor lets you place text, boxes, signatures, and dates manually on flat PDFs.",
   },
   {
     q: "Is my data secure?",
