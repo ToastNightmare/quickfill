@@ -121,6 +121,7 @@ export function MobileFiller() {
   void handleAutoFill;
   void UserCheck;
 
+  // ── Signature
   const openSignatureModal = useCallback((fieldId: string) => {
     setActiveSigFieldId(fieldId);
     setSigModalOpen(true);
