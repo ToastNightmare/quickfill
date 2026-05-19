@@ -1,4 +1,5 @@
 import { isDatabaseConfigured, query } from "../db";
+import { isRedisConfigured } from "../redis";
 import { getStripe } from "../stripe";
 import { isSubscriptionEntitled, saveSubscriptionSnapshot, stripeSubscriptionPeriodEnd, tierFromPriceId } from "../billing-store";
 import { reconcileStripeBilling, reconcileStripeBillingForUser, subscriptionTier } from "../billing-reconciliation";
@@ -6,6 +7,10 @@ import { reconcileStripeBilling, reconcileStripeBillingForUser, subscriptionTier
 jest.mock("../db", () => ({
   isDatabaseConfigured: jest.fn(),
   query: jest.fn(),
+}));
+
+jest.mock("../redis", () => ({
+  isRedisConfigured: jest.fn(),
 }));
 
 jest.mock("../stripe", () => ({
@@ -20,6 +25,7 @@ jest.mock("../billing-store", () => ({
 }));
 
 const mockIsDatabaseConfigured = jest.mocked(isDatabaseConfigured);
+const mockIsRedisConfigured = jest.mocked(isRedisConfigured);
 const mockQuery = jest.mocked(query);
 const mockGetStripe = jest.mocked(getStripe);
 const mockIsSubscriptionEntitled = jest.mocked(isSubscriptionEntitled);
@@ -30,6 +36,7 @@ const mockTierFromPriceId = jest.mocked(tierFromPriceId);
 const stripe = {
   customers: {
     list: jest.fn(),
+    search: jest.fn(),
   },
   subscriptions: {
     retrieve: jest.fn(),
@@ -57,11 +64,13 @@ describe("Stripe billing reconciliation", () => {
     jest.clearAllMocks();
     process.env.STRIPE_SECRET_KEY = "sk_test_123";
     mockIsDatabaseConfigured.mockReturnValue(true);
+    mockIsRedisConfigured.mockReturnValue(true);
     mockGetStripe.mockReturnValue(stripe as never);
     mockTierFromPriceId.mockReturnValue("pro");
     mockIsSubscriptionEntitled.mockReturnValue(true);
     mockStripeSubscriptionPeriodEnd.mockReturnValue(1770768000);
     stripe.customers.list.mockResolvedValue({ data: [] });
+    stripe.customers.search.mockResolvedValue({ data: [] });
     stripe.subscriptions.list.mockResolvedValue({ data: [] });
   });
 
@@ -69,13 +78,13 @@ describe("Stripe billing reconciliation", () => {
     process.env.STRIPE_SECRET_KEY = originalStripeSecret;
   });
 
-  it("does not run when the database is unavailable", async () => {
+  it("does not scan stored billing when the database is unavailable", async () => {
     mockIsDatabaseConfigured.mockReturnValue(false);
 
     await expect(reconcileStripeBilling()).resolves.toMatchObject({
       ok: false,
       checked: 0,
-      message: "DATABASE_URL is not configured; billing reconciliation cannot run.",
+      message: "DATABASE_URL is not configured; scheduled billing reconciliation cannot scan stored subscriptions.",
     });
 
     expect(mockQuery).not.toHaveBeenCalled();
@@ -162,6 +171,52 @@ describe("Stripe billing reconciliation", () => {
     expect(stripe.customers.list).toHaveBeenCalledWith({ email: "user@example.com", limit: 10 });
     expect(mockSaveSubscriptionSnapshot).toHaveBeenCalledWith(
       expect.objectContaining({ userId: "user_123", customerId: "cus_from_email", subscriptionId: "sub_from_email" }),
+    );
+  });
+
+  it("recovers user billing from Stripe email without a database when Redis is available", async () => {
+    mockIsDatabaseConfigured.mockReturnValue(false);
+    mockIsRedisConfigured.mockReturnValue(true);
+    stripe.customers.list.mockResolvedValueOnce({ data: [{ id: "cus_from_email" }] });
+    stripe.subscriptions.list.mockResolvedValueOnce({
+      data: [subscription({ id: "sub_from_email", customer: "cus_from_email", status: "active" })],
+    });
+    stripe.subscriptions.retrieve.mockResolvedValueOnce(
+      subscription({ id: "sub_from_email", customer: "cus_from_email", status: "active" }),
+    );
+
+    await expect(reconcileStripeBillingForUser("user_123", { email: "User@Example.com" })).resolves.toMatchObject({
+      ok: true,
+      checked: 1,
+      updated: 1,
+    });
+
+    expect(mockQuery).not.toHaveBeenCalled();
+    expect(mockSaveSubscriptionSnapshot).toHaveBeenCalledWith(
+      expect.objectContaining({ userId: "user_123", customerId: "cus_from_email", subscriptionId: "sub_from_email" }),
+    );
+  });
+
+  it("uses Stripe customer search when the exact email list lookup misses", async () => {
+    mockQuery.mockResolvedValueOnce([] as never);
+    stripe.customers.list.mockResolvedValueOnce({ data: [] });
+    stripe.customers.search.mockResolvedValueOnce({ data: [{ id: "cus_search" }] });
+    stripe.subscriptions.list.mockResolvedValueOnce({
+      data: [subscription({ id: "sub_search", customer: "cus_search", status: "active" })],
+    });
+    stripe.subscriptions.retrieve.mockResolvedValueOnce(
+      subscription({ id: "sub_search", customer: "cus_search", status: "active" }),
+    );
+
+    await expect(reconcileStripeBillingForUser("user_123", { email: "User@Example.com" })).resolves.toMatchObject({
+      ok: true,
+      checked: 1,
+      updated: 1,
+    });
+
+    expect(stripe.customers.search).toHaveBeenCalledWith({ query: 'email:"user@example.com"', limit: 10 });
+    expect(mockSaveSubscriptionSnapshot).toHaveBeenCalledWith(
+      expect.objectContaining({ userId: "user_123", customerId: "cus_search", subscriptionId: "sub_search" }),
     );
   });
 
