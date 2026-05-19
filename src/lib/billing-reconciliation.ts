@@ -1,5 +1,6 @@
 import type Stripe from "stripe";
 import { isDatabaseConfigured, query } from "@/lib/db";
+import { isRedisConfigured } from "@/lib/redis";
 import { getStripe } from "@/lib/stripe";
 import {
   isSubscriptionEntitled,
@@ -68,15 +69,7 @@ function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : String(error);
 }
 
-function requiredConfigError(result: BillingReconciliationResult) {
-  if (!isDatabaseConfigured()) {
-    return {
-      ...result,
-      ok: false,
-      message: "DATABASE_URL is not configured; billing reconciliation cannot run.",
-    } satisfies BillingReconciliationResult;
-  }
-
+function stripeConfigError(result: BillingReconciliationResult) {
   if (!process.env.STRIPE_SECRET_KEY) {
     return {
       ...result,
@@ -86,6 +79,26 @@ function requiredConfigError(result: BillingReconciliationResult) {
   }
 
   return null;
+}
+
+function databaseScanConfigError(result: BillingReconciliationResult) {
+  if (isDatabaseConfigured()) return null;
+
+  return {
+    ...result,
+    ok: false,
+    message: "DATABASE_URL is not configured; scheduled billing reconciliation cannot scan stored subscriptions.",
+  } satisfies BillingReconciliationResult;
+}
+
+function userRepairStorageConfigError(result: BillingReconciliationResult) {
+  if (isDatabaseConfigured() || isRedisConfigured()) return null;
+
+  return {
+    ...result,
+    ok: false,
+    message: "Neither DATABASE_URL nor Upstash Redis is configured; customer billing repair cannot be saved.",
+  } satisfies BillingReconciliationResult;
 }
 
 export function subscriptionPeriodEnd(subscription: Stripe.Subscription) {
@@ -119,6 +132,26 @@ function safeCheckoutSessionId(sessionId?: string | null) {
   const value = sessionId?.trim();
   if (!value || !value.startsWith("cs_")) return null;
   return value;
+}
+
+function stripeSearchValue(value: string) {
+  return value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+}
+
+async function listStripeCustomersByEmail(email: string) {
+  const stripe = getStripe();
+  const exactList = await stripe.customers.list({ email, limit: 10 });
+  if (exactList.data.length > 0) return exactList.data;
+
+  try {
+    const searched = await stripe.customers.search({
+      query: `email:"${stripeSearchValue(email)}"`,
+      limit: 10,
+    });
+    return searched.data;
+  } catch {
+    return [];
+  }
 }
 
 async function listCustomerSubscriptions(customerId: string) {
@@ -207,12 +240,12 @@ async function stripeCustomerCandidateFromEmail(userId: string, email?: string |
   const cleanEmail = email?.trim().toLowerCase();
   if (!cleanEmail) return null;
 
-  const customers = await getStripe().customers.list({ email: cleanEmail, limit: 10 });
-  if (customers.data.length === 0) return null;
+  const customers = await listStripeCustomersByEmail(cleanEmail);
+  if (customers.length === 0) return null;
 
   let fallback: SubscriptionCandidate | null = null;
 
-  for (const customer of customers.data) {
+  for (const customer of customers) {
     const candidate: SubscriptionCandidate = {
       user_id: userId,
       tier: null,
@@ -306,7 +339,7 @@ function finalizeResult(result: BillingReconciliationResult) {
 export async function reconcileStripeBilling(options: { limit?: number } = {}): Promise<BillingReconciliationResult> {
   const limit = clampLimit(options.limit);
   const result = createResult();
-  const configError = requiredConfigError(result);
+  const configError = stripeConfigError(result) ?? databaseScanConfigError(result);
   if (configError) return configError;
 
   const candidates = await query<SubscriptionCandidate>(
@@ -332,7 +365,7 @@ export async function reconcileStripeBillingForUser(
   options: BillingReconciliationForUserOptions = {},
 ): Promise<BillingReconciliationResult> {
   const result = createResult("Customer billing record synced from Stripe.");
-  const configError = requiredConfigError(result);
+  const configError = stripeConfigError(result) ?? userRepairStorageConfigError(result);
   if (configError) return configError;
 
   let sessionCandidate: SubscriptionCandidate | null = null;
@@ -348,7 +381,7 @@ export async function reconcileStripeBillingForUser(
   }
 
   let candidates: SubscriptionCandidate[] = [];
-  if (!sessionCandidate) {
+  if (!sessionCandidate && isDatabaseConfigured()) {
     try {
       candidates = await query<SubscriptionCandidate>(
         `select user_id, tier, status, current_period_end, stripe_customer_id, stripe_subscription_id, updated_at
