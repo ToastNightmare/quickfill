@@ -22,13 +22,13 @@ export const metadata: Metadata = {
   },
   title: "Fill PDF Forms Online Free | QuickFill",
   description:
-    "Fill PDF forms online free. Upload ATO tax forms, Medicare claims, Centrelink forms, rental applications, council permits and Australian documents. Smart field detection, instant download. No software required.",
+    "Fill PDF forms online free. Upload ATO tax forms, Medicare claims, Centrelink forms, rental applications, council permits and Australian documents. Add text, boxes, signatures and dates, then download instantly. No software required.",
   keywords:
     "fill PDF online, PDF form filler, fill PDF free, online PDF editor, ATO form filler, fill form online Australia, Medicare form filler, Centrelink form, rental application PDF, council form filler, Australian PDF forms",
   openGraph: {
     title: "Fill PDF Forms Online Free | QuickFill",
     description:
-      "Upload any PDF form and fill it online in seconds. ATO, Medicare, Centrelink, rental apps, council forms. Smart field detection, instant download.",
+      "Upload any PDF form, fill it with simple tools, then download your completed document in seconds.",
     url: APP_CONFIG.url,
     siteName: "QuickFill",
     type: "website",
