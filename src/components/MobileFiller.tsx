@@ -15,11 +15,10 @@ import { autofillModeFromFlag, runProfileAutofill } from "@/lib/profile-autofill
 const SIG_KEYWORDS = ["signature", "sign here", "signed", "sig", "esign", "e-sign"];
 
 function isSignatureField(name: string): boolean {
-  const lower = name.toLowerCase().replace(/[_\-\.]/g, " ");
+  const lower = name.toLowerCase().replace(/[_\-.]/g, " ");
   return SIG_KEYWORDS.some((kw) => lower.includes(kw));
 }
 
-// ── Types ───────────────────────────────────────────────────────────────────
 type FieldType = "text" | "checkbox" | "signature";
 
 type MobileField = {
@@ -35,7 +34,6 @@ type MobileField = {
 
 type Step = "upload" | "filling" | "done";
 
-// ── Component ───────────────────────────────────────────────────────────────
 export function MobileFiller() {
   const [step, setStep]               = useState<Step>("upload");
   const [fileName, setFileName]       = useState("");
@@ -50,7 +48,6 @@ export function MobileFiller() {
   const [activeSigFieldId, setActiveSigFieldId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Load saved signature on mount
   useEffect(() => {
     fetch("/api/signature")
       .then((r) => r.ok ? r.json() : null)
@@ -63,7 +60,6 @@ export function MobileFiller() {
     setTimeout(() => setToast(null), ms);
   }, []);
 
-  // ── File handling ──────────────────────────────────────────────────────────
   const handleFile = useCallback(async (file: File) => {
     if (!file.name.toLowerCase().endsWith(".pdf")) {
       showToast("Please upload a PDF file");
@@ -105,7 +101,6 @@ export function MobileFiller() {
     if (file) handleFile(file);
   }, [handleFile]);
 
-  // ── Auto-fill from profile ─────────────────────────────────────────────────
   const handleAutoFill = useCallback(async () => {
     try {
       const res = await fetch("/api/profile");
@@ -123,14 +118,15 @@ export function MobileFiller() {
     }
   }, [fields, hasAcroForm, showToast]);
 
-  // ── Signature ──────────────────────────────────────────────────────────────
+  void handleAutoFill;
+  void UserCheck;
+
   const openSignatureModal = useCallback((fieldId: string) => {
     setActiveSigFieldId(fieldId);
     setSigModalOpen(true);
   }, []);
 
   const handleSignatureSave = useCallback(async (dataUrl: string) => {
-    // Save to account
     try {
       await fetch("/api/signature", {
         method: "POST",
@@ -159,7 +155,6 @@ export function MobileFiller() {
     setActiveSigFieldId(null);
   }, [activeSigFieldId, savedSignature]);
 
-  // ── Download ───────────────────────────────────────────────────────────────
   const handleDownload = useCallback(async () => {
     if (!pdfBytes) return;
     setIsDownloading(true);
@@ -178,7 +173,6 @@ export function MobileFiller() {
         }
       }
 
-      // Map to EditorField shape
       const editorFields = fields.map((f) => {
         if (f.type === "checkbox") {
           return { id: f.id, type: "checkbox" as const, x: f.x, y: f.y, width: f.width, height: f.height, page: f.page, checked: f.checked };
@@ -189,7 +183,6 @@ export function MobileFiller() {
         return { id: f.id, type: "text" as const, x: f.x, y: f.y, width: f.width, height: f.height, page: f.page, value: f.value, fontSize: 12 };
       });
 
-      // Use server-side fill API (same as desktop), avoids WinAnsi browser crash
       const fd = new FormData();
       fd.append("pdf", new Blob([pdfBytes], { type: "application/pdf" }), "input.pdf");
       fd.append("fields", JSON.stringify(editorFields));
@@ -249,7 +242,6 @@ export function MobileFiller() {
     f.type === "checkbox" ? f.checked : f.type === "signature" ? !!f.signatureDataUrl : f.value.trim() !== ""
   ).length;
 
-  // ── Upload ─────────────────────────────────────────────────────────────────
   if (step === "upload") {
     return (
       <div className="flex flex-col items-center justify-center min-h-[calc(100svh-64px)] px-6 pb-8">
@@ -259,7 +251,7 @@ export function MobileFiller() {
         </div>
         <h1 className="text-2xl font-bold text-text mb-2 text-center">Fill a PDF</h1>
         <p className="text-text-muted text-sm text-center mb-8 max-w-xs leading-relaxed">
-          Upload any PDF form. We'll detect fillable fields automatically, just type and download.
+          Upload any PDF form, type into the fields, sign where needed, and download.
         </p>
 
         <input ref={fileInputRef} type="file" accept="application/pdf" className="hidden" onChange={handleFilePick} />
@@ -289,7 +281,6 @@ export function MobileFiller() {
     );
   }
 
-  // ── Done ───────────────────────────────────────────────────────────────────
   if (step === "done") {
     return (
       <div className="flex flex-col items-center justify-center min-h-[calc(100svh-64px)] px-6 text-center">
@@ -309,12 +300,10 @@ export function MobileFiller() {
     );
   }
 
-  // ── Filling ────────────────────────────────────────────────────────────────
   return (
     <div className="flex flex-col min-h-[calc(100svh-64px)]">
       <Toast msg={toast} />
 
-      {/* Header */}
       <div className="flex items-center gap-3 border-b border-border bg-surface px-4 py-3 sticky top-16 z-30">
         <button onClick={handleReset} className="flex h-9 w-9 items-center justify-center rounded-full hover:bg-surface-alt transition-colors text-text-muted">
           <ChevronLeft className="h-5 w-5" />
@@ -332,7 +321,6 @@ export function MobileFiller() {
         )}
       </div>
 
-      {/* Progress bar */}
       {fields.length > 0 && (
         <div className="h-1 bg-surface-alt">
           <div
@@ -342,21 +330,7 @@ export function MobileFiller() {
         </div>
       )}
 
-      {/* Body */}
       <div className="flex-1 px-4 py-5 pb-36">
-
-        {/* Auto-fill strip */}
-        {fields.some((f) => f.type === "text") && (
-          <button
-            onClick={handleAutoFill}
-            className="flex w-full items-center justify-center gap-2 rounded-xl border border-border bg-surface py-3 text-sm font-medium text-text-muted hover:bg-surface-alt transition-colors mb-5"
-          >
-            <UserCheck className="h-4 w-4 text-green-600" />
-            Auto-fill from Profile
-          </button>
-        )}
-
-        {/* No fields */}
         {!hasAcroForm || fields.length === 0 ? (
           <div className="rounded-2xl border border-border bg-surface-alt p-6 text-center">
             <FileText className="h-8 w-8 text-text-muted mx-auto mb-3" />
@@ -394,7 +368,6 @@ export function MobileFiller() {
         )}
       </div>
 
-      {/* Sticky download bar */}
       {hasAcroForm && fields.length > 0 && (
       <div className="fixed bottom-0 left-0 right-0 border-t border-border bg-surface px-4 pt-3 pb-[max(env(safe-area-inset-bottom),12px)] z-30">
         <button
@@ -408,7 +381,6 @@ export function MobileFiller() {
       </div>
       )}
 
-      {/* Signature modal */}
       <SignatureModal
         open={sigModalOpen}
         onClose={() => { setSigModalOpen(false); setActiveSigFieldId(null); }}
@@ -421,7 +393,6 @@ export function MobileFiller() {
   );
 }
 
-// ── Field card ──────────────────────────────────────────────────────────────
 function FieldCard({
   field,
   onTextChange,
@@ -433,7 +404,7 @@ function FieldCard({
   onCheckboxToggle: () => void;
   onSignatureTap: () => void;
 }) {
-  const label = field.name.replace(/[_\-\.]/g, " ");
+  const label = field.name.replace(/[_\-.]/g, " ");
   const pageTag = field.page > 0 ? `p.${field.page + 1}` : null;
 
   return (
@@ -495,7 +466,6 @@ function FieldCard({
   );
 }
 
-// ── Toast ───────────────────────────────────────────────────────────────────
 function Toast({ msg }: { msg: string | null }) {
   if (!msg) return null;
   return (
