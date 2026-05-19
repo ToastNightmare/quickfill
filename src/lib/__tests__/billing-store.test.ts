@@ -97,6 +97,27 @@ describe("billing entitlements", () => {
     expect(redis.del).toHaveBeenCalledWith("sub:user_123");
   });
 
+  it("falls back to cached paid access when the database lookup fails", async () => {
+    mockQuery.mockRejectedValueOnce(new Error("database offline"));
+    redis.get.mockResolvedValueOnce("pro").mockResolvedValueOnce("cus_123");
+
+    await expect(getStoredSubscriptionSnapshot("user_123")).resolves.toMatchObject({
+      tier: "pro",
+      status: "redis_cache",
+      stripeCustomerId: "cus_123",
+      entitled: true,
+      needsReview: true,
+      reviewReason: "Database subscription lookup failed; using cached active entitlement.",
+    });
+  });
+
+  it("uses cached paid access for tier lookup when the database lookup fails", async () => {
+    mockQuery.mockRejectedValueOnce(new Error("database offline"));
+    redis.get.mockResolvedValueOnce("pro").mockResolvedValueOnce("cus_123");
+
+    await expect(getStoredTier("user_123")).resolves.toBe("pro");
+  });
+
   it("flags active stored subscriptions with missing billing periods for admin review", async () => {
     mockQuery.mockResolvedValueOnce([
       {
