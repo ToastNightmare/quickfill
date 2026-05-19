@@ -35,6 +35,18 @@ text = ensureImport(
 
 text = replaceOnce(
   text,
+  '    // Apply border watermark for free/guest users. QA token requests act like Pro.\n',
+  '    cleanupEditedDocumentArtifacts(pdfDoc);\n\n    // Apply border watermark for free/guest users. QA token requests act like Pro.\n',
+);
+
+text = replaceOnce(
+  text,
+  'function removeWidgetAnnotations(pdfDoc: PDFDocument) {\n',
+  'function cleanupEditedDocumentArtifacts(pdfDoc: PDFDocument) {\n  try {\n    pdfDoc.catalog.delete(PDFName.of("Perms"));\n  } catch {\n    // Edited PDFs invalidate source document signatures/certification permissions.\n  }\n}\n\nfunction removeWidgetAnnotations(pdfDoc: PDFDocument) {\n',
+);
+
+text = replaceOnce(
+  text,
   '    const resultBytes = await pdfDoc.save({ updateFieldAppearances: false, useObjectStreams: false });\n    await incrementDownloadUsage(access);\n',
   '    const resultBytes = await pdfDoc.save({ updateFieldAppearances: false, useObjectStreams: false });\n    const resultBuffer = Buffer.from(resultBytes);\n    assertValidGeneratedPdf(resultBuffer);\n\n    await incrementDownloadUsage(access);\n',
 );
