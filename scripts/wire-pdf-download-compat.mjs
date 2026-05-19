@@ -1,10 +1,22 @@
 import { readFileSync, writeFileSync } from "node:fs";
 
 const path = "src/app/api/fill-pdf/route.ts";
+const watermarkStart = "    // Apply border watermark for free/guest users. QA token requests act like Pro.\n";
+const incrementMarker = "    await incrementDownloadUsage(access);\n";
 
 function replaceOnce(text, search, replacement) {
   if (!text.includes(search)) throw new Error(`Missing replacement target: ${search.slice(0, 80)}`);
   return text.replace(search, replacement);
+}
+
+function replaceBetween(text, start, end, replacement) {
+  const startIndex = text.indexOf(start);
+  if (startIndex === -1) throw new Error(`Missing replacement start: ${start.slice(0, 80)}`);
+
+  const endIndex = text.indexOf(end, startIndex + start.length);
+  if (endIndex === -1) throw new Error(`Missing replacement end: ${end.slice(0, 80)}`);
+
+  return text.slice(0, startIndex) + replacement + text.slice(endIndex);
 }
 
 function ensureImport(text, after, addition) {
@@ -29,6 +41,10 @@ function removeLine(text, line) {
 let text = readFileSync(path, "utf8").replace(/\r\n/g, "\n");
 
 text = removeLine(text, 'import { applyBorderWatermark } from "@/lib/watermark";\n');
+text = removeLine(
+  text,
+  'import { assertValidGeneratedPdf, buildPdfDownloadHeaders, filledPdfFilename } from "@/lib/pdf-download-response";\n',
+);
 
 text = ensureImport(
   text,
@@ -37,20 +53,13 @@ text = ensureImport(
 );
 
 if (!text.includes("finalizePdfForDownload(pdfDoc")) {
-  text = replaceOnce(
+  text = replaceBetween(
     text,
-    `    // Apply border watermark for free/guest users. QA token requests act like Pro.
-    const pages = pdfDoc.getPages();
-    const watermarkFont = await pdfDoc.embedFont(StandardFonts.Helvetica);
-    applyBorderWatermark(pages, watermarkFont, access.isPro || access.isQaBypass === true);
-
-    const resultBytes = await pdfDoc.save({ updateFieldAppearances: false });
-    await incrementDownloadUsage(access);
-`,
+    watermarkStart,
+    incrementMarker,
     `    const resultBytes = await finalizePdfForDownload(pdfDoc, access.isPro || access.isQaBypass === true);
     const resultBuffer = Buffer.from(resultBytes);
 
-    await incrementDownloadUsage(access);
 `,
   );
 }
