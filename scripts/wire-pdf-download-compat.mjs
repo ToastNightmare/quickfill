@@ -3,9 +3,6 @@ import { readFileSync, writeFileSync } from "node:fs";
 const path = "src/app/api/fill-pdf/route.ts";
 
 function replaceOnce(text, search, replacement) {
-  const normalizedText = text.replace(/\r\n/g, "\n");
-  const normalizedReplacement = replacement.trim().replace(/\r\n/g, "\n");
-  if (normalizedText.includes(normalizedReplacement)) return text;
   if (!text.includes(search)) throw new Error(`Missing replacement target: ${search.slice(0, 80)}`);
   return text.replace(search, replacement);
 }
@@ -25,46 +22,51 @@ function ensureImport(text, after, addition) {
   return text.slice(0, insertIndex) + addition.replace(/\r?\n/g, lineEnd) + text.slice(insertIndex);
 }
 
+function removeLine(text, line) {
+  return text.replace(line, "");
+}
+
 let text = readFileSync(path, "utf8").replace(/\r\n/g, "\n");
+
+text = removeLine(text, 'import { applyBorderWatermark } from "@/lib/watermark";\n');
 
 text = ensureImport(
   text,
   'import { orderFieldsForPdfDraw } from "@/lib/pdf-utils";\n',
-  'import { assertValidGeneratedPdf, buildPdfDownloadHeaders, filledPdfFilename } from "@/lib/pdf-download-response";\n',
+  'import { buildPdfDownloadHeaders, filledPdfFilename } from "@/lib/pdf-download-response";\nimport { finalizePdfForDownload } from "@/lib/pdf-finalize";\n',
 );
 
-text = replaceOnce(
-  text,
-  '    // Apply border watermark for free/guest users. QA token requests act like Pro.\n',
-  '    cleanupEditedDocumentArtifacts(pdfDoc);\n\n    // Apply border watermark for free/guest users. QA token requests act like Pro.\n',
-);
-
-text = replaceOnce(
-  text,
-  'function removeWidgetAnnotations(pdfDoc: PDFDocument) {\n',
-  'function cleanupEditedDocumentArtifacts(pdfDoc: PDFDocument) {\n  try {\n    pdfDoc.catalog.delete(PDFName.of("Perms"));\n  } catch {\n    // Edited PDFs invalidate source document signatures/certification permissions.\n  }\n}\n\nasync function createViewerSafePdfDocument(sourceDoc: PDFDocument) {\n  cleanupEditedDocumentArtifacts(sourceDoc);\n\n  const outputDoc = await PDFDocument.create();\n  const sourcePages = sourceDoc.getPages();\n  const embeddedPages = await outputDoc.embedPages(sourcePages);\n\n  for (let index = 0; index < sourcePages.length; index++) {\n    const sourcePage = sourcePages[index];\n    const page = outputDoc.addPage();\n    page.setSize(sourcePage.getWidth(), sourcePage.getHeight());\n    page.drawPage(embeddedPages[index], {\n      x: 0,\n      y: 0,\n      width: sourcePage.getWidth(),\n      height: sourcePage.getHeight(),\n    });\n    page.node.delete(PDFName.of("Annots"));\n  }\n\n  return outputDoc;\n}\n\nfunction removeWidgetAnnotations(pdfDoc: PDFDocument) {\n',
-);
-
-if (!text.includes("const resultBuffer = Buffer.from(resultBytes);")) {
+if (!text.includes("finalizePdfForDownload(pdfDoc")) {
   text = replaceOnce(
     text,
-    '    const resultBytes = await pdfDoc.save({ updateFieldAppearances: false, useObjectStreams: false });\n    await incrementDownloadUsage(access);\n',
-    '    const resultBytes = await pdfDoc.save({ updateFieldAppearances: false, useObjectStreams: false });\n    const resultBuffer = Buffer.from(resultBytes);\n    assertValidGeneratedPdf(resultBuffer);\n\n    await incrementDownloadUsage(access);\n',
-  );
-}
+    `    // Apply border watermark for free/guest users. QA token requests act like Pro.
+    const pages = pdfDoc.getPages();
+    const watermarkFont = await pdfDoc.embedFont(StandardFonts.Helvetica);
+    applyBorderWatermark(pages, watermarkFont, access.isPro || access.isQaBypass === true);
 
-if (!text.includes("createViewerSafePdfDocument(pdfDoc)")) {
-  text = replaceOnce(
-    text,
-    '    const resultBytes = await pdfDoc.save({ updateFieldAppearances: false, useObjectStreams: false });\n    const resultBuffer = Buffer.from(resultBytes);\n',
-    '    const outputDoc = await createViewerSafePdfDocument(pdfDoc);\n    const resultBytes = await outputDoc.save({ updateFieldAppearances: false, useObjectStreams: false });\n    const resultBuffer = Buffer.from(resultBytes);\n',
+    const resultBytes = await pdfDoc.save({ updateFieldAppearances: false });
+    await incrementDownloadUsage(access);
+`,
+    `    const resultBytes = await finalizePdfForDownload(pdfDoc, access.isPro || access.isQaBypass === true);
+    const resultBuffer = Buffer.from(resultBytes);
+
+    await incrementDownloadUsage(access);
+`,
   );
 }
 
 text = replaceOnce(
   text,
-  '    return new NextResponse(Buffer.from(resultBytes), {\n      status: 200,\n      headers: { "Content-Type": "application/pdf", "Content-Disposition": "attachment" },\n    });\n',
-  '    return new NextResponse(resultBuffer, {\n      status: 200,\n      headers: buildPdfDownloadHeaders(resultBuffer, filledPdfFilename(pdfFile.name)),\n    });\n',
+  `    return new NextResponse(Buffer.from(resultBytes), {
+      status: 200,
+      headers: { "Content-Type": "application/pdf", "Content-Disposition": "inline" },
+    });
+`,
+  `    return new NextResponse(resultBuffer, {
+      status: 200,
+      headers: buildPdfDownloadHeaders(resultBuffer, filledPdfFilename(pdfFile.name)),
+    });
+`,
 );
 
 writeFileSync(path, text);
