@@ -1,14 +1,8 @@
 import type { Metadata, Viewport } from "next";
-import { Inter } from "next/font/google";
 import { ClerkProvider } from "@clerk/nextjs";
 import "./globals.css";
 import { AppShell } from "@/components/AppShell";
 import { APP_CONFIG } from "@/lib/config";
-
-const inter = Inter({
-  subsets: ["latin"],
-  display: "swap",
-});
 
 export const viewport: Viewport = {
   width: "device-width",
@@ -54,7 +48,7 @@ export default function RootLayout({
 }>) {
   return (
     <ClerkProvider>
-      <html lang="en" className={`${inter.className} h-full antialiased`}>
+      <html lang="en" className="h-full antialiased">
         <body className="min-h-full flex flex-col bg-surface text-text">
           <AppShell>{children}</AppShell>
         </body>

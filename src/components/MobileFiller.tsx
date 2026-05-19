@@ -9,29 +9,10 @@ import {
 } from "lucide-react";
 import { detectAcroFormFields } from "@/lib/pdf-utils";
 import { SignatureModal } from "@/components/SignatureModal";
+import { trackAutofillShadowReport } from "@/lib/autofill-shadow-reporting";
+import { autofillModeFromFlag, runProfileAutofill } from "@/lib/profile-autofill";
 
-// ── Profile matcher ─────────────────────────────────────────────────────────
-const PROFILE_MATCHERS: { key: string; keywords: string[] }[] = [
-  { key: "fullName",      keywords: ["name", "full name", "fullname", "given name", "applicant"] },
-  { key: "email",         keywords: ["email", "e-mail", "email address"] },
-  { key: "phone",         keywords: ["phone", "telephone", "mobile", "tel", "contact number"] },
-  { key: "street",        keywords: ["address", "street", "address line 1", "address1"] },
-  { key: "addressLine2",  keywords: ["address line 2", "address2", "apt", "unit", "suite"] },
-  { key: "city",          keywords: ["city", "suburb", "town", "locality"] },
-  { key: "state",         keywords: ["state", "territory", "province", "region"] },
-  { key: "postcode",      keywords: ["postcode", "post code", "zip", "postal", "post"] },
-  { key: "abn",           keywords: ["abn", "business number"] },
-  { key: "organisation",  keywords: ["organisation", "organization", "company", "employer"] },
-];
 const SIG_KEYWORDS = ["signature", "sign here", "signed", "sig", "esign", "e-sign"];
-
-function matchProfileKey(name: string): string | null {
-  const lower = name.toLowerCase().replace(/[_\-\.]/g, " ");
-  for (const { key, keywords } of PROFILE_MATCHERS) {
-    for (const kw of keywords) { if (lower.includes(kw)) return key; }
-  }
-  return null;
-}
 
 function isSignatureField(name: string): boolean {
   const lower = name.toLowerCase().replace(/[_\-\.]/g, " ");
@@ -132,18 +113,15 @@ export function MobileFiller() {
       const profile = await res.json();
       if (!profile?.fullName) { showToast("No profile saved, go to Profile to set one up"); return; }
 
-      let matched = 0;
-      setFields((prev) => prev.map((f) => {
-        if (f.type !== "text") return f;
-        const key = matchProfileKey(f.name);
-        if (key && profile[key]) { matched++; return { ...f, value: profile[key] }; }
-        return f;
-      }));
-      showToast(matched > 0 ? `Auto-filled ${matched} field${matched > 1 ? "s" : ""}` : "No matching fields found");
+      const mode = autofillModeFromFlag(process.env.NEXT_PUBLIC_QUICKFILL_AUTOFILL_MODE);
+      const result = runProfileAutofill(fields, profile, mode);
+      setFields(result.fields);
+      trackAutofillShadowReport(result, { surface: "mobile", hasAcroForm });
+      showToast(result.matched > 0 ? `Auto-filled ${result.matched} field${result.matched > 1 ? "s" : ""}` : "No matching fields found");
     } catch {
       showToast("Failed to load profile");
     }
-  }, [showToast]);
+  }, [fields, hasAcroForm, showToast]);
 
   // ── Signature ──────────────────────────────────────────────────────────────
   const openSignatureModal = useCallback((fieldId: string) => {

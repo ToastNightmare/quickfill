@@ -1,6 +1,6 @@
 import { isDatabaseConfigured, query } from "../db";
 import { getStripe } from "../stripe";
-import { isSubscriptionEntitled, saveSubscriptionSnapshot, tierFromPriceId } from "../billing-store";
+import { isSubscriptionEntitled, saveSubscriptionSnapshot, stripeSubscriptionPeriodEnd, tierFromPriceId } from "../billing-store";
 import { reconcileStripeBilling, reconcileStripeBillingForUser, subscriptionTier } from "../billing-reconciliation";
 
 jest.mock("../db", () => ({
@@ -15,6 +15,7 @@ jest.mock("../stripe", () => ({
 jest.mock("../billing-store", () => ({
   isSubscriptionEntitled: jest.fn(),
   saveSubscriptionSnapshot: jest.fn(),
+  stripeSubscriptionPeriodEnd: jest.fn(),
   tierFromPriceId: jest.fn(),
 }));
 
@@ -23,6 +24,7 @@ const mockQuery = jest.mocked(query);
 const mockGetStripe = jest.mocked(getStripe);
 const mockIsSubscriptionEntitled = jest.mocked(isSubscriptionEntitled);
 const mockSaveSubscriptionSnapshot = jest.mocked(saveSubscriptionSnapshot);
+const mockStripeSubscriptionPeriodEnd = jest.mocked(stripeSubscriptionPeriodEnd);
 const mockTierFromPriceId = jest.mocked(tierFromPriceId);
 
 const stripe = {
@@ -58,6 +60,7 @@ describe("Stripe billing reconciliation", () => {
     mockGetStripe.mockReturnValue(stripe as never);
     mockTierFromPriceId.mockReturnValue("pro");
     mockIsSubscriptionEntitled.mockReturnValue(true);
+    mockStripeSubscriptionPeriodEnd.mockReturnValue(1770768000);
     stripe.customers.list.mockResolvedValue({ data: [] });
     stripe.subscriptions.list.mockResolvedValue({ data: [] });
   });
@@ -145,6 +148,9 @@ describe("Stripe billing reconciliation", () => {
     stripe.subscriptions.list.mockResolvedValueOnce({
       data: [subscription({ id: "sub_from_email", customer: "cus_from_email", status: "active" })],
     });
+    stripe.subscriptions.retrieve.mockResolvedValueOnce(
+      subscription({ id: "sub_from_email", customer: "cus_from_email", status: "active" }),
+    );
 
     await expect(reconcileStripeBillingForUser("user_123", { email: "User@Example.com" })).resolves.toMatchObject({
       ok: true,

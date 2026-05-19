@@ -4,6 +4,7 @@ import { getRedis, isRedisConfigured } from "@/lib/redis";
 import { log } from "@/lib/log";
 
 const CACHE_SECONDS = 24 * 60 * 60;
+const ABN_WEIGHTS = [10, 1, 3, 5, 7, 9, 11, 13, 15, 17, 19];
 
 function requesterId(req: NextRequest) {
   const forwarded = req.headers.get("x-forwarded-for");
@@ -16,6 +17,17 @@ export async function GET(req: NextRequest) {
   if (!abn) return NextResponse.json({ error: "Missing ABN" }, { status: 400 });
 
   const clean = abn.replace(/\s/g, "");
+  if (!/^\d{11}$/.test(clean)) {
+    return NextResponse.json({ error: "Invalid ABN" }, { status: 400 });
+  }
+
+  const digits = clean.split("").map(Number);
+  digits[0] -= 1;
+  const checksum = digits.reduce((sum, digit, index) => sum + digit * ABN_WEIGHTS[index], 0);
+  if (checksum % 89 !== 0) {
+    return NextResponse.json({ error: "Invalid ABN" }, { status: 400 });
+  }
+
   const limited = await checkRateLimit(requesterId(req), "abn");
   if (!limited.success) return NextResponse.json({ error: "Too many requests" }, { status: 429 });
 

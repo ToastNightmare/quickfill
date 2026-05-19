@@ -34,9 +34,18 @@ function replaceBeforeAny(text, start, nextMarkers, replacement) {
 }
 
 function ensureImport(text, after, addition) {
-  if (text.includes(addition.trim())) return text;
-  if (!text.includes(after)) throw new Error(`Missing import anchor: ${after.trim()}`);
-  return text.replace(after, after + addition);
+  const existingText = text.replace(/\r\n/g, "\n");
+  const expectedAddition = addition.trim().replace(/\r\n/g, "\n");
+  if (existingText.includes(expectedAddition)) return text;
+  const anchor = after.replace(/\r?\n$/, "");
+  const anchorIndex = text.indexOf(anchor);
+  if (anchorIndex === -1) throw new Error(`Missing import anchor: ${after.trim()}`);
+
+  const lineEndStart = anchorIndex + anchor.length;
+  const lineEnd = text.startsWith("\r\n", lineEndStart) ? "\r\n" : "\n";
+  const insertIndex = lineEndStart + lineEnd.length;
+  const normalizedAddition = addition.replace(/\r?\n/g, lineEnd);
+  return text.slice(0, insertIndex) + normalizedAddition + text.slice(insertIndex);
 }
 
 function lines(values) {
@@ -54,7 +63,7 @@ function patchMobileFiller() {
   );
 
   text = text.replace(/\/\/ .+ Profile matcher[\s\S]*?const SIG_KEYWORDS/, 'const SIG_KEYWORDS');
-  text = text.replace(/\nfunction matchProfileKey\(name: string\): string \| null \{[\s\S]*?\n}\n\nfunction isSignatureField/, '\nfunction isSignatureField');
+  text = text.replace(/\r?\nfunction matchProfileKey\(name: string\): string \| null \{[\s\S]*?\r?\n}\r?\n\r?\nfunction isSignatureField/, '\nfunction isSignatureField');
 
   const replacement = lines([
     '  const handleAutoFill = useCallback(async () => {',

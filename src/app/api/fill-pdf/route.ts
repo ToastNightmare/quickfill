@@ -114,6 +114,46 @@ export async function POST(request: NextRequest) {
   let hasAcroFormForLog = false;
 
   try {
+    let formData: FormData;
+    try {
+      formData = await request.formData();
+    } catch {
+      return NextResponse.json({ error: "Invalid form data" }, { status: 400 });
+    }
+
+    const pdfFile = formData.get("pdf") as File | null;
+    if (!pdfFile) return NextResponse.json({ error: "Missing pdf file" }, { status: 400 });
+    fileForLog = { name: pdfFile.name, size: pdfFile.size };
+
+    const fieldsJson = formData.get("fields") as string | null;
+    const pageScalesJson = formData.get("pageScales") as string | null;
+    const viewportDimsJson = formData.get("viewportDims") as string | null;
+    const hasAcroForm = formData.get("hasAcroForm") === "true";
+    hasAcroFormForLog = hasAcroForm;
+
+    if (!fieldsJson || !pageScalesJson) {
+      return NextResponse.json({ error: "Missing fields or pageScales" }, { status: 400 });
+    }
+
+    let editorFields: EditorField[];
+    let pageScales: Map<number, number>;
+    let viewportDims: Map<number, { width: number; height: number }> | null = null;
+    try {
+      editorFields = JSON.parse(fieldsJson);
+      const pageScaleEntries: [number, number][] = JSON.parse(pageScalesJson);
+      pageScales = new Map(pageScaleEntries);
+
+      if (viewportDimsJson) {
+        const viewportEntries: [number, { width: number; height: number }][] = JSON.parse(viewportDimsJson);
+        viewportDims = new Map(viewportEntries);
+      }
+    } catch {
+      return NextResponse.json({ error: "Invalid form data" }, { status: 400 });
+    }
+
+    const orderedFields = orderFieldsForPdfDraw(editorFields);
+    fieldsForLog = editorFields;
+
     const qaBypass = hasValidQaToken(request);
 
     if (!qaBypass) {
@@ -139,12 +179,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Free fill limit reached. Upgrade to Pro for unlimited downloads." }, { status: 402 });
     }
 
-    const formData = await request.formData();
-
-    const pdfFile = formData.get("pdf") as File | null;
-    if (!pdfFile) return NextResponse.json({ error: "Missing pdf file" }, { status: 400 });
-    fileForLog = { name: pdfFile.name, size: pdfFile.size };
-
     // Check file size limit (15MB max)
     const MAX_SIZE = 15 * 1024 * 1024;
     if (pdfFile.size > MAX_SIZE) {
@@ -158,33 +192,6 @@ export async function POST(request: NextRequest) {
         message: "PDF too large",
       });
       return NextResponse.json({ error: "PDF too large (max 15MB)" }, { status: 413 });
-    }
-
-    const fieldsJson = formData.get("fields") as string | null;
-    const pageScalesJson = formData.get("pageScales") as string | null;
-    const viewportDimsJson = formData.get("viewportDims") as string | null;
-    const hasAcroForm = formData.get("hasAcroForm") === "true";
-    hasAcroFormForLog = hasAcroForm;
-
-    if (!fieldsJson || !pageScalesJson) {
-      return NextResponse.json({ error: "Missing fields or pageScales" }, { status: 400 });
-    }
-
-    const editorFields: EditorField[] = JSON.parse(fieldsJson);
-    const orderedFields = orderFieldsForPdfDraw(editorFields);
-    fieldsForLog = editorFields;
-    const pageScaleEntries: [number, number][] = JSON.parse(pageScalesJson);
-    const pageScales = new Map(pageScaleEntries);
-
-    // Parse viewport dimensions if provided (for coordinate transformation)
-    let viewportDims: Map<number, { width: number; height: number }> | null = null;
-    if (viewportDimsJson) {
-      try {
-        const viewportEntries: [number, { width: number; height: number }][] = JSON.parse(viewportDimsJson);
-        viewportDims = new Map(viewportEntries);
-      } catch {
-        viewportDims = null;
-      }
     }
 
     const pdfBytes = await pdfFile.arrayBuffer();

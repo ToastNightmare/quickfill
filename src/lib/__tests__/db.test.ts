@@ -6,10 +6,6 @@ const mockNeon = jest.fn(() => {
   return sql;
 });
 
-jest.mock("@neondatabase/serverless", () => ({
-  neon: mockNeon,
-}));
-
 describe("database helper", () => {
   const originalDatabaseUrl = process.env.DATABASE_URL;
 
@@ -18,10 +14,13 @@ describe("database helper", () => {
     mockTaggedSql.mockReset();
     mockSqlQuery.mockReset();
     mockNeon.mockClear();
+    globalThis.__quickfillNeonFactoryForTest = mockNeon;
     process.env.DATABASE_URL = "postgres://user:pass@example.neon.tech/db";
   });
 
   afterAll(() => {
+    delete globalThis.__quickfillNeonFactoryForTest;
+
     if (originalDatabaseUrl === undefined) {
       delete process.env.DATABASE_URL;
     } else {

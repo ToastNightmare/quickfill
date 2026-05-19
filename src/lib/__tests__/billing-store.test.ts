@@ -50,8 +50,8 @@ describe("billing entitlements", () => {
     expect(isSubscriptionEntitled("canceled", Math.floor(Date.now() / 1000) + 3600)).toBe(false);
   });
 
-  it("does not grant paid access when an active subscription period is missing or expired", () => {
-    expect(isSubscriptionEntitled("active", null)).toBe(false);
+  it("keeps active subscriptions entitled when Stripe omits the billing period", () => {
+    expect(isSubscriptionEntitled("active", null)).toBe(true);
     expect(isSubscriptionEntitled("active", "2026-05-12T00:00:00.000Z")).toBe(false);
   });
 
@@ -112,9 +112,9 @@ describe("billing entitlements", () => {
     await expect(getStoredSubscriptionSnapshot("user_123")).resolves.toMatchObject({
       tier: "pro",
       status: "active",
-      entitled: false,
+      entitled: true,
       needsReview: true,
-      reviewReason: "Missing renewal/end date from Stripe",
+      reviewReason: "Stripe did not provide a renewal/end date; access is allowed while Stripe status is active.",
     });
   });
 

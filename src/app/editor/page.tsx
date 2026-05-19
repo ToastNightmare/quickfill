@@ -33,6 +33,7 @@ import type { EditorField, ToolType } from "@/lib/types";
 import { useAuth } from "@clerk/nextjs";
 import Link from "next/link";
 import { trackEvent } from "@/lib/analytics";
+import { runEditorProfileAutofill, trackEditorAutofillShadowReport } from "@/lib/editor-profile-autofill";
 
 const ZOOM_LEVELS = [50, 75, 100, 125, 150, 175, 200];
 const SNAP_MIN = 125;
@@ -625,38 +626,22 @@ export default function EditorPage() {
         showToast("Sign in and save your profile first");
         return;
       }
+
       const profile = await res.json();
-      if (!profile || !profile.fullName) {
-        showToast("No profile saved yet - go to your Profile page to set one up");
+      if (!profile?.fullName) {
+        showToast("No profile saved, go to Profile to set one up");
         return;
       }
 
-      let matched = 0;
-      setFields((prev) =>
-        prev.map((f) => {
-          if (f.type === "checkbox") return f;
-          const profileKey = matchProfileKey(f.id);
-          if (profileKey && profile[profileKey]) {
-            matched++;
-            return { ...f, value: profile[profileKey] } as EditorField;
-          }
-          return f;
-        })
-      );
-
-      if (matched > 0) {
-        trackEvent("profile_autofill_used", { matched });
-        showToast(`Auto-filled ${matched} field${matched > 1 ? "s" : ""} from your profile`);
-      } else {
-        showToast("No matching fields found - try filling manually");
-      }
+      const result = runEditorProfileAutofill(fields, profile);
+      setFields(result.fields);
+      trackEditorAutofillShadowReport(result, { surface: "desktop", hasAcroForm, totalPages });
+      showToast(result.matched > 0 ? `Auto-filled ${result.matched} field${result.matched > 1 ? "s" : ""}` : "No matching profile fields found");
     } catch {
       showToast("Failed to load profile");
     }
-  }, [setFields, showToast]);
+  }, [fields, hasAcroForm, setFields, showToast, totalPages]);
 
-  // Called by PdfViewer after a signature field is placed.
-  // Receives the full field object directly to avoid stale-closure issues.
   const handleSignatureFieldPlaced = useCallback(
     (field: EditorField) => {
       if (savedSignature) {

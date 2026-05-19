@@ -82,17 +82,11 @@ describe("adminSessionCookieOptions", () => {
   const originalNodeEnv = process.env.NODE_ENV;
 
   afterAll(() => {
-    Object.defineProperty(process.env, "NODE_ENV", {
-      value: originalNodeEnv,
-      configurable: true,
-    });
+    process.env.NODE_ENV = originalNodeEnv;
   });
 
   it("scopes admin passcode sessions across admin pages and admin API requests", () => {
-    Object.defineProperty(process.env, "NODE_ENV", {
-      value: "production",
-      configurable: true,
-    });
+    process.env.NODE_ENV = "production";
 
     expect(adminSessionCookieOptions("session-token")).toEqual({
       name: "qf_admin_session",
