@@ -107,7 +107,7 @@ describe("billing entitlements", () => {
       stripeCustomerId: "cus_123",
       entitled: true,
       needsReview: true,
-      reviewReason: "Database subscription lookup failed; using cached active entitlement.",
+      reviewReason: "Database subscription lookup failed; using cached active entitlement. Check Ops health and run Billing Repair.",
     });
   });
 
