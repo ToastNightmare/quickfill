@@ -214,7 +214,12 @@ export async function getStoredSubscriptionSnapshot(userId: string): Promise<Sto
   }
 
   const latest = rows[0];
-  if (!latest) return null;
+  if (!latest) {
+    return getCachedSubscriptionSnapshot(
+      userId,
+      "No database subscription row found; using cached active entitlement. Run Billing Repair to sync Stripe truth.",
+    );
+  }
 
   const reason = reviewReason(latest.status, latest.current_period_end);
   const entitled = isSubscriptionEntitled(latest.status, latest.current_period_end);
@@ -263,7 +268,8 @@ export async function recordUsageEvent(input: {
   if (!isDatabaseConfigured()) return;
 
   await query(
-    "insert into usage_events (user_id, anonymous_id, event_type, quantity, metadata) values ($1, $2, $3, $4, $5::jsonb)",
+    `insert into usage_events (user_id, anonymous_id, event_type, quantity, metadata)
+     values ($1, $2, $3, $4, $5::jsonb)`,
     [input.userId ?? null, input.anonymousId ?? null, input.eventType, input.quantity ?? 1, JSON.stringify(input.metadata ?? {})],
   );
 }
