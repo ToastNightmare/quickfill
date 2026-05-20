@@ -6,6 +6,8 @@ import {
   CheckCircle2,
   CircleDot,
   Clock3,
+  ExternalLink,
+  Image as ImageIcon,
   Inbox,
   Mail,
   NotebookPen,
@@ -48,6 +50,11 @@ function formatDate(value: string | null | undefined) {
   return new Date(value).toLocaleString("en-AU", { dateStyle: "medium", timeStyle: "short" });
 }
 
+function formatFileSize(size: number) {
+  if (size >= 1024 * 1024) return `${(size / (1024 * 1024)).toFixed(1)} MB`;
+  return `${Math.max(1, Math.round(size / 1024))} KB`;
+}
+
 function statusSort(status: AdminSupportStatus) {
   if (status === "new") return 0;
   if (status === "open") return 1;
@@ -84,6 +91,10 @@ function SupportTag({ label, className }: { label: string; className: string }) 
       {label}
     </span>
   );
+}
+
+function attachmentUrl(pathname: string) {
+  return `/api/admin/support/attachments?pathname=${encodeURIComponent(pathname)}`;
 }
 
 export function AdminSupportInbox({
@@ -178,6 +189,7 @@ export function AdminSupportInbox({
         const priority = message.priority || "normal";
         const priorityClass = PRIORITY_META[priority] ?? PRIORITY_META.normal;
         const draft = drafts[message.id] ?? { assignee: message.assignee ?? "", internalNotes: message.internalNotes ?? "" };
+        const attachments = message.attachments ?? [];
         return (
           <article key={message.id} className="rounded-lg border border-border bg-surface p-5 shadow-sm">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -196,6 +208,43 @@ export function AdminSupportInbox({
             </div>
 
             <p className="mt-4 whitespace-pre-wrap text-sm leading-6 text-text-muted">{message.message}</p>
+
+            {attachments.length > 0 && (
+              <div className="mt-4 rounded-lg border border-border bg-muted/30 p-3">
+                <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-text-muted">
+                  <ImageIcon className="h-4 w-4" />
+                  Screenshot attachments
+                </div>
+                <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                  {attachments.map((attachment) => {
+                    const url = attachmentUrl(attachment.pathname);
+                    return (
+                      <a
+                        key={attachment.id}
+                        href={url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="group overflow-hidden rounded-lg border border-border bg-white transition-colors hover:border-accent"
+                      >
+                        <img
+                          src={url}
+                          alt={attachment.filename}
+                          loading="lazy"
+                          className="aspect-video w-full bg-muted object-cover"
+                        />
+                        <span className="flex min-w-0 items-center justify-between gap-2 px-3 py-2 text-xs text-text-muted">
+                          <span className="min-w-0 truncate">{attachment.filename}</span>
+                          <span className="inline-flex shrink-0 items-center gap-1">
+                            {formatFileSize(attachment.size)}
+                            <ExternalLink className="h-3.5 w-3.5 opacity-70 group-hover:text-accent" />
+                          </span>
+                        </span>
+                      </a>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
 
             <div className="mt-4 grid gap-2 text-xs text-text-muted sm:grid-cols-2 lg:grid-cols-4">
               <p>User ID: {message.userId || "guest"}</p>
