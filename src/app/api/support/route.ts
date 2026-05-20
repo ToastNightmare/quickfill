@@ -5,6 +5,7 @@ import { recordSupportMessage, type AdminSupportCategory, type AdminSupportMessa
 import { getStoredSubscriptionSnapshot } from "@/lib/billing-store";
 import { getRequestEntitlement } from "@/lib/entitlements";
 import { checkRateLimit } from "@/lib/rate-limit";
+import { cleanSupportAttachments } from "@/lib/support-attachments";
 import { log } from "@/lib/log";
 
 export const runtime = "nodejs";
@@ -101,6 +102,12 @@ function supportSource(request: NextRequest, body: Record<string, unknown>, plan
   return (parts.join(" | ").slice(0, 160) || fallback).slice(0, 160);
 }
 
+function attachmentSummary(entry: AdminSupportMessage) {
+  const count = entry.attachments.length;
+  if (count === 0) return "";
+  return `<p><strong>Attachments:</strong> ${count} screenshot${count === 1 ? "" : "s"} available in the admin support inbox.</p>`;
+}
+
 async function notifyAdmins(entry: AdminSupportMessage) {
   const to = adminEmails();
   const resend = getResend();
@@ -121,6 +128,7 @@ async function notifyAdmins(entry: AdminSupportMessage) {
           <p><strong>Source:</strong> ${escapeHtml(entry.source ?? "unknown")}</p>
           <p><strong>User ID:</strong> ${escapeHtml(entry.userId ?? "guest")}</p>
           <p><strong>Created:</strong> ${escapeHtml(entry.createdAt)}</p>
+          ${attachmentSummary(entry)}
           <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 20px 0;" />
           <p style="white-space: pre-wrap; line-height: 1.5;">${escapeHtml(entry.message)}</p>
         </div>
@@ -156,6 +164,7 @@ export async function POST(request: NextRequest) {
     const email = clean(bodyRecord.email, 160) || user?.primaryEmailAddress?.emailAddress || "";
     const subject = clean(bodyRecord.subject, 140) || "Support request";
     const message = clean(bodyRecord.message, 2000);
+    const attachments = cleanSupportAttachments(bodyRecord.attachments);
 
     if (!email || !message) {
       return NextResponse.json({ error: "Email and message are required" }, { status: 400 });
@@ -184,6 +193,7 @@ export async function POST(request: NextRequest) {
       userId,
       source: supportSource(request, bodyRecord, planContext),
       category,
+      attachments,
       priority: inferPriority(subject, message),
     });
 
