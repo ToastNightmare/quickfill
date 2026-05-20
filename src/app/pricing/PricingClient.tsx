@@ -1,20 +1,20 @@
 "use client";
 
-import { Check, CreditCard, Loader2, LockKeyhole, ShieldCheck, Sparkles, X } from "lucide-react";
+import { Check, CreditCard, ExternalLink, Loader2, LockKeyhole, ShieldCheck, Sparkles, X } from "lucide-react";
 import { useAuth } from "@clerk/nextjs";
 import Link from "next/link";
 import { useEffect, useState, type ReactNode } from "react";
 import { trackEvent } from "@/lib/analytics";
 
 const freeIncludes = [
-  "3 documents per month",
-  "All field types",
-  "Built-in PDF fields",
+  "3 downloads per month",
+  "QuickFill watermark on downloads",
+  "All manual field tools",
   "Instant PDF download",
 ];
 
 const proAdds = [
-  "Unlimited documents",
+  "Unlimited downloads",
   "No watermarks",
   "Save and resume progress",
   "Unlimited fill history",
@@ -22,9 +22,9 @@ const proAdds = [
 ];
 
 const tableFeatures = [
-  { name: "Documents per month", free: "3", pro: "Unlimited" },
-  { name: "No watermark on downloads", free: false, pro: true },
-  { name: "Built-in PDF fields", free: true, pro: true },
+  { name: "Downloads per month", free: "3", pro: "Unlimited" },
+  { name: "Watermark on downloads", free: "QuickFill watermark", pro: "None" },
+  { name: "Upload your own PDF", free: true, pro: true },
   { name: "Manual text, box, date, and signature tools", free: true, pro: true },
   { name: "Save and resume progress", free: false, pro: true },
   { name: "Fill history", free: "Last 10", pro: "Unlimited" },
@@ -33,28 +33,28 @@ const tableFeatures = [
 
 const faqs = [
   {
-    q: "Can I try QuickFill for free?",
-    a: "Yes. You get 3 free PDF fills every month, no credit card required.",
+    q: "Will Pro remove watermarks?",
+    a: "Yes. Pro downloads have no QuickFill watermark. Free downloads include a small QuickFill watermark.",
   },
   {
-    q: "What happens when I hit my free limit?",
-    a: "You will be prompted to upgrade to Pro. Your filled documents are not lost, and you can upgrade any time to continue.",
+    q: "Can I cancel any time?",
+    a: "Yes. Cancel from billing management whenever you need to. You keep access until the end of the paid period.",
   },
   {
-    q: "Can I cancel my subscription?",
-    a: "Yes. Cancel any time from your dashboard. You keep access until the end of your billing period.",
+    q: "Can I upload my own PDF?",
+    a: "Yes. You can upload your own PDF or start from a ready template, then place text, boxes, dates, and signatures.",
   },
   {
-    q: "What PDF forms does QuickFill support?",
-    a: "QuickFill works with tax forms, government applications, contracts, rental paperwork, and other PDFs. It uses existing PDF form fields where available, and the full editor lets you place text, boxes, signatures, and dates manually on flat PDFs.",
+    q: "Are PDFs stored?",
+    a: "PDFs are processed for download generation and are not stored on QuickFill servers.",
   },
   {
-    q: "Is my data secure?",
-    a: "PDFs are processed securely in memory for download generation and are not stored on our servers.",
+    q: "What happens after 3 free downloads?",
+    a: "Free users are asked to upgrade to Pro before downloading more finished PDFs in that month.",
   },
   {
-    q: "Is the annual plan cheaper?",
-    a: "Yes. Annual billing is A$100/year, which works out to A$8.33/month and saves A$44 compared with monthly billing.",
+    q: "Is annual cheaper?",
+    a: "Yes. Annual is A$100/year, which works out to A$8.33/month and saves A$44 compared with monthly billing.",
   },
 ];
 
@@ -72,6 +72,7 @@ export default function PricingPage() {
   const { isLoaded, isSignedIn } = useAuth();
   const [annual, setAnnual] = useState(true);
   const [upgrading, setUpgrading] = useState(false);
+  const [managingBilling, setManagingBilling] = useState(false);
   const [usage, setUsage] = useState<UsageState | null>(null);
   const [checkingPlan, setCheckingPlan] = useState(false);
   const [checkoutNotice, setCheckoutNotice] = useState<string | null>(null);
@@ -137,6 +138,26 @@ export default function PricingPage() {
   const planStillLoading = Boolean(isSignedIn && (usage === null || checkingPlan));
   const priceLabel = annual ? "A$100/year" : "A$12/month";
 
+  const handleManageBilling = async () => {
+    trackEvent("billing_portal_open", { source: "pricing" });
+    setCheckoutNotice(null);
+    setCheckoutError(null);
+    setManagingBilling(true);
+
+    try {
+      const res = await fetch("/api/stripe/portal", { method: "POST" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.url) {
+        throw new Error(data.error || "Could not open billing portal.");
+      }
+      window.location.href = data.url;
+    } catch (error) {
+      setCheckoutError(error instanceof Error ? error.message : "Could not open billing portal.");
+    } finally {
+      setManagingBilling(false);
+    }
+  };
+
   const handleUpgrade = async () => {
     trackEvent("checkout_start", { source: "pricing", plan: annual ? "annual" : "monthly" });
     setCheckoutNotice(null);
@@ -145,7 +166,7 @@ export default function PricingPage() {
     if (!isLoaded) return;
 
     if (isPro) {
-      window.location.href = "/dashboard";
+      await handleManageBilling();
       return;
     }
 
@@ -189,7 +210,7 @@ export default function PricingPage() {
             "@context": "https://schema.org",
             "@type": "Product",
             name: "QuickFill Pro",
-            description: "Unlimited PDF form filling with no watermark and priority support.",
+            description: "Unlimited PDF form downloads with no watermark and priority support.",
             offers: [
               {
                 "@type": "Offer",
@@ -211,17 +232,22 @@ export default function PricingPage() {
       />
 
       <div className="flex flex-col">
-        <section className="bg-navy px-4 py-12 sm:px-6 sm:py-16 lg:px-8">
-          <div className="mx-auto max-w-3xl text-center">
-            <h1 className="text-3xl font-extrabold tracking-tight text-white sm:text-4xl lg:text-5xl">
-              {isPro ? "Your Pro plan is active" : "Simple, transparent pricing"}
-            </h1>
-            <p className="mx-auto mt-4 max-w-xl text-lg text-gray-300">
-              {isPro
-                ? "You have unlimited downloads, no watermark, and priority support."
-                : "Start free. Upgrade when you need unlimited downloads and no watermark."}
-            </p>
-            <div className="mt-6 flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-sm text-gray-400">
+        <section className="bg-navy px-4 py-9 sm:px-6 sm:py-11 lg:px-8">
+          <div className="mx-auto flex max-w-5xl flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
+            <div className="max-w-2xl">
+              <span className="inline-flex rounded-full bg-white/10 px-3 py-1 text-sm font-semibold text-blue-100">
+                Free to start. Pro when you need more.
+              </span>
+              <h1 className="mt-4 text-3xl font-extrabold tracking-tight text-white sm:text-4xl lg:text-5xl">
+                {isPro ? "Your Pro plan is active" : "Fill PDFs free, upgrade for no watermark"}
+              </h1>
+              <p className="mt-4 max-w-xl text-base leading-7 text-gray-300 sm:text-lg">
+                {isPro
+                  ? "You have unlimited downloads, no watermark, saved progress, and priority support."
+                  : "Use the free plan for occasional forms. Choose Pro for unlimited downloads, no watermark, and saved progress."}
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-x-5 gap-y-2 text-sm text-gray-300 lg:justify-end">
               <TrustItem icon={Check} text="No credit card required" />
               <TrustItem icon={CreditCard} text="Cancel any time" />
               <TrustItem icon={ShieldCheck} text="Secure checkout by Stripe" />
@@ -229,14 +255,14 @@ export default function PricingPage() {
           </div>
         </section>
 
-        <section className="bg-surface px-4 py-14 sm:px-6 lg:px-8">
+        <section className="bg-surface px-4 py-10 sm:px-6 lg:px-8">
           <div className="mx-auto max-w-5xl">
             {checkoutNotice && (
               <div className="mb-6 rounded-lg border border-blue-200 bg-blue-50 px-5 py-4 text-sm font-medium text-blue-800">
                 {checkoutNotice}
               </div>
             )}
-            {checkoutError && !planStillLoading && !isPro && (
+            {checkoutError && !planStillLoading && (
               <div className="mb-6 rounded-lg border border-red-200 bg-red-50 px-5 py-4 text-sm font-medium text-red-700">
                 {checkoutError}
               </div>
@@ -250,33 +276,24 @@ export default function PricingPage() {
                 </p>
               </div>
             ) : isSignedIn && isPro ? (
-              <div className="rounded-lg border border-accent bg-accent/5 px-6 py-8 text-center">
-                <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-accent">
-                  <Check className="h-6 w-6 text-white" />
-                </div>
-                <h2 className="text-xl font-bold text-accent">You are already on Pro</h2>
-                <p className="mt-2 text-sm text-text-muted">
-                  You have unlimited fills, no watermarks, and priority support.
-                </p>
-                <div className="mt-4 flex flex-col justify-center gap-3 sm:flex-row">
-                  <Link
-                    href="/dashboard"
-                    className="inline-flex h-11 items-center justify-center rounded-lg border border-border bg-surface px-6 text-sm font-semibold text-text transition-colors hover:border-accent hover:text-accent"
-                  >
-                    Go to dashboard
-                  </Link>
-                  <Link
-                    href="/editor"
-                    className="inline-flex h-11 items-center justify-center rounded-lg bg-accent px-6 text-sm font-semibold text-white transition-colors hover:bg-accent-hover"
-                  >
-                    Fill a PDF
-                  </Link>
-                </div>
-              </div>
+              <CurrentPlanPanel managingBilling={managingBilling} onManageBilling={handleManageBilling} />
             ) : (
               <>
+                <div className="mb-5 grid gap-3 rounded-lg border border-border bg-surface-alt p-4 text-sm text-text-muted sm:grid-cols-3">
+                  <ValuePoint title="Free" text="3 downloads each month with a QuickFill watermark." />
+                  <ValuePoint title="Pro" text="Unlimited downloads with no watermark." />
+                  <ValuePoint title="Your PDFs" text="Processed for download generation and not stored." />
+                </div>
+
                 <div className="grid gap-6 lg:grid-cols-2 lg:items-stretch">
-                  <PlanCard title="Free" price="$0" suffix="/month" description="For occasional PDF forms and quick one-off jobs." items={freeIncludes}>
+                  <PlanCard
+                    title="Free"
+                    price="$0"
+                    suffix="/month"
+                    description="For occasional PDF forms and quick one-off jobs."
+                    eyebrow="Best for trying QuickFill"
+                    items={freeIncludes}
+                  >
                     {!isSignedIn ? (
                       <Link
                         href="/sign-up"
@@ -295,8 +312,9 @@ export default function PricingPage() {
                     <div className="bg-navy p-6 text-white">
                       <div className="flex items-start justify-between gap-4">
                         <div>
-                          <h2 className="text-lg font-semibold">Pro</h2>
-                          <p className="mt-1 text-sm text-gray-300">Unlimited fills, no watermark, priority support.</p>
+                          <p className="text-xs font-semibold uppercase tracking-wide text-blue-200">Best for regular forms</p>
+                          <h2 className="mt-2 text-lg font-semibold">Pro</h2>
+                          <p className="mt-1 text-sm text-gray-300">Unlimited downloads, no watermark, saved progress.</p>
                         </div>
                         <span className="rounded-full bg-accent px-3 py-1 text-xs font-semibold text-white">Best value</span>
                       </div>
@@ -318,14 +336,19 @@ export default function PricingPage() {
                         </button>
                       </div>
 
-                      <div className="mt-6">
-                        <div className="flex items-end gap-2">
-                          <span className="text-4xl font-extrabold leading-none">{annual ? "A$100" : "A$12"}</span>
-                          <span className="pb-1 text-sm text-gray-300">{annual ? "/year" : "/month"}</span>
+                      <div className="mt-6 grid gap-3 sm:grid-cols-2 sm:items-end">
+                        <div>
+                          <div className="flex items-end gap-2">
+                            <span className="text-4xl font-extrabold leading-none">{annual ? "A$100" : "A$12"}</span>
+                            <span className="pb-1 text-sm text-gray-300">{annual ? "/year" : "/month"}</span>
+                          </div>
+                          <p className="mt-2 text-sm text-gray-300">
+                            {annual ? "Works out to A$8.33/month." : "Flexible monthly billing."}
+                          </p>
                         </div>
-                        <p className="mt-2 text-sm text-gray-300">
-                          {annual ? "Works out to A$8.33/month. Save A$44 a year." : "Flexible monthly billing. Cancel any time."}
-                        </p>
+                        <div className="rounded-lg bg-white/10 px-3 py-2 text-sm text-blue-100">
+                          {annual ? "Save A$44 a year vs monthly." : "Annual saves A$44 a year."}
+                        </div>
                       </div>
                     </div>
 
@@ -362,8 +385,8 @@ export default function PricingPage() {
                   </div>
                 </div>
 
-                <div className="mt-10 overflow-hidden rounded-lg border border-border">
-                  <table className="w-full text-sm">
+                <div className="mt-8 overflow-x-auto rounded-lg border border-border">
+                  <table className="w-full min-w-[680px] text-sm">
                     <thead>
                       <tr className="bg-surface-alt">
                         <th className="px-6 py-4 text-left font-semibold">Feature</th>
@@ -395,10 +418,18 @@ export default function PricingPage() {
           </div>
         </div>
 
-        <section className="bg-surface-alt px-4 py-20 sm:px-6 lg:px-8">
-          <div className="mx-auto max-w-3xl">
-            <h2 className="text-center text-2xl font-bold sm:text-3xl">Frequently Asked Questions</h2>
-            <div className="mt-12 space-y-6">
+        <section className="bg-surface-alt px-4 py-12 sm:px-6 lg:px-8">
+          <div className="mx-auto max-w-5xl">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+              <div>
+                <h2 className="text-2xl font-bold sm:text-3xl">Quick answers</h2>
+                <p className="mt-2 text-sm text-text-muted">The common pricing questions before someone upgrades.</p>
+              </div>
+              <Link href="/support" className="text-sm font-semibold text-accent hover:text-accent-hover">
+                Ask support
+              </Link>
+            </div>
+            <div className="mt-6 grid gap-4 md:grid-cols-2">
               {faqs.map((faq) => (
                 <FaqItem key={faq.q} question={faq.q} answer={faq.a} />
               ))}
@@ -410,11 +441,65 @@ export default function PricingPage() {
   );
 }
 
+function CurrentPlanPanel({
+  managingBilling,
+  onManageBilling,
+}: {
+  managingBilling: boolean;
+  onManageBilling: () => void;
+}) {
+  return (
+    <div className="rounded-lg border border-accent bg-accent/5 px-6 py-8">
+      <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex gap-4">
+          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-accent">
+            <Check className="h-6 w-6 text-white" />
+          </div>
+          <div>
+            <p className="text-xs font-semibold uppercase text-accent">Current plan</p>
+            <h2 className="mt-1 text-2xl font-bold text-text">QuickFill Pro</h2>
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-text-muted">
+              Unlimited downloads, no watermark, saved progress, fill history, and priority support are active on your account.
+            </p>
+          </div>
+        </div>
+        <div className="flex flex-col gap-3 sm:flex-row lg:shrink-0">
+          <button
+            type="button"
+            onClick={onManageBilling}
+            disabled={managingBilling}
+            className="inline-flex h-11 items-center justify-center gap-2 rounded-lg border border-border bg-surface px-5 text-sm font-semibold text-text transition-colors hover:border-accent hover:text-accent disabled:opacity-70"
+          >
+            {managingBilling ? <Loader2 className="h-4 w-4 animate-spin" /> : <ExternalLink className="h-4 w-4" />}
+            Manage billing
+          </button>
+          <Link
+            href="/editor"
+            className="inline-flex h-11 items-center justify-center rounded-lg bg-accent px-5 text-sm font-semibold text-white transition-colors hover:bg-accent-hover"
+          >
+            Fill a PDF
+          </Link>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ValuePoint({ title, text }: { title: string; text: string }) {
+  return (
+    <div>
+      <p className="font-semibold text-text">{title}</p>
+      <p className="mt-1 leading-6">{text}</p>
+    </div>
+  );
+}
+
 function PlanCard({
   title,
   price,
   suffix,
   description,
+  eyebrow,
   items,
   children,
 }: {
@@ -422,12 +507,14 @@ function PlanCard({
   price: string;
   suffix: string;
   description: string;
+  eyebrow: string;
   items: string[];
   children: ReactNode;
 }) {
   return (
     <div className="flex flex-col rounded-lg border border-border bg-surface p-6 shadow-sm">
-      <h2 className="text-lg font-semibold">{title}</h2>
+      <p className="text-xs font-semibold uppercase text-text-muted">{eyebrow}</p>
+      <h2 className="mt-2 text-lg font-semibold">{title}</h2>
       <div className="mt-5 flex items-end gap-2">
         <span className="text-4xl font-extrabold leading-none">{price}</span>
         <span className="pb-1 text-sm text-text-muted">{suffix}</span>
@@ -471,19 +558,10 @@ function TrustItem({ icon: Icon, text }: { icon: typeof Check; text: string }) {
 }
 
 function FaqItem({ question, answer }: { question: string; answer: string }) {
-  const [open, setOpen] = useState(false);
-
   return (
-    <div className="rounded-lg border border-border bg-surface">
-      <button
-        type="button"
-        onClick={() => setOpen(!open)}
-        className="flex w-full items-center justify-between px-6 py-5 text-left"
-      >
-        <span className="font-semibold">{question}</span>
-        <span className="ml-4 shrink-0 text-text-muted">{open ? "-" : "+"}</span>
-      </button>
-      {open && <div className="border-t border-border px-6 py-4 text-sm leading-relaxed text-text-muted">{answer}</div>}
+    <div className="rounded-lg border border-border bg-surface p-5">
+      <h3 className="font-semibold text-text">{question}</h3>
+      <p className="mt-2 text-sm leading-6 text-text-muted">{answer}</p>
     </div>
   );
 }
