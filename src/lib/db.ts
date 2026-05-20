@@ -114,10 +114,7 @@ async function loadNeonFactory(): Promise<NeonFactory> {
     return globalThis.__quickfillNeonFactoryForTest;
   }
 
-  const dynamicImport = new Function("specifier", "return import(specifier)") as (
-    specifier: string,
-  ) => Promise<{ neon: unknown }>;
-  const { neon } = await dynamicImport("@neondatabase/serverless");
+  const { neon } = await import("@neondatabase/serverless");
   return neon as NeonFactory;
 }
 
