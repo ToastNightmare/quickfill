@@ -19,6 +19,23 @@ const filters = [
 
 type FilterValue = (typeof filters)[number]["value"];
 
+const previewThemes: Record<string, { bar: string; tint: string; icon: string }> = {
+  ATO: { bar: "bg-blue-600", tint: "bg-blue-50", icon: "text-blue-600" },
+  Business: { bar: "bg-sky-600", tint: "bg-sky-50", icon: "text-sky-600" },
+  Centrelink: { bar: "bg-emerald-600", tint: "bg-emerald-50", icon: "text-emerald-600" },
+  Employment: { bar: "bg-indigo-600", tint: "bg-indigo-50", icon: "text-indigo-600" },
+  Finance: { bar: "bg-cyan-600", tint: "bg-cyan-50", icon: "text-cyan-600" },
+  General: { bar: "bg-slate-600", tint: "bg-slate-50", icon: "text-slate-600" },
+  Healthcare: { bar: "bg-teal-600", tint: "bg-teal-50", icon: "text-teal-600" },
+  Insurance: { bar: "bg-violet-600", tint: "bg-violet-50", icon: "text-violet-600" },
+  Legal: { bar: "bg-zinc-700", tint: "bg-zinc-50", icon: "text-zinc-700" },
+  NDIS: { bar: "bg-purple-600", tint: "bg-purple-50", icon: "text-purple-600" },
+  "Real Estate": { bar: "bg-amber-600", tint: "bg-amber-50", icon: "text-amber-700" },
+  Superannuation: { bar: "bg-rose-600", tint: "bg-rose-50", icon: "text-rose-600" },
+};
+
+const defaultPreviewTheme = { bar: "bg-accent", tint: "bg-accent/10", icon: "text-accent" };
+
 function normalize(value: string) {
   return value.toLowerCase().trim();
 }
@@ -30,18 +47,45 @@ function matchesFilter(template: TemplateDirectoryItem, activeFilter: FilterValu
   return template.category === activeFilter;
 }
 
-function PdfPreview({ template }: { template: TemplateDirectoryItem }) {
-  const src = `/templates/${template.file}#page=1&view=FitH&toolbar=0&navpanes=0&scrollbar=0`;
+function TemplatePreview({ template }: { template: TemplateDirectoryItem }) {
+  const theme = previewThemes[template.category] ?? defaultPreviewTheme;
+  const initials = template.category
+    .split(/\s+/)
+    .map((word) => word[0])
+    .join("")
+    .slice(0, 2)
+    .toUpperCase();
 
   return (
-    <div className="relative h-40 overflow-hidden border-b border-border bg-surface-alt">
-      <iframe
-        className="h-full w-full border-0 pointer-events-none"
-        loading="lazy"
-        src={src}
-        tabIndex={-1}
-        title={`${template.title} preview`}
-      />
+    <div className="relative h-40 overflow-hidden border-b border-border bg-surface-alt" aria-hidden="true">
+      <div className={`absolute inset-0 ${theme.tint}`} />
+      <div className="absolute inset-x-6 top-5 h-40 rounded-t-lg border border-border bg-white shadow-sm">
+        <div className={`h-6 ${theme.bar}`} />
+        <div className="p-4">
+          <div className="mb-4 flex items-center justify-between gap-4">
+            <div>
+              <div className="h-2 w-24 rounded-full bg-slate-300" />
+              <div className="mt-2 h-2 w-16 rounded-full bg-slate-200" />
+            </div>
+            <div className={`flex h-9 w-9 items-center justify-center rounded-lg ${theme.tint}`}>
+              <FileText className={`h-5 w-5 ${theme.icon}`} />
+            </div>
+          </div>
+          <div className="space-y-2">
+            {[88, 70, 80].map((width) => (
+              <div key={width} className="h-2 rounded-full bg-slate-200" style={{ width: `${width}%` }} />
+            ))}
+          </div>
+          <div className="mt-4 grid grid-cols-3 gap-2">
+            {[0, 1, 2].map((item) => (
+              <div key={item} className="h-6 rounded border border-slate-200 bg-slate-50" />
+            ))}
+          </div>
+        </div>
+      </div>
+      <div className="absolute bottom-3 right-3 rounded-full bg-white/95 px-2.5 py-1 text-xs font-semibold text-text shadow-sm">
+        {initials || "PDF"}
+      </div>
       <div className="absolute left-3 top-3 flex flex-wrap gap-2">
         {template.popular && (
           <span className="rounded-full bg-emerald-500 px-2.5 py-1 text-xs font-semibold text-white shadow-sm">
@@ -61,7 +105,7 @@ function PdfPreview({ template }: { template: TemplateDirectoryItem }) {
 function TemplateCard({ template }: { template: TemplateDirectoryItem }) {
   return (
     <article className="flex h-full flex-col overflow-hidden rounded-lg border border-border bg-surface shadow-sm transition hover:-translate-y-0.5 hover:shadow-md">
-      <PdfPreview template={template} />
+      <TemplatePreview template={template} />
       <div className="flex flex-1 flex-col p-5">
         <div className="mb-3 flex items-center justify-between gap-3 text-xs font-semibold text-text-muted">
           <span>{template.category}</span>
