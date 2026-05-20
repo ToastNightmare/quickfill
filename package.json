@@ -28,6 +28,7 @@
     "@stripe/stripe-js": "^9.0.1",
     "@upstash/ratelimit": "^2.0.8",
     "@upstash/redis": "^1.37.0",
+    "@vercel/blob": "^2.2.0",
     "canvas-confetti": "^1.9.4",
     "drizzle-orm": "^0.45.0",
     "konva": "^10.2.3",
