@@ -54,7 +54,7 @@ export default function PrivacyPage() {
         <section>
           <h2 className="text-lg font-semibold text-text">Data Deletion</h2>
           <p className="mt-2">
-            Users can delete their account and all associated data by contacting support. When
+            Users can delete their account and all associated data by sending a support message. When
             you delete your account, all stored profile information, usage data, and signatures
             are permanently removed from our systems.
           </p>
@@ -89,15 +89,11 @@ export default function PrivacyPage() {
         </section>
 
         <section>
-          <h2 className="text-lg font-semibold text-text">Contact Us</h2>
+          <h2 className="text-lg font-semibold text-text">Support</h2>
           <p className="mt-2">
-            If you have any questions about this privacy policy or our data practices, please
-            contact us at{" "}
-            <a
-              href="mailto:support@getquickfill.com"
-              className="text-accent hover:underline"
-            >
-              support@getquickfill.com
+            If you have any questions about this privacy policy or our data practices, please{" "}
+            <a href="/support?topic=general" className="text-accent hover:underline">
+              send a support message
             </a>
             .
           </p>
