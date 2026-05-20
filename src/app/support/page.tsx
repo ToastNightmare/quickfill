@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { Bug, CreditCard, FileWarning, LifeBuoy, MessageSquare, ShieldCheck, UserCheck } from "lucide-react";
+import { Bug, CreditCard, FileText, FileWarning, LifeBuoy, MessageSquare, ShieldCheck, UserCheck } from "lucide-react";
 import { SupportForm } from "@/components/SupportForm";
 
 export const metadata: Metadata = {
@@ -37,6 +37,13 @@ const TOPICS = {
     subject: "Bug report",
     body: "Something is broken or not working as expected.",
   },
+  templates: {
+    label: "Template request",
+    icon: FileText,
+    category: "general",
+    subject: "Template request",
+    body: "Ask for an Australian form to be added or improved.",
+  },
   general: {
     label: "General",
     icon: MessageSquare,
@@ -71,7 +78,7 @@ export default async function SupportPage({ searchParams }: { searchParams?: Sea
         </div>
         <h1 className="mt-5 text-3xl font-extrabold sm:text-4xl">Support</h1>
         <p className="mt-3 text-base leading-7 text-text-muted">
-          Send one support message for billing, Pro account, PDF download, bug, or general help.
+          Send one support message for billing, Pro account, PDF download, bug, template request, or general help.
           If you are signed in, QuickFill attaches your account context automatically.
         </p>
       </section>
