@@ -24,8 +24,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <a href="/terms" className="text-sm text-text-muted transition-colors hover:text-text">
               Terms of Service
             </a>
-            <a href="mailto:support@getquickfill.com" className="text-sm text-text-muted transition-colors hover:text-text">
-              Contact
+            <a href="/support" className="text-sm text-text-muted transition-colors hover:text-text">
+              Support
             </a>
             <p className="text-xs text-text-muted/60">(c) 2026 QuickFill. All rights reserved.</p>
           </div>
