@@ -1,5 +1,6 @@
 import { query } from "@/lib/db";
 import { getRedis } from "@/lib/redis";
+import { cleanSupportAttachments, type SupportAttachment } from "@/lib/support-attachments";
 
 export interface AdminDownloadLog {
   id: string;
@@ -34,6 +35,7 @@ export interface AdminSupportMessage {
   status: AdminSupportStatus;
   priority: AdminSupportPriority;
   category: AdminSupportCategory;
+  attachments: SupportAttachment[];
   assignee?: string | null;
   internalNotes: string;
   lastReplyAt?: string | null;
@@ -81,12 +83,14 @@ type SupportMessageInput = Omit<
   | "status"
   | "priority"
   | "category"
+  | "attachments"
   | "assignee"
   | "internalNotes"
   | "lastReplyAt"
 > & {
   priority?: AdminSupportPriority;
   category?: AdminSupportCategory;
+  attachments?: SupportAttachment[];
 };
 
 type SupportMessageRow = {
@@ -102,6 +106,7 @@ type SupportMessageRow = {
   status: string;
   priority: string;
   category: string;
+  attachments?: unknown;
   assignee?: string | null;
   internal_notes?: string | null;
   last_reply_at?: string | Date | null;
@@ -207,6 +212,7 @@ function normalizeSupportMessage(message: Partial<AdminSupportMessage>): AdminSu
     status: cleanSupportStatus(message.status),
     priority: cleanSupportPriority(message.priority),
     category: cleanSupportCategory(message.category),
+    attachments: cleanSupportAttachments(message.attachments),
     assignee: cleanText(message.assignee, 120) || null,
     internalNotes: cleanLongText(message.internalNotes, 4000),
     lastReplyAt: message.lastReplyAt ? toIsoDate(message.lastReplyAt) : null,
@@ -227,6 +233,7 @@ function mapSupportRow(row: SupportMessageRow): AdminSupportMessage {
     status: cleanSupportStatus(row.status),
     priority: cleanSupportPriority(row.priority),
     category: cleanSupportCategory(row.category),
+    attachments: cleanSupportAttachments(row.attachments),
     assignee: cleanText(row.assignee, 120) || null,
     internalNotes: cleanLongText(row.internal_notes, 4000),
     lastReplyAt: nullableIsoDate(row.last_reply_at),
@@ -277,12 +284,14 @@ async function ensureSupportMessagesTable() {
           source text,
           status text not null default 'new',
           priority text not null default 'normal',
-          category text not null default 'general'
+          category text not null default 'general',
+          attachments jsonb not null default '[]'::jsonb
         )
       `);
       await query("alter table support_messages add column if not exists assignee text");
       await query("alter table support_messages add column if not exists internal_notes text not null default ''");
       await query("alter table support_messages add column if not exists last_reply_at timestamptz");
+      await query("alter table support_messages add column if not exists attachments jsonb not null default '[]'::jsonb");
       await query(
         "create index if not exists support_messages_status_created_at_idx on support_messages(status, created_at desc)",
       );
@@ -360,12 +369,13 @@ export async function recordSupportMessage(input: SupportMessageInput) {
 
   const priority = cleanSupportPriority(input.priority);
   const category = cleanSupportCategory(input.category);
+  const attachments = cleanSupportAttachments(input.attachments);
   const rows = await query<SupportMessageRow>(
     `
-      insert into support_messages (name, email, subject, message, user_id, source, status, priority, category)
-      values ($1, $2, $3, $4, $5, $6, 'new', $7, $8)
+      insert into support_messages (name, email, subject, message, user_id, source, status, priority, category, attachments)
+      values ($1, $2, $3, $4, $5, $6, 'new', $7, $8, $9::jsonb)
       returning id, created_at, updated_at, name, email, subject, message, user_id, source, status, priority, category,
-        assignee, internal_notes, last_reply_at
+        attachments, assignee, internal_notes, last_reply_at
     `,
     [
       cleanText(input.name, 100) || "Unknown",
@@ -376,6 +386,7 @@ export async function recordSupportMessage(input: SupportMessageInput) {
       cleanText(input.source, 160) || null,
       priority,
       category,
+      JSON.stringify(attachments),
     ],
   );
 
@@ -399,7 +410,7 @@ export async function getSupportMessagePage(filters: AdminSupportMessageFilters 
   const rows = await query<SupportMessageRow>(
     `
       select id, created_at, updated_at, name, email, subject, message, user_id, source, status, priority, category,
-        assignee, internal_notes, last_reply_at
+        attachments, assignee, internal_notes, last_reply_at
       from support_messages
       ${whereSql}
       order by
@@ -533,7 +544,7 @@ export async function updateSupportMessage(id: string, patch: AdminSupportMessag
       set ${updates.join(", ")}
       where id::text = $1
       returning id, created_at, updated_at, name, email, subject, message, user_id, source, status, priority, category,
-        assignee, internal_notes, last_reply_at
+        attachments, assignee, internal_notes, last_reply_at
     `,
     params,
   );
