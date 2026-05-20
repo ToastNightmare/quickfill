@@ -2,10 +2,14 @@ import { auth, currentUser } from "@clerk/nextjs/server";
 import { NextRequest, NextResponse } from "next/server";
 import { Resend } from "resend";
 import { recordSupportMessage, type AdminSupportCategory, type AdminSupportMessage } from "@/lib/admin-logs";
+import { getStoredSubscriptionSnapshot } from "@/lib/billing-store";
+import { getRequestEntitlement } from "@/lib/entitlements";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { log } from "@/lib/log";
 
 export const runtime = "nodejs";
+
+const SUPPORT_CATEGORIES = new Set<AdminSupportCategory>(["general", "pdf", "billing", "account", "bug"]);
 
 function clean(value: unknown, max = 200) {
   if (typeof value !== "string") return "";
@@ -31,6 +35,12 @@ function escapeHtml(value: string) {
     .replace(/>/g, "&gt;")
     .replace(/\"/g, "&quot;")
     .replace(/'/g, "&#039;");
+}
+
+function cleanCategory(value: unknown): AdminSupportCategory | null {
+  return typeof value === "string" && SUPPORT_CATEGORIES.has(value as AdminSupportCategory)
+    ? (value as AdminSupportCategory)
+    : null;
 }
 
 function inferCategory(subject: string, message: string): AdminSupportCategory {
@@ -65,6 +75,30 @@ async function getRequestUser() {
     log.warn("support_auth_lookup_failed", { error: error instanceof Error ? error.message : String(error) });
     return { userId: null, user: null };
   }
+}
+
+async function supportPlanContext(request: NextRequest, userId: string | null) {
+  if (!userId) return "";
+
+  try {
+    const entitlement = await getRequestEntitlement(request);
+    const subscription = entitlement.userId ? await getStoredSubscriptionSnapshot(entitlement.userId) : null;
+    const tier = subscription?.tier ?? entitlement.tier;
+    const entitled = Boolean(entitlement.isPaid || subscription?.entitled);
+    const status = subscription?.status ? `billing=${subscription.status}` : "billing=unknown";
+    return `server_plan=${entitled ? "pro" : tier}; tier=${tier}; ${status}`;
+  } catch (error) {
+    log.warn("support_plan_context_failed", { error: error instanceof Error ? error.message : String(error) });
+    return "";
+  }
+}
+
+function supportSource(request: NextRequest, body: Record<string, unknown>, planContext: string) {
+  const source = clean(body.source, 120);
+  const page = clean(body.page, 80);
+  const fallback = request.headers.get("referer") || "support";
+  const parts = [source || (page ? `page=${page}` : ""), planContext].filter(Boolean);
+  return (parts.join(" | ").slice(0, 160) || fallback).slice(0, 160);
 }
 
 async function notifyAdmins(entry: AdminSupportMessage) {
@@ -117,10 +151,11 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ ok: true });
     }
 
+    const bodyRecord = body as Record<string, unknown>;
     const { userId, user } = await getRequestUser();
-    const email = clean(body.email, 160) || user?.primaryEmailAddress?.emailAddress || "";
-    const subject = clean(body.subject, 140) || "Support request";
-    const message = clean(body.message, 2000);
+    const email = clean(bodyRecord.email, 160) || user?.primaryEmailAddress?.emailAddress || "";
+    const subject = clean(bodyRecord.subject, 140) || "Support request";
+    const message = clean(bodyRecord.message, 2000);
 
     if (!email || !message) {
       return NextResponse.json({ error: "Email and message are required" }, { status: 400 });
@@ -139,14 +174,16 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    const planContext = await supportPlanContext(request, userId);
+    const category = cleanCategory(bodyRecord.category) ?? inferCategory(subject, message);
     const entry = await recordSupportMessage({
-      name: clean(body.name, 100) || user?.firstName || "QuickFill user",
+      name: clean(bodyRecord.name, 100) || user?.firstName || "QuickFill user",
       email,
       subject,
       message,
       userId,
-      source: clean(body.source, 160) || request.headers.get("referer") || "api",
-      category: inferCategory(subject, message),
+      source: supportSource(request, bodyRecord, planContext),
+      category,
       priority: inferPriority(subject, message),
     });
 
