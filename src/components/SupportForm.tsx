@@ -1,34 +1,74 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
+import { usePathname } from "next/navigation";
 import { useUser } from "@clerk/nextjs";
 import { CheckCircle2, LifeBuoy, Send } from "lucide-react";
+
+type SupportCategory = "billing" | "account" | "pdf" | "bug" | "general";
+
+const CATEGORY_OPTIONS: { value: SupportCategory; label: string }[] = [
+  { value: "billing", label: "Billing" },
+  { value: "account", label: "Pro account" },
+  { value: "pdf", label: "PDF download issue" },
+  { value: "bug", label: "Bug report" },
+  { value: "general", label: "General" },
+];
 
 interface SupportFormProps {
   source: string;
   title?: string;
   description?: string;
+  defaultCategory?: SupportCategory;
   defaultSubject?: string;
   defaultMessage?: string;
   compact?: boolean;
   onSent?: () => void;
 }
 
+type UsageContext = {
+  used?: number;
+  limit?: number | null;
+  isPro?: boolean;
+  tier?: string;
+  degraded?: boolean;
+  billing?: {
+    status?: string | null;
+    entitled?: boolean;
+  } | null;
+};
+
+function usageContextLabel(usage: UsageContext | null) {
+  if (!usage) return "";
+
+  const tier = usage.tier || (usage.isPro ? "pro" : "free");
+  const limit = typeof usage.limit === "number" && Number.isFinite(usage.limit) ? usage.limit : "unlimited";
+  const used = typeof usage.used === "number" ? usage.used : "unknown";
+  const plan = usage.isPro ? "pro" : tier;
+  const billing = usage.billing?.status ? `billing=${usage.billing.status}` : "billing=unknown";
+
+  return `plan=${plan}; tier=${tier}; usage=${used}/${limit}; ${billing}`;
+}
+
 export function SupportForm({
   source,
   title = "Need help?",
   description = "Send a message to support and we will look into it.",
+  defaultCategory = "general",
   defaultSubject = "",
   defaultMessage = "",
   compact = false,
   onSent,
 }: SupportFormProps) {
   const { user } = useUser();
+  const pathname = usePathname();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
+  const [category, setCategory] = useState<SupportCategory>(defaultCategory);
   const [subject, setSubject] = useState(defaultSubject);
   const [message, setMessage] = useState(defaultMessage);
   const [company, setCompany] = useState("");
+  const [usageContext, setUsageContext] = useState("");
   const [status, setStatus] = useState<"idle" | "sending" | "sent" | "error">("idle");
   const [error, setError] = useState("");
 
@@ -40,12 +80,44 @@ export function SupportForm({
   }, [user]);
 
   useEffect(() => {
+    setCategory(defaultCategory);
+  }, [defaultCategory]);
+
+  useEffect(() => {
     setSubject(defaultSubject);
   }, [defaultSubject]);
 
   useEffect(() => {
     setMessage(defaultMessage);
   }, [defaultMessage]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadUsage = async () => {
+      try {
+        const res = await fetch("/api/usage", { cache: "no-store" });
+        if (!res.ok) return;
+        const usage = (await res.json()) as UsageContext;
+        if (!cancelled) setUsageContext(usageContextLabel(usage));
+      } catch {
+        if (!cancelled) setUsageContext("");
+      }
+    };
+
+    void loadUsage();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const sourceDetails = useMemo(() => {
+    return [source, pathname ? `page=${pathname}` : "", usageContext]
+      .filter(Boolean)
+      .join(" | ")
+      .slice(0, 160);
+  }, [pathname, source, usageContext]);
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -65,9 +137,12 @@ export function SupportForm({
         body: JSON.stringify({
           name,
           email,
+          category,
           subject,
           message,
-          source,
+          source: sourceDetails,
+          page: pathname,
+          context: usageContext,
           company,
         }),
       });
@@ -132,15 +207,31 @@ export function SupportForm({
         </label>
       </div>
 
-      <label className="mt-3 block">
-        <span className="text-xs font-semibold text-text-muted">Subject</span>
-        <input
-          value={subject}
-          onChange={(event) => setSubject(event.target.value)}
-          className="mt-1 h-10 w-full rounded-lg border border-border bg-surface px-3 text-sm outline-none focus:border-accent"
-          placeholder="What can we help with?"
-        />
-      </label>
+      <div className="mt-3 grid gap-3 sm:grid-cols-[0.8fr_1.2fr]">
+        <label className="block">
+          <span className="text-xs font-semibold text-text-muted">Category</span>
+          <select
+            value={category}
+            onChange={(event) => setCategory(event.target.value as SupportCategory)}
+            className="mt-1 h-10 w-full rounded-lg border border-border bg-surface px-3 text-sm outline-none focus:border-accent"
+          >
+            {CATEGORY_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="block">
+          <span className="text-xs font-semibold text-text-muted">Subject</span>
+          <input
+            value={subject}
+            onChange={(event) => setSubject(event.target.value)}
+            className="mt-1 h-10 w-full rounded-lg border border-border bg-surface px-3 text-sm outline-none focus:border-accent"
+            placeholder="What can we help with?"
+          />
+        </label>
+      </div>
 
       <label className="mt-3 block">
         <span className="text-xs font-semibold text-text-muted">Message</span>
