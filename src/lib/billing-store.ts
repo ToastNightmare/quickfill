@@ -207,7 +207,10 @@ export async function getStoredSubscriptionSnapshot(userId: string): Promise<Sto
       userId,
       error: error instanceof Error ? error.message : String(error),
     });
-    return getCachedSubscriptionSnapshot(userId, "Database subscription lookup failed; using cached active entitlement.");
+    return getCachedSubscriptionSnapshot(
+      userId,
+      "Database subscription lookup failed; using cached active entitlement. Check Ops health and run Billing Repair.",
+    );
   }
 
   const latest = rows[0];
