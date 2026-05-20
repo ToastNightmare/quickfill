@@ -1,332 +1,96 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { FileText, ShieldCheck } from "lucide-react";
+import { FileText, MessageSquare, ShieldCheck, Upload } from "lucide-react";
+import { TemplatesExplorer } from "@/components/TemplatesExplorer";
+import { templateCount, templateDirectory } from "@/lib/template-directory";
 
 export const metadata: Metadata = {
   title: "Australian PDF Form Templates | QuickFill",
   description:
-    "Fill common Australian PDF form templates online, including ATO, Services Australia, rental, NDIS, invoice, and consent forms.",
+    "Search and fill common Australian PDF form templates online, including ATO, Centrelink, employment, rental, NDIS, invoice, and consent forms.",
   alternates: {
     canonical: "/templates",
   },
 };
 
-interface Template {
-  file: string;
-  title: string;
-  description: string;
-  category: string;
-  badge?: string;
-}
-
-const officialTemplates: Template[] = [
-  {
-    file: "ato-tfn-declaration.pdf",
-    title: "Tax File Number Declaration",
-    description: "Public ATO form (NAT 3092). Required when starting a new job so your employer can withhold the correct amount of tax.",
-    category: "ATO",
-    badge: "Public Form",
-  },
-  {
-    file: "ato-super-choice.pdf",
-    title: "Superannuation Standard Choice",
-    description: "Public ATO form (NAT 13080). Tell your employer which super fund to pay your contributions into.",
-    category: "ATO",
-    badge: "Public Form",
-  },
-  {
-    file: "ato-withholding-declaration.pdf",
-    title: "Withholding Declaration",
-    description: "Public ATO form (NAT 3093). Advise your employer of changes to your tax withholding: HELP debt, Medicare levy, tax offsets.",
-    category: "ATO",
-    badge: "Public Form",
-  },
-  {
-    file: "employment-separation.pdf",
-    title: "Employment Separation Certificate",
-    description: "Public Services Australia form (SU001). Required by Centrelink when you leave a job to claim income support.",
-    category: "Services Australia",
-    badge: "Public Form",
-  },
-  {
-    file: "medicare-enrolment.pdf",
-    title: "Medicare Enrolment",
-    description: "Public Services Australia form (MS004). Apply for a Medicare card as a new resident or Australian citizen.",
-    category: "Services Australia",
-    badge: "Public Form",
-  },
-];
-
-const legalTemplates: Template[] = [
-  {
-    file: "statutory-declaration.pdf",
-    title: "Statutory Declaration",
-    description: "Public statutory declaration form for making legal declarations. Includes witness section and criminal offence warning.",
-    category: "Legal",
-  },
-];
-
-const centrelinkTemplates: Template[] = [
-  {
-    file: "centrelink-su415.pdf",
-    title: "Centrelink Income & Assets (SU415)",
-    description: "Services Australia form for declaring income and assets. Sections for employment, other income, assets, and partner details.",
-    category: "Centrelink",
-  },
-];
-
-const realEstateTemplates: Template[] = [
-  {
-    file: "tenancy-application-nsw.pdf",
-    title: "Rental Application (NSW)",
-    description: "New South Wales rental application with sections for applicant, employment, rental history, references, ID, occupants, pets, and vehicles.",
-    category: "Real Estate",
-  },
-  {
-    file: "tenancy-application-vic.pdf",
-    title: "Rental Application (VIC)",
-    description: "Victoria rental application with Victorian requirements including bond/rent fields and privacy notice.",
-    category: "Real Estate",
-  },
-  {
-    file: "rental-application.pdf",
-    title: "Rental Application",
-    description: "Standard residential rental application for Australian properties. Covers personal details, employment, references, and ID.",
-    category: "Real Estate",
-  },
-];
-
-const superTemplates: Template[] = [
-  {
-    file: "superannuation-hardship.pdf",
-    title: "Superannuation Hardship Release",
-    description: "Early release of superannuation on compassionate/financial hardship grounds. Sections for member details, grounds, financial details, and supporting documents.",
-    category: "Superannuation",
-  },
-];
-
-const professionalTemplates: Template[] = [
-  {
-    file: "employee-details.pdf",
-    title: "New Employee Details Form",
-    description: "Collect TFN, bank details, super fund, and emergency contact from new staff. Ready for payroll setup.",
-    category: "Employment",
-  },
-  {
-    file: "australian-invoice.pdf",
-    title: "Tax Invoice",
-    description: "Professional Australian tax invoice with ABN, GST breakdown, line items, and payment details.",
-    category: "Business",
-  },
-  {
-    file: "consent-form.pdf",
-    title: "General Consent Form",
-    description: "A clear, signed consent and authority form suitable for community, business, and personal use.",
-    category: "General",
-  },
-  {
-    file: "medical-consent.pdf",
-    title: "Medical Consent Form",
-    description: "Patient consent for procedures and treatments. Includes Medicare number, allergies, emergency contact, and signatures.",
-    category: "Healthcare",
-  },
-  {
-    file: "bank-account-change.pdf",
-    title: "Bank Account Update Request",
-    description: "Update your bank account details with an employer, super fund, or government agency. Signed declaration included.",
-    category: "Finance",
-  },
-  {
-    file: "insurance-claim.pdf",
-    title: "Insurance Claim Form",
-    description: "General insurance claim covering home, motor, and personal property. Works with most Australian insurers.",
-    category: "Insurance",
-  },
-  {
-    file: "ndis-service-agreement.pdf",
-    title: "NDIS Service Agreement",
-    description: "Compliant NDIS service agreement between participant and provider. Includes support schedule, rates, and signatures.",
-    category: "NDIS",
-  },
-];
-
-const templateGroups = [
-  officialTemplates,
-  legalTemplates,
-  centrelinkTemplates,
-  realEstateTemplates,
-  superTemplates,
-  professionalTemplates,
-];
-
-const templateCount = templateGroups.reduce((count, group) => count + group.length, 0);
-
-function TemplateIcon() {
-  return (
-    <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-lg bg-accent/10">
-      <FileText className="h-6 w-6 text-accent" />
-    </div>
-  );
-}
-
-function TemplateCard({ template }: { template: Template }) {
-  // Map file to slug
-  const slugMap: Record<string, string> = {
-    "ato-tfn-declaration.pdf": "tfn-declaration",
-    "ato-super-choice.pdf": "super-choice",
-    "ato-withholding-declaration.pdf": "withholding-declaration",
-    "employment-separation.pdf": "employment-separation",
-    "medicare-enrolment.pdf": "medicare-enrolment",
-    "statutory-declaration.pdf": "statutory-declaration",
-    "centrelink-su415.pdf": "centrelink-su415",
-    "tenancy-application-nsw.pdf": "rental-application-nsw",
-    "tenancy-application-vic.pdf": "rental-application-vic",
-    "rental-application.pdf": "rental-application",
-    "superannuation-hardship.pdf": "super-hardship",
-    "employee-details.pdf": "employee-details",
-    "australian-invoice.pdf": "tax-invoice",
-    "consent-form.pdf": "consent-form",
-    "medical-consent.pdf": "medical-consent",
-    "bank-account-change.pdf": "bank-account-change",
-    "insurance-claim.pdf": "insurance-claim",
-    "ndis-service-agreement.pdf": "ndis-service-agreement",
-  };
-
-  const slug = slugMap[template.file];
-  const hasDetailPage = slug && template.file !== "ato-withholding-declaration.pdf" && template.file !== "rental-application.pdf" && template.file !== "consent-form.pdf" && template.file !== "bank-account-change.pdf" && template.file !== "insurance-claim.pdf";
-
-  return (
-    <div className="flex flex-col rounded-xl border border-border bg-surface p-6 shadow-sm hover:shadow-md transition-shadow relative">
-      {template.badge && (
-        <span className="absolute top-4 right-4 inline-flex items-center rounded-full bg-green-500 px-2.5 py-0.5 text-xs font-semibold text-white">
-          {template.badge}
-        </span>
-      )}
-      {hasDetailPage ? (
-        <Link href={`/templates/${slug}`} className="block hover:opacity-80 transition-opacity">
-          <TemplateIcon />
-          <span className="text-xs font-semibold uppercase tracking-widest text-text-muted mb-1">{template.category}</span>
-          <h2 className="text-base font-semibold mb-2">{template.title}</h2>
-          <p className="text-sm text-text-muted leading-relaxed flex-1">{template.description}</p>
-        </Link>
-      ) : (
-        <>
-          <TemplateIcon />
-          <span className="text-xs font-semibold uppercase tracking-widest text-text-muted mb-1">{template.category}</span>
-          <h2 className="text-base font-semibold mb-2">{template.title}</h2>
-          <p className="text-sm text-text-muted leading-relaxed flex-1">{template.description}</p>
-        </>
-      )}
-      <Link
-        href={`/editor?template=${encodeURIComponent(template.file)}`}
-        className="mt-5 flex h-10 items-center justify-center gap-2 rounded-lg bg-accent text-sm font-semibold text-white hover:bg-accent-hover transition-colors"
-      >
-        <FileText className="h-4 w-4" />
-        Fill This Form
-      </Link>
-    </div>
-  );
-}
-
 export default function TemplatesPage() {
   return (
-    <div className="mx-auto max-w-5xl px-4 py-12 sm:px-6 lg:px-8">
-      <div className="text-center">
-        <span className="inline-flex items-center gap-2 rounded-full bg-accent/10 px-4 py-1.5 text-sm font-semibold text-accent">
-          Australian Forms
-        </span>
-        <h1 className="mt-4 text-3xl font-bold tracking-tight sm:text-4xl">Form Templates</h1>
-        <p className="mx-auto mt-4 max-w-2xl text-text-muted">
-          Ready-to-fill Australian forms. Pick a template, use your own PDF, or start from a blank upload in the editor.
-        </p>
-        <div className="mt-6 flex flex-col items-center justify-center gap-3 sm:flex-row">
-          <Link
-            href="/editor"
-            className="flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-accent px-5 text-sm font-semibold text-white hover:bg-accent-hover transition-colors sm:w-auto"
-          >
-            <FileText className="h-4 w-4" />
-            Upload Your Own PDF
-          </Link>
-          <span className="text-sm text-text-muted">
-            {templateCount} ready templates available
+    <div className="mx-auto max-w-6xl px-4 py-12 sm:px-6 lg:px-8">
+      <section className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(260px,360px)] lg:items-end">
+        <div>
+          <span className="inline-flex items-center rounded-full bg-accent/10 px-4 py-1.5 text-sm font-semibold text-accent">
+            Australian forms
           </span>
+          <h1 className="mt-4 text-3xl font-bold text-text sm:text-4xl">Form Templates</h1>
+          <p className="mt-4 max-w-2xl text-base leading-7 text-text-muted">
+            Pick a ready template, upload your own PDF, fill it online, and download the finished form.
+          </p>
+          <div className="mt-6 flex flex-col gap-3 sm:flex-row">
+            <Link
+              href="/editor"
+              className="flex h-11 items-center justify-center gap-2 rounded-lg bg-accent px-5 text-sm font-semibold text-white transition-colors hover:bg-accent-hover"
+            >
+              <Upload className="h-4 w-4" />
+              Upload your own PDF
+            </Link>
+            <Link
+              href="/support?topic=templates"
+              className="flex h-11 items-center justify-center gap-2 rounded-lg border border-border px-5 text-sm font-semibold text-text transition-colors hover:border-accent hover:text-accent"
+            >
+              <MessageSquare className="h-4 w-4" />
+              Request a template
+            </Link>
+          </div>
         </div>
-      </div>
 
-      <div className="mx-auto mt-8 grid max-w-4xl gap-4 md:grid-cols-2">
-        <div className="flex items-start gap-3 rounded-xl border border-border bg-surface-alt p-4 text-left">
-          <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-accent" />
-          <p className="text-sm leading-relaxed text-text-muted">
-            QuickFill is independent and is not affiliated with the ATO, Services Australia, NDIS or state agencies. We help you fill publicly available forms faster.
+        <div className="border-l-4 border-accent pl-5">
+          <p className="text-4xl font-bold text-text">{templateCount}</p>
+          <p className="mt-2 text-sm leading-6 text-text-muted">
+            Ready templates across tax, employment, Centrelink, rental, business, NDIS, health and consent forms.
           </p>
         </div>
-        <div className="flex items-start gap-3 rounded-xl border border-border bg-surface-alt p-4 text-left">
-        <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-accent" />
-        <p className="text-sm leading-relaxed text-text-muted">
-          PDFs are processed for download generation and are not stored on our servers. You can also upload any other Australian PDF form.
-        </p>
+      </section>
+
+      <div className="mt-8 grid gap-4 border-y border-border py-5 md:grid-cols-3">
+        <div className="flex items-start gap-3">
+          <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-accent" />
+          <p className="text-sm leading-6 text-text-muted">
+            Independent from the ATO, Services Australia, NDIS and state agencies.
+          </p>
+        </div>
+        <div className="flex items-start gap-3">
+          <FileText className="mt-0.5 h-5 w-5 shrink-0 text-accent" />
+          <p className="text-sm leading-6 text-text-muted">
+            Public forms and practical Australian templates in one searchable place.
+          </p>
+        </div>
+        <div className="flex items-start gap-3">
+          <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-accent" />
+          <p className="text-sm leading-6 text-text-muted">
+            PDFs are processed for download generation and are not stored on QuickFill servers.
+          </p>
         </div>
       </div>
 
-      {/* Government Forms Section */}
-      <div className="mt-12">
-        <h2 className="text-xl font-bold text-text mb-6">Government Forms</h2>
-        <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-          {officialTemplates.map((t) => (
-            <TemplateCard key={t.file} template={t} />
-          ))}
-        </div>
-      </div>
+      <TemplatesExplorer templates={templateDirectory} />
 
-      {/* Legal Section */}
-      <div className="mt-12">
-        <h2 className="text-xl font-bold text-text mb-6">Legal</h2>
-        <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-          {legalTemplates.map((t) => (
-            <TemplateCard key={t.file} template={t} />
-          ))}
+      <section className="mt-12 border-t border-border pt-8">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h2 className="text-xl font-bold text-text">Can’t find the form?</h2>
+            <p className="mt-2 text-sm leading-6 text-text-muted">
+              Send the form name or agency through support and it can be reviewed for the template library.
+            </p>
+          </div>
+          <Link
+            href="/support?topic=templates"
+            className="flex h-11 items-center justify-center gap-2 rounded-lg bg-accent px-5 text-sm font-semibold text-white transition-colors hover:bg-accent-hover"
+          >
+            <MessageSquare className="h-4 w-4" />
+            Request a template
+          </Link>
         </div>
-      </div>
-
-      {/* Centrelink Section */}
-      <div className="mt-12">
-        <h2 className="text-xl font-bold text-text mb-6">Centrelink</h2>
-        <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-          {centrelinkTemplates.map((t) => (
-            <TemplateCard key={t.file} template={t} />
-          ))}
-        </div>
-      </div>
-
-      {/* Real Estate Section */}
-      <div className="mt-12">
-        <h2 className="text-xl font-bold text-text mb-6">Real Estate</h2>
-        <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-          {realEstateTemplates.map((t) => (
-            <TemplateCard key={t.file} template={t} />
-          ))}
-        </div>
-      </div>
-
-      {/* Superannuation Section */}
-      <div className="mt-12">
-        <h2 className="text-xl font-bold text-text mb-6">Superannuation</h2>
-        <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-          {superTemplates.map((t) => (
-            <TemplateCard key={t.file} template={t} />
-          ))}
-        </div>
-      </div>
-
-      {/* Professional Templates Section */}
-      <div className="mt-12">
-        <h2 className="text-xl font-bold text-text mb-6">Professional Templates</h2>
-        <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-          {professionalTemplates.map((t) => (
-            <TemplateCard key={t.file} template={t} />
-          ))}
-        </div>
-      </div>
+      </section>
     </div>
   );
 }
