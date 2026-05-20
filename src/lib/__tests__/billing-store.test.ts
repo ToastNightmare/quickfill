@@ -87,14 +87,27 @@ describe("billing entitlements", () => {
     expect(redis.get).not.toHaveBeenCalledWith("sub:user_123");
   });
 
-  it("returns free when the database has no subscription row even if Redis has stale Pro cache", async () => {
+  it("keeps cached paid access under review when the database has no subscription row", async () => {
     mockQuery.mockResolvedValueOnce([] as never);
-    redis.get.mockResolvedValue("pro");
+    redis.get.mockResolvedValueOnce("pro").mockResolvedValueOnce("cus_123");
 
-    await expect(getStoredTier("user_123")).resolves.toBe("free");
+    await expect(getStoredSubscriptionSnapshot("user_123")).resolves.toMatchObject({
+      tier: "pro",
+      status: "redis_cache",
+      stripeCustomerId: "cus_123",
+      entitled: true,
+      needsReview: true,
+      reviewReason: "No database subscription row found; using cached active entitlement. Run Billing Repair to sync Stripe truth.",
+    });
 
-    expect(redis.get).not.toHaveBeenCalledWith("sub:user_123");
-    expect(redis.del).toHaveBeenCalledWith("sub:user_123");
+    expect(redis.del).not.toHaveBeenCalledWith("sub:user_123");
+  });
+
+  it("uses cached paid access for tier lookup when the database has no subscription row", async () => {
+    mockQuery.mockResolvedValueOnce([] as never);
+    redis.get.mockResolvedValueOnce("pro").mockResolvedValueOnce("cus_123");
+
+    await expect(getStoredTier("user_123")).resolves.toBe("pro");
   });
 
   it("falls back to cached paid access when the database lookup fails", async () => {
