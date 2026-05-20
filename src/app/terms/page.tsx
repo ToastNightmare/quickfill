@@ -79,14 +79,11 @@ export default function TermsPage() {
         </section>
 
         <section>
-          <h2 className="text-lg font-semibold text-text">Contact</h2>
+          <h2 className="text-lg font-semibold text-text">Support</h2>
           <p className="mt-2">
-            Questions about these terms? Email us at{" "}
-            <a
-              href="mailto:hello@getquickfill.com"
-              className="text-accent hover:underline"
-            >
-              hello@getquickfill.com
+            Questions about these terms?{" "}
+            <a href="/support?topic=general" className="text-accent hover:underline">
+              Send a support message
             </a>
             .
           </p>
