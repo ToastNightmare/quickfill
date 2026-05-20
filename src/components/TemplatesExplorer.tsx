@@ -35,16 +35,13 @@ function PdfPreview({ template }: { template: TemplateDirectoryItem }) {
 
   return (
     <div className="relative h-40 overflow-hidden border-b border-border bg-surface-alt">
-      <object
-        aria-label={`${template.title} preview`}
-        className="h-full w-full pointer-events-none"
-        data={src}
-        type="application/pdf"
-      >
-        <div className="flex h-full items-center justify-center">
-          <FileText className="h-10 w-10 text-accent" />
-        </div>
-      </object>
+      <iframe
+        className="h-full w-full border-0 pointer-events-none"
+        loading="lazy"
+        src={src}
+        tabIndex={-1}
+        title={`${template.title} preview`}
+      />
       <div className="absolute left-3 top-3 flex flex-wrap gap-2">
         {template.popular && (
           <span className="rounded-full bg-emerald-500 px-2.5 py-1 text-xs font-semibold text-white shadow-sm">
