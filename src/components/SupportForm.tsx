@@ -80,12 +80,12 @@ function validateScreenshotFiles(files: File[]) {
   return "";
 }
 
-function imageFromFile(file: File) {
+function imageFromUrl(url: string) {
   return new Promise<HTMLImageElement>((resolve, reject) => {
     const image = new Image();
     image.onload = () => resolve(image);
     image.onerror = () => reject(new Error("Could not read screenshot."));
-    image.src = URL.createObjectURL(file);
+    image.src = url;
   });
 }
 
@@ -93,7 +93,7 @@ async function sanitizeImageFile(file: File) {
   const objectUrl = URL.createObjectURL(file);
 
   try {
-    const image = await imageFromFile(file);
+    const image = await imageFromUrl(objectUrl);
     const width = image.naturalWidth || image.width;
     const height = image.naturalHeight || image.height;
     if (!width || !height) return file;
