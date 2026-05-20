@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { Search, ShieldCheck, UserRound } from "lucide-react";
+import { Search, ShieldCheck, UserRound, Wrench } from "lucide-react";
 import { requireAdminUser } from "@/lib/admin-routing";
 import { getAdminUsers } from "@/lib/admin-console";
 
@@ -80,7 +80,7 @@ export default async function AdminUsersPage({ searchParams }: PageProps) {
           </div>
         </div>
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[1040px] text-left text-sm">
+          <table className="w-full min-w-[1140px] text-left text-sm">
             <thead className="bg-surface-alt text-xs uppercase text-text-muted">
               <tr>
                 <th className="px-5 py-3 font-semibold">User</th>
@@ -90,6 +90,7 @@ export default async function AdminUsersPage({ searchParams }: PageProps) {
                 <th className="px-5 py-3 font-semibold">Last sign in</th>
                 <th className="px-5 py-3 font-semibold">Security</th>
                 <th className="px-5 py-3 font-semibold">Stripe</th>
+                <th className="px-5 py-3 font-semibold">Action</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
@@ -130,11 +131,29 @@ export default async function AdminUsersPage({ searchParams }: PageProps) {
                     {user.banned ? "Banned" : user.locked ? "Locked" : user.twoFactorEnabled ? "2FA on" : "Normal"}
                   </td>
                   <td className="px-5 py-4 text-text-muted">{user.stripeCustomerId ? "Connected" : "None"}</td>
+                  <td className="px-5 py-4">
+                    {user.billingNeedsReview ? (
+                      <Link
+                        href={`/admin/customers/${user.id}`}
+                        className="inline-flex h-9 items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 text-xs font-semibold text-amber-800 transition-colors hover:bg-amber-100"
+                      >
+                        <Wrench className="h-3.5 w-3.5" />
+                        Review billing
+                      </Link>
+                    ) : (
+                      <Link
+                        href={`/admin/customers/${user.id}`}
+                        className="inline-flex h-9 items-center rounded-lg border border-border px-3 text-xs font-semibold text-text-muted transition-colors hover:bg-surface-alt hover:text-text"
+                      >
+                        View
+                      </Link>
+                    )}
+                  </td>
                 </tr>
               ))}
               {data.users.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="px-5 py-12 text-center text-text-muted">
+                  <td colSpan={8} className="px-5 py-12 text-center text-text-muted">
                     <UserRound className="mx-auto mb-3 h-8 w-8 opacity-40" />
                     No users found.
                   </td>
