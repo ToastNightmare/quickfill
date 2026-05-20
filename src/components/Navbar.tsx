@@ -66,6 +66,9 @@ export function Navbar() {
               Pricing
             </Link>
           )}
+          <Link href="/support" className="text-sm font-medium text-text-muted hover:text-text transition-colors">
+            Support
+          </Link>
 
           {!isSignedIn ? (
             <>
@@ -138,6 +141,9 @@ export function Navbar() {
                 Pricing
               </Link>
             )}
+            <Link href="/support" onClick={() => setMenuOpen(false)} className="rounded-lg px-3 py-3 text-sm font-medium hover:bg-surface-alt transition-colors">
+              Support
+            </Link>
 
             {!isSignedIn ? (
               <>
