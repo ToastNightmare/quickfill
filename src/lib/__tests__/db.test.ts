@@ -43,21 +43,17 @@ describe("database helper", () => {
     expect(mockTaggedSql.mock.calls[0][0]).toEqual(["select 1 as ok"]);
     expect(mockSqlQuery.mock.calls[0][0]).toBe("create extension if not exists pgcrypto");
     expect(mockSqlQuery.mock.calls.some((call) => String(call[0]).includes("create table if not exists subscriptions"))).toBe(true);
+    expect(mockSqlQuery.mock.calls.some((call) => String(call[0]).includes("alter table subscriptions add column if not exists current_period_end"))).toBe(true);
+    expect(mockSqlQuery.mock.calls.some((call) => String(call[0]).includes("create unique index if not exists subscriptions_user_id_unique_idx"))).toBe(true);
   });
 
   it("keeps normal app queries on the Neon query helper after schema verification", async () => {
-    mockSqlQuery.mockResolvedValueOnce([]);
-    mockSqlQuery.mockResolvedValueOnce([]);
-    mockSqlQuery.mockResolvedValueOnce([]);
-    mockSqlQuery.mockResolvedValueOnce([]);
-    mockSqlQuery.mockResolvedValueOnce([]);
-    mockSqlQuery.mockResolvedValueOnce([]);
-    mockSqlQuery.mockResolvedValueOnce([]);
-    mockSqlQuery.mockResolvedValueOnce([]);
-    mockSqlQuery.mockResolvedValueOnce([]);
-    mockSqlQuery.mockResolvedValueOnce([]);
-    mockSqlQuery.mockResolvedValueOnce([]);
-    mockSqlQuery.mockResolvedValueOnce([{ id: "cus_123" }]);
+    mockSqlQuery.mockImplementation(async (sqlText: string) => {
+      if (sqlText === "select * from customers where id = $1") {
+        return [{ id: "cus_123" }];
+      }
+      return [];
+    });
     const { query } = await import("../db");
 
     await expect(query("select * from customers where id = $1", ["cus_123"])).resolves.toEqual([{ id: "cus_123" }]);
