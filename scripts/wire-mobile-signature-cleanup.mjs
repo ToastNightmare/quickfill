@@ -17,6 +17,14 @@ function replaceOnce(text, search, replacement, label) {
   return text.replace(search, replacement);
 }
 
+function replaceFirstAvailable(text, candidates, label) {
+  if (candidates.some(({ replacement }) => text.includes(replacement))) return text;
+  for (const { search, replacement } of candidates) {
+    if (text.includes(search)) return text.replace(search, replacement);
+  }
+  throw new Error(`Missing mobile signature cleanup anchor (${label}): ${candidates[0]?.search.slice(0, 160) ?? "none"}`);
+}
+
 function patchEditorPage() {
   const path = "src/app/editor/page.tsx";
   let text = normalize(readFileSync(path, "utf8"));
@@ -97,10 +105,18 @@ function patchSignatureModal() {
   text = text.replaceAll(`onClick={() => cameraInputRef.current?.click()}`, `onClick={openCameraPicker}`);
   text = text.replaceAll(`onClick={() => fileInputRef.current?.click()}`, `onClick={openImagePicker}`);
 
-  text = replaceOnce(
+  text = replaceFirstAvailable(
     text,
-    `                      onClick={photoSignature ? resetPhoto : openCameraPicker}\n                      title={photoSignature ? "Retake" : "Camera"}`,
-    `                      onClick={photoSignature ? () => { resetPhoto(); window.setTimeout(openImagePicker, 0); } : openCameraPicker}\n                      title={photoSignature ? "Choose another image" : "Camera"}`,
+    [
+      {
+        search: `                      onClick={photoSignature ? resetPhoto : () => cameraInputRef.current?.click()}\n                      title={photoSignature ? "Retake" : "Camera"}`,
+        replacement: `                      onClick={photoSignature ? () => { resetPhoto(); window.setTimeout(openImagePicker, 0); } : openCameraPicker}\n                      title={photoSignature ? "Choose another image" : "Camera"}`,
+      },
+      {
+        search: `                      onClick={photoSignature ? resetPhoto : openCameraPicker}\n                      title={photoSignature ? "Retake" : "Camera"}`,
+        replacement: `                      onClick={photoSignature ? () => { resetPhoto(); window.setTimeout(openImagePicker, 0); } : openCameraPicker}\n                      title={photoSignature ? "Choose another image" : "Camera"}`,
+      },
+    ],
     "photo replace action",
   );
 
