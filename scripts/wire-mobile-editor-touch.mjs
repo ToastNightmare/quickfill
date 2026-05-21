@@ -104,6 +104,12 @@ text = replaceOnce(
 
 text = replaceOnce(
   text,
+  `  onDragStart,\n  onDragEnd,`,
+  `  onDragStart,\n  onDragMove,\n  onDragEnd,`,
+);
+
+text = replaceOnce(
+  text,
   `  isHovered: boolean;\n  onSelect: () => void;`,
   `  isHovered: boolean;\n  allowSnappedDrag: boolean;\n  onSelect: () => void;`,
 );
