@@ -1,13 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getRedis, isRedisConfigured } from "@/lib/redis";
 import { getRequestEntitlement, TIER_LIMITS } from "@/lib/entitlements";
-import { getStoredSubscriptionSnapshot, recordUsageEvent } from "@/lib/billing-store";
-import { checkRateLimit } from "@/lib/rate-limit";
-
-const TTL_SECONDS = 35 * 24 * 60 * 60;
-const GUEST_TTL_SECONDS = 30 * 24 * 60 * 60;
+import { getStoredSubscriptionSnapshot } from "@/lib/billing-store";
 
 type Entitlement = Awaited<ReturnType<typeof getRequestEntitlement>>;
+
+function privateJson(body: unknown, init?: ResponseInit) {
+  const response = NextResponse.json(body, init);
+  response.headers.set("Cache-Control", "private, no-store");
+  response.headers.set("X-Content-Type-Options", "nosniff");
+  return response;
+}
 
 function monthKey() {
   const now = new Date();
@@ -18,12 +21,6 @@ function usageKey(entitlement: Entitlement) {
   if (entitlement.userId) return `usage:${entitlement.userId}:${monthKey()}`;
   if (entitlement.anonymousId) return `guest:fills:${entitlement.anonymousId}`;
   return null;
-}
-
-function requestIdentifier(request: NextRequest) {
-  const forwarded = request.headers.get("x-forwarded-for");
-  const realIp = request.headers.get("x-real-ip");
-  return forwarded?.split(",")[0] || realIp || "anonymous";
 }
 
 function isDelinquentBillingStatus(status?: string | null) {
@@ -60,7 +57,7 @@ export async function GET(request: NextRequest) {
     const isPaid = entitlement.isPaid || subscriptionEntitled;
     const limit = limitForTier(tier, entitlement.limit);
 
-    return NextResponse.json({
+    return privateJson({
       used,
       limit,
       isPro: isPaid,
@@ -83,7 +80,7 @@ export async function GET(request: NextRequest) {
     });
   } catch (error) {
     logUsageReadError("entitlement", error);
-    return NextResponse.json({
+    return privateJson({
       used: 0,
       limit: 3,
       isPro: false,
@@ -96,29 +93,9 @@ export async function GET(request: NextRequest) {
   }
 }
 
-export async function POST(request: NextRequest) {
-  const { success } = await checkRateLimit(requestIdentifier(request), "usage");
-  if (!success) {
-    return NextResponse.json({ error: "Too many usage updates. Please try again shortly." }, { status: 429 });
-  }
-
-  const entitlement = await getRequestEntitlement(request);
-  const key = usageKey(entitlement);
-  let used = 0;
-
-  if (key && isRedisConfigured()) {
-    used = await getRedis().incr(key);
-    if (used === 1) {
-      await getRedis().expire(key, key.startsWith("guest:") ? GUEST_TTL_SECONDS : TTL_SECONDS);
-    }
-  }
-
-  await recordUsageEvent({
-    userId: entitlement.userId,
-    anonymousId: entitlement.anonymousId,
-    eventType: "usage_increment",
-    metadata: { tier: entitlement.tier },
-  });
-
-  return NextResponse.json({ used, guest: entitlement.tier === "guest", qa: entitlement.qa });
+export async function POST() {
+  return privateJson(
+    { error: "Usage is recorded by completed PDF downloads." },
+    { status: 405, headers: { Allow: "GET" } },
+  );
 }
