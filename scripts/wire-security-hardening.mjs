@@ -62,12 +62,14 @@ function patchFillPdfRoute() {
     "fill-pdf magic-byte guard",
   );
 
-  text = replaceOnce(
-    text,
-    `      headers: { "Content-Type": "application/pdf", "Content-Disposition": "inline" },`,
-    `      headers: {\n        "Content-Type": "application/pdf",\n        "Content-Disposition": "inline",\n        "Cache-Control": "private, no-store",\n        "X-Content-Type-Options": "nosniff",\n      },`,
-    "fill-pdf response headers",
-  );
+  if (!text.includes("buildPdfDownloadHeaders(resultBuffer")) {
+    text = replaceOnce(
+      text,
+      `      headers: { "Content-Type": "application/pdf", "Content-Disposition": "inline" },`,
+      `      headers: {\n        "Content-Type": "application/pdf",\n        "Content-Disposition": "inline",\n        "Cache-Control": "private, no-store",\n        "X-Content-Type-Options": "nosniff",\n      },`,
+      "fill-pdf response headers",
+    );
+  }
 
   text = replaceOnce(
     text,
