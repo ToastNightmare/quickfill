@@ -31,6 +31,12 @@ function insertBeforeIfMissing(text, marker, snippet, needle, label) {
   return text.replace(marker, `${snippet}${marker}`);
 }
 
+function insertAfterIfMissing(text, marker, snippet, needle, label) {
+  if (text.includes(needle)) return text;
+  if (!text.includes(marker)) throw new Error(`Missing insertion marker (${label}): ${marker.slice(0, 120)}`);
+  return text.replace(marker, `${marker}${snippet}`);
+}
+
 function patchDb() {
   const path = "src/lib/db.ts";
   let text = normalize(readFileSync(path, "utf8"));
@@ -101,10 +107,11 @@ function patchFillPdfRoute() {
     'signed-in access tier',
   );
 
-  text = replaceOnce(
+  text = insertAfterIfMissing(
     text,
-    `    const access = await getDownloadAccess(request);\n    accessForLog = access;\n    if (!access.isPro && access.used >= access.limit) {`,
-    `    const access = await getDownloadAccess(request);\n    accessForLog = access;\n    const deviceGuard = await enforceAccountDeviceLimit({\n      request,\n      userId: access.userId,\n      tier: access.tier,\n      deviceId: (formData.get("deviceId") as string | null) ?? request.headers.get("x-quickfill-device-id"),\n      qaBypass: access.isQaBypass === true,\n    });\n    if (!deviceGuard.allowed) {\n      await recordDownloadLog({\n        status: "blocked",\n        userId: access.userId,\n        guest: access.guest,\n        reason: "device_limit",\n        message: deviceGuard.message,\n      });\n      return NextResponse.json(\n        { error: deviceGuard.message, code: "device_limit", limit: deviceGuard.limit, activeDevices: deviceGuard.activeDeviceCount },\n        { status: 403 },\n      );\n    }\n\n    if (!access.isPro && access.used >= access.limit) {`,
+    `    const access = await getDownloadAccess(request);\n    accessForLog = access;\n`,
+    `    const deviceGuard = await enforceAccountDeviceLimit({\n      request,\n      userId: access.userId,\n      tier: access.tier,\n      deviceId: (formData.get("deviceId") as string | null) ?? request.headers.get("x-quickfill-device-id"),\n      qaBypass: access.isQaBypass === true,\n    });\n    if (!deviceGuard.allowed) {\n      await recordDownloadLog({\n        status: "blocked",\n        userId: access.userId,\n        guest: access.guest,\n        reason: "device_limit",\n        message: deviceGuard.message,\n      });\n      return NextResponse.json(\n        { error: deviceGuard.message, code: "device_limit", limit: deviceGuard.limit, activeDevices: deviceGuard.activeDeviceCount },\n        { status: 403 },\n      );\n    }\n\n`,
+    'const deviceGuard = await enforceAccountDeviceLimit',
     'fill-pdf device guard check',
   );
 
