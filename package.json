@@ -5,7 +5,7 @@
   "packageManager": "pnpm@10.15.1",
   "scripts": {
     "dev": "next dev",
-    "build": "node scripts/wire-autofill-adapter.mjs && node scripts/wire-pdf-download-compat.mjs && node scripts/wire-billing-entitlement-recovery.mjs && next build --webpack",
+    "build": "node scripts/wire-autofill-adapter.mjs && node scripts/wire-pdf-download-compat.mjs && node scripts/wire-billing-entitlement-recovery.mjs && node scripts/wire-mobile-editor-touch.mjs && next build --webpack",
     "start": "next start",
     "lint": "eslint",
     "qa": "jest --passWithNoTests && playwright test --reporter=list",
