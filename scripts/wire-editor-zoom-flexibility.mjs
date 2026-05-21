@@ -26,6 +26,15 @@ function insertAfter(text, anchor, insertion, label) {
   return text.slice(0, index + anchor.length) + insertion + text.slice(index + anchor.length);
 }
 
+function insertBefore(text, anchor, insertion, label) {
+  if (text.includes(insertion.trim())) return text;
+  const index = text.indexOf(anchor);
+  if (index === -1) {
+    throw new Error(`Missing zoom flexibility anchor (${label}): ${anchor.slice(0, 160)}`);
+  }
+  return text.slice(0, index) + insertion + text.slice(index);
+}
+
 function patchEditorPage() {
   const path = "src/app/editor/page.tsx";
   let text = normalize(readFileSync(path, "utf8"));
@@ -116,9 +125,9 @@ function patchPdfViewer() {
 
   const touchHandlers = `\n  const handleTouchStart = useCallback(\n    (e: React.TouchEvent<HTMLDivElement>) => {\n      if (!onZoomChange || e.touches.length !== 2) return;\n      const scroller = containerRef.current?.parentElement;\n      if (!scroller) return;\n\n      const distance = distanceBetweenTouches(e.touches);\n      if (distance <= 0) return;\n\n      const center = centerBetweenTouches(e.touches);\n      const scrollerRect = scroller.getBoundingClientRect();\n      const centerX = center.x - scrollerRect.left;\n      const centerY = center.y - scrollerRect.top;\n\n      pinchZoomRef.current = {\n        startDistance: distance,\n        startZoom: zoom,\n        centerX,\n        centerY,\n        contentX: scroller.scrollLeft + centerX,\n        contentY: scroller.scrollTop + centerY,\n      };\n      e.preventDefault();\n    },\n    [onZoomChange, zoom],\n  );\n\n  const handleTouchMove = useCallback(\n    (e: React.TouchEvent<HTMLDivElement>) => {\n      const pinch = pinchZoomRef.current;\n      if (!pinch || !onZoomChange || e.touches.length !== 2) return;\n\n      const scroller = containerRef.current?.parentElement;\n      if (!scroller) return;\n\n      const distance = distanceBetweenTouches(e.touches);\n      if (distance <= 0) return;\n\n      const nextZoom = clampPinchZoom(pinch.startZoom * (distance / pinch.startDistance));\n      onZoomChange(nextZoom);\n\n      const zoomRatio = nextZoom / pinch.startZoom;\n      requestAnimationFrame(() => {\n        scroller.scrollLeft = pinch.contentX * zoomRatio - pinch.centerX;\n        scroller.scrollTop = pinch.contentY * zoomRatio - pinch.centerY;\n      });\n      e.preventDefault();\n    },\n    [onZoomChange],\n  );\n\n  const handleTouchCancel = useCallback(() => {\n    if (pinchZoomRef.current) lastPinchZoomAtRef.current = Date.now();\n    pinchZoomRef.current = null;\n  }, []);\n`;
 
-  text = insertAfter(
+  text = insertBefore(
     text,
-    `  );\n\n  const handleTouchEnd = useCallback(\n`,
+    `  const handleTouchEnd = useCallback(\n`,
     touchHandlers,
     "pinch touch handlers",
   );
