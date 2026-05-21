@@ -46,20 +46,19 @@ interface ToolbarProps {
   onShowHelp?: () => void;
   mobile?: boolean;
   fields?: EditorField[];
-  // Minimap props (desktop only)
   minimapCanvas?: HTMLCanvasElement | null;
   viewerRef?: RefObject<HTMLDivElement | null>;
   zoom?: number;
   onMinimapRefresh?: () => void;
 }
 
-const tools: { type: ToolType; icon: typeof Type; label: string; title: string }[] = [
-  { type: "text", icon: Type, label: "Text Field", title: "Text field: click and drag to place" },
-  { type: "comb", icon: SquareSplitHorizontal, label: "Box Field", title: "Box field: drag across character boxes for TFN, ABN, Medicare, etc." },
-  { type: "checkbox", icon: CheckSquare, label: "Checkbox", title: "Checkbox: click to place a tick or cross" },
-  { type: "signature", icon: PenTool, label: "Signature", title: "Signature field: draw or type your signature" },
-  { type: "date", icon: Calendar, label: "Date", title: "Date field: click and drag to place" },
-  { type: "whiteout", icon: Eraser, label: "Whiteout", title: "Whiteout: cover pre-printed text with background colour" },
+const tools: { type: ToolType; icon: typeof Type; label: string; shortLabel: string; title: string }[] = [
+  { type: "text", icon: Type, label: "Text Field", shortLabel: "Text", title: "Text field: tap or drag to place" },
+  { type: "comb", icon: SquareSplitHorizontal, label: "Box Field", shortLabel: "Box", title: "Box field: drag across character boxes" },
+  { type: "checkbox", icon: CheckSquare, label: "Checkbox", shortLabel: "Tick", title: "Checkbox: tap to place a tick or cross" },
+  { type: "signature", icon: PenTool, label: "Signature", shortLabel: "Sign", title: "Signature field: tap to place" },
+  { type: "date", icon: Calendar, label: "Date", shortLabel: "Date", title: "Date field: tap or drag to place" },
+  { type: "whiteout", icon: Eraser, label: "Whiteout", shortLabel: "Erase", title: "Whiteout: drag over text to cover it" },
 ];
 
 function isPaidUsage(data: { isPro?: boolean; tier?: string | null } | null): boolean {
@@ -94,14 +93,11 @@ export function Toolbar({
   zoom,
   onMinimapRefresh,
 }: ToolbarProps) {
-  const showFontSize = selectedField && selectedField.type !== "checkbox";
-  const currentFontSize = showFontSize
-    ? (selectedField as { fontSize?: number }).fontSize ?? 14
-    : null;
   const [isPro, setIsPro] = useState<boolean | null>(null);
+  const fieldCount = fields?.length ?? 0;
 
+  void selectedField;
   void onFontSizeChange;
-  void currentFontSize;
   void onDetectFields;
   void isDetecting;
   void onAutoFill;
@@ -115,99 +111,91 @@ export function Toolbar({
       .catch(() => setIsPro(false));
   }, []);
 
-  // -- Mobile bottom bar -----------------------------------------------------
   if (mobile) {
     return (
-      <div className="sm:hidden fixed bottom-0 left-0 right-0 z-40 flex items-center gap-2 overflow-x-auto border-t border-border bg-surface px-3 pt-2 pb-[max(env(safe-area-inset-bottom),8px)]">
-        {tools.map(({ type, icon: Icon, label, title }) => (
+      <div className="sm:hidden fixed bottom-0 left-0 right-0 z-40 border-t border-border bg-surface/95 px-3 pt-2 pb-[max(env(safe-area-inset-bottom),10px)] shadow-[0_-10px_30px_rgba(15,23,42,0.12)] backdrop-blur">
+        {activeTool && (
+          <div className="mb-2 flex items-center justify-between gap-3 rounded-xl border border-accent/20 bg-accent/5 px-3 py-2">
+            <p className="min-w-0 text-xs font-semibold text-accent">
+              Tap the PDF to place {tools.find((tool) => tool.type === activeTool)?.shortLabel.toLowerCase() ?? "field"}
+            </p>
+            <button
+              onClick={() => onToolSelect(null)}
+              className="shrink-0 rounded-lg px-2 py-1 text-xs font-semibold text-text-muted hover:bg-surface hover:text-text"
+            >
+              Cancel
+            </button>
+          </div>
+        )}
+
+        <div className="flex items-center gap-2">
+          <div className="flex min-w-0 flex-1 gap-2 overflow-x-auto pb-1 pr-1">
+            {tools.map(({ type, icon: Icon, shortLabel, title }) => (
+              <button
+                key={type}
+                onClick={() => onToolSelect(activeTool === type ? null : type)}
+                title={title}
+                className={`flex h-12 min-w-[58px] shrink-0 flex-col items-center justify-center gap-1 rounded-xl border text-[11px] font-semibold transition-colors ${
+                  activeTool === type
+                    ? "border-accent bg-accent text-white shadow-sm"
+                    : "border-border bg-surface-alt text-text-muted hover:border-accent hover:text-accent"
+                }`}
+              >
+                <Icon className="h-4 w-4" />
+                <span>{shortLabel}</span>
+              </button>
+            ))}
+          </div>
+
           <button
-            key={type}
-            onClick={() => onToolSelect(activeTool === type ? null : type)}
-            title={title}
-            className={`flex shrink-0 items-center gap-1.5 rounded-full px-3 py-2.5 text-xs font-medium transition-colors ${
-              activeTool === type
-                ? "bg-accent text-white border-accent border"
-                : "text-text-muted border border-border hover:border-accent hover:text-accent"
-            }`}
+            onClick={onDownload}
+            disabled={isDownloading}
+            title="Download PDF"
+            className="flex h-12 min-w-[108px] shrink-0 items-center justify-center gap-2 rounded-xl bg-accent px-3 text-sm font-bold text-white shadow-sm hover:bg-accent-hover disabled:opacity-60"
           >
-            <Icon className="h-4 w-4" />
-            {label}
+            <Download className="h-4 w-4" />
+            {isDownloading ? "Saving" : "Download"}
           </button>
-        ))}
-        <div className="w-px h-6 bg-border shrink-0" />
-        <button
-          onClick={onSnapToggle}
-          title="Toggle snap detection for structured forms"
-          className={`flex shrink-0 items-center gap-1.5 rounded-full px-3 py-2.5 text-xs font-semibold transition-colors ${
-            snapEnabled
-              ? "bg-accent text-white border-accent border shadow-sm"
-              : "text-text-muted border border-border hover:border-accent hover:text-accent"
-          }`}
-        >
-          <Magnet className="h-3.5 w-3.5" />
-          Snap {snapEnabled ? "On" : "Off"}
-        </button>
-        <div className="w-px h-6 bg-border shrink-0" />
-        <button onClick={onUndo} disabled={!canUndo} title="Undo (Ctrl+Z)" className="shrink-0 rounded-full p-2.5 text-text-muted border border-border hover:border-accent hover:text-accent disabled:opacity-30 transition-colors">
-          <Undo2 className="h-4 w-4" />
-        </button>
-        <button onClick={onRedo} disabled={!canRedo} title="Redo (Ctrl+Shift+Z)" className="shrink-0 rounded-full p-2.5 text-text-muted border border-border hover:border-accent hover:text-accent disabled:opacity-30 transition-colors">
-          <Redo2 className="h-4 w-4" />
-        </button>
-        {onSaveProgress && (
-          <>
-            <div className="w-px h-6 bg-border shrink-0" />
-            <button
-              onClick={onSaveProgress}
-              title="Save Progress"
-              className="flex shrink-0 items-center gap-1.5 rounded-full px-3 py-2.5 text-xs font-medium text-text-muted border border-border hover:border-accent hover:text-accent transition-colors"
-            >
-              <Save className="h-4 w-4" />
-              Save
-            </button>
-          </>
-        )}
+        </div>
+
+        <div className="mt-2 grid grid-cols-5 gap-2">
+          <IconButton onClick={onUndo} disabled={!canUndo} title="Undo" icon={Undo2} />
+          <IconButton onClick={onRedo} disabled={!canRedo} title="Redo" icon={Redo2} />
+          <IconButton
+            onClick={onSnapToggle}
+            title={snapEnabled ? "Snap is on" : "Snap is off"}
+            icon={Magnet}
+            active={snapEnabled}
+          />
+          {onSaveProgress ? (
+            <IconButton onClick={onSaveProgress} title="Save progress" icon={Save} />
+          ) : (
+            <IconButton onClick={onClear} title="Clear fields" icon={Trash2} disabled={fieldCount === 0} danger />
+          )}
+          {onShowHelp ? (
+            <IconButton onClick={onShowHelp} title="Help" icon={HelpCircle} />
+          ) : onStartOver ? (
+            <IconButton onClick={onStartOver} title="Start over" icon={RotateCcw} />
+          ) : (
+            <IconButton onClick={onClear} title="Clear fields" icon={Trash2} disabled={fieldCount === 0} danger />
+          )}
+        </div>
+
         {isPro === true && (
-          <>
-            <div className="w-px h-6 bg-border shrink-0" />
-            <span className="shrink-0 rounded-full bg-accent/10 px-2.5 py-1 text-xs font-semibold text-accent">
-              Pro
-            </span>
-          </>
-        )}
-        <div className="w-px h-6 bg-border shrink-0" />
-        <button
-          onClick={onDownload}
-          disabled={isDownloading}
-          title="Download PDF"
-          className="flex shrink-0 items-center gap-1.5 rounded-full bg-accent px-4 py-2.5 text-xs font-semibold text-white hover:bg-accent-hover disabled:opacity-60 transition-colors"
-        >
-          <Download className="h-3.5 w-3.5" />
-          {isDownloading ? "Saving..." : "Download"}
-        </button>
-        {onShowHelp && (
-          <>
-            <div className="w-px h-6 bg-border shrink-0" />
-            <button
-              onClick={onShowHelp}
-              title="Show tutorial"
-              className="shrink-0 rounded-full p-2.5 text-text-muted border border-border hover:border-accent hover:text-accent transition-colors"
-            >
-              <HelpCircle className="h-4 w-4" />
-            </button>
-          </>
+          <div className="pointer-events-none absolute right-3 top-[-10px] rounded-full bg-accent px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white shadow-sm">
+            Pro
+          </div>
         )}
       </div>
     );
   }
 
-  // -- Desktop sidebar -------------------------------------------------------
   const showMinimap = !!(minimapCanvas && viewerRef && zoom !== undefined);
 
   return (
-    <div className="flex flex-col border-r border-border bg-surface w-16 sm:w-64 h-full">
-      <div className="flex flex-col gap-px px-2 pt-3 pb-2 overflow-y-auto flex-shrink min-h-0">
-        <p className="px-2 pt-1 pb-1 text-[10px] font-semibold uppercase tracking-widest text-text-muted hidden sm:block">
+    <div className="flex h-full w-16 flex-col border-r border-border bg-surface sm:w-64">
+      <div className="flex min-h-0 flex-shrink flex-col gap-px overflow-y-auto px-2 pb-2 pt-3">
+        <p className="hidden px-2 pb-1 pt-1 text-[10px] font-semibold uppercase tracking-widest text-text-muted sm:block">
           Place Fields
         </p>
         {tools.map(({ type, icon: Icon, label, title }) => (
@@ -215,10 +203,10 @@ export function Toolbar({
             key={type}
             onClick={() => onToolSelect(activeTool === type ? null : type)}
             title={title}
-            className={`flex h-8 items-center gap-3 rounded-lg px-2 text-sm font-semibold transition-colors shadow-sm ${
+            className={`flex h-8 items-center gap-3 rounded-lg px-2 text-sm font-semibold shadow-sm transition-colors ${
               activeTool === type
-                ? "bg-accent text-white border border-accent"
-                : "bg-surface-alt text-text-muted border border-border hover:border-accent hover:text-accent"
+                ? "border border-accent bg-accent text-white"
+                : "border border-border bg-surface-alt text-text-muted hover:border-accent hover:text-accent"
             }`}
           >
             <Icon className="h-4 w-4 shrink-0" />
@@ -226,42 +214,20 @@ export function Toolbar({
           </button>
         ))}
 
-        <div className="my-1 h-px bg-border mx-1" />
+        <div className="mx-1 my-1 h-px bg-border" />
 
-        <p className="px-2 pb-1 text-[10px] font-semibold uppercase tracking-widest text-text-muted hidden sm:block">
+        <p className="hidden px-2 pb-1 text-[10px] font-semibold uppercase tracking-widest text-text-muted sm:block">
           Actions
         </p>
-        <button
-          onClick={onUndo}
-          disabled={!canUndo}
-          title="Undo (Ctrl+Z)"
-          className="flex h-8 items-center gap-3 rounded-lg px-2 text-sm font-medium text-text-muted hover:bg-surface-alt hover:text-text transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
-        >
-          <Undo2 className="h-4 w-4 shrink-0" />
-          <span className="hidden sm:flex sm:flex-1 sm:items-center sm:justify-between">
-            Undo
-            <kbd className="text-[10px] text-text-muted/60 font-mono bg-surface-alt px-1 py-0.5 rounded">Ctrl+Z</kbd>
-          </span>
-        </button>
-        <button
-          onClick={onRedo}
-          disabled={!canRedo}
-          title="Redo (Ctrl+Shift+Z)"
-          className="flex h-8 items-center gap-3 rounded-lg px-2 text-sm font-medium text-text-muted hover:bg-surface-alt hover:text-text transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
-        >
-          <Redo2 className="h-4 w-4 shrink-0" />
-          <span className="hidden sm:flex sm:flex-1 sm:items-center sm:justify-between">
-            Redo
-            <kbd className="text-[10px] text-text-muted/60 font-mono bg-surface-alt px-1 py-0.5 rounded">Ctrl+Shift+Z</kbd>
-          </span>
-        </button>
+        <DesktopActionButton onClick={onUndo} disabled={!canUndo} title="Undo (Ctrl+Z)" icon={Undo2} label="Undo" shortcut="Ctrl+Z" />
+        <DesktopActionButton onClick={onRedo} disabled={!canRedo} title="Redo (Ctrl+Shift+Z)" icon={Redo2} label="Redo" shortcut="Ctrl+Shift+Z" />
         <button
           onClick={onSnapToggle}
           title="Toggle snap detection for structured forms"
           className={`flex h-8 items-center gap-3 rounded-lg px-2 text-sm font-semibold transition-colors ${
             snapEnabled
-              ? "bg-accent text-white border-accent border shadow-sm"
-              : "bg-surface-alt text-text-muted border border-border hover:border-accent hover:text-accent"
+              ? "border border-accent bg-accent text-white shadow-sm"
+              : "border border-border bg-surface-alt text-text-muted hover:border-accent hover:text-accent"
           }`}
         >
           <Magnet className="h-4 w-4 shrink-0" />
@@ -270,25 +236,25 @@ export function Toolbar({
         <button
           onClick={onClear}
           title="Clear Fields"
-          className="flex h-8 items-center gap-3 rounded-lg px-2 text-sm font-medium text-text-muted hover:bg-red-50 hover:text-red-600 transition-colors"
+          className="flex h-8 items-center gap-3 rounded-lg px-2 text-sm font-medium text-text-muted transition-colors hover:bg-red-50 hover:text-red-600"
         >
           <Trash2 className="h-4 w-4 shrink-0" />
           <span className="hidden sm:inline">Clear Fields</span>
         </button>
 
-        {fields && fields.length > 0 && (
-          <p className="px-2 py-1 text-[10px] text-text-muted hidden sm:block">
-            {fields.length} field{fields.length !== 1 ? "s" : ""} placed
+        {fieldCount > 0 && (
+          <p className="hidden px-2 py-1 text-[10px] text-text-muted sm:block">
+            {fieldCount} field{fieldCount !== 1 ? "s" : ""} placed
           </p>
         )}
 
-        <div className="my-1 h-px bg-border mx-1" />
+        <div className="mx-1 my-1 h-px bg-border" />
 
         {onSaveProgress && (
           <button
             onClick={onSaveProgress}
             title="Save Progress"
-            className="flex h-8 items-center gap-3 rounded-lg px-2 text-sm font-medium text-text-muted hover:bg-surface-alt hover:text-text transition-colors"
+            className="flex h-8 items-center gap-3 rounded-lg px-2 text-sm font-medium text-text-muted transition-colors hover:bg-surface-alt hover:text-text"
           >
             <Save className="h-4 w-4 shrink-0" />
             <span className="hidden sm:inline">Save Progress</span>
@@ -299,7 +265,7 @@ export function Toolbar({
           <button
             onClick={onStartOver}
             title="Clear all fields and start fresh"
-            className="flex h-8 items-center gap-3 rounded-lg px-2 text-sm font-medium text-text-muted hover:bg-red-50 hover:text-red-600 transition-colors"
+            className="flex h-8 items-center gap-3 rounded-lg px-2 text-sm font-medium text-text-muted transition-colors hover:bg-red-50 hover:text-red-600"
           >
             <RotateCcw className="h-4 w-4 shrink-0" />
             <span className="hidden sm:inline">Start Over</span>
@@ -310,37 +276,35 @@ export function Toolbar({
           onClick={onDownload}
           disabled={isDownloading}
           title="Download filled PDF"
-          className="flex h-9 w-full items-center justify-center gap-2 rounded-lg bg-accent text-sm font-semibold text-white hover:bg-accent-hover disabled:opacity-60 transition-colors shadow-sm"
+          className="flex h-9 w-full items-center justify-center gap-2 rounded-lg bg-accent text-sm font-semibold text-white shadow-sm transition-colors hover:bg-accent-hover disabled:opacity-60"
         >
           <Download className="h-4 w-4 shrink-0" />
-          <span className="hidden sm:inline">
-            {isDownloading ? "Saving..." : "Download PDF"}
-          </span>
+          <span className="hidden sm:inline">{isDownloading ? "Saving..." : "Download PDF"}</span>
         </button>
       </div>
 
       {isPro === true ? (
-        <div className="px-2 py-2 border-t border-border">
-          <span className="hidden sm:inline-block rounded-full bg-accent/10 px-2.5 py-1 text-xs font-semibold text-accent">
+        <div className="border-t border-border px-2 py-2">
+          <span className="hidden rounded-full bg-accent/10 px-2.5 py-1 text-xs font-semibold text-accent sm:inline-block">
             PRO
           </span>
         </div>
       ) : isPro === false ? (
-        <div className="px-2 py-2 border-t border-border hidden sm:block">
-          <a href="/pricing" className="flex items-center gap-2 rounded-lg bg-accent/10 px-3 py-2 text-xs font-semibold text-accent hover:bg-accent hover:text-white transition-colors">
+        <div className="hidden border-t border-border px-2 py-2 sm:block">
+          <a href="/pricing" className="flex items-center gap-2 rounded-lg bg-accent/10 px-3 py-2 text-xs font-semibold text-accent transition-colors hover:bg-accent hover:text-white">
             Upgrade to Pro
           </a>
         </div>
       ) : (
-        <div className="hidden sm:block border-t border-border px-2 py-2" aria-hidden="true" />
+        <div className="hidden border-t border-border px-2 py-2 sm:block" aria-hidden="true" />
       )}
 
       {onShowHelp && (
-        <div className="mt-auto p-2 border-t border-border">
+        <div className="mt-auto border-t border-border p-2">
           <button
             onClick={onShowHelp}
             title="Show tutorial"
-            className="flex h-8 w-8 items-center justify-center rounded-full text-text-muted hover:bg-surface-alt hover:text-text transition-colors mx-auto"
+            className="mx-auto flex h-8 w-8 items-center justify-center rounded-full text-text-muted transition-colors hover:bg-surface-alt hover:text-text"
           >
             <HelpCircle className="h-4 w-4" />
           </button>
@@ -348,14 +312,12 @@ export function Toolbar({
       )}
 
       {showMinimap && (
-        <div className="hidden sm:flex flex-col min-h-0 border-t border-border px-2 pb-2" style={{ height: "240px", flexShrink: 0 }}>
-          <div className="flex items-center gap-1.5 px-1 py-2 flex-shrink-0">
+        <div className="hidden min-h-0 flex-col border-t border-border px-2 pb-2 sm:flex" style={{ height: "240px", flexShrink: 0 }}>
+          <div className="flex flex-shrink-0 items-center gap-1.5 px-1 py-2">
             <Map className="h-3 w-3 text-text-muted" />
-            <p className="text-[10px] font-semibold uppercase tracking-widest text-text-muted">
-              Overview
-            </p>
+            <p className="text-[10px] font-semibold uppercase tracking-widest text-text-muted">Overview</p>
           </div>
-          <div className="flex-1 min-h-0 rounded-lg overflow-hidden border border-border bg-surface-alt">
+          <div className="min-h-0 flex-1 overflow-hidden rounded-lg border border-border bg-surface-alt">
             <Minimap
               sourceCanvas={minimapCanvas!}
               viewerRef={viewerRef!}
@@ -369,5 +331,70 @@ export function Toolbar({
         </div>
       )}
     </div>
+  );
+}
+
+function IconButton({
+  icon: Icon,
+  title,
+  onClick,
+  disabled,
+  active,
+  danger,
+}: {
+  icon: typeof Type;
+  title: string;
+  onClick: () => void;
+  disabled?: boolean;
+  active?: boolean;
+  danger?: boolean;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      title={title}
+      aria-label={title}
+      className={`flex h-10 items-center justify-center rounded-xl border text-text-muted transition-colors disabled:opacity-30 ${
+        active
+          ? "border-accent bg-accent text-white"
+          : danger
+            ? "border-border bg-surface-alt hover:border-red-200 hover:bg-red-50 hover:text-red-600"
+            : "border-border bg-surface-alt hover:border-accent hover:text-accent"
+      }`}
+    >
+      <Icon className="h-4 w-4" />
+    </button>
+  );
+}
+
+function DesktopActionButton({
+  icon: Icon,
+  label,
+  title,
+  shortcut,
+  onClick,
+  disabled,
+}: {
+  icon: typeof Type;
+  label: string;
+  title: string;
+  shortcut: string;
+  onClick: () => void;
+  disabled?: boolean;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      title={title}
+      className="flex h-8 items-center gap-3 rounded-lg px-2 text-sm font-medium text-text-muted transition-colors hover:bg-surface-alt hover:text-text disabled:cursor-not-allowed disabled:opacity-30"
+    >
+      <Icon className="h-4 w-4 shrink-0" />
+      <span className="hidden flex-1 items-center justify-between sm:flex">
+        {label}
+        <kbd className="rounded bg-surface-alt px-1 py-0.5 font-mono text-[10px] text-text-muted/60">{shortcut}</kbd>
+      </span>
+    </button>
   );
 }
