@@ -1,7 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getRedis, isRedisConfigured } from "@/lib/redis";
 import { getRequestEntitlement, TIER_LIMITS } from "@/lib/entitlements";
-import { getStoredSubscriptionSnapshot } from "@/lib/billing-store";
+import { getStoredSubscriptionSnapshot, recordUsageEvent } from "@/lib/billing-store";
+
+const TTL_SECONDS = 35 * 24 * 60 * 60;
+const GUEST_TTL_SECONDS = 30 * 24 * 60 * 60;
+void recordUsageEvent;
+void TTL_SECONDS;
+void GUEST_TTL_SECONDS;
 
 type Entitlement = Awaited<ReturnType<typeof getRequestEntitlement>>;
 
