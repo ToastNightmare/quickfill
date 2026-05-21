@@ -5,7 +5,7 @@
   "packageManager": "pnpm@10.15.1",
   "scripts": {
     "dev": "next dev",
-    "build": "node scripts/wire-autofill-adapter.mjs && node scripts/wire-pdf-download-compat.mjs && node scripts/wire-billing-entitlement-recovery.mjs && node scripts/wire-mobile-editor-touch.mjs && node scripts/wire-mobile-full-editor-default.mjs && node scripts/wire-account-device-guard.mjs && node scripts/wire-mobile-field-nudge.mjs && node scripts/wire-guest-download-copy.mjs && node scripts/wire-security-hardening.mjs && node scripts/wire-mobile-signature-cleanup.mjs && node scripts/wire-mobile-signature-photo-picker.mjs && node scripts/wire-signature-export-safety.mjs && next build --webpack",
+    "build": "node scripts/wire-autofill-adapter.mjs && node scripts/wire-pdf-download-compat.mjs && node scripts/wire-billing-entitlement-recovery.mjs && node scripts/wire-mobile-editor-touch.mjs && node scripts/wire-mobile-full-editor-default.mjs && node scripts/wire-account-device-guard.mjs && node scripts/wire-mobile-field-nudge.mjs && node scripts/wire-guest-download-copy.mjs && node scripts/wire-security-hardening.mjs && node scripts/wire-mobile-signature-cleanup.mjs && node scripts/wire-mobile-signature-photo-picker.mjs && node scripts/wire-mobile-editor-reliability.mjs && node scripts/wire-signature-export-safety.mjs && next build --webpack",
     "start": "next start",
     "lint": "eslint",
     "qa": "jest --passWithNoTests && playwright test --reporter=list",
@@ -60,7 +60,6 @@
     "eslint-config-next": "16.2.1",
     "jest": "^30.3.0",
     "jest-environment-jsdom": "^30.3.0",
-    "tailwindcss": "^4",
     "ts-jest": "^29.4.9",
     "typescript": "^5"
   }
