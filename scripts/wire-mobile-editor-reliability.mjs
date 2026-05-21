@@ -17,6 +17,15 @@ function replaceOnce(text, search, replacement, label) {
   return text.replace(search, replacement);
 }
 
+function replacePattern(text, pattern, replacement, label) {
+  if (text.includes(replacement)) return text;
+  const next = text.replace(pattern, replacement);
+  if (next === text) {
+    throw new Error(`Missing mobile editor reliability anchor (${label})`);
+  }
+  return next;
+}
+
 function patchEditorPage() {
   const path = "src/app/editor/page.tsx";
   let text = normalize(readFileSync(path, "utf8"));
@@ -42,9 +51,9 @@ function patchPdfViewer() {
   const path = "src/components/PdfViewer.tsx";
   let text = normalize(readFileSync(path, "utf8"));
 
-  text = replaceOnce(
+  text = replacePattern(
     text,
-    `                onChange={(e) => {\n                  const newValue = e.target.value;\n                  onFieldUpdate(editField.id, { value: newValue } as Partial<EditorField>);\n\n                  // Auto-expand field width if text overflows\n                  const fontSize = ((editField as { fontSize?: number }).fontSize ?? 14) * effectiveScale;\n                  const padding = (isEditSnapped ? 2 : 4) * 2;\n                  // Measure text width using canvas\n                  const canvas = document.createElement("canvas");\n                  const ctx = canvas.getContext("2d");\n                  if (ctx) {\n                    ctx.font = \`${fontSize}px Arial, sans-serif\`;\n                    const textWidth = ctx.measureText(newValue).width + padding + 8;\n                    const currentWidth = editField.width * effectiveScale;\n                    if (textWidth > currentWidth) {\n                      // Expand field to fit text, in PDF point space\n                      onFieldUpdate(editField.id, {\n                        value: newValue,\n                        width: Math.ceil(textWidth / effectiveScale),\n                      } as Partial<EditorField>);\n                    }\n                  }\n                }}`,
+    /                onChange=\{\(e\) => \{\n                  const newValue = e\.target\.value;\n                  onFieldUpdate\(editField\.id, \{ value: newValue \} as Partial<EditorField>\);\n\n                  \/\/ Auto-expand field width if text overflows[\s\S]*?                \}\}/,
     `                onChange={(e) => {\n                  const newValue = e.target.value;\n                  onFieldUpdate(editField.id, { value: newValue } as Partial<EditorField>);\n                }}`,
     "mobile text field fixed width",
   );
@@ -66,7 +75,7 @@ function patchContextPanel() {
   text = replaceOnce(
     text,
     `  const TypeIcon = fieldIcon(selectedField.type);\n  const nudgeField = (dx: number, dy: number) => {\n    onFieldUpdate(selectedField.id, {\n      x: Math.max(0, selectedField.x + dx),\n      y: Math.max(0, selectedField.y + dy),\n    } as Partial<EditorField>);\n  };\n\n  return (`,
-    `  const TypeIcon = fieldIcon(selectedField.type);\n  const [isExpanded, setIsExpanded] = useState(false);\n\n  useEffect(() => {\n    setIsExpanded(false);\n  }, [selectedField.id]);\n\n  const nudgeField = (dx: number, dy: number) => {\n    onFieldUpdate(selectedField.id, {\n      x: Math.max(0, selectedField.x + dx),\n      y: Math.max(0, selectedField.y + dy),\n    } as Partial<EditorField>);\n  };\n\n  if (!isExpanded) {\n    return (\n      <div className="fixed bottom-[8.25rem] left-3 right-3 z-30 rounded-2xl border border-border bg-surface shadow-xl sm:hidden">\n        <div className="flex items-center justify-between gap-3 px-4 py-3">\n          <div className={\`flex min-w-0 items-center gap-2 ${fieldColor(selectedField.type)}\`}>\n            <TypeIcon className="h-4 w-4 shrink-0" />\n            <p className="truncate text-sm font-bold text-text">{fieldLabel(selectedField.type)} selected</p>\n          </div>\n          <div className="flex shrink-0 items-center gap-2">\n            <button\n              onClick={() => setIsExpanded(true)}\n              className="rounded-lg border border-border px-3 py-1.5 text-xs font-semibold text-text-muted hover:bg-surface-alt hover:text-text"\n            >\n              Options\n            </button>\n            <button\n              onClick={onFieldDeselect}\n              className="rounded-lg px-3 py-1.5 text-xs font-semibold text-text-muted hover:bg-surface-alt hover:text-text"\n            >\n              Done\n            </button>\n          </div>\n        </div>\n      </div>\n    );\n  }\n\n  return (`,
+    `  const TypeIcon = fieldIcon(selectedField.type);\n  const [isExpanded, setIsExpanded] = useState(false);\n\n  useEffect(() => {\n    setIsExpanded(false);\n  }, [selectedField.id]);\n\n  const nudgeField = (dx: number, dy: number) => {\n    onFieldUpdate(selectedField.id, {\n      x: Math.max(0, selectedField.x + dx),\n      y: Math.max(0, selectedField.y + dy),\n    } as Partial<EditorField>);\n  };\n\n  if (!isExpanded) {\n    return (\n      <div className="fixed bottom-[8.25rem] left-3 right-3 z-30 rounded-2xl border border-border bg-surface shadow-xl sm:hidden">\n        <div className="flex items-center justify-between gap-3 px-4 py-3">\n          <div className={"flex min-w-0 items-center gap-2 " + fieldColor(selectedField.type)}>\n            <TypeIcon className="h-4 w-4 shrink-0" />\n            <p className="truncate text-sm font-bold text-text">{fieldLabel(selectedField.type)} selected</p>\n          </div>\n          <div className="flex shrink-0 items-center gap-2">\n            <button\n              onClick={() => setIsExpanded(true)}\n              className="rounded-lg border border-border px-3 py-1.5 text-xs font-semibold text-text-muted hover:bg-surface-alt hover:text-text"\n            >\n              Options\n            </button>\n            <button\n              onClick={onFieldDeselect}\n              className="rounded-lg px-3 py-1.5 text-xs font-semibold text-text-muted hover:bg-surface-alt hover:text-text"\n            >\n              Done\n            </button>\n          </div>\n        </div>\n      </div>\n    );\n  }\n\n  return (`,
     "collapsed mobile field sheet",
   );
 
