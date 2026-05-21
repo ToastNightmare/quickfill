@@ -51,23 +51,28 @@ editor = replaceOnce(
   `    {/* Optional legacy mobile filler flow (?simple=1) */}\n    {!advancedMobile && (\n      <div className="sm:hidden">\n        <MobileFiller />\n      </div>\n    )}\n    {/* Full canvas editor */}`,
 );
 
-editor = replaceAllRequired(
-  editor,
-  `      const a = document.createElement("a");\n      a.href = url;\n      a.download = fileName.replace(/\\.pdf$/i, "") + "-filled.pdf";\n      a.click();\n      URL.revokeObjectURL(url);`,
-  `      const a = document.createElement("a");\n      a.href = url;\n      a.download = fileName.replace(/\\.pdf$/i, "") + "-filled.pdf";\n      a.rel = "noopener";\n      document.body.appendChild(a);\n      a.click();\n      a.remove();\n      setTimeout(() => URL.revokeObjectURL(url), 2000);`,
-  1,
-);
+const downloadBefore = String.raw`      const a = document.createElement("a");
+      a.href = url;
+      a.download = fileName.replace(/\.pdf$/i, "") + "-filled.pdf";
+      a.click();
+      URL.revokeObjectURL(url);`;
+
+const downloadAfter = String.raw`      const a = document.createElement("a");
+      a.href = url;
+      a.download = fileName.replace(/\.pdf$/i, "") + "-filled.pdf";
+      a.rel = "noopener";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 2000);`;
+
+editor = replaceAllRequired(editor, downloadBefore, downloadAfter, 1);
 
 writeIfChanged(editorPath, editor);
 
 const mobilePath = "src/components/MobileFiller.tsx";
 let mobile = normalize(readFileSync(mobilePath, "utf8"));
 
-mobile = replaceAllRequired(
-  mobile,
-  `      const a = document.createElement("a");\n      a.href = url;\n      a.download = fileName.replace(/\\.pdf$/i, "") + "-filled.pdf";\n      a.click();\n      URL.revokeObjectURL(url);`,
-  `      const a = document.createElement("a");\n      a.href = url;\n      a.download = fileName.replace(/\\.pdf$/i, "") + "-filled.pdf";\n      a.rel = "noopener";\n      document.body.appendChild(a);\n      a.click();\n      a.remove();\n      setTimeout(() => URL.revokeObjectURL(url), 2000);`,
-  1,
-);
+mobile = replaceAllRequired(mobile, downloadBefore, downloadAfter, 1);
 
 writeIfChanged(mobilePath, mobile);
