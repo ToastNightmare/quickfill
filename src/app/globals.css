@@ -63,3 +63,29 @@ body {
 .animate-toast-in {
   animation: toast-slide-up 0.25s ease-out;
 }
+
+@keyframes quickfill-auth-pop {
+  from {
+    opacity: 0;
+    transform: translateY(14px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.quickfill-auth-pop {
+  animation: quickfill-auth-pop 0.24s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.quickfill-auth-card-pop {
+  animation: quickfill-auth-pop 0.24s 0.06s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .quickfill-auth-pop,
+  .quickfill-auth-card-pop {
+    animation: none;
+  }
+}
