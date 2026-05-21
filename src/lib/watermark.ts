@@ -8,20 +8,25 @@ export const WATERMARK_TEXT = "QuickFill Free · getquickfill.com";
 export const WATERMARK_URL = "https://getquickfill.com/pricing?source=pdf_watermark";
 
 function addWatermarkLink(page: PDFPage, x: number, y: number, width: number, fontSize: number) {
-  const context = page.doc.context;
-  const annotation = context.obj({
-    Type: "Annot",
-    Subtype: "Link",
-    Rect: [x - 2, y - 2, x + width + 2, y + fontSize + 3],
-    Border: [0, 0, 0],
-    A: {
-      Type: "Action",
-      S: "URI",
-      URI: PDFString.of(WATERMARK_URL),
-    },
-  });
+  try {
+    const context = page.doc.context;
+    const annotation = context.obj({
+      Type: "Annot",
+      Subtype: "Link",
+      Rect: [x - 2, y - 2, x + width + 2, y + fontSize + 3],
+      Border: [0, 0, 0],
+      A: {
+        Type: "Action",
+        S: "URI",
+        URI: PDFString.of(WATERMARK_URL),
+      },
+    });
 
-  page.node.addAnnot(context.register(annotation));
+    page.node.addAnnot(context.register(annotation));
+  } catch {
+    // Some source PDFs carry malformed annotation state. The visible watermark
+    // is still drawn; the link is best-effort so export cannot be blocked.
+  }
 }
 
 function drawLinkedWatermark(page: PDFPage, font: PDFFont, y: number, fontSize: number, opacity: number) {
