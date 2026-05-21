@@ -21,33 +21,37 @@ function patchPdfViewer() {
   const path = "src/components/PdfViewer.tsx";
   let text = normalize(readFileSync(path, "utf8"));
 
-  const autoExpandBlock = `                onChange={(e) => {
-                  const newValue = e.target.value;
-                  onFieldUpdate(editField.id, { value: newValue } as Partial<EditorField>);
+  const autoExpandBlock = [
+    "                onChange={(e) => {",
+    "                  const newValue = e.target.value;",
+    "                  onFieldUpdate(editField.id, { value: newValue } as Partial<EditorField>);",
+    "",
+    "                  // Auto-expand field width if text overflows",
+    "                  const fontSize = ((editField as { fontSize?: number }).fontSize ?? 14) * effectiveScale;",
+    "                  const padding = (isEditSnapped ? 2 : 4) * 2;",
+    "                  // Measure text width using canvas",
+    "                  const canvas = document.createElement(\"canvas\");",
+    "                  const ctx = canvas.getContext(\"2d\");",
+    "                  if (ctx) {",
+    "                    ctx.font = `${fontSize}px Arial, sans-serif`;",
+    "                    const textWidth = ctx.measureText(newValue).width + padding + 8;",
+    "                    const currentWidth = editField.width * effectiveScale;",
+    "                    if (textWidth > currentWidth) {",
+    "                      // Expand field to fit text, in PDF point space",
+    "                      onFieldUpdate(editField.id, {",
+    "                        value: newValue,",
+    "                        width: Math.ceil(textWidth / effectiveScale),",
+    "                      } as Partial<EditorField>);",
+    "                    }",
+    "                  }",
+    "                }}",
+  ].join("\n");
 
-                  // Auto-expand field width if text overflows
-                  const fontSize = ((editField as { fontSize?: number }).fontSize ?? 14) * effectiveScale;
-                  const padding = (isEditSnapped ? 2 : 4) * 2;
-                  // Measure text width using canvas
-                  const canvas = document.createElement("canvas");
-                  const ctx = canvas.getContext("2d");
-                  if (ctx) {
-                    ctx.font = `${fontSize}px Arial, sans-serif`;
-                    const textWidth = ctx.measureText(newValue).width + padding + 8;
-                    const currentWidth = editField.width * effectiveScale;
-                    if (textWidth > currentWidth) {
-                      // Expand field to fit text, in PDF point space
-                      onFieldUpdate(editField.id, {
-                        value: newValue,
-                        width: Math.ceil(textWidth / effectiveScale),
-                      } as Partial<EditorField>);
-                    }
-                  }
-                }}`;
-
-  const fixedBlock = `                onChange={(e) => {
-                  onFieldUpdate(editField.id, { value: e.target.value } as Partial<EditorField>);
-                }}`;
+  const fixedBlock = [
+    "                onChange={(e) => {",
+    "                  onFieldUpdate(editField.id, { value: e.target.value } as Partial<EditorField>);",
+    "                }}",
+  ].join("\n");
 
   text = replaceRequired(text, autoExpandBlock, fixedBlock, "remove text auto-expand");
   writeIfChanged(path, text);
