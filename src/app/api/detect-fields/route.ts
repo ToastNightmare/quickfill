@@ -6,6 +6,24 @@ import { checkRateLimit } from "@/lib/rate-limit";
 // Lazy singleton OpenAI client  -  only instantiated at request time
 let _openaiClient: OpenAI | null = null;
 
+const MAX_DETECT_IMAGE_CHARS = 6_000_000;
+const MAX_PAGE_DIMENSION = 10_000;
+
+function safeDimension(value: unknown) {
+  const next = Number(value);
+  return Number.isFinite(next) && next > 0 && next <= MAX_PAGE_DIMENSION ? next : null;
+}
+
+function normalizeDetectionImage(value: unknown) {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  if (!trimmed || trimmed.length > MAX_DETECT_IMAGE_CHARS) return null;
+  if (/^data:image\/(png|jpeg|jpg|webp);base64,/i.test(trimmed)) return trimmed;
+  const compact = trimmed.replace(/\s/g, "");
+  if (!/^[a-zA-Z0-9+/=]+$/.test(compact)) return null;
+  return `data:image/png;base64,${compact}`;
+}
+
 function getOpenAIClient(): OpenAI {
   if (!_openaiClient) {
     const apiKey = process.env.OPENAI_API_KEY;
@@ -27,17 +45,25 @@ export async function POST(req: Request) {
   const forwarded = req.headers.get("x-forwarded-for");
   const realIp = req.headers.get("x-real-ip");
   const identifier = forwarded?.split(",")[0] || realIp || "anonymous";
-  const { success, remaining } = await checkRateLimit(identifier);
+  const { success } = await checkRateLimit(identifier, "detectFields");
   if (!success) {
     return NextResponse.json({ fields: [], error: "Too many requests, try again in a minute" }, { status: 429 });
   }
 
   try {
-    const { imageBase64, pageWidth, pageHeight } = await req.json();
+    const body = await req.json().catch(() => null);
+    if (!body || typeof body !== "object") {
+      return NextResponse.json({ fields: [], error: "Invalid request body" }, { status: 400 });
+    }
 
-    if (!imageBase64 || !pageWidth || !pageHeight) {
+    const input = body as Record<string, unknown>;
+    const imageDataUrl = normalizeDetectionImage(input.imageBase64);
+    const pageWidth = safeDimension(input.pageWidth);
+    const pageHeight = safeDimension(input.pageHeight);
+
+    if (!imageDataUrl || !pageWidth || !pageHeight) {
       return NextResponse.json(
-        { fields: [], error: "Missing required fields" },
+        { fields: [], error: "Invalid image or page dimensions" },
         { status: 400 },
       );
     }
@@ -63,9 +89,7 @@ export async function POST(req: Request) {
             {
               type: "image_url",
               image_url: {
-                url: imageBase64.startsWith("data:")
-                  ? imageBase64
-                  : `data:image/png;base64,${imageBase64}`,
+                url: imageDataUrl,
               },
             },
           ],
