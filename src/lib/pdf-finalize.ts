@@ -33,15 +33,28 @@ export async function createViewerSafePdfDocument(sourceDoc: PDFDocument) {
   return outputDoc;
 }
 
-export async function finalizePdfForDownload(sourceDoc: PDFDocument, isPro: boolean) {
-  const outputDoc = await createViewerSafePdfDocument(sourceDoc);
+async function stampAndSavePdf(pdfDoc: PDFDocument, isPro: boolean) {
+  const watermarkFont = await pdfDoc.embedFont(StandardFonts.Helvetica);
+  applyBorderWatermark(pdfDoc.getPages(), watermarkFont, isPro);
 
-  // Stamp free-account branding after every user edit, whiteout, and compatibility pass.
-  // This keeps QuickFill's own whiteout tool from covering it and preserves link annotations.
-  const watermarkFont = await outputDoc.embedFont(StandardFonts.Helvetica);
-  applyBorderWatermark(outputDoc.getPages(), watermarkFont, isPro);
-
-  const resultBytes = await outputDoc.save({ updateFieldAppearances: false, useObjectStreams: false });
+  const resultBytes = await pdfDoc.save({ updateFieldAppearances: false, useObjectStreams: false });
   assertValidGeneratedPdf(resultBytes);
   return resultBytes;
+}
+
+export async function finalizePdfForDownload(sourceDoc: PDFDocument, isPro: boolean) {
+  try {
+    const outputDoc = await createViewerSafePdfDocument(sourceDoc);
+
+    // Stamp free-account branding after every user edit, whiteout, and compatibility pass.
+    // This keeps QuickFill's own whiteout tool from covering it and preserves link annotations.
+    return await stampAndSavePdf(outputDoc, isPro);
+  } catch (error) {
+    console.warn(
+      "viewer-safe PDF finalization failed, saving edited document directly:",
+      error instanceof Error ? error.message : error,
+    );
+    cleanupEditedDocumentArtifacts(sourceDoc);
+    return await stampAndSavePdf(sourceDoc, isPro);
+  }
 }
