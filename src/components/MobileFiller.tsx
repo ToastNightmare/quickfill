@@ -254,6 +254,7 @@ export function MobileFiller() {
     }
   }, [fields, hasAcroForm, showToast]);
 
+  // ── Signature
   const openSignatureModal = useCallback((fieldId: string) => {
     setActiveSigFieldId(fieldId);
     setSigModalOpen(true);
@@ -302,7 +303,7 @@ export function MobileFiller() {
         isPro = usage.isPro;
         canSaveFillHistory = !usage.guest && !usage.qa;
         if (!isPro && usage.used >= usage.limit) {
-          showToast("Free limit reached. Upgrade to Pro for unlimited fills.", 5000);
+          showToast("Free limit reached, upgrade to Pro for unlimited fills", 5000);
           setIsDownloading(false);
           return;
         }
