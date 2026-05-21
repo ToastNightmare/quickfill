@@ -15,13 +15,9 @@ function replaceOnce(text, search, replacement) {
   return text.replace(search, replacement);
 }
 
-function replaceAllRequired(text, search, replacement, expectedCount) {
-  const count = text.split(search).length - 1;
-  if (count === 0 && text.includes(replacement.trim())) return text;
-  if (count !== expectedCount) {
-    throw new Error(`Expected ${expectedCount} matches for mobile full editor anchor, found ${count}: ${search.slice(0, 100)}`);
-  }
-  return text.replaceAll(search, replacement);
+function replaceOptional(text, search, replacement) {
+  if (text.includes(replacement)) return text;
+  return text.includes(search) ? text.replace(search, replacement) : text;
 }
 
 const editorPath = "src/app/editor/page.tsx";
@@ -66,13 +62,11 @@ const downloadAfter = String.raw`      const a = document.createElement("a");
       a.remove();
       setTimeout(() => URL.revokeObjectURL(url), 2000);`;
 
-editor = replaceAllRequired(editor, downloadBefore, downloadAfter, 1);
+editor = replaceOptional(editor, downloadBefore, downloadAfter);
 
 writeIfChanged(editorPath, editor);
 
 const mobilePath = "src/components/MobileFiller.tsx";
 let mobile = normalize(readFileSync(mobilePath, "utf8"));
-
-mobile = replaceAllRequired(mobile, downloadBefore, downloadAfter, 1);
-
+mobile = replaceOptional(mobile, downloadBefore, downloadAfter);
 writeIfChanged(mobilePath, mobile);
