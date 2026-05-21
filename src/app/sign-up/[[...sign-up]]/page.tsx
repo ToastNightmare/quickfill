@@ -1,26 +1,33 @@
 import { SignUp } from "@clerk/nextjs";
+import Image from "next/image";
 import Link from "next/link";
 
 export default function SignUpPage() {
   return (
-    <div className="flex min-h-[calc(100vh-4rem)] items-center justify-center bg-navy px-4 py-12">
-      <div className="flex flex-col items-center gap-5 w-full">
-        <Link href="/">
-          <img src="/logo-mark.png" alt="QuickFill" className="h-16 w-16" />
+    <div className="flex min-h-[calc(100vh-4rem)] items-center justify-center overflow-hidden bg-navy px-4 py-10 sm:py-12">
+      <div className="quickfill-auth-pop flex w-full max-w-[430px] flex-col items-center gap-5">
+        <Link href="/" aria-label="QuickFill home" className="rounded-2xl">
+          <Image src="/logo-mark.png" alt="" width={64} height={64} priority />
         </Link>
-        <p className="text-gray-300 text-sm text-center">
-          Fill PDF forms in seconds, free to start, no credit card required
-        </p>
-        <SignUp
-          appearance={{
-            elements: {
-              rootBox: "mx-auto",
-              card: "rounded-xl shadow-2xl",
-              formButtonPrimary: "bg-[#2d8ef7] hover:bg-[#1a7ae8] text-white",
-              footerActionLink: "text-[#2d8ef7] hover:text-[#1a7ae8]",
-            },
-          }}
-        />
+        <div className="max-w-sm text-center">
+          <h1 className="text-2xl font-bold text-white">Almost there</h1>
+          <p className="mt-2 text-sm leading-6 text-gray-300">
+            Create your free account to start filling PDFs. No credit card required.
+          </p>
+        </div>
+        <div className="w-full">
+          <SignUp
+            appearance={{
+              elements: {
+                rootBox: "mx-auto w-full",
+                card: "quickfill-auth-card-pop rounded-xl border border-white/10 shadow-2xl",
+                formButtonPrimary:
+                  "bg-[#2d8ef7] hover:bg-[#1a7ae8] text-white",
+                footerActionLink: "text-[#2d8ef7] hover:text-[#1a7ae8]",
+              },
+            }}
+          />
+        </div>
       </div>
     </div>
   );
