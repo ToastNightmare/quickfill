@@ -79,41 +79,4 @@ function patchFillPdfRoute() {
   writeIfChanged(path, text);
 }
 
-function patchDetectFieldsRoute() {
-  const path = "src/app/api/detect-fields/route.ts";
-  let text = normalize(readFileSync(path, "utf8"));
-
-  text = insertAfterIfMissing(
-    text,
-    `let _openaiClient: OpenAI | null = null;\n`,
-    `\nconst MAX_DETECT_IMAGE_CHARS = 6_000_000;\nconst MAX_PAGE_DIMENSION = 10_000;\n\nfunction safeDimension(value: unknown) {\n  const next = Number(value);\n  return Number.isFinite(next) && next > 0 && next <= MAX_PAGE_DIMENSION ? next : null;\n}\n\nfunction normalizeDetectionImage(value: unknown) {\n  if (typeof value !== "string") return null;\n  const trimmed = value.trim();\n  if (!trimmed || trimmed.length > MAX_DETECT_IMAGE_CHARS) return null;\n  if (/^data:image\\/(png|jpeg|jpg|webp);base64,/i.test(trimmed)) return trimmed;\n  const compact = trimmed.replace(/\\s/g, "");\n  if (!/^[a-zA-Z0-9+/=]+$/.test(compact)) return null;\n  return `data:image/png;base64,${compact}`;\n}\n`,
-    "MAX_DETECT_IMAGE_CHARS",
-    "detect-fields validation helpers",
-  );
-
-  text = replaceOnce(
-    text,
-    `  const { success, remaining } = await checkRateLimit(identifier);\n`,
-    `  const { success } = await checkRateLimit(identifier, "detectFields");\n`,
-    "detect-fields rate policy",
-  );
-
-  text = replaceOnce(
-    text,
-    `    const { imageBase64, pageWidth, pageHeight } = await req.json();\n\n    if (!imageBase64 || !pageWidth || !pageHeight) {\n      return NextResponse.json(\n        { fields: [], error: "Missing required fields" },\n        { status: 400 },\n      );\n    }`,
-    `    const body = await req.json().catch(() => null);\n    if (!body || typeof body !== "object") {\n      return NextResponse.json({ fields: [], error: "Invalid request body" }, { status: 400 });\n    }\n\n    const input = body as Record<string, unknown>;\n    const imageDataUrl = normalizeDetectionImage(input.imageBase64);\n    const pageWidth = safeDimension(input.pageWidth);\n    const pageHeight = safeDimension(input.pageHeight);\n\n    if (!imageDataUrl || !pageWidth || !pageHeight) {\n      return NextResponse.json(\n        { fields: [], error: "Invalid image or page dimensions" },\n        { status: 400 },\n      );\n    }`,
-    "detect-fields request validation",
-  );
-
-  text = replaceOnce(
-    text,
-    `                url: imageBase64.startsWith("data:")\n                  ? imageBase64\n                  : ` + "`" + `data:image/png;base64,${imageBase64}` + "`" + `,`,
-    `                url: imageDataUrl,`,
-    "detect-fields normalized image URL",
-  );
-
-  writeIfChanged(path, text);
-}
-
 patchFillPdfRoute();
-patchDetectFieldsRoute();
