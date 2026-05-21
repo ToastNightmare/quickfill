@@ -5,17 +5,17 @@ import Link from "next/link";
 export default function SignUpPage() {
   return (
     <div className="flex min-h-[calc(100vh-4rem)] items-center justify-center overflow-hidden bg-navy px-4 py-10 sm:py-12">
-      <div className="quickfill-auth-pop flex w-full max-w-[430px] flex-col items-center gap-5">
+      <div className="quickfill-auth-pop flex w-full max-w-[430px] flex-col items-center gap-4">
         <Link href="/" aria-label="QuickFill home" className="rounded-2xl">
           <Image src="/logo-mark.png" alt="" width={64} height={64} priority />
         </Link>
-        <div className="max-w-sm text-center">
+        <div className="max-w-md text-center">
           <h1 className="text-2xl font-bold text-white">Almost there</h1>
           <p className="mt-2 text-sm leading-6 text-gray-300">
-            Create your free account to start filling PDFs. No credit card required.
+            Start filling PDFs for free. No credit card required.
           </p>
         </div>
-        <div className="w-full">
+        <div className="w-full pt-1">
           <SignUp
             appearance={{
               elements: {
