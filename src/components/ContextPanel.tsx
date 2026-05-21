@@ -23,12 +23,12 @@ import type { CheckboxStamp, CombField, EditorField, FieldLayerDirection, Signat
 const FONT_SIZES = [8, 10, 11, 12, 14, 16, 18, 24, 36];
 
 const TOOL_META: Record<ToolType, { icon: typeof Type; label: string; hint: string; color: string }> = {
-  text: { icon: Type, label: "Text Field", hint: "Click anywhere on the PDF to place a text field. It will snap to form boxes automatically.", color: "text-blue-500" },
-  checkbox: { icon: CheckSquare, label: "Checkbox", hint: "Click anywhere on the PDF to stamp a tick or cross. Click again to cycle or clear.", color: "text-violet-500" },
-  signature: { icon: PenTool, label: "Signature", hint: "Click the PDF to place a signature field. You can draw or reuse a saved signature.", color: "text-pink-500" },
-  date: { icon: Calendar, label: "Date", hint: "Click the PDF to place a date field. Today's date is pre-filled, edit it after placing.", color: "text-amber-500" },
-  comb: { icon: SquareSplitHorizontal, label: "Box Field", hint: "Drag across character boxes for TFN, ABN, Medicare, etc. Each cell holds one character.", color: "text-cyan-500" },
-  whiteout: { icon: Eraser, label: "Whiteout", hint: "Drag to draw a rectangle over unwanted text. It will sample the background color automatically.", color: "text-gray-500" },
+  text: { icon: Type, label: "Text Field", hint: "Tap or drag on the PDF to place a text field.", color: "text-blue-500" },
+  checkbox: { icon: CheckSquare, label: "Checkbox", hint: "Tap a box to place a tick, then tap the field to change it.", color: "text-violet-500" },
+  signature: { icon: PenTool, label: "Signature", hint: "Tap where the signature should go, then draw or reuse your saved signature.", color: "text-pink-500" },
+  date: { icon: Calendar, label: "Date", hint: "Tap where the date should go. Today's date is added first.", color: "text-amber-500" },
+  comb: { icon: SquareSplitHorizontal, label: "Box Field", hint: "Drag across character boxes for TFN, ABN, Medicare, and similar forms.", color: "text-cyan-500" },
+  whiteout: { icon: Eraser, label: "Whiteout", hint: "Drag over text you want to cover. QuickFill samples the paper color.", color: "text-gray-500" },
 };
 
 interface ContextPanelProps {
@@ -109,76 +109,75 @@ export function ContextPanel({
     const TypeIcon = fieldIcon(fieldType);
 
     return (
-      <Panel>
-        <Section>
-          <div className={`flex items-center gap-2 ${fieldColor(fieldType)}`}>
-            <TypeIcon className="h-4 w-4 shrink-0" />
-            <p className="text-sm font-bold text-text">{fieldLabel(fieldType)} selected</p>
-          </div>
-        </Section>
+      <>
+        <MobileFieldSheet
+          selectedField={selectedField}
+          onFieldUpdate={onFieldUpdate}
+          onFieldDelete={onFieldDelete}
+          onFieldDeselect={onFieldDeselect}
+          onFieldDuplicate={onFieldDuplicate}
+          onStampChange={onStampChange}
+          onSignatureRequest={onSignatureRequest}
+          charCountExpanded={charCountExpanded}
+          onCharCountExpandedChange={setCharCountExpanded}
+        />
+        <Panel>
+          <Section>
+            <div className={`flex items-center gap-2 ${fieldColor(fieldType)}`}>
+              <TypeIcon className="h-4 w-4 shrink-0" />
+              <p className="text-sm font-bold text-text">{fieldLabel(fieldType)} selected</p>
+            </div>
+          </Section>
 
-        <Divider />
+          <Divider />
+          <LayerControls selectedField={selectedField} />
+          <Divider />
 
-        <LayerControls selectedField={selectedField} />
-
-        <Divider />
-
-        {fieldType === "checkbox" && (
-          <CheckboxControls selectedField={selectedField} onStampChange={onStampChange} />
-        )}
-
-        {fieldType === "whiteout" && (
-          <WhiteoutControls selectedField={selectedField} onFieldUpdate={onFieldUpdate} />
-        )}
-
-        {fieldType === "signature" && (
-          <SignatureControls selectedField={selectedField} onSignatureRequest={onSignatureRequest} />
-        )}
-
-        {(fieldType === "text" || fieldType === "date") && (
-          <FontSizeControls selectedField={selectedField} onFieldUpdate={onFieldUpdate} />
-        )}
-
-        {fieldType === "comb" && (
-          <CombControls
-            selectedField={selectedField}
-            expanded={charCountExpanded}
-            onExpandedChange={setCharCountExpanded}
-            onFieldUpdate={onFieldUpdate}
-          />
-        )}
-
-        {selectedField.type !== "checkbox" && selectedField.type !== "whiteout" && (
-          <>
-            <SizeControls
+          {fieldType === "checkbox" && <CheckboxControls selectedField={selectedField} onStampChange={onStampChange} />}
+          {fieldType === "whiteout" && <WhiteoutControls selectedField={selectedField} onFieldUpdate={onFieldUpdate} />}
+          {fieldType === "signature" && <SignatureControls selectedField={selectedField} onSignatureRequest={onSignatureRequest} />}
+          {(fieldType === "text" || fieldType === "date") && <FontSizeControls selectedField={selectedField} onFieldUpdate={onFieldUpdate} />}
+          {fieldType === "comb" && (
+            <CombControls
               selectedField={selectedField}
-              expanded={sizeExpanded}
-              onExpandedChange={setSizeExpanded}
+              expanded={charCountExpanded}
+              onExpandedChange={setCharCountExpanded}
               onFieldUpdate={onFieldUpdate}
             />
-            <Divider />
-          </>
-        )}
-
-        <Section>
-          {onFieldDuplicate && (
-            <button
-              onClick={() => onFieldDuplicate(selectedField.id)}
-              className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-text-muted hover:bg-surface-alt hover:text-text transition-colors"
-            >
-              <Copy className="h-4 w-4 shrink-0" />
-              Duplicate
-            </button>
           )}
-          <button
-            onClick={() => { onFieldDelete(selectedField.id); onFieldDeselect(); }}
-            className="mt-2 flex w-full items-center justify-center gap-2 rounded-xl bg-red-50 py-2.5 text-sm font-semibold text-red-600 hover:bg-red-100 transition-colors"
-          >
-            <Trash2 className="h-4 w-4" />
-            Delete Field
-          </button>
-        </Section>
-      </Panel>
+
+          {selectedField.type !== "checkbox" && selectedField.type !== "whiteout" && (
+            <>
+              <SizeControls
+                selectedField={selectedField}
+                expanded={sizeExpanded}
+                onExpandedChange={setSizeExpanded}
+                onFieldUpdate={onFieldUpdate}
+              />
+              <Divider />
+            </>
+          )}
+
+          <Section>
+            {onFieldDuplicate && (
+              <button
+                onClick={() => onFieldDuplicate(selectedField.id)}
+                className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-text-muted transition-colors hover:bg-surface-alt hover:text-text"
+              >
+                <Copy className="h-4 w-4 shrink-0" />
+                Duplicate
+              </button>
+            )}
+            <button
+              onClick={() => { onFieldDelete(selectedField.id); onFieldDeselect(); }}
+              className="mt-2 flex w-full items-center justify-center gap-2 rounded-xl bg-red-50 py-2.5 text-sm font-semibold text-red-600 transition-colors hover:bg-red-100"
+            >
+              <Trash2 className="h-4 w-4" />
+              Delete Field
+            </button>
+          </Section>
+        </Panel>
+      </>
     );
   }
 
@@ -192,7 +191,7 @@ export function ContextPanel({
           </div>
           <div className="mt-3">
             <p className="text-sm font-bold text-text">{label} active</p>
-            <p className="mt-1.5 text-xs text-text-muted leading-relaxed">{hint}</p>
+            <p className="mt-1.5 text-xs leading-relaxed text-text-muted">{hint}</p>
           </div>
         </Section>
 
@@ -217,11 +216,10 @@ export function ContextPanel({
         )}
 
         <Divider />
-
         <Section>
           <button
             onClick={onToolCancel}
-            className="flex w-full items-center justify-center gap-2 rounded-xl border border-border py-2.5 text-sm font-medium text-text-muted hover:bg-surface-alt hover:text-text transition-colors"
+            className="flex w-full items-center justify-center gap-2 rounded-xl border border-border py-2.5 text-sm font-medium text-text-muted transition-colors hover:bg-surface-alt hover:text-text"
           >
             Cancel
           </button>
@@ -237,7 +235,7 @@ export function ContextPanel({
           <MousePointer2 className="h-5 w-5" />
         </div>
         <p className="mt-3 text-sm font-semibold text-text">Nothing selected</p>
-        <p className="mt-1 text-xs text-text-muted leading-relaxed">
+        <p className="mt-1 text-xs leading-relaxed text-text-muted">
           Click a tool on the left to start placing fields, or click an existing field to edit it.
         </p>
       </Section>
@@ -245,10 +243,85 @@ export function ContextPanel({
   );
 }
 
+function MobileFieldSheet({
+  selectedField,
+  onFieldUpdate,
+  onFieldDelete,
+  onFieldDeselect,
+  onFieldDuplicate,
+  onStampChange,
+  onSignatureRequest,
+  charCountExpanded,
+  onCharCountExpandedChange,
+}: {
+  selectedField: EditorField;
+  onFieldUpdate: (id: string, updates: Partial<EditorField>) => void;
+  onFieldDelete: (id: string) => void;
+  onFieldDeselect: () => void;
+  onFieldDuplicate?: (id: string) => void;
+  onStampChange: (stamp: CheckboxStamp) => void;
+  onSignatureRequest: (fieldId: string) => void;
+  charCountExpanded: boolean;
+  onCharCountExpandedChange: (value: boolean) => void;
+}) {
+  const TypeIcon = fieldIcon(selectedField.type);
+
+  return (
+    <div className="fixed bottom-[8.25rem] left-3 right-3 z-30 max-h-[42svh] overflow-y-auto rounded-2xl border border-border bg-surface shadow-2xl sm:hidden">
+      <div className="sticky top-0 z-10 flex items-center justify-between gap-3 border-b border-border bg-surface px-4 py-3">
+        <div className={`flex min-w-0 items-center gap-2 ${fieldColor(selectedField.type)}`}>
+          <TypeIcon className="h-4 w-4 shrink-0" />
+          <p className="truncate text-sm font-bold text-text">{fieldLabel(selectedField.type)} selected</p>
+        </div>
+        <button
+          onClick={onFieldDeselect}
+          className="shrink-0 rounded-lg px-3 py-1.5 text-xs font-semibold text-text-muted hover:bg-surface-alt hover:text-text"
+        >
+          Done
+        </button>
+      </div>
+
+      {selectedField.type === "checkbox" && <CheckboxControls selectedField={selectedField} onStampChange={onStampChange} />}
+      {selectedField.type === "whiteout" && <WhiteoutControls selectedField={selectedField} onFieldUpdate={onFieldUpdate} />}
+      {selectedField.type === "signature" && <SignatureControls selectedField={selectedField} onSignatureRequest={onSignatureRequest} />}
+      {(selectedField.type === "text" || selectedField.type === "date") && <FontSizeControls selectedField={selectedField} onFieldUpdate={onFieldUpdate} />}
+      {selectedField.type === "comb" && (
+        <CombControls
+          selectedField={selectedField}
+          expanded={charCountExpanded}
+          onExpandedChange={onCharCountExpandedChange}
+          onFieldUpdate={onFieldUpdate}
+        />
+      )}
+
+      <Section>
+        <div className="grid grid-cols-2 gap-2">
+          {onFieldDuplicate && (
+            <button
+              onClick={() => onFieldDuplicate(selectedField.id)}
+              className="flex h-11 items-center justify-center gap-2 rounded-xl border border-border text-sm font-semibold text-text-muted hover:bg-surface-alt hover:text-text"
+            >
+              <Copy className="h-4 w-4" />
+              Duplicate
+            </button>
+          )}
+          <button
+            onClick={() => { onFieldDelete(selectedField.id); onFieldDeselect(); }}
+            className="flex h-11 items-center justify-center gap-2 rounded-xl bg-red-50 text-sm font-semibold text-red-600 hover:bg-red-100"
+          >
+            <Trash2 className="h-4 w-4" />
+            Delete
+          </button>
+        </div>
+      </Section>
+    </div>
+  );
+}
+
 function LayerControls({ selectedField }: { selectedField: EditorField }) {
   const note = selectedField.type === "whiteout"
     ? "Whiteout remains behind fill fields. These buttons reorder whiteout patches."
-    : "Whiteout stays behind this field. These buttons reorder fill fields."
+    : "Whiteout stays behind this field. These buttons reorder fill fields.";
 
   return (
     <Section label="Layer">
@@ -267,7 +340,7 @@ function LayerButton({ label, onClick }: { label: string; onClick: () => void })
   return (
     <button
       onClick={onClick}
-      className="rounded-lg border border-border bg-surface-alt px-2 py-2 text-xs font-semibold text-text-muted hover:border-accent hover:text-text transition-colors"
+      className="rounded-lg border border-border bg-surface-alt px-2 py-2 text-xs font-semibold text-text-muted transition-colors hover:border-accent hover:text-text"
     >
       {label}
     </button>
@@ -302,7 +375,7 @@ function WhiteoutControls({ selectedField, onFieldUpdate }: { selectedField: Edi
         />
         <div className="flex-1">
           <p className="text-xs font-medium text-text">{whiteoutField.fillColor}</p>
-          <p className="text-[10px] text-text-muted">Click to pick a different color</p>
+          <p className="text-[10px] text-text-muted">Pick a different cover color</p>
         </div>
       </div>
     </Section>
@@ -316,11 +389,11 @@ function SignatureControls({ selectedField, onSignatureRequest }: { selectedFiel
   return (
     <Section label="Signature">
       {isSigned && sigField.signatureDataUrl ? (
-        <div className="mb-3 flex min-h-[96px] items-center justify-center rounded-xl border border-green-200 bg-white p-3 shadow-inner">
-          <img src={sigField.signatureDataUrl} alt="Signature" className="max-h-20 max-w-full object-contain" />
+        <div className="mb-3 flex min-h-[80px] items-center justify-center rounded-xl border border-green-200 bg-white p-3 shadow-inner">
+          <img src={sigField.signatureDataUrl} alt="Signature" className="max-h-16 max-w-full object-contain" />
         </div>
       ) : (
-        <div className="mb-3 flex min-h-[96px] items-center justify-center rounded-xl border-2 border-dashed border-border bg-surface-alt p-4 text-center">
+        <div className="mb-3 flex min-h-[80px] items-center justify-center rounded-xl border-2 border-dashed border-border bg-surface-alt p-4 text-center">
           <div>
             <PenTool className="mx-auto mb-1.5 h-6 w-6 text-text-muted" />
             <p className="text-xs font-medium text-text-muted">Not signed yet</p>
@@ -330,8 +403,8 @@ function SignatureControls({ selectedField, onSignatureRequest }: { selectedFiel
       <button
         onClick={() => onSignatureRequest(selectedField.id)}
         className={isSigned
-          ? "flex w-full items-center justify-center gap-2 rounded-xl border border-border py-2.5 text-sm font-medium text-text-muted hover:bg-surface-alt transition-colors"
-          : "flex w-full items-center justify-center gap-2 rounded-xl bg-accent py-2.5 text-sm font-semibold text-white hover:bg-accent-hover transition-colors"}
+          ? "flex w-full items-center justify-center gap-2 rounded-xl border border-border py-2.5 text-sm font-medium text-text-muted transition-colors hover:bg-surface-alt"
+          : "flex w-full items-center justify-center gap-2 rounded-xl bg-accent py-2.5 text-sm font-semibold text-white transition-colors hover:bg-accent-hover"}
       >
         <PenTool className="h-4 w-4" />
         {isSigned ? "Re-sign" : "Sign Now"}
@@ -350,17 +423,17 @@ function FontSizeControls({ selectedField, onFieldUpdate }: { selectedField: Edi
         <button
           onClick={() => prevSize && onFieldUpdate(selectedField.id, { fontSize: prevSize } as Partial<EditorField>)}
           disabled={!prevSize}
-          className="flex h-9 w-9 items-center justify-center rounded-lg border border-border text-text-muted hover:bg-surface-alt transition-colors disabled:opacity-30"
+          className="flex h-10 w-10 items-center justify-center rounded-lg border border-border text-text-muted transition-colors hover:bg-surface-alt disabled:opacity-30"
         >
           <Minus className="h-4 w-4" />
         </button>
-        <div className="flex flex-1 items-center justify-center rounded-lg border border-border bg-surface-alt py-2 text-sm font-semibold text-text tabular-nums">
+        <div className="flex flex-1 items-center justify-center rounded-lg border border-border bg-surface-alt py-2 text-sm font-semibold tabular-nums text-text">
           {fontSize}px
         </div>
         <button
           onClick={() => nextSize && onFieldUpdate(selectedField.id, { fontSize: nextSize } as Partial<EditorField>)}
           disabled={!nextSize}
-          className="flex h-9 w-9 items-center justify-center rounded-lg border border-border text-text-muted hover:bg-surface-alt transition-colors disabled:opacity-30"
+          className="flex h-10 w-10 items-center justify-center rounded-lg border border-border text-text-muted transition-colors hover:bg-surface-alt disabled:opacity-30"
         >
           <Plus className="h-4 w-4" />
         </button>
@@ -390,7 +463,7 @@ function CombControls({
       <Section>
         <button
           onClick={() => onExpandedChange(!expanded)}
-          className="flex w-full items-center justify-between text-[10px] font-semibold uppercase tracking-widest text-text-muted hover:text-text transition-colors"
+          className="flex w-full items-center justify-between text-[10px] font-semibold uppercase tracking-widest text-text-muted transition-colors hover:text-text"
         >
           Character Count
           {expanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
@@ -495,7 +568,7 @@ function SizeControls({
     <Section>
       <button
         onClick={() => onExpandedChange(!expanded)}
-        className="flex w-full items-center justify-between text-[10px] font-semibold uppercase tracking-widest text-text-muted hover:text-text transition-colors"
+        className="flex w-full items-center justify-between text-[10px] font-semibold uppercase tracking-widest text-text-muted transition-colors hover:text-text"
       >
         Size
         {expanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
@@ -552,7 +625,7 @@ function SizeInput({ label, value, min, onChange }: { label: string; value: numb
 
 function Panel({ children }: { children: ReactNode }) {
   return (
-    <div className="hidden sm:flex flex-col w-64 flex-shrink-0 h-full border-l border-border bg-surface overflow-y-auto">
+    <div className="hidden h-full w-64 flex-shrink-0 flex-col overflow-y-auto border-l border-border bg-surface sm:flex">
       {children}
     </div>
   );
@@ -572,7 +645,7 @@ function Section({ children, label }: { children: ReactNode; label?: string }) {
 }
 
 function Divider() {
-  return <div className="mx-4 h-px bg-border flex-shrink-0" />;
+  return <div className="mx-4 h-px flex-shrink-0 bg-border" />;
 }
 
 function StampCard({ active, onClick, char, label }: { active: boolean; onClick: () => void; char: string; label: string }) {
@@ -582,7 +655,7 @@ function StampCard({ active, onClick, char, label }: { active: boolean; onClick:
       className={`flex flex-col items-center gap-1 rounded-xl border-2 py-3 transition-colors ${
         active
           ? "border-accent bg-accent/5 text-accent"
-          : "border-border bg-surface hover:border-accent/40 hover:bg-surface-alt text-text-muted"
+          : "border-border bg-surface text-text-muted hover:border-accent/40 hover:bg-surface-alt"
       }`}
     >
       <span className="text-xl font-bold leading-none">{char}</span>
