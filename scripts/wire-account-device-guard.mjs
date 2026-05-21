@@ -109,7 +109,7 @@ function patchFillPdfRoute() {
 
   text = insertAfterIfMissing(
     text,
-    `    const access = await getDownloadAccess(request);\n    accessForLog = access;\n`,
+    `    accessForLog = access;\n`,
     `    const deviceGuard = await enforceAccountDeviceLimit({\n      request,\n      userId: access.userId,\n      tier: access.tier,\n      deviceId: (formData.get("deviceId") as string | null) ?? request.headers.get("x-quickfill-device-id"),\n      qaBypass: access.isQaBypass === true,\n    });\n    if (!deviceGuard.allowed) {\n      await recordDownloadLog({\n        status: "blocked",\n        userId: access.userId,\n        guest: access.guest,\n        reason: "device_limit",\n        message: deviceGuard.message,\n      });\n      return NextResponse.json(\n        { error: deviceGuard.message, code: "device_limit", limit: deviceGuard.limit, activeDevices: deviceGuard.activeDeviceCount },\n        { status: 403 },\n      );\n    }\n\n`,
     'const deviceGuard = await enforceAccountDeviceLimit',
     'fill-pdf device guard check',
