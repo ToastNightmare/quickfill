@@ -17,19 +17,32 @@ function replaceOnce(text, search, replacement, label) {
   return text.replace(search, replacement);
 }
 
-function replaceNth(text, search, replacement, occurrence, label) {
+function replacePattern(text, pattern, replacement, label) {
+  if (text.includes(replacement.trim())) return text;
+  const next = text.replace(pattern, replacement);
+  if (next === text) {
+    throw new Error(`Missing mobile editor polish anchor (${label})`);
+  }
+  return next;
+}
+
+function replaceNthOrLast(text, search, replacement, occurrence, label) {
   if (text.includes(replacement.trim())) return text;
 
-  let index = -1;
+  const indexes = [];
   let from = 0;
-  for (let count = 0; count < occurrence; count++) {
-    index = text.indexOf(search, from);
-    if (index === -1) {
-      throw new Error(`Missing mobile editor polish anchor (${label}: occurrence ${occurrence})`);
-    }
+  while (true) {
+    const index = text.indexOf(search, from);
+    if (index === -1) break;
+    indexes.push(index);
     from = index + search.length;
   }
 
+  if (!indexes.length) {
+    throw new Error(`Missing mobile editor polish anchor (${label})`);
+  }
+
+  const index = indexes[Math.min(occurrence - 1, indexes.length - 1)];
   return text.slice(0, index) + replacement + text.slice(index + search.length);
 }
 
@@ -51,23 +64,23 @@ function patchContextPanel() {
     "hide sheet while moving",
   );
 
-  text = replaceOnce(
+  text = replacePattern(
     text,
-    `<div className="fixed bottom-[8.25rem] left-3 right-3 z-30 rounded-2xl border border-border bg-surface shadow-xl sm:hidden">`,
+    /<div className="fixed bottom-\[[^\]]+\] left-3 right-3 z-30 rounded-2xl border border-border bg-surface shadow-xl sm:hidden">/,
     `<div className="fixed bottom-[7.5rem] left-3 right-3 z-30 rounded-xl border border-border bg-surface/95 shadow-lg backdrop-blur sm:hidden">`,
     "compact collapsed mobile sheet",
   );
 
-  text = replaceOnce(
+  text = replacePattern(
     text,
-    `<div className="fixed bottom-[8.25rem] left-3 right-3 z-30 max-h-[42svh] overflow-y-auto rounded-2xl border border-border bg-surface shadow-2xl sm:hidden">`,
+    /<div className="fixed bottom-\[[^\]]+\] left-3 right-3 z-30 max-h-\[[^\]]+\] overflow-y-auto rounded-2xl border border-border bg-surface(?:\/95)? shadow-2xl(?: backdrop-blur)? sm:hidden">/,
     `<div className="fixed bottom-[7.5rem] left-3 right-3 z-30 max-h-[34svh] overflow-y-auto rounded-2xl border border-border bg-surface/95 shadow-2xl backdrop-blur sm:hidden">`,
     "shorter expanded mobile sheet",
   );
 
   const doneButton = `        <button\n          onClick={onFieldDeselect}\n          className="shrink-0 rounded-lg px-3 py-1.5 text-xs font-semibold text-text-muted hover:bg-surface-alt hover:text-text"\n        >\n          Done\n        </button>`;
 
-  text = replaceNth(
+  text = replaceNthOrLast(
     text,
     doneButton,
     `        <div className="flex shrink-0 items-center gap-2">\n          <button\n            onClick={() => setIsExpanded(false)}\n            className="rounded-lg border border-border px-3 py-1.5 text-xs font-semibold text-text-muted hover:bg-surface-alt hover:text-text"\n          >\n            Minimize\n          </button>\n          <button\n            onClick={onFieldDeselect}\n            className="rounded-lg px-3 py-1.5 text-xs font-semibold text-text-muted hover:bg-surface-alt hover:text-text"\n          >\n            Done\n          </button>\n        </div>`,
