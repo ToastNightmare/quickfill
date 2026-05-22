@@ -27,7 +27,7 @@ export default function TemplatesPage() {
           </p>
           <div className="mt-6 flex flex-col gap-3 sm:flex-row">
             <Link
-              href="/editor"
+              href="/editor?upload=1"
               className="flex h-11 items-center justify-center gap-2 rounded-lg bg-accent px-5 text-sm font-semibold text-white transition-colors hover:bg-accent-hover"
             >
               <Upload className="h-4 w-4" />
@@ -77,7 +77,7 @@ export default function TemplatesPage() {
       <section className="mt-12 border-t border-border pt-8">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h2 className="text-xl font-bold text-text">Can’t find the form?</h2>
+            <h2 className="text-xl font-bold text-text">Can&apos;t find the form?</h2>
             <p className="mt-2 text-sm leading-6 text-text-muted">
               Send the form name or agency through support and it can be reviewed for the template library.
             </p>
