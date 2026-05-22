@@ -47,7 +47,7 @@ editor = replaceOnce(editor, restoreBefore, restoreAfter, "restore session effec
 editor = replaceOnce(
   editor,
   `        setPdfBytes(bytes);\n        setFileName(file.name);\n\n        // Persist PDF and filename`,
-  `        setPdfBytes(bytes);\n        setFileName(file.name);\n        const uploadParams = new URLSearchParams(window.location.search);\n        if (uploadParams.has("upload") || uploadParams.has("new")) {\n          uploadParams.delete("upload");\n          uploadParams.delete("new");\n          const nextQuery = uploadParams.toString();\n          window.history.replaceState(null, "", `${window.location.pathname}${nextQuery ? `?${nextQuery}` : ""}`);\n        }\n\n        // Persist PDF and filename`,
+  `        setPdfBytes(bytes);\n        setFileName(file.name);\n        const uploadParams = new URLSearchParams(window.location.search);\n        if (uploadParams.has("upload") || uploadParams.has("new")) {\n          uploadParams.delete("upload");\n          uploadParams.delete("new");\n          const nextQuery = uploadParams.toString();\n          const nextUrl = window.location.pathname + (nextQuery ? "?" + nextQuery : "");\n          window.history.replaceState(null, "", nextUrl);\n        }\n\n        // Persist PDF and filename`,
   "upload query cleanup",
 );
 
