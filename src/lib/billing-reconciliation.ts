@@ -1,6 +1,6 @@
 import type Stripe from "stripe";
 import { isDatabaseConfigured, query } from "@/lib/db";
-import { isRedisConfigured } from "@/lib/redis";
+import { getRedis, isRedisConfigured } from "@/lib/redis";
 import { getStripe } from "@/lib/stripe";
 import {
   isSubscriptionEntitled,
@@ -46,6 +46,8 @@ type BillingReconciliationForUserOptions = {
 };
 
 const LIVE_SUBSCRIPTION_STATUSES = new Set<Stripe.Subscription.Status>(["active", "trialing"]);
+const STRIPE_ORPHAN_SCAN_LIMIT = 100;
+const REDIS_CUSTOMER_SCAN_LIMIT = 100;
 
 function clampLimit(limit?: number) {
   if (!Number.isFinite(limit)) return BILLING_RECONCILIATION_DEFAULT_LIMIT;
@@ -128,6 +130,31 @@ function objectId(value: string | { id?: string } | null | undefined) {
   return null;
 }
 
+function cleanEmail(value?: string | null) {
+  return value?.trim().toLowerCase() || null;
+}
+
+function candidateFromCustomerId(userId: string, customerId?: string | null): SubscriptionCandidate | null {
+  const cleanCustomerId = customerId?.trim();
+  if (!cleanCustomerId || !cleanCustomerId.startsWith("cus_")) return null;
+
+  return {
+    user_id: userId,
+    tier: null,
+    status: null,
+    current_period_end: null,
+    stripe_customer_id: cleanCustomerId,
+    stripe_subscription_id: null,
+    updated_at: null,
+  };
+}
+
+function checkoutSessionTier(session: Stripe.Checkout.Session) {
+  const metadataTier = session.metadata?.plan;
+  if (metadataTier === "pro" || metadataTier === "business") return metadataTier;
+  return null;
+}
+
 function safeCheckoutSessionId(sessionId?: string | null) {
   const value = sessionId?.trim();
   if (!value || !value.startsWith("cs_")) return null;
@@ -162,6 +189,187 @@ async function listCustomerSubscriptions(customerId: string) {
   });
 
   return subscriptions.data;
+}
+
+async function stripeCustomerCandidateFromRedis(userId: string): Promise<SubscriptionCandidate | null> {
+  if (!isRedisConfigured()) return null;
+
+  try {
+    const customerId = await getRedis().get<string>(`stripe_customer:${userId}`);
+    return candidateFromCustomerId(userId, customerId);
+  } catch (error) {
+    console.warn("billing_repair_cached_customer_lookup_failed", {
+      userId,
+      error: errorMessage(error),
+    });
+    return null;
+  }
+}
+
+async function stripeCustomerEmail(customerId: string) {
+  try {
+    const customer = await getStripe().customers.retrieve(customerId);
+    if ("deleted" in customer && customer.deleted) return null;
+    return cleanEmail(customer.email);
+  } catch {
+    return null;
+  }
+}
+
+async function userIdForStoredEmail(email?: string | null) {
+  const normalizedEmail = cleanEmail(email);
+  if (!normalizedEmail || !isDatabaseConfigured()) return null;
+
+  const rows = await query<{ clerk_user_id: string }>(
+    `select clerk_user_id
+     from app_users
+     where lower(email) = $1
+     order by updated_at desc nulls last
+     limit 2`,
+    [normalizedEmail],
+  );
+
+  return rows.length === 1 ? rows[0].clerk_user_id : null;
+}
+
+async function ensureSubscriptionMetadata(subscription: Stripe.Subscription, userId: string, tier: QuickFillTier) {
+  if (subscription.metadata?.userId === userId && subscription.metadata?.plan === tier) return;
+
+  try {
+    await getStripe().subscriptions.update(subscription.id, {
+      metadata: {
+        ...subscription.metadata,
+        userId,
+        plan: tier,
+      },
+    });
+  } catch (error) {
+    console.warn("stripe_subscription_metadata_repair_failed", {
+      subscriptionId: subscription.id,
+      userId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
+
+function checkoutSessionBelongsToUser(session: Stripe.Checkout.Session, userId: string, email?: string | null) {
+  const sessionUserId = session.metadata?.userId;
+  if (sessionUserId) return sessionUserId === userId;
+
+  const expectedEmail = cleanEmail(email);
+  if (!expectedEmail) return false;
+
+  const sessionEmail = cleanEmail(session.customer_details?.email ?? session.customer_email);
+  return sessionEmail === expectedEmail;
+}
+
+async function stripeCustomerCandidateFromCheckoutHistory(
+  userId: string,
+  email?: string | null,
+): Promise<SubscriptionCandidate | null> {
+  const stripe = getStripe();
+  const subscriptions = await stripe.subscriptions.list({ status: "all", limit: 100 });
+  const liveSubscriptions = subscriptions.data
+    .filter((subscription) => LIVE_SUBSCRIPTION_STATUSES.has(subscription.status))
+    .sort((a, b) => b.created - a.created);
+
+  for (const subscription of liveSubscriptions) {
+    const subscriptionUserId = subscription.metadata?.userId;
+    if (subscriptionUserId && subscriptionUserId !== userId) continue;
+
+    const customerId = objectId(subscription.customer);
+    if (subscriptionUserId === userId) {
+      return {
+        user_id: userId,
+        tier: subscriptionTier(subscription),
+        status: subscription.status,
+        current_period_end: null,
+        stripe_customer_id: customerId,
+        stripe_subscription_id: subscription.id,
+        updated_at: null,
+      };
+    }
+
+    const sessions = await stripe.checkout.sessions.list({ subscription: subscription.id, limit: 10 });
+    const matchingSession = sessions.data.find((session) => checkoutSessionBelongsToUser(session, userId, email));
+    if (!matchingSession) continue;
+
+    return {
+      user_id: userId,
+      tier: checkoutSessionTier(matchingSession) ?? subscriptionTier(subscription),
+      status: subscription.status,
+      current_period_end: null,
+      stripe_customer_id: customerId ?? objectId(matchingSession.customer),
+      stripe_subscription_id: subscription.id,
+      updated_at: null,
+    };
+  }
+
+  return null;
+}
+
+async function stripeCustomerCandidateFromSubscriptionIdentity(
+  subscription: Stripe.Subscription,
+): Promise<SubscriptionCandidate | null> {
+  const metadataUserId = subscription.metadata?.userId;
+  const customerId = objectId(subscription.customer);
+  const tier = subscriptionTier(subscription);
+  if (metadataUserId) {
+    return {
+      user_id: metadataUserId,
+      tier,
+      status: subscription.status,
+      current_period_end: null,
+      stripe_customer_id: customerId,
+      stripe_subscription_id: subscription.id,
+      updated_at: null,
+    };
+  }
+
+  const sessions = await getStripe().checkout.sessions.list({ subscription: subscription.id, limit: 10 });
+  for (const session of sessions.data) {
+    const sessionUserId = session.metadata?.userId;
+    if (!sessionUserId) continue;
+
+    return {
+      user_id: sessionUserId,
+      tier: checkoutSessionTier(session) ?? tier,
+      status: subscription.status,
+      current_period_end: null,
+      stripe_customer_id: customerId ?? objectId(session.customer),
+      stripe_subscription_id: subscription.id,
+      updated_at: null,
+    };
+  }
+
+  for (const session of sessions.data) {
+    const sessionEmail = cleanEmail(session.customer_details?.email ?? session.customer_email);
+    const userId = await userIdForStoredEmail(sessionEmail);
+    if (!userId) continue;
+
+    return {
+      user_id: userId,
+      tier: checkoutSessionTier(session) ?? tier,
+      status: subscription.status,
+      current_period_end: null,
+      stripe_customer_id: customerId ?? objectId(session.customer),
+      stripe_subscription_id: subscription.id,
+      updated_at: null,
+    };
+  }
+
+  const customerUserId = await userIdForStoredEmail(customerId ? await stripeCustomerEmail(customerId) : null);
+  if (!customerUserId) return null;
+
+  return {
+    user_id: customerUserId,
+    tier,
+    status: subscription.status,
+    current_period_end: null,
+    stripe_customer_id: customerId,
+    stripe_subscription_id: subscription.id,
+    updated_at: null,
+  };
 }
 
 async function fetchCurrentSubscription(candidate: SubscriptionCandidate) {
@@ -289,6 +497,21 @@ async function reconcileCandidate(candidate: SubscriptionCandidate, result: Bill
   try {
     const subscription = await fetchCurrentSubscription(candidate);
     if (!subscription) {
+      if (candidate.stripe_customer_id && !candidate.stripe_subscription_id) {
+        await saveSubscriptionSnapshot({
+          userId: candidate.user_id,
+          customerId: candidate.stripe_customer_id,
+          subscriptionId: null,
+          tier: "free",
+          status: "canceled",
+          currentPeriodEnd: null,
+        });
+
+        result.updated += 1;
+        result.downgraded += 1;
+        return;
+      }
+
       result.skipped += 1;
       result.errors.push({
         userId: candidate.user_id,
@@ -311,6 +534,7 @@ async function reconcileCandidate(candidate: SubscriptionCandidate, result: Bill
       status: subscription.status,
       currentPeriodEnd: periodEnd,
     });
+    await ensureSubscriptionMetadata(subscription, candidate.user_id, tier);
 
     result.updated += 1;
     if (!isSubscriptionEntitled(subscription.status, periodEnd)) {
@@ -325,6 +549,86 @@ async function reconcileCandidate(candidate: SubscriptionCandidate, result: Bill
       message: errorMessage(error),
     });
   }
+}
+
+async function reconcileStripeActiveSubscriptionIdentities(
+  result: BillingReconciliationResult,
+  skipSubscriptionIds: Set<string>,
+) {
+  const subscriptions = await getStripe().subscriptions.list({ status: "all", limit: STRIPE_ORPHAN_SCAN_LIMIT });
+  const liveSubscriptions = subscriptions.data
+    .filter((subscription) => LIVE_SUBSCRIPTION_STATUSES.has(subscription.status))
+    .filter((subscription) => !skipSubscriptionIds.has(subscription.id))
+    .sort((a, b) => b.created - a.created);
+
+  for (const subscription of liveSubscriptions) {
+    result.checked += 1;
+
+    try {
+      const candidate = await stripeCustomerCandidateFromSubscriptionIdentity(subscription);
+      if (!candidate) {
+        result.skipped += 1;
+        result.errors.push({
+          userId: null,
+          stripeCustomerId: objectId(subscription.customer),
+          stripeSubscriptionId: subscription.id,
+          message: "Active Stripe subscription could not be matched to a QuickFill user.",
+        });
+        continue;
+      }
+
+      await reconcileCandidate(candidate, result);
+    } catch (error) {
+      result.skipped += 1;
+      result.errors.push({
+        userId: null,
+        stripeCustomerId: objectId(subscription.customer),
+        stripeSubscriptionId: subscription.id,
+        message: errorMessage(error),
+      });
+    }
+  }
+}
+
+async function reconcileCachedStripeCustomerMappings(
+  result: BillingReconciliationResult,
+  skipCustomerIds: Set<string>,
+) {
+  if (!isRedisConfigured()) return;
+
+  let cursor = "0";
+  let scanned = 0;
+  const redis = getRedis() as unknown as {
+    scan?: (cursor: string | number, options?: { match?: string; count?: number }) => Promise<[string | number, string[]]>;
+    get: <T>(key: string) => Promise<T | null>;
+  };
+
+  if (typeof redis.scan !== "function") return;
+
+  do {
+    const [nextCursor, keys] = await redis.scan(cursor, {
+      match: "stripe_customer:*",
+      count: REDIS_CUSTOMER_SCAN_LIMIT,
+    });
+    cursor = String(nextCursor);
+
+    for (const key of keys) {
+      if (scanned >= REDIS_CUSTOMER_SCAN_LIMIT) return;
+      if (!key.startsWith("stripe_customer:") || key.startsWith("stripe_customer_user:")) continue;
+
+      const userId = key.slice("stripe_customer:".length);
+      if (!userId) continue;
+
+      const customerId = await redis.get<string>(key);
+      const candidate = candidateFromCustomerId(userId, customerId);
+      if (!candidate?.stripe_customer_id || skipCustomerIds.has(candidate.stripe_customer_id)) continue;
+
+      skipCustomerIds.add(candidate.stripe_customer_id);
+      scanned += 1;
+      result.checked += 1;
+      await reconcileCandidate(candidate, result);
+    }
+  } while (cursor !== "0");
 }
 
 function finalizeResult(result: BillingReconciliationResult) {
@@ -357,6 +661,16 @@ export async function reconcileStripeBilling(options: { limit?: number } = {}): 
     await reconcileCandidate(candidate, result);
   }
 
+  await reconcileCachedStripeCustomerMappings(
+    result,
+    new Set(candidates.map((candidate) => candidate.stripe_customer_id).filter((id): id is string => Boolean(id))),
+  );
+
+  await reconcileStripeActiveSubscriptionIdentities(
+    result,
+    new Set(candidates.map((candidate) => candidate.stripe_subscription_id).filter((id): id is string => Boolean(id))),
+  );
+
   return finalizeResult(result);
 }
 
@@ -367,12 +681,13 @@ export async function reconcileStripeBillingForUser(
   const result = createResult("Customer billing record synced from Stripe.");
   const configError = stripeConfigError(result) ?? userRepairStorageConfigError(result);
   if (configError) return configError;
+  const lookupErrors: ReconciliationError[] = [];
 
   let sessionCandidate: SubscriptionCandidate | null = null;
   try {
     sessionCandidate = await stripeCustomerCandidateFromCheckoutSession(userId, options.sessionId);
   } catch (error) {
-    result.errors.push({
+    lookupErrors.push({
       userId,
       stripeCustomerId: null,
       stripeSubscriptionId: null,
@@ -392,7 +707,7 @@ export async function reconcileStripeBillingForUser(
         [userId],
       );
     } catch (error) {
-      result.errors.push({
+      lookupErrors.push({
         userId,
         stripeCustomerId: null,
         stripeSubscriptionId: null,
@@ -402,8 +717,15 @@ export async function reconcileStripeBillingForUser(
   }
 
   const emailCandidate = sessionCandidate || candidates[0] ? null : await stripeCustomerCandidateFromEmail(userId, options.email);
-  const candidate = sessionCandidate ?? candidates[0] ?? emailCandidate;
+  const redisCandidate =
+    sessionCandidate || candidates[0] || emailCandidate ? null : await stripeCustomerCandidateFromRedis(userId);
+  const checkoutHistoryCandidate =
+    sessionCandidate || candidates[0] || emailCandidate || redisCandidate
+      ? null
+      : await stripeCustomerCandidateFromCheckoutHistory(userId, options.email);
+  const candidate = sessionCandidate ?? candidates[0] ?? emailCandidate ?? redisCandidate ?? checkoutHistoryCandidate;
   if (!candidate) {
+    result.errors.push(...lookupErrors);
     return finalizeResult({
       ...result,
       ok: false,
@@ -416,5 +738,6 @@ export async function reconcileStripeBillingForUser(
 
   result.checked = 1;
   await reconcileCandidate(candidate, result);
+  if (result.updated === 0) result.errors.push(...lookupErrors);
   return finalizeResult(result);
 }
