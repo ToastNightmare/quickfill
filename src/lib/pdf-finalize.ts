@@ -13,6 +13,11 @@ export function cleanupEditedDocumentArtifacts(pdfDoc: PDFDocument) {
 export async function createViewerSafePdfDocument(sourceDoc: PDFDocument) {
   cleanupEditedDocumentArtifacts(sourceDoc);
 
+  // pdf-lib only writes newly embedded image/font resources to the document context
+  // when the document is flushed/saved. The viewer-safe copy embeds source pages
+  // before saving, so force a flush first or image-backed signatures disappear.
+  await sourceDoc.flush();
+
   const outputDoc = await PDFDocument.create();
   const sourcePages = sourceDoc.getPages();
   const embeddedPages = await outputDoc.embedPages(sourcePages);
