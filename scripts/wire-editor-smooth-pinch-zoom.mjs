@@ -86,6 +86,13 @@ text = replaceOnce(
 
 text = replaceOnce(
   text,
+  `        setFitScale(newFitScale);\n        onPageScaleSet(currentPage, newFitScale);\n        setDimensions({\n          width: Math.floor(scaledViewport.width),\n          height: Math.floor(scaledViewport.height),\n        });\n\n        const canvas = canvasRef.current;\n        if (!canvas || cancelled) return;\n\n        canvas.width = Math.floor(scaledViewport.width);\n        canvas.height = Math.floor(scaledViewport.height);\n\n        const ctx = canvas.getContext(\"2d\");\n        if (!ctx) return;\n\n        await page.render({\n          canvasContext: ctx,\n          viewport: scaledViewport,\n          canvas: canvas,\n        } as Parameters<typeof page.render>[0]).promise;`,
+  `        const nextDimensions = {\n          width: Math.floor(scaledViewport.width),\n          height: Math.floor(scaledViewport.height),\n        };\n\n        const canvas = canvasRef.current;\n        if (!canvas || cancelled) return;\n\n        const renderCanvas = keepPreviousRenderVisible ? document.createElement(\"canvas\") : canvas;\n        renderCanvas.width = nextDimensions.width;\n        renderCanvas.height = nextDimensions.height;\n\n        const ctx = renderCanvas.getContext(\"2d\");\n        if (!ctx) return;\n\n        await page.render({\n          canvasContext: ctx,\n          viewport: scaledViewport,\n          canvas: renderCanvas,\n        } as Parameters<typeof page.render>[0]).promise;\n\n        if (cancelled) return;\n\n        if (keepPreviousRenderVisible) {\n          canvas.width = nextDimensions.width;\n          canvas.height = nextDimensions.height;\n          canvas.getContext(\"2d\")?.drawImage(renderCanvas, 0, 0);\n        }\n\n        setFitScale(newFitScale);\n        onPageScaleSet(currentPage, newFitScale);\n        setDimensions(nextDimensions);`,
+  "buffer pinch commit render",
+);
+
+text = replaceOnce(
+  text,
   `        setLoading(false);\n      } catch (err) {`,
   `        setLoading(false);\n        if (pendingPinchPreviewClearRef.current) {\n          pendingPinchPreviewClearRef.current = false;\n          requestAnimationFrame(() => clearPinchPreview());\n        }\n      } catch (err) {`,
   "clear preview after rendered zoom",
