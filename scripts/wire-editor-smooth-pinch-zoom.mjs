@@ -73,7 +73,7 @@ text = replaceOnce(
 text = insertAfter(
   text,
   `  const zoomFactor = zoom / 100;\n`,
-  `\n  const clearPinchPreview = useCallback(() => {\n    const shell = pageShellRef.current;\n    if (!shell) return;\n    shell.style.transform = \"\";\n    shell.style.transformOrigin = \"\";\n    shell.style.willChange = \"\";\n    shell.style.touchAction = \"\";\n  }, []);\n\n  const applyPinchPreview = useCallback((scale: number, originX: number, originY: number) => {\n    const shell = pageShellRef.current;\n    if (!shell) return;\n    shell.style.transformOrigin = `${originX}px ${originY}px`;\n    shell.style.transform = `scale(${scale})`;\n    shell.style.willChange = \"transform\";\n    shell.style.touchAction = \"none\";\n  }, []);\n`,
+  `\n  const clearPinchPreview = useCallback(() => {\n    const shell = pageShellRef.current;\n    if (!shell) return;\n    shell.style.transform = \"\";\n    shell.style.transformOrigin = \"\";\n    shell.style.willChange = \"\";\n    shell.style.touchAction = \"\";\n  }, []);\n\n  const applyPinchPreview = useCallback((scale: number, originX: number, originY: number) => {\n    const shell = pageShellRef.current;\n    if (!shell) return;\n    shell.style.transformOrigin = originX + \"px \" + originY + \"px\";\n    shell.style.transform = \"scale(\" + scale + \")\";\n    shell.style.willChange = \"transform\";\n    shell.style.touchAction = \"none\";\n  }, []);\n`,
   "pinch preview helpers",
 );
 
