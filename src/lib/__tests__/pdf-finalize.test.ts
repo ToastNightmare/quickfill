@@ -2,6 +2,12 @@ import { PDFArray, PDFDict, PDFDocument, PDFName, PDFString } from "pdf-lib";
 import { finalizePdfForDownload } from "../pdf-finalize";
 import { WATERMARK_URL } from "../watermark";
 
+const ONE_PIXEL_PNG = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAFgwJ/l3hT2wAAAABJRU5ErkJggg==";
+
+function latin1(bytes: Uint8Array) {
+  return Buffer.from(bytes).toString("latin1");
+}
+
 function annotationUri(pdfDoc: PDFDocument, annotation: PDFDict) {
   const action = pdfDoc.context.lookup(annotation.get(PDFName.of("A"))!, PDFDict);
   const uri = action.get(PDFName.of("URI"));
@@ -26,6 +32,23 @@ function addSourceLinkAnnotation(pdfDoc: PDFDocument) {
 }
 
 describe("finalizePdfForDownload", () => {
+  it("preserves embedded image signatures in the viewer-safe PDF copy", async () => {
+    const sourceDoc = await PDFDocument.create();
+    const page = sourceDoc.addPage([200, 200]);
+    const signatureImage = await sourceDoc.embedPng(Buffer.from(ONE_PIXEL_PNG, "base64"));
+
+    page.drawImage(signatureImage, {
+      x: 24,
+      y: 48,
+      width: 96,
+      height: 32,
+    });
+
+    const resultBytes = await finalizePdfForDownload(sourceDoc, true);
+
+    expect(latin1(resultBytes)).toContain("/Subtype /Image");
+  });
+
   it("adds clickable free watermarks after the viewer-safe PDF copy", async () => {
     const sourceDoc = await PDFDocument.create();
     sourceDoc.addPage([595, 842]);
