@@ -34,15 +34,23 @@ editor = insertOnceAfter(
 editor = insertOnceAfter(
   editor,
   `  const dismissWelcome = useCallback(() => {\n    localStorage.setItem("qf_welcome_dismissed", "1");\n    setShowWelcome(false);\n  }, []);\n`,
-  `\n  const restoreSavedDraft = useCallback(async (savedPdf?: ArrayBuffer | null) => {\n    const draftPdf = savedPdf ?? await loadPdfFromIndexedDB();\n    if (!draftPdf) {\n      setSavedDraftName(null);\n      initialRestoreDoneRef.current = true;\n      return;\n    }\n\n    const savedFields = loadFieldsFromLocalStorage();\n    const savedPage = loadPageFromLocalStorage();\n    const savedName = loadFileNameFromLocalStorage();\n\n    setPdfBytes(draftPdf);\n    setFileName(savedName);\n    setCurrentPage(savedPage);\n    if (savedFields.length > 0) {\n      reset(savedFields);\n    } else {\n      reset([]);\n    }\n    setSavedDraftName(null);\n    setShowRestoredBanner(true);\n    setTimeout(() => setShowRestoredBanner(false), 3000);\n    pollCanvasForContent(pdfViewerRef, setMinimapCanvas);\n\n    initialRestoreDoneRef.current = true;\n\n    try {\n      const acroFields = await detectAcroFormFields(draftPdf);\n      setHasAcroForm(acroFields.length > 0);\n    } catch {\n      setHasAcroForm(false);\n    }\n  }, [reset]);\n`,
+  `\n  const restoreSavedDraft = useCallback(async (savedPdf?: ArrayBuffer | null) => {\n    const draftPdf = savedPdf ?? await loadPdfFromIndexedDB();\n    if (!draftPdf) {\n      setSavedDraftName(null);\n      initialRestoreDoneRef.current = true;\n      return;\n    }\n\n    const savedFields = normalizeRestoredFields(loadFieldsFromLocalStorage());\n    const savedPage = loadPageFromLocalStorage();\n    const savedName = loadFileNameFromLocalStorage();\n\n    setPdfBytes(draftPdf);\n    setFileName(savedName);\n    setCurrentPage(savedPage);\n    if (savedFields.length > 0) {\n      reset(savedFields);\n      saveFieldsToLocalStorage(savedFields);\n    } else {\n      reset([]);\n    }\n    setSavedDraftName(null);\n    setShowRestoredBanner(true);\n    setTimeout(() => setShowRestoredBanner(false), 3000);\n    pollCanvasForContent(pdfViewerRef, setMinimapCanvas);\n\n    initialRestoreDoneRef.current = true;\n\n    try {\n      const acroFields = await detectAcroFormFields(draftPdf);\n      setHasAcroForm(acroFields.length > 0);\n    } catch {\n      setHasAcroForm(false);\n    }\n  }, [reset]);\n`,
   "dismiss welcome callback",
 );
 
-const restoreBefore = `  // Restore session on mount\n  useEffect(() => {\n    if (restoredRef.current) return;\n    restoredRef.current = true;\n\n    // Restore zoom\n    setZoom(loadZoomFromLocalStorage());\n\n    loadPdfFromIndexedDB().then(async (savedPdf) => {\n      if (!savedPdf) return;\n      const savedFields = loadFieldsFromLocalStorage();\n      const savedPage = loadPageFromLocalStorage();\n      const savedName = loadFileNameFromLocalStorage();\n\n      setPdfBytes(savedPdf);\n      setFileName(savedName);\n      setCurrentPage(savedPage);\n      if (savedFields.length > 0) {\n        reset(savedFields);\n      }\n      setShowRestoredBanner(true);\n      setTimeout(() => setShowRestoredBanner(false), 3000);\n      pollCanvasForContent(pdfViewerRef, setMinimapCanvas);\n\n      // Mark initial restoration as complete so persist effect can save\n      initialRestoreDoneRef.current = true;\n\n      // Detect AcroForm for progress tracking\n      try {\n        const acroFields = await detectAcroFormFields(savedPdf);\n        if (acroFields.length > 0) setHasAcroForm(true);\n      } catch {\n        // silent\n      }\n    });\n  }, [reset]);`;
+editor = replaceOnce(
+  editor,
+  `    restoredRef.current = true;\n\n    // Restore zoom`,
+  `    restoredRef.current = true;\n\n    const params = new URLSearchParams(window.location.search);\n    const startFreshUpload = params.get("upload") === "1" || params.get("new") === "1";\n\n    // Restore zoom`,
+  "fresh upload route flag",
+);
 
-const restoreAfter = `  // Restore session on mount\n  useEffect(() => {\n    if (restoredRef.current) return;\n    restoredRef.current = true;\n\n    const params = new URLSearchParams(window.location.search);\n    const startFreshUpload = params.get("upload") === "1" || params.get("new") === "1";\n\n    // Restore zoom\n    setZoom(loadZoomFromLocalStorage());\n\n    loadPdfFromIndexedDB().then(async (savedPdf) => {\n      if (!savedPdf) {\n        initialRestoreDoneRef.current = true;\n        return;\n      }\n\n      if (startFreshUpload) {\n        const savedName = loadFileNameFromLocalStorage();\n        setSavedDraftName(savedName || "previous PDF");\n        initialRestoreDoneRef.current = true;\n        return;\n      }\n\n      await restoreSavedDraft(savedPdf);\n    });\n  }, [restoreSavedDraft]);`;
-
-editor = replaceOnce(editor, restoreBefore, restoreAfter, "restore session effect");
+editor = replaceOnce(
+  editor,
+  `    loadPdfFromIndexedDB().then(async (savedPdf) => {\n      if (!savedPdf) return;`,
+  `    loadPdfFromIndexedDB().then(async (savedPdf) => {\n      if (!savedPdf) {\n        initialRestoreDoneRef.current = true;\n        return;\n      }\n\n      if (startFreshUpload) {\n        const savedName = loadFileNameFromLocalStorage();\n        setSavedDraftName(savedName || "previous PDF");\n        initialRestoreDoneRef.current = true;\n        return;\n      }`,
+  "skip restore for fresh upload route",
+);
 
 editor = replaceOnce(
   editor,
