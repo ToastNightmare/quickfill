@@ -44,6 +44,7 @@ describe("database helper", () => {
     expect(mockSqlQuery.mock.calls[0][0]).toBe("create extension if not exists pgcrypto");
     expect(mockSqlQuery.mock.calls.some((call) => String(call[0]).includes("create table if not exists subscriptions"))).toBe(true);
     expect(mockSqlQuery.mock.calls.some((call) => String(call[0]).includes("alter table subscriptions add column if not exists current_period_end"))).toBe(true);
+    expect(mockSqlQuery.mock.calls.some((call) => String(call[0]).includes("alter table subscriptions alter column user_id type text"))).toBe(true);
     expect(mockSqlQuery.mock.calls.some((call) => String(call[0]).includes("create unique index if not exists subscriptions_user_id_unique_idx"))).toBe(true);
   });
 

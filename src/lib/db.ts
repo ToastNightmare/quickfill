@@ -91,6 +91,57 @@ const CORE_SCHEMA_QUERIES = [
   "alter table usage_events alter column quantity set default 1",
   "alter table usage_events alter column metadata set default '{}'::jsonb",
   "alter table audit_events alter column metadata set default '{}'::jsonb",
+  `do $$
+  declare
+    existing_constraint record;
+  begin
+    if exists (
+      select 1
+      from information_schema.columns
+      where table_schema = current_schema()
+        and table_name = 'subscriptions'
+        and column_name = 'user_id'
+        and data_type <> 'text'
+    ) then
+      for existing_constraint in
+        select constraint_name
+        from information_schema.key_column_usage
+        where table_schema = current_schema()
+          and table_name = 'subscriptions'
+          and column_name = 'user_id'
+      loop
+        execute format('alter table subscriptions drop constraint if exists %I', existing_constraint.constraint_name);
+      end loop;
+
+      alter table subscriptions alter column user_id type text using user_id::text;
+    end if;
+  end $$`,
+  `do $$
+  begin
+    if exists (
+      select 1
+      from information_schema.columns
+      where table_schema = current_schema()
+        and table_name = 'usage_events'
+        and column_name = 'user_id'
+        and data_type <> 'text'
+    ) then
+      alter table usage_events alter column user_id type text using user_id::text;
+    end if;
+  end $$`,
+  `do $$
+  begin
+    if exists (
+      select 1
+      from information_schema.columns
+      where table_schema = current_schema()
+        and table_name = 'audit_events'
+        and column_name = 'user_id'
+        and data_type <> 'text'
+    ) then
+      alter table audit_events alter column user_id type text using user_id::text;
+    end if;
+  end $$`,
   "create unique index if not exists app_users_clerk_user_id_unique_idx on app_users(clerk_user_id)",
   "create unique index if not exists subscriptions_user_id_unique_idx on subscriptions(user_id)",
   "create unique index if not exists stripe_events_stripe_event_id_unique_idx on stripe_events(stripe_event_id)",

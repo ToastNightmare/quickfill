@@ -1,10 +1,24 @@
 import { readFileSync, writeFileSync } from "node:fs";
 
 function replaceOnce(text, search, replacement) {
-  if (!text.includes(search)) {
-    throw new Error(`Expected billing adapter anchor not found: ${search.slice(0, 80)}`);
+  if (text.includes(search)) {
+    return text.replace(search, replacement);
   }
-  return text.replace(search, replacement);
+
+  const crlfSearch = search.replace(/\n/g, "\r\n");
+  if (crlfSearch !== search && text.includes(crlfSearch)) {
+    return text.replace(crlfSearch, replacement.replace(/\n/g, "\r\n"));
+  }
+
+  throw new Error(`Expected billing adapter anchor not found: ${search.slice(0, 80)}`);
+}
+
+function replaceOncePattern(text, pattern, replacement, label) {
+  const next = text.replace(pattern, replacement);
+  if (next === text) {
+    throw new Error(`Expected billing adapter anchor not found: ${label}`);
+  }
+  return next;
 }
 
 function wireBillingReconciliation() {
@@ -607,14 +621,9 @@ function wireStripeWebhook() {
 
   if (text.includes("getUserIdFromCheckoutSession")) return;
 
-  text = replaceOnce(
+  text = replaceOncePattern(
     text,
-    `async function getUserIdForSubscription(subscription: Stripe.Subscription): Promise<string | null> {
-  const metaUserId = subscription.metadata?.userId;
-  if (metaUserId) return metaUserId;
-  if (!subscription.customer) return null;
-  return getUserIdForCustomer(subscription.customer as string);
-}`,
+    /async function getUserIdForSubscription\(subscription: Stripe\.Subscription\): Promise<string \| null> \{\r?\n  const metaUserId = subscription\.metadata\?\.userId;\r?\n  if \(metaUserId\) return metaUserId;\r?\n  if \(!subscription\.customer\) return null;\r?\n  return getUserIdForCustomer\(subscription\.customer as string\);\r?\n\}/,
     `async function getUserIdFromCheckoutSession(subscriptionId: string): Promise<string | null> {
   try {
     const sessions = await getStripe().checkout.sessions.list({ subscription: subscriptionId, limit: 10 });
@@ -643,6 +652,7 @@ async function getUserIdForSubscription(subscription: Stripe.Subscription): Prom
 
   return getUserIdFromCheckoutSession(subscription.id);
 }`,
+    "getUserIdForSubscription",
   );
 
   writeFileSync(file, text);
