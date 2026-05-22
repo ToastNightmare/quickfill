@@ -10,8 +10,9 @@ function writeIfChanged(path, next) {
 }
 
 function replaceOnce(text, search, replacement, label) {
-  if (text.includes(replacement)) return text;
+  if (replacement && text.includes(replacement)) return text;
   if (!text.includes(search)) {
+    if (!replacement) return text;
     throw new Error(`Missing zoom flexibility anchor (${label}): ${search.slice(0, 160)}`);
   }
   return text.replace(search, replacement);
