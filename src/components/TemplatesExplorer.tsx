@@ -232,7 +232,7 @@ export function TemplatesExplorer({ templates }: { templates: TemplateDirectoryI
 
         <div className="flex flex-col gap-2 sm:flex-row lg:justify-end">
           <Link
-            href="/editor"
+            href="/editor?upload=1"
             className="flex h-11 items-center justify-center gap-2 rounded-lg bg-accent px-5 text-sm font-semibold text-white transition-colors hover:bg-accent-hover"
           >
             <Upload className="h-4 w-4" />
@@ -301,7 +301,7 @@ export function TemplatesExplorer({ templates }: { templates: TemplateDirectoryI
           </p>
           <div className="mt-5 flex flex-col justify-center gap-2 sm:flex-row">
             <Link
-              href="/editor"
+              href="/editor?upload=1"
               className="flex h-10 items-center justify-center rounded-lg bg-accent px-5 text-sm font-semibold text-white transition-colors hover:bg-accent-hover"
             >
               Upload PDF
