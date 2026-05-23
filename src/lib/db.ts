@@ -95,6 +95,23 @@ const CORE_SCHEMA_QUERIES = [
   declare
     existing_constraint record;
   begin
+    for existing_constraint in
+      select distinct
+        kcu.table_name,
+        kcu.constraint_name
+      from information_schema.key_column_usage kcu
+      join information_schema.table_constraints tc
+        on tc.constraint_schema = kcu.constraint_schema
+       and tc.constraint_name = kcu.constraint_name
+       and tc.table_name = kcu.table_name
+      where kcu.table_schema = current_schema()
+        and kcu.table_name in ('subscriptions', 'usage_events', 'audit_events')
+        and kcu.column_name = 'user_id'
+        and tc.constraint_type in ('FOREIGN KEY', 'UNIQUE')
+    loop
+      execute format('alter table %I drop constraint if exists %I', existing_constraint.table_name, existing_constraint.constraint_name);
+    end loop;
+
     if exists (
       select 1
       from information_schema.columns
@@ -103,21 +120,9 @@ const CORE_SCHEMA_QUERIES = [
         and column_name = 'user_id'
         and data_type <> 'text'
     ) then
-      for existing_constraint in
-        select constraint_name
-        from information_schema.key_column_usage
-        where table_schema = current_schema()
-          and table_name = 'subscriptions'
-          and column_name = 'user_id'
-      loop
-        execute format('alter table subscriptions drop constraint if exists %I', existing_constraint.constraint_name);
-      end loop;
-
       alter table subscriptions alter column user_id type text using user_id::text;
     end if;
-  end $$`,
-  `do $$
-  begin
+
     if exists (
       select 1
       from information_schema.columns
@@ -128,9 +133,7 @@ const CORE_SCHEMA_QUERIES = [
     ) then
       alter table usage_events alter column user_id type text using user_id::text;
     end if;
-  end $$`,
-  `do $$
-  begin
+
     if exists (
       select 1
       from information_schema.columns
