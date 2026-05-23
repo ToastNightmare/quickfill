@@ -31,7 +31,7 @@ function loadImageFromSource(source: File | string) {
       if (objectUrl) URL.revokeObjectURL(objectUrl);
       reject(new Error("Could not read image"));
     };
-    image.src = objectUrl ?? source;
+    image.src = objectUrl ?? (source as string);
   });
 }
 
