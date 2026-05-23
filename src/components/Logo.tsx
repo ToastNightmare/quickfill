@@ -8,9 +8,14 @@ export function Logo({ variant = "full", className }: LogoProps) {
     return <img src="/logo-mark.png" alt="QuickFill" className={className} />;
   }
   if (variant === "full-white") {
-    // Dark background  -  SVG renders sharper
+    // Dark background - SVG renders sharper
     return <img src="/logo-white.svg" alt="QuickFill" className={className} />;
   }
-  // Light background (navbar)  -  use SVG so no dark bg bleed
-  return <img src="/logo.svg" alt="QuickFill" className={className} />;
+  // Follow the user's system theme while keeping the normal light logo as fallback.
+  return (
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcSet="/logo-white.svg" />
+      <img src="/logo.svg" alt="QuickFill" className={className} />
+    </picture>
+  );
 }
