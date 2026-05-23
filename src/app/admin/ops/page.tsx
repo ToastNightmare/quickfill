@@ -224,7 +224,7 @@ async function loadLatestStripeWebhook(): Promise<StripeWebhookSnapshot | null> 
 
     return {
       ok: false,
-      message: "No Stripe webhook deliveries have been recorded yet.",
+      message: "Waiting for the first successful Stripe webhook delivery.",
       lastSuccessAt: null,
       lastSuccessType: null,
       lastFailureAt,
@@ -369,24 +369,24 @@ export default async function AdminOpsPage() {
     },
     {
       name: "Stripe billing",
-      status: stripeCoreReady && businessAnnualReady ? "ok" : stripeCoreReady ? "warn" : "fail",
+      status: stripeCoreReady ? "ok" : "fail",
       detail: stripeCoreReady ? "Core billing variables are configured." : "One or more required Stripe variables are missing.",
       icon: KeyRound,
       items: [
-        "Pro monthly, Pro annual, and Business monthly are required for the public checkout path.",
-        businessAnnualReady ? "Business annual pricing is configured." : "Business annual pricing is not configured yet; add it or keep annual Business hidden.",
+        "Pro monthly, Pro annual, and Business monthly are configured for current checkout paths.",
+        businessAnnualReady ? "Business annual pricing is configured for future use." : "Business annual pricing is optional and is not shown publicly unless configured.",
         "Webhook delivery should be checked after every billing change.",
       ],
     },
     {
       name: "Stripe webhooks",
       status: !stripeCoreReady ? "fail" : stripeWebhook ? (stripeWebhook.ok ? "ok" : "warn") : "warn",
-      detail: !stripeCoreReady ? "Stripe billing variables must be configured first." : (stripeWebhook?.message ?? "Stripe webhook delivery has not been recorded yet."),
+      detail: !stripeCoreReady ? "Stripe billing variables must be configured first." : (stripeWebhook?.message ?? "Waiting for the first successful Stripe webhook delivery."),
       icon: KeyRound,
       items: [
         stripeWebhook?.lastSuccessAt
           ? `Last successful event: ${stripeWebhook.lastSuccessType ?? "unknown"} at ${formatDateTime(stripeWebhook.lastSuccessAt)}.`
-          : "No successful Stripe webhook has been recorded yet.",
+          : "No successful Stripe webhook has been recorded yet; run one checkout or resend an event from Stripe after launch.",
         stripeWebhook?.lastFailureAt
           ? `Last failed event: ${stripeWebhook.lastFailureType ?? "unknown"} at ${formatDateTime(stripeWebhook.lastFailureAt)}.`
           : "No failed Stripe webhook has been recorded yet.",
