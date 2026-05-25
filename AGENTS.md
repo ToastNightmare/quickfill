@@ -81,3 +81,121 @@ Avoid:
 ## Reporting
 
 When work is complete, report status, commit, files changed, build result, tests run, and notes.
+
+---
+
+# Kyle's QuickFill Codex Workflow
+
+## Default working mode
+
+For QuickFill tasks, prefer a NEW Codex worktree.
+
+Do not use Work locally for build tasks unless Kyle explicitly says to.
+
+The main QuickFill repo should be treated as the clean base. Worktrees are the safe place for Codex to inspect, build, test, and experiment.
+
+## Standard task flow
+
+For every QuickFill build task:
+
+1. Start in a new Codex chat.
+2. Use a new worktree.
+3. Inspect first.
+4. Explain the plan before editing.
+5. Wait for Kyle's approval before editing.
+6. Build only the approved task.
+7. Show `git status --short`.
+8. Show the exact diff.
+9. Run only approved verification commands.
+10. Stop and report if anything gets blocked, slow, unclear, or risky.
+
+## Approval rule
+
+Do not edit files until Kyle approves the plan.
+
+When Kyle approves, edit only the files listed in the approved plan.
+
+Do not expand the task without asking first.
+
+## Commands requiring explicit approval
+
+Never run these unless Kyle clearly approves:
+
+- `git commit`
+- `git push`
+- deploy commands
+- `git reset`
+- `git clean`
+- deleting files or folders
+- changing production settings
+- modifying package manager or lockfile files
+
+## Protected QuickFill areas
+
+These areas require extra caution and explanation before editing:
+
+- PDF coordinate and field placement logic
+- PDF export and finalization logic
+- Billing, Stripe, entitlement, usage-limit, and admin logic
+- Clerk auth and webhooks
+- Database schema or migrations
+- `package.json`
+- `pnpm-lock.yaml`
+- Vercel or deployment configuration
+- broad wiring scripts
+
+If the task does not specifically require these areas, do not edit them.
+
+## Verification rule
+
+Use the smallest relevant verification first.
+
+Preferred order:
+
+1. Focused test for the changed area
+2. `pnpm build`
+3. `pnpm qa` only after the focused check/build is safe
+
+If Playwright/browser tests are blocked by the local sandbox, report that clearly. Do not pretend full QA passed.
+
+## Handoff rule
+
+When Kyle says any of these:
+
+- "handoff"
+- "give me a handoff"
+- "wrap this up"
+- "ready for next chat"
+- "finish this task"
+- "checkpoint this"
+- "handoff and archive"
+
+Stop all work and produce a final handoff.
+
+Do not edit files.
+Do not install anything.
+Do not run tests.
+Do not run build.
+Do not commit.
+Do not push.
+Do not deploy.
+
+The handoff must include:
+
+1. Worktree path
+2. Branch/current ref
+3. Files changed
+4. Exact `git status --short` output
+5. Summary of what was built or changed
+6. Verification performed
+7. Verification not performed
+8. Known risks or unfinished items
+9. Whether the main QuickFill repo was touched
+10. Whether anything was committed, pushed, or deployed
+11. Recommended next step
+12. Copy/paste handoff note for the next Codex chat
+
+At the end say:
+
+"Archive this chat after saving this handoff. Start the next task in a fresh chat with a new worktree."
+
