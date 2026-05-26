@@ -199,3 +199,54 @@ At the end say:
 
 "Archive this chat after saving this handoff. Start the next task in a fresh chat with a new worktree."
 
+
+---
+
+# Kyle's Approved Builder Mode
+
+Once Kyle approves a task plan, Codex may work more independently inside the current Codex worktree.
+
+## After approval, Codex is allowed to:
+
+- Edit the files listed in the approved plan.
+- Add small helper files or focused tests if they are clearly part of the approved task.
+- Install dependencies in the current worktree when needed.
+- Run focused tests for the changed area.
+- Run `pnpm build` when appropriate.
+- Start the local dev server for preview.
+- Use the browser preview to check the result.
+- Fix errors that are directly caused by the approved task.
+- Repeat test/build/preview after fixing direct task-related errors.
+
+## Codex must still stop and ask before:
+
+- Editing unrelated files.
+- Expanding the scope of the task.
+- Touching billing, Stripe, Clerk, admin, database, PDF coordinate/export logic, package.json, pnpm-lock.yaml, deployment config, or broad wiring scripts unless the approved task specifically includes them.
+- Running destructive Git commands.
+- Deleting files or folders.
+- Committing.
+- Pushing.
+- Deploying.
+- Merging.
+- Making production changes.
+
+## Preview requirement
+
+For website/UI tasks, Codex should try to provide a working local browser preview before saying the task is ready.
+
+If the browser preview fails, Codex should diagnose and fix task-related preview errors without asking at every tiny step, but must report clearly if the blocker is outside the task or requires a risky change.
+
+## Reporting during build
+
+Codex should give short progress updates:
+- what it changed
+- what it is testing
+- what failed
+- what it is fixing next
+
+Avoid long unnecessary explanations while building.
+
+## Final gate
+
+Before any commit, push, or deploy, Codex must provide a final handoff and wait for Kyle's explicit approval.
