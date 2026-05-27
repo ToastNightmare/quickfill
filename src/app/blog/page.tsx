@@ -37,7 +37,10 @@ export default function BlogPage() {
         does not provide legal, tax, medical, Centrelink, immigration, tenancy, or financial advice.
       </div>
 
-      <section className="mt-10 min-h-[360px]" aria-label="QuickFill blog articles">
+      <section
+        className="qf-soro-blog-surface mt-10 min-h-[360px] rounded-lg border border-[#dbe5f2] bg-[#f8fafc] p-3 shadow-sm sm:p-5 lg:p-6"
+        aria-label="QuickFill blog articles"
+      >
         <div id="soro-blog" />
       </section>
 
