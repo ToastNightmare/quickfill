@@ -24,6 +24,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <a href="/terms" className="text-sm text-text-muted transition-colors hover:text-text">
               Terms of Service
             </a>
+            <a href="/blog" className="text-sm text-text-muted transition-colors hover:text-text">
+              Resources
+            </a>
             <a href="/support" className="text-sm text-text-muted transition-colors hover:text-text">
               Support
             </a>
