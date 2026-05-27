@@ -41,6 +41,9 @@ export function Navbar() {
           <Link href="/templates" className="text-sm font-medium text-text-muted hover:text-text transition-colors">
             Templates
           </Link>
+          <Link href="/blog" className="text-sm font-medium text-text-muted hover:text-text transition-colors">
+            Resources
+          </Link>
           <Link href="/editor" className="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-white hover:bg-accent-hover transition-colors">
             Fill a PDF
           </Link>
@@ -115,6 +118,9 @@ export function Navbar() {
             </Link>
             <Link href="/templates" onClick={() => setMenuOpen(false)} className="rounded-lg px-3 py-3 text-sm font-medium hover:bg-surface-alt transition-colors">
               Templates
+            </Link>
+            <Link href="/blog" onClick={() => setMenuOpen(false)} className="rounded-lg px-3 py-3 text-sm font-medium hover:bg-surface-alt transition-colors">
+              Resources
             </Link>
             <Link href="/editor" onClick={() => setMenuOpen(false)} className="rounded-lg bg-accent px-3 py-3 text-sm font-semibold text-white hover:bg-accent-hover transition-colors text-center">
               Fill a PDF
