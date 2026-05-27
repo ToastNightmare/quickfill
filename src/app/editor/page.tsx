@@ -34,6 +34,7 @@ import { useAuth } from "@clerk/nextjs";
 import Link from "next/link";
 import { trackEvent } from "@/lib/analytics";
 import { runEditorProfileAutofill, trackEditorAutofillShadowReport } from "@/lib/editor-profile-autofill";
+import { createEditorFieldId, repairDuplicateEditorFieldIds, withUniqueEditorFieldId } from "@/lib/field-ids";
 
 const ZOOM_LEVELS = [50, 75, 100, 125, 150, 175, 200];
 const SNAP_MIN = 125;
@@ -205,7 +206,7 @@ export default function EditorPage() {
 
     loadPdfFromIndexedDB().then(async (savedPdf) => {
       if (!savedPdf) return;
-      const savedFields = loadFieldsFromLocalStorage();
+      const savedFields = repairDuplicateEditorFieldIds(loadFieldsFromLocalStorage());
       const savedPage = loadPageFromLocalStorage();
       const savedName = loadFileNameFromLocalStorage();
 
@@ -214,6 +215,7 @@ export default function EditorPage() {
       setCurrentPage(savedPage);
       if (savedFields.length > 0) {
         reset(savedFields);
+        saveFieldsToLocalStorage(savedFields);
       }
       setShowRestoredBanner(true);
       setTimeout(() => setShowRestoredBanner(false), 3000);
@@ -413,7 +415,7 @@ export default function EditorPage() {
                 fontSize: 12,
               };
             });
-            reset(editorFields);
+            reset(repairDuplicateEditorFieldIds(editorFields));
           } else {
             setHasAcroForm(false);
             reset([]);
@@ -486,13 +488,15 @@ export default function EditorPage() {
 
   const handleFieldAdd = useCallback(
     (field: EditorField) => {
-      trackEvent("field_added", { source: "manual", type: field.type, snapped: Boolean(field.snapped) });
-      setFields((prev) => [...prev, field]);
+      const fieldToAdd = withUniqueEditorFieldId(field, fields);
+      trackEvent("field_added", { source: "manual", type: fieldToAdd.type, snapped: Boolean(fieldToAdd.snapped) });
+      setFields((prev) => [...prev, fieldToAdd]);
       // Select the newly added field and deactivate tool
-      setSelectedFieldId(field.id);
+      setSelectedFieldId(fieldToAdd.id);
       setActiveTool(null);
+      return fieldToAdd;
     },
-    [setFields]
+    [fields, setFields]
   );
 
   const handleFieldUpdate = useCallback(
@@ -516,7 +520,7 @@ export default function EditorPage() {
     (id: string) => {
       const source = fields.find((f) => f.id === id);
       if (!source) return;
-      const newId = `dup-${Date.now()}`;
+      const newId = createEditorFieldId(fields, "dup");
       const dup = { ...source, id: newId, x: source.x + 12, y: source.y + 12 } as EditorField;
       trackEvent("field_added", { source: "duplicate", type: dup.type });
       setFields((prev) => [...prev, dup]);
@@ -874,6 +878,13 @@ export default function EditorPage() {
     const zoomFactor = zoom / 100;
 
     try {
+      const reservedFieldIds = fields.map((field) => field.id);
+      const reserveFieldId = (prefix: string) => {
+        const id = createEditorFieldId(reservedFieldIds, prefix);
+        reservedFieldIds.push(id);
+        return id;
+      };
+
       // --- Layer 1: Visual batch detection (always available, no API needed) ---
       let visualFields: EditorField[] = [];
       try {
@@ -895,8 +906,8 @@ export default function EditorPage() {
             });
             const boxes = detectAllBoxes(tmpCanvas);
             if (boxes.length > 0) {
-              visualFields = boxes.map((box, i) => {
-                const id = `vis-${Date.now()}-${i}`;
+              visualFields = boxes.map((box) => {
+                const id = reserveFieldId("vis");
                 const fieldH = box.height / zoomFactor;
                 const inferredFontSize = Math.max(8, Math.min(36, Math.round(fieldH * 0.65)));
                 return {
@@ -943,8 +954,8 @@ export default function EditorPage() {
           const data = await res.json();
           if (!data.error && data.fields && data.fields.length > 0) {
             aiFields = data.fields.map(
-              (f: { label?: string; type?: string; x: number; y: number; width: number; height: number }, i: number) => {
-                const id = `ai-${Date.now()}-${i}`;
+              (f: { label?: string; type?: string; x: number; y: number; width: number; height: number }) => {
+                const id = reserveFieldId("ai");
                 const fieldType = (f.type === "checkbox" || f.type === "signature" || f.type === "date") ? f.type : "text";
                 if (fieldType === "checkbox") {
                   return {
@@ -1003,7 +1014,7 @@ export default function EditorPage() {
     } finally {
       setIsDetecting(false);
     }
-  }, [currentPage, zoom, setFields, showToast]);
+  }, [currentPage, zoom, fields, setFields, showToast]);
 
   if (!pdfBytes) {
     return (
