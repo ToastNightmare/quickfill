@@ -7,12 +7,13 @@ import crypto from "crypto";
 import { PDFDocument, rgb, StandardFonts, PDFName, PDFArray, PDFDict } from "pdf-lib";
 import type { EditorField } from "@/lib/types";
 import { APP_CONFIG } from "@/lib/config";
-import { applyBorderWatermark } from "@/lib/watermark";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { getRedis } from "@/lib/redis";
 import { recordDownloadLog } from "@/lib/admin-logs";
 import { getRequestEntitlement } from "@/lib/entitlements";
 import { orderFieldsForPdfDraw } from "@/lib/pdf-utils";
+import { buildPdfDownloadHeaders, filledPdfFilename } from "@/lib/pdf-download-response";
+import { finalizePdfForDownload } from "@/lib/pdf-finalize";
 
 /** Replace control characters (including newlines) with a space */
 function sanitize(text: string): string {
@@ -249,12 +250,8 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Apply border watermark for free/guest users. QA token requests act like Pro.
-    const pages = pdfDoc.getPages();
-    const watermarkFont = await pdfDoc.embedFont(StandardFonts.Helvetica);
-    applyBorderWatermark(pages, watermarkFont, access.isPro || access.isQaBypass === true);
-
-    const resultBytes = await pdfDoc.save({ updateFieldAppearances: false });
+    const resultBytes = await finalizePdfForDownload(pdfDoc, access.isPro || access.isQaBypass === true);
+    const resultBuffer = Buffer.from(resultBytes);
     await incrementDownloadUsage(access);
     await recordDownloadLog({
       status: "success",
@@ -267,9 +264,9 @@ export async function POST(request: NextRequest) {
       hasAcroForm,
     });
 
-    return new NextResponse(Buffer.from(resultBytes), {
+    return new NextResponse(resultBuffer, {
       status: 200,
-      headers: { "Content-Type": "application/pdf", "Content-Disposition": "inline" },
+      headers: buildPdfDownloadHeaders(resultBuffer, filledPdfFilename(pdfFile.name)),
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
