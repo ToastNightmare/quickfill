@@ -108,6 +108,24 @@ If checks are failing, pending, missing, or unclear, Codex must stop and report 
 
 This approval does not allow Codex to make additional code changes, force-push, bypass branch protection, manually deploy, or merge any other PR.
 
+## Local Sync Rule
+
+At the end of every handoff, and after every successful PR merge, Codex must remind Kyle to sync the local main QuickFill repo.
+
+Codex should include these exact PowerShell commands:
+
+```powershell
+cd "C:\Users\Admin\Documents\Codex\2026-05-01\walk-me-through-google-business-profile\QuickFill-Workspace\app"
+git switch master
+git pull origin master
+git status --short
+```
+
+If Codex has safe local access and Kyle has approved the merge workflow, Codex may run these commands itself. Otherwise, Codex must provide them clearly as the final step.
+
+The expected clean result is:
+git status --short shows no output, except the harmless untracked cache warning.
+
 ## Implementation Style
 
 Prefer:
