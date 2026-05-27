@@ -1,4 +1,4 @@
-import { PDFPage, PDFFont, PDFString, rgb } from "pdf-lib";
+import { PDFName, PDFPage, PDFFont, PDFString, rgb } from "pdf-lib";
 
 /**
  * Apply a light, clickable border watermark for free/guest downloads.
@@ -22,7 +22,14 @@ function addWatermarkLink(page: PDFPage, x: number, y: number, width: number, fo
       },
     });
 
-    page.node.addAnnot(context.register(annotation));
+    const annotationRef = context.register(annotation);
+    const annots = page.node.Annots();
+
+    if (annots) {
+      annots.push(annotationRef);
+    } else {
+      page.node.set(PDFName.of("Annots"), context.obj([annotationRef]));
+    }
   } catch {
     // Some source PDFs carry malformed annotation state. The visible watermark
     // is still drawn; the link is best-effort so export cannot be blocked.

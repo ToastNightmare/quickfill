@@ -10,8 +10,18 @@ export function cleanupEditedDocumentArtifacts(pdfDoc: PDFDocument) {
   }
 }
 
+function ensurePageContentStreams(pdfDoc: PDFDocument) {
+  for (const page of pdfDoc.getPages()) {
+    if (page.node.Contents()) continue;
+
+    const emptyStreamRef = pdfDoc.context.register(pdfDoc.context.stream(new Uint8Array()));
+    page.node.set(PDFName.of("Contents"), emptyStreamRef);
+  }
+}
+
 export async function createViewerSafePdfDocument(sourceDoc: PDFDocument) {
   cleanupEditedDocumentArtifacts(sourceDoc);
+  ensurePageContentStreams(sourceDoc);
 
   // pdf-lib only writes newly embedded image/font resources to the document context
   // when the document is flushed/saved. The viewer-safe copy embeds source pages

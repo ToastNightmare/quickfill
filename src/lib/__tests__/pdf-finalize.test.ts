@@ -1,3 +1,7 @@
+/**
+ * @jest-environment node
+ */
+
 import { PDFArray, PDFDict, PDFDocument, PDFName, PDFString } from "pdf-lib";
 import { finalizePdfForDownload } from "../pdf-finalize";
 import { WATERMARK_URL } from "../watermark";
