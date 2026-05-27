@@ -75,6 +75,148 @@ body {
   overscroll-behavior: none;
 }
 
+/* Soro renders into the host page, so keep its blog/article UI readable on QuickFill's dark shell. */
+.qf-soro-blog-surface {
+  color-scheme: light;
+}
+
+.qf-soro-blog-surface #soro-blog {
+  min-height: 360px;
+  overflow: hidden;
+  border-radius: 0.5rem;
+  background: #ffffff;
+  color: #131827;
+  padding: clamp(1rem, 2vw, 1.5rem);
+}
+
+.qf-soro-blog-surface #soro-blog:empty {
+  background: #ffffff;
+}
+
+.qf-soro-blog-surface #soro-blog,
+.qf-soro-blog-surface #soro-blog * {
+  box-sizing: border-box;
+}
+
+.qf-soro-blog-surface #soro-blog iframe {
+  width: 100%;
+  min-height: 760px;
+  border: 0;
+  border-radius: 0.5rem;
+  background: #ffffff;
+  color-scheme: light;
+}
+
+.qf-soro-blog-surface #soro-blog :where(article, [class*="article"], [class*="post"], [class*="card"]) {
+  border-color: #dbe5f2 !important;
+  border-radius: 0.5rem;
+  background: #ffffff !important;
+  color: #131827 !important;
+}
+
+.qf-soro-blog-surface #soro-blog :where(article, [class*="card"]) {
+  padding: 1.25rem;
+  box-shadow: 0 12px 30px rgb(15 23 42 / 0.06);
+}
+
+.qf-soro-blog-surface #soro-blog :where(h1, h2, h3, h4, h5, h6) {
+  color: #0f172a !important;
+  letter-spacing: 0;
+  line-height: 1.2;
+}
+
+.qf-soro-blog-surface #soro-blog :where(h1) {
+  font-size: 2rem;
+}
+
+.qf-soro-blog-surface #soro-blog :where(h2) {
+  font-size: 1.5rem;
+}
+
+.qf-soro-blog-surface #soro-blog :where(h3) {
+  font-size: 1.25rem;
+}
+
+.qf-soro-blog-surface #soro-blog :where(p, li, blockquote, figcaption) {
+  color: #374151 !important;
+  line-height: 1.75;
+}
+
+.qf-soro-blog-surface #soro-blog :where(time, small, [class*="date"], [class*="meta"], [class*="excerpt"], [class*="description"]) {
+  color: #4b5563 !important;
+}
+
+.qf-soro-blog-surface #soro-blog :where(a) {
+  color: #1d4ed8 !important;
+  text-decoration-color: rgb(29 78 216 / 0.35);
+  text-underline-offset: 0.18em;
+}
+
+.qf-soro-blog-surface #soro-blog :where(a:hover) {
+  color: #1e40af !important;
+  text-decoration-color: currentColor;
+}
+
+.qf-soro-blog-surface #soro-blog :where(button, [role="button"], a[class*="button"], a[class*="btn"]) {
+  border-color: #2563eb !important;
+  border-radius: 0.5rem;
+  background: #2563eb !important;
+  color: #ffffff !important;
+}
+
+.qf-soro-blog-surface #soro-blog :where(button, [role="button"], a[class*="button"], a[class*="btn"]) * {
+  color: #ffffff !important;
+}
+
+.qf-soro-blog-surface #soro-blog :where(img, picture, video) {
+  max-width: 100%;
+  height: auto;
+  border-radius: 0.5rem;
+}
+
+.qf-soro-blog-surface #soro-blog :where(hr) {
+  border-color: #dbe5f2;
+}
+
+.qf-soro-blog-surface #soro-blog :where(table) {
+  width: 100%;
+  border-collapse: collapse;
+  color: #131827;
+}
+
+.qf-soro-blog-surface #soro-blog :where(th, td) {
+  border-color: #dbe5f2;
+  color: #131827;
+}
+
+.qf-soro-blog-surface #soro-blog :where(input, textarea, select) {
+  border-color: #cbd5e1;
+  background: #ffffff;
+  color: #131827;
+}
+
+@media (max-width: 639px) {
+  .qf-soro-blog-surface {
+    padding: 0.75rem;
+  }
+
+  .qf-soro-blog-surface #soro-blog {
+    padding: 1rem;
+  }
+
+  .qf-soro-blog-surface #soro-blog :where(article, [class*="card"]) {
+    padding: 1rem;
+  }
+
+  .qf-soro-blog-surface #soro-blog :where(h1) {
+    font-size: 1.75rem;
+  }
+
+  .qf-soro-blog-surface #soro-blog :where(h2) {
+    font-size: 1.35rem;
+  }
+}
+
 /* Keep PDF pages, signatures, and color picking true to the original document. */
 canvas,
 input[type="color"] {
