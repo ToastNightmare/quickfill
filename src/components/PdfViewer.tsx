@@ -6,6 +6,7 @@ import type Konva from "konva";
 import type { EditorField, ToolType, SignatureField, CheckboxStamp, WhiteoutField, CombField } from "@/lib/types";
 import { detectSnapBox, detectAllBoxes, snapCredibilityScore, floodFillCell, detectCombCells } from "@/lib/snap-detect";
 import type { SnapResult, CombDetectResult } from "@/lib/snap-detect";
+import { createEditorFieldId } from "@/lib/field-ids";
 
 export interface PdfViewerHandle {
   getCanvasDataURL: () => string | null;
@@ -20,7 +21,7 @@ interface PdfViewerProps {
   fields: EditorField[];
   activeTool: ToolType | null;
   selectedFieldId: string | null;
-  onFieldAdd: (field: EditorField) => void;
+  onFieldAdd: (field: EditorField) => EditorField;
   onFieldUpdate: (id: string, updates: Partial<EditorField>) => void;
   onFieldSelect: (id: string | null) => void;
   onFieldDelete: (id: string) => void;
@@ -38,11 +39,6 @@ interface PdfViewerProps {
   keepRatio?: boolean;
   whiteoutColor?: string | null;
   onWhiteoutColorChange?: (color: string | null) => void;
-}
-
-let nextFieldId = 1;
-function genId() {
-  return `field-${nextFieldId++}`;
 }
 
 interface SnapPreview {
@@ -170,6 +166,10 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
   }));
 
   const zoomFactor = zoom / 100;
+  const createFieldId = useCallback(
+    (prefix = "field") => createEditorFieldId(fields, prefix),
+    [fields],
+  );
 
   // Clear editing when field is deselected
   useEffect(() => {
@@ -379,12 +379,12 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
         if (selectedFieldId) {
           const field = fields.find(f => f.id === selectedFieldId && f.page === currentPage);
           if (field) {
-            const newId = genId();
+            const newId = createFieldId();
             const duplicate = { ...field, id: newId, x: field.x + 16, y: field.y + 16 };
-            onFieldAdd(duplicate);
+            const addedField = onFieldAdd(duplicate);
             onToolSelect(null);
             setCursorStyle("default");
-            onFieldSelect(newId);
+            onFieldSelect(addedField.id);
           }
         }
         return;
@@ -426,7 +426,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
     return () => {
       document.removeEventListener("keydown", handleKeyDown);
     };
-  }, [editingFieldId, selectedFieldId, fields, currentPage, onFieldDelete, onFieldSelect, onToolSelect, onFieldUpdate]);
+  }, [editingFieldId, selectedFieldId, fields, currentPage, onFieldDelete, onFieldSelect, onToolSelect, onFieldUpdate, createFieldId]);
 
   // Drive the single global Transformer based on selectedFieldId
   useLayoutEffect(() => {
@@ -701,7 +701,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
           const width = absDx / effectiveScale;
           const height = absDy / effectiveScale;
 
-          const id = genId();
+          const id = createFieldId();
           const snapped = false; // No snap detection when user draws manually
 
           const defaults = {
@@ -844,7 +844,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
             }
           }
 
-          onFieldAdd(field);
+          const addedField = onFieldAdd(field);
           // Keep whiteout tool active for multiple placements
           if (activeTool !== "whiteout") {
             onToolSelect(null);
@@ -852,19 +852,19 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
           setCursorStyle(activeTool === "whiteout" ? "crosshair" : "default");
           // Don't select whiteout fields - they're non-interactive overlays
           if (activeTool !== "whiteout") {
-            onFieldSelect(id);
+            onFieldSelect(addedField.id);
           }
 
           if (activeTool === "signature") {
-            onSignatureFieldPlaced?.(field);
+            onSignatureFieldPlaced?.(addedField);
           } else if (activeTool !== "checkbox" && activeTool !== "whiteout" && activeTool !== "comb") {
-            setEditingFieldId(id);
+            setEditingFieldId(addedField.id);
           }
         } else if (absDx <= 10 || absDy <= 10) {
           // Fall back to click-to-place behavior - inline the logic here to avoid circular dependency
           const clickedOnEmpty = e.target === stage;
           if (activeTool && clickedOnEmpty && pos) {
-            const id = genId();
+            const id = createFieldId();
             // Convert canvas pixels to PDF point space
             const effectiveScale = fitScale * zoomFactor;
             let fieldX = pos.x / effectiveScale;
@@ -1084,7 +1084,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
               }
             }
 
-            onFieldAdd(field);
+            const addedField = onFieldAdd(field);
             // Keep whiteout tool active
             if (activeTool !== "whiteout") {
               onToolSelect(null);
@@ -1092,17 +1092,17 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
             setCursorStyle(activeTool === "whiteout" ? "crosshair" : "default");
             // Don't select whiteout fields - they're non-interactive overlays
             if (activeTool !== "whiteout") {
-              onFieldSelect(id);
+              onFieldSelect(addedField.id);
             }
 
             if (activeTool === "signature") {
-              onSignatureFieldPlaced?.(field);
+              onSignatureFieldPlaced?.(addedField);
             } else if (activeTool !== "checkbox" && activeTool !== "whiteout" && activeTool !== "comb") {
-              setEditingFieldId(id);
+              setEditingFieldId(addedField.id);
             }
 
             if (snapped) {
-              setSnappedFieldId(id);
+              setSnappedFieldId(addedField.id);
               setTimeout(() => setSnappedFieldId(null), 600);
             }
           }
@@ -1115,7 +1115,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
         setDrawRect(null);
       }
     },
-    [activeTool, currentPage, zoomFactor, fitScale, onFieldAdd, onFieldSelect, onToolSelect, onSignatureFieldPlaced, snapPreview, whiteoutColor, fields, snapEnabled]
+    [activeTool, currentPage, zoomFactor, fitScale, onFieldAdd, onFieldSelect, onToolSelect, onSignatureFieldPlaced, snapPreview, whiteoutColor, fields, snapEnabled, createFieldId]
   );
 
   // Core field creation logic - shared by click and touch
@@ -1123,7 +1123,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
     (posX: number, posY: number, clickedOnEmpty: boolean) => {
       if (!activeTool || !clickedOnEmpty) return false;
 
-      const id = genId();
+      const id = createFieldId();
       // Convert canvas pixels to PDF point space
       const effectiveScale = fitScale * zoomFactor;
 
@@ -1338,7 +1338,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
         }
       }
 
-      onFieldAdd(field);
+      const addedField = onFieldAdd(field);
       // Keep whiteout tool active
       if (activeTool !== "whiteout") {
         onToolSelect(null);
@@ -1346,26 +1346,26 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
       setCursorStyle(activeTool === "whiteout" ? "crosshair" : "default");
       // Don't select whiteout fields - they're non-interactive overlays
       if (activeTool !== "whiteout") {
-        onFieldSelect(id);
+        onFieldSelect(addedField.id);
       }
 
       // For signature fields, trigger signature placement flow
       if (activeTool === "signature") {
-        onSignatureFieldPlaced?.(field);
+        onSignatureFieldPlaced?.(addedField);
       } else if (activeTool !== "checkbox" && activeTool !== "whiteout" && activeTool !== "comb") {
         // Immediately enter edit mode for text-like fields
-        setEditingFieldId(id);
+        setEditingFieldId(addedField.id);
       }
 
       // Flash confirmation on snap
       if (snapped) {
-        setSnappedFieldId(id);
+        setSnappedFieldId(addedField.id);
         setTimeout(() => setSnappedFieldId(null), 600);
       }
 
       return true;
     },
-    [activeTool, currentPage, onFieldAdd, onFieldSelect, onToolSelect, zoomFactor, fitScale, snapPreview, onSignatureFieldPlaced, snapEnabled, whiteoutColor, fields]
+    [activeTool, currentPage, onFieldAdd, onFieldSelect, onToolSelect, zoomFactor, fitScale, snapPreview, onSignatureFieldPlaced, snapEnabled, whiteoutColor, fields, createFieldId]
   );
 
   const handleStageClick = useCallback(
@@ -1772,12 +1772,12 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
                 onClick={() => {
                   const field = pageFields.find(f => f.id === contextMenu.fieldId);
                   if (field) {
-                    const newId = genId();
+                    const newId = createFieldId();
                     const duplicate = { ...field, id: newId, x: field.x + 16, y: field.y + 16 };
-                    onFieldAdd(duplicate);
+                    const addedField = onFieldAdd(duplicate);
                     onToolSelect(null);
                     setCursorStyle("default");
-                    onFieldSelect(newId);
+                    onFieldSelect(addedField.id);
                   }
                   setContextMenu(null);
                 }}
