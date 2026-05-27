@@ -18,6 +18,15 @@ const nextConfig: NextConfig = {
       },
     ];
   },
+  async redirects() {
+    return [
+      {
+        source: "/how-to-complete-locked-pdf-forms-online-australia",
+        destination: "/blog",
+        permanent: false,
+      },
+    ];
+  },
   webpack: (config) => {
     config.resolve.alias.canvas = false;
     return config;
