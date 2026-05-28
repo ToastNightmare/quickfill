@@ -1,10 +1,25 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getTemplateBySlug, getRelatedTemplates } from "@/lib/templates-config";
-import { FileText, ArrowRight, CheckCircle, XCircle, HelpCircle, ShieldCheck } from "lucide-react";
+import { AlertTriangle, FileText, ArrowRight, CheckCircle, XCircle, HelpCircle, ShieldCheck } from "lucide-react";
 
 interface PageProps {
   params: Promise<{ slug: string }>;
+}
+
+type Template = NonNullable<ReturnType<typeof getTemplateBySlug>>;
+
+function getTemplateLabels(template: Template) {
+  const labels = new Set<string>();
+
+  if (template.sourceKind === "governmentPublic") labels.add("Official form");
+  if (template.sourceKind === "publicForm") labels.add("Public form");
+  if (template.sourceKind === "genericWorksheet") labels.add("Generic worksheet");
+  if (template.sourceKind === "sample" || template.sourceKind === "underReview") labels.add("Under review");
+  if (template.templateType === "infoOnly") labels.add("Info only");
+  if (template.templateType === "flatForm") labels.add("Flat form");
+
+  return Array.from(labels);
 }
 
 export async function generateMetadata({ params }: PageProps) {
@@ -22,11 +37,13 @@ export async function generateMetadata({ params }: PageProps) {
     };
   }
 
+  const isIndexable = template.indexable !== false;
+
   return {
     title: template.seoTitle,
     description: template.seoDescription,
     robots: {
-      index: true,
+      index: isIndexable,
       follow: true,
     },
     alternates: {
@@ -55,6 +72,8 @@ export default async function TemplatePage({ params }: PageProps) {
   const relatedTemplates = getRelatedTemplates(slug, 3);
   const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "https://getquickfill.com";
   const pageUrl = `${baseUrl}/templates/${slug}`;
+  const canFill = template.allowFill !== false;
+  const templateLabels = getTemplateLabels(template);
   const structuredData = [
     {
       "@context": "https://schema.org",
@@ -102,14 +121,39 @@ export default async function TemplatePage({ params }: PageProps) {
           <FileText className="h-8 w-8 text-accent" />
         </div>
         <h1 className="text-4xl font-bold tracking-tight mb-4">{template.title}</h1>
+        {templateLabels.length > 0 && (
+          <div className="mb-5 flex flex-wrap justify-center gap-2">
+            {templateLabels.map((label) => (
+              <span
+                key={label}
+                className="rounded-full border border-border bg-surface px-3 py-1 text-xs font-semibold text-text-muted"
+              >
+                {label}
+              </span>
+            ))}
+          </div>
+        )}
         <p className="text-xl text-text-muted mb-8 max-w-2xl mx-auto">{template.description}</p>
-        <Link
-          href={`/editor?template=${encodeURIComponent(template.file)}`}
-          className="inline-flex h-12 items-center justify-center gap-2 rounded-lg bg-accent px-8 text-base font-semibold text-white hover:bg-accent-hover transition-colors"
-        >
-          <FileText className="h-5 w-5" />
-          Fill This Form Free
-        </Link>
+        {canFill ? (
+          <Link
+            href={`/editor?template=${encodeURIComponent(template.file)}`}
+            className="inline-flex h-12 items-center justify-center gap-2 rounded-lg bg-accent px-8 text-base font-semibold text-white hover:bg-accent-hover transition-colors"
+          >
+            <FileText className="h-5 w-5" />
+            Fill This Form Free
+          </Link>
+        ) : (
+          <div className="inline-flex min-h-12 items-center justify-center gap-2 rounded-lg border border-border bg-surface-alt px-8 py-3 text-base font-semibold text-text-muted">
+            <AlertTriangle className="h-5 w-5" />
+            Template under review
+          </div>
+        )}
+        {template.qualityNote && (
+          <div className="mx-auto mt-5 flex max-w-2xl items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-left">
+            <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-700" />
+            <p className="text-sm leading-relaxed text-amber-900">{template.qualityNote}</p>
+          </div>
+        )}
         <div className="mx-auto mt-5 flex max-w-2xl items-start gap-3 rounded-xl border border-border bg-surface-alt p-4 text-left">
           <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-accent" />
           <p className="text-sm leading-relaxed text-text-muted">
@@ -173,32 +217,34 @@ export default async function TemplatePage({ params }: PageProps) {
       </div>
 
       {/* How to fill it with QuickFill */}
-      <div className="mb-12">
-        <h2 className="text-2xl font-bold mb-6 text-center">How to fill it with QuickFill</h2>
-        <div className="grid md:grid-cols-3 gap-6">
-          <div className="bg-surface rounded-xl p-6 border border-border text-center">
-            <div className="w-12 h-12 rounded-full bg-accent/10 flex items-center justify-center mx-auto mb-4">
-              <span className="text-xl font-bold text-accent">1</span>
+      {canFill && (
+        <div className="mb-12">
+          <h2 className="text-2xl font-bold mb-6 text-center">How to fill it with QuickFill</h2>
+          <div className="grid md:grid-cols-3 gap-6">
+            <div className="bg-surface rounded-xl p-6 border border-border text-center">
+              <div className="w-12 h-12 rounded-full bg-accent/10 flex items-center justify-center mx-auto mb-4">
+                <span className="text-xl font-bold text-accent">1</span>
+              </div>
+              <h3 className="font-semibold mb-2">Upload</h3>
+              <p className="text-sm text-text-muted">Open the form in our online editor. No upload needed - it&apos;s ready to go!</p>
             </div>
-            <h3 className="font-semibold mb-2">Upload</h3>
-            <p className="text-sm text-text-muted">Open the form in our online editor. No upload needed - it&apos;s ready to go!</p>
-          </div>
-          <div className="bg-surface rounded-xl p-6 border border-border text-center">
-            <div className="w-12 h-12 rounded-full bg-accent/10 flex items-center justify-center mx-auto mb-4">
-              <span className="text-xl font-bold text-accent">2</span>
+            <div className="bg-surface rounded-xl p-6 border border-border text-center">
+              <div className="w-12 h-12 rounded-full bg-accent/10 flex items-center justify-center mx-auto mb-4">
+                <span className="text-xl font-bold text-accent">2</span>
+              </div>
+              <h3 className="font-semibold mb-2">Fill</h3>
+              <p className="text-sm text-text-muted">Click any field to type. Your profile auto-fills common fields like name and address.</p>
             </div>
-            <h3 className="font-semibold mb-2">Fill</h3>
-            <p className="text-sm text-text-muted">Click any field to type. Your profile auto-fills common fields like name and address.</p>
-          </div>
-          <div className="bg-surface rounded-xl p-6 border border-border text-center">
-            <div className="w-12 h-12 rounded-full bg-accent/10 flex items-center justify-center mx-auto mb-4">
-              <span className="text-xl font-bold text-accent">3</span>
+            <div className="bg-surface rounded-xl p-6 border border-border text-center">
+              <div className="w-12 h-12 rounded-full bg-accent/10 flex items-center justify-center mx-auto mb-4">
+                <span className="text-xl font-bold text-accent">3</span>
+              </div>
+              <h3 className="font-semibold mb-2">Download</h3>
+              <p className="text-sm text-text-muted">Download your completed PDF instantly. Pro users get unlimited downloads with no watermarks.</p>
             </div>
-            <h3 className="font-semibold mb-2">Download</h3>
-            <p className="text-sm text-text-muted">Download your completed PDF instantly. Pro users get unlimited downloads with no watermarks.</p>
           </div>
         </div>
-      </div>
+      )}
 
       {/* Related Templates */}
       {relatedTemplates.length > 0 && (

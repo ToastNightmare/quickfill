@@ -1,10 +1,10 @@
 import type { MetadataRoute } from "next";
 import { APP_CONFIG } from "@/lib/config";
-import { getTemplateSlugs } from "@/lib/templates-config";
+import { getIndexableTemplateSlugs } from "@/lib/templates-config";
 
 export default function sitemap(): MetadataRoute.Sitemap {
   const base = APP_CONFIG.url;
-  const templateSlugs = getTemplateSlugs();
+  const templateSlugs = getIndexableTemplateSlugs();
 
   const templatePages = templateSlugs.map((slug) => ({
     url: `${base}/templates/${slug}`,

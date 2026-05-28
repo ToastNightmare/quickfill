@@ -12,8 +12,7 @@ const filters = [
   { label: "Employment", value: "Employment" },
   { label: "Super", value: "Superannuation" },
   { label: "Centrelink", value: "Centrelink" },
-  { label: "Business", value: "Business" },
-  { label: "State forms", value: "state" },
+  { label: "Worksheets", value: "worksheet" },
   { label: "NDIS", value: "NDIS" },
 ] as const;
 
@@ -43,12 +42,36 @@ function normalize(value: string) {
 function matchesFilter(template: TemplateDirectoryItem, activeFilter: FilterValue) {
   if (activeFilter === "all") return true;
   if (activeFilter === "popular") return Boolean(template.popular);
-  if (activeFilter === "state") return template.tags.includes("state form") || template.category === "Real Estate";
+  if (activeFilter === "worksheet") {
+    return template.templateType === "genericWorksheet" || template.sourceKind === "genericWorksheet";
+  }
   return template.category === activeFilter;
+}
+
+function getTemplateBadges(template: TemplateDirectoryItem) {
+  const badges = new Set<string>();
+
+  if (template.badge) badges.add(template.badge);
+  if (template.sourceKind === "governmentPublic") badges.add("Official form");
+  if (template.sourceKind === "publicForm") badges.add("Public form");
+  if (template.sourceKind === "genericWorksheet") badges.add("Generic worksheet");
+  if (template.sourceKind === "sample" || template.sourceKind === "underReview") badges.add("Under review");
+  if (template.templateType === "infoOnly") badges.add("Info only");
+  if (template.templateType === "flatForm") badges.add("Flat form");
+
+  return Array.from(badges);
+}
+
+function getTemplateFormatLabel(template: TemplateDirectoryItem) {
+  if (template.templateType === "genericWorksheet") return "Worksheet";
+  if (template.templateType === "infoOnly") return "Info only";
+  if (template.templateType === "flatForm") return "Flat PDF";
+  return "PDF form";
 }
 
 function TemplatePreview({ template }: { template: TemplateDirectoryItem }) {
   const theme = previewThemes[template.category] ?? defaultPreviewTheme;
+  const badges = getTemplateBadges(template);
   const initials = template.category
     .split(/\s+/)
     .map((word) => word[0])
@@ -92,11 +115,11 @@ function TemplatePreview({ template }: { template: TemplateDirectoryItem }) {
             Popular
           </span>
         )}
-        {template.badge && (
-          <span className="rounded-full bg-white px-2.5 py-1 text-xs font-semibold text-accent shadow-sm">
-            {template.badge}
+        {badges.map((badge) => (
+          <span key={badge} className="rounded-full bg-white px-2.5 py-1 text-xs font-semibold text-accent shadow-sm">
+            {badge}
           </span>
-        )}
+        ))}
       </div>
     </div>
   );
@@ -138,18 +161,24 @@ function TemplateCard({ template }: { template: TemplateDirectoryItem }) {
           </span>
           <span className="flex items-center gap-1.5">
             <Layers className="h-3.5 w-3.5 text-accent" />
-            PDF form
+            {getTemplateFormatLabel(template)}
           </span>
         </div>
 
         <div className="mt-5 flex flex-col gap-2 sm:flex-row">
-          <Link
-            href={`/editor?template=${encodeURIComponent(template.file)}`}
-            className="flex h-10 flex-1 items-center justify-center gap-2 rounded-lg bg-accent px-4 text-sm font-semibold text-white transition-colors hover:bg-accent-hover"
-          >
-            <FileText className="h-4 w-4" />
-            Fill form
-          </Link>
+          {template.allowFill === false ? (
+            <span className="flex h-10 flex-1 items-center justify-center gap-2 rounded-lg border border-border bg-surface-alt px-4 text-sm font-semibold text-text-muted">
+              Under review
+            </span>
+          ) : (
+            <Link
+              href={`/editor?template=${encodeURIComponent(template.file)}`}
+              className="flex h-10 flex-1 items-center justify-center gap-2 rounded-lg bg-accent px-4 text-sm font-semibold text-white transition-colors hover:bg-accent-hover"
+            >
+              <FileText className="h-4 w-4" />
+              Fill form
+            </Link>
+          )}
           {template.slug && (
             <Link
               href={`/templates/${template.slug}`}
@@ -168,9 +197,10 @@ export function TemplatesExplorer({ templates }: { templates: TemplateDirectoryI
   const [query, setQuery] = useState("");
   const [activeFilter, setActiveFilter] = useState<FilterValue>("all");
 
+  const visibleTemplates = useMemo(() => templates.filter((template) => !template.hideFromMainGrid), [templates]);
   const normalizedQuery = normalize(query);
   const filteredTemplates = useMemo(() => {
-    return templates
+    return visibleTemplates
       .filter((template) => {
         if (!matchesFilter(template, activeFilter)) return false;
         if (!normalizedQuery) return true;
@@ -194,7 +224,7 @@ export function TemplatesExplorer({ templates }: { templates: TemplateDirectoryI
         if (!a.popular && b.popular) return 1;
         return a.title.localeCompare(b.title);
       });
-  }, [activeFilter, normalizedQuery, templates]);
+  }, [activeFilter, normalizedQuery, visibleTemplates]);
 
   const hasActiveSearch = Boolean(normalizedQuery) || activeFilter !== "all";
 
@@ -271,7 +301,7 @@ export function TemplatesExplorer({ templates }: { templates: TemplateDirectoryI
 
       <div className="mt-5 flex flex-col gap-2 border-y border-border py-4 text-sm text-text-muted sm:flex-row sm:items-center sm:justify-between">
         <p>
-          {filteredTemplates.length} of {templates.length} templates shown
+          {filteredTemplates.length} of {visibleTemplates.length} templates shown
         </p>
         {hasActiveSearch && (
           <button

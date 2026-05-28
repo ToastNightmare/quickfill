@@ -1,3 +1,6 @@
+export type TemplateType = "officialForm" | "publicForm" | "genericWorksheet" | "infoOnly" | "flatForm";
+export type TemplateSourceKind = "governmentPublic" | "publicForm" | "genericWorksheet" | "sample" | "underReview";
+
 export interface TemplateDirectoryItem {
   file: string;
   slug?: string;
@@ -8,8 +11,14 @@ export interface TemplateDirectoryItem {
   pageCount: number;
   estimatedTime: string;
   commonUse: string;
+  templateType: TemplateType;
+  sourceKind: TemplateSourceKind;
   badge?: string;
   popular?: boolean;
+  hideFromMainGrid?: boolean;
+  qualityNote?: string;
+  allowFill?: boolean;
+  indexable?: boolean;
   tags: string[];
 }
 
@@ -24,8 +33,14 @@ export const templateDirectory: TemplateDirectoryItem[] = [
     pageCount: 7,
     estimatedTime: "5-8 min",
     commonUse: "starting a new job or changing payroll details",
-    badge: "Public form",
-    popular: true,
+    templateType: "infoOnly",
+    sourceKind: "underReview",
+    badge: "Info only",
+    hideFromMainGrid: true,
+    qualityNote:
+      "This TFN Declaration entry is under review because the bundled PDF appears to be an information document rather than a fillable TFN declaration form.",
+    allowFill: false,
+    indexable: false,
     tags: ["tax", "employment", "new job", "payroll", "NAT 3092", "TFN"],
   },
   {
@@ -38,7 +53,9 @@ export const templateDirectory: TemplateDirectoryItem[] = [
     pageCount: 5,
     estimatedTime: "4-7 min",
     commonUse: "choosing or updating your super fund with an employer",
-    badge: "Public form",
+    templateType: "officialForm",
+    sourceKind: "governmentPublic",
+    badge: "Official form",
     popular: true,
     tags: ["super", "employment", "new job", "ATO", "NAT 13080"],
   },
@@ -51,7 +68,9 @@ export const templateDirectory: TemplateDirectoryItem[] = [
     pageCount: 7,
     estimatedTime: "5-8 min",
     commonUse: "updating tax withholding after your circumstances change",
-    badge: "Public form",
+    templateType: "officialForm",
+    sourceKind: "governmentPublic",
+    badge: "Official form",
     tags: ["tax", "withholding", "HELP debt", "Medicare levy", "NAT 3093"],
   },
   {
@@ -64,7 +83,9 @@ export const templateDirectory: TemplateDirectoryItem[] = [
     pageCount: 4,
     estimatedTime: "6-10 min",
     commonUse: "confirming employment details after leaving a job",
-    badge: "Public form",
+    templateType: "officialForm",
+    sourceKind: "governmentPublic",
+    badge: "Official form",
     popular: true,
     tags: ["Centrelink", "employment", "separation", "income support", "SU001"],
   },
@@ -78,7 +99,9 @@ export const templateDirectory: TemplateDirectoryItem[] = [
     pageCount: 17,
     estimatedTime: "10-15 min",
     commonUse: "applying for or updating Medicare enrolment",
-    badge: "Public form",
+    templateType: "officialForm",
+    sourceKind: "governmentPublic",
+    badge: "Official form",
     tags: ["Medicare", "health", "Services Australia", "MS004", "enrolment"],
   },
   {
@@ -91,6 +114,9 @@ export const templateDirectory: TemplateDirectoryItem[] = [
     pageCount: 2,
     estimatedTime: "3-5 min",
     commonUse: "making a formal written declaration",
+    templateType: "publicForm",
+    sourceKind: "publicForm",
+    badge: "Public form",
     popular: true,
     tags: ["legal", "declaration", "witness", "stat dec", "statutory declaration"],
   },
@@ -104,43 +130,65 @@ export const templateDirectory: TemplateDirectoryItem[] = [
     pageCount: 2,
     estimatedTime: "8-12 min",
     commonUse: "declaring income and assets to Centrelink",
+    templateType: "infoOnly",
+    sourceKind: "underReview",
+    badge: "Under review",
+    hideFromMainGrid: true,
+    qualityNote:
+      "This Centrelink SU415 entry is under review because the bundled PDF appears incorrect or mislabelled and should not be treated as a valid official form.",
+    allowFill: false,
+    indexable: false,
     tags: ["Centrelink", "income", "assets", "Services Australia", "SU415"],
   },
   {
     file: "tenancy-application-nsw.pdf",
     slug: "rental-application-nsw",
-    title: "Rental Application (NSW)",
-    description: "New South Wales residential tenancy application with applicant, employment and rental history fields.",
+    title: "Rental Application Worksheet (NSW)",
+    description: "Generic New South Wales rental application worksheet with applicant, employment and rental history fields.",
     category: "Real Estate",
-    agency: "State tenancy form",
+    agency: "Generic Australian worksheet",
     pageCount: 3,
     estimatedTime: "7-10 min",
     commonUse: "applying for a rental property in New South Wales",
-    tags: ["rental", "tenancy", "NSW", "state form", "real estate"],
+    templateType: "genericWorksheet",
+    sourceKind: "genericWorksheet",
+    badge: "Generic worksheet",
+    tags: ["rental", "tenancy", "NSW", "worksheet", "real estate"],
   },
   {
     file: "tenancy-application-vic.pdf",
     slug: "rental-application-vic",
-    title: "Rental Application (VIC)",
-    description: "Victoria residential tenancy application with rent, bond, privacy and applicant details.",
+    title: "Rental Application Worksheet (VIC)",
+    description: "Victoria rental application worksheet under review for currency and prescribed-form accuracy.",
     category: "Real Estate",
-    agency: "State tenancy form",
+    agency: "Generic Australian worksheet",
     pageCount: 3,
     estimatedTime: "7-10 min",
     commonUse: "applying for a rental property in Victoria",
-    tags: ["rental", "tenancy", "VIC", "state form", "real estate"],
+    templateType: "genericWorksheet",
+    sourceKind: "underReview",
+    badge: "Under review",
+    hideFromMainGrid: true,
+    qualityNote:
+      "This Victorian rental application is under review because it may be outdated or may not match the current prescribed rental application requirements.",
+    allowFill: false,
+    indexable: false,
+    tags: ["rental", "tenancy", "VIC", "worksheet", "real estate"],
   },
   {
     file: "rental-application.pdf",
-    title: "Rental Application",
-    description: "Standard residential rental application for Australian properties and applicant screening.",
+    title: "Rental Application Worksheet",
+    description: "Generic residential rental application worksheet for Australian properties and applicant screening.",
     category: "Real Estate",
-    agency: "Australian template",
+    agency: "Generic Australian worksheet",
     pageCount: 2,
     estimatedTime: "6-9 min",
     commonUse: "applying for a rental property with basic details",
+    templateType: "genericWorksheet",
+    sourceKind: "genericWorksheet",
+    badge: "Generic worksheet",
     popular: true,
-    tags: ["rental", "tenancy", "lease", "property", "state form", "real estate"],
+    tags: ["rental", "tenancy", "lease", "property", "worksheet", "real estate"],
   },
   {
     file: "superannuation-hardship.pdf",
@@ -152,6 +200,9 @@ export const templateDirectory: TemplateDirectoryItem[] = [
     pageCount: 2,
     estimatedTime: "8-12 min",
     commonUse: "applying for early access to super in hardship circumstances",
+    templateType: "genericWorksheet",
+    sourceKind: "genericWorksheet",
+    badge: "Generic worksheet",
     tags: ["super", "hardship", "financial hardship", "early release", "fund"],
   },
   {
@@ -164,6 +215,9 @@ export const templateDirectory: TemplateDirectoryItem[] = [
     pageCount: 2,
     estimatedTime: "5-8 min",
     commonUse: "onboarding a new employee for payroll setup",
+    templateType: "genericWorksheet",
+    sourceKind: "genericWorksheet",
+    badge: "Generic worksheet",
     popular: true,
     tags: ["employment", "new employee", "payroll", "bank details", "super"],
   },
@@ -177,7 +231,14 @@ export const templateDirectory: TemplateDirectoryItem[] = [
     pageCount: 2,
     estimatedTime: "3-6 min",
     commonUse: "sending a professional invoice to a customer",
-    popular: true,
+    templateType: "genericWorksheet",
+    sourceKind: "sample",
+    badge: "Under review",
+    hideFromMainGrid: true,
+    qualityNote:
+      "This tax invoice template is hidden while it is under review because the bundled PDF contains sample data and should be replaced before normal use.",
+    allowFill: false,
+    indexable: false,
     tags: ["invoice", "tax invoice", "business", "ABN", "GST"],
   },
   {
@@ -189,6 +250,9 @@ export const templateDirectory: TemplateDirectoryItem[] = [
     pageCount: 2,
     estimatedTime: "3-5 min",
     commonUse: "recording signed consent or permission",
+    templateType: "genericWorksheet",
+    sourceKind: "genericWorksheet",
+    badge: "Generic worksheet",
     tags: ["consent", "permission", "authority", "signature", "general"],
   },
   {
@@ -201,6 +265,9 @@ export const templateDirectory: TemplateDirectoryItem[] = [
     pageCount: 2,
     estimatedTime: "5-8 min",
     commonUse: "recording patient consent before treatment or procedures",
+    templateType: "genericWorksheet",
+    sourceKind: "genericWorksheet",
+    badge: "Generic worksheet",
     tags: ["medical", "health", "consent", "patient", "Medicare"],
   },
   {
@@ -212,6 +279,9 @@ export const templateDirectory: TemplateDirectoryItem[] = [
     pageCount: 2,
     estimatedTime: "3-5 min",
     commonUse: "changing payment details with an organisation",
+    templateType: "genericWorksheet",
+    sourceKind: "genericWorksheet",
+    badge: "Generic worksheet",
     tags: ["bank", "payment", "finance", "account", "payroll"],
   },
   {
@@ -223,6 +293,9 @@ export const templateDirectory: TemplateDirectoryItem[] = [
     pageCount: 2,
     estimatedTime: "8-12 min",
     commonUse: "lodging an insurance claim with supporting details",
+    templateType: "genericWorksheet",
+    sourceKind: "genericWorksheet",
+    badge: "Generic worksheet",
     tags: ["insurance", "claim", "home", "motor", "property"],
   },
   {
@@ -235,8 +308,13 @@ export const templateDirectory: TemplateDirectoryItem[] = [
     pageCount: 2,
     estimatedTime: "8-12 min",
     commonUse: "confirming supports between a participant and provider",
+    templateType: "genericWorksheet",
+    sourceKind: "genericWorksheet",
+    badge: "Generic worksheet",
     tags: ["NDIS", "service agreement", "disability", "provider", "participant"],
   },
 ];
 
-export const templateCount = templateDirectory.length;
+export const visibleTemplateDirectory = templateDirectory.filter((template) => !template.hideFromMainGrid);
+
+export const templateCount = visibleTemplateDirectory.length;
