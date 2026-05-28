@@ -4,6 +4,19 @@ import "./globals.css";
 import { AppShell } from "@/components/AppShell";
 import { APP_CONFIG } from "@/lib/config";
 
+const themeInitializerScript = `
+(function() {
+  try {
+    var storageKey = "quickfill-theme";
+    var storedTheme = window.localStorage.getItem(storageKey);
+    var theme = storedTheme === "light" || storedTheme === "dark"
+      ? storedTheme
+      : (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+    document.documentElement.dataset.theme = theme;
+  } catch (_) {}
+})();
+`;
+
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
@@ -53,8 +66,9 @@ export default function RootLayout({
 }>) {
   return (
     <ClerkProvider>
-      <html lang="en" className="h-full antialiased">
+      <html lang="en" className="h-full antialiased" suppressHydrationWarning>
         <body className="min-h-full flex flex-col bg-surface text-text">
+          <script dangerouslySetInnerHTML={{ __html: themeInitializerScript }} />
           <AppShell>{children}</AppShell>
         </body>
       </html>
