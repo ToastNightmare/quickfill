@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useState, useEffect } from "react";
 import { LayoutDashboard, Menu, User, X } from "lucide-react";
 import { Logo } from "@/components/Logo";
+import { ThemeToggle } from "@/components/ThemeToggle";
 import { useAuth, UserButton } from "@clerk/nextjs";
 
 interface UsageData {
@@ -72,6 +73,7 @@ export function Navbar() {
           <Link href="/support" className="text-sm font-medium text-text-muted hover:text-text transition-colors">
             Support
           </Link>
+          <ThemeToggle />
 
           {!isSignedIn ? (
             <>
@@ -99,14 +101,17 @@ export function Navbar() {
           )}
         </div>
 
-        {/* Mobile hamburger */}
-        <button
-          onClick={() => setMenuOpen(!menuOpen)}
-          className="flex h-11 w-11 items-center justify-center rounded-lg md:hidden hover:bg-surface-alt transition-colors"
-          aria-label="Toggle menu"
-        >
-          {menuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
-        </button>
+        {/* Mobile controls */}
+        <div className="flex items-center gap-2 md:hidden">
+          <ThemeToggle className="h-11 w-11" />
+          <button
+            onClick={() => setMenuOpen(!menuOpen)}
+            className="flex h-11 w-11 items-center justify-center rounded-lg hover:bg-surface-alt transition-colors"
+            aria-label="Toggle menu"
+          >
+            {menuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+          </button>
+        </div>
       </div>
 
       {/* Mobile menu */}
