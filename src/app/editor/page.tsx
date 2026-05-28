@@ -35,12 +35,54 @@ import Link from "next/link";
 import { trackEvent } from "@/lib/analytics";
 import { runEditorProfileAutofill, trackEditorAutofillShadowReport } from "@/lib/editor-profile-autofill";
 import { createEditorFieldId, repairDuplicateEditorFieldIds, withUniqueEditorFieldId } from "@/lib/field-ids";
+import { getTemplateBySlug, isTemplateFillable, type TemplateConfig } from "@/lib/templates-config";
 
 const ZOOM_LEVELS = [50, 75, 100, 125, 150, 175, 200];
 const SNAP_MIN = 125;
 const SNAP_MAX = 175;
 // On mobile we allow zooming below SNAP_MIN so the full page fits the screen
 const isMobileDevice = () => typeof window !== "undefined" && window.innerWidth < 640;
+
+const STARTER_TEMPLATE_SLUGS = [
+  "super-choice",
+  "statutory-declaration",
+  "rental-application-nsw",
+  "employment-separation",
+  "ndis-service-agreement",
+] as const;
+
+type StarterTemplateSlug = (typeof STARTER_TEMPLATE_SLUGS)[number];
+
+const STARTER_TEMPLATE_LABELS: Partial<Record<StarterTemplateSlug, string>> = {
+  "super-choice": "Superannuation Standard Choice",
+  "statutory-declaration": "Statutory Declaration",
+  "rental-application-nsw": "Rental Application Worksheet (NSW)",
+  "employment-separation": "Employment Separation Certificate",
+  "ndis-service-agreement": "NDIS Service Agreement",
+};
+
+function isTrustedStarterTemplate(template: TemplateConfig | undefined): template is TemplateConfig {
+  return Boolean(
+    template &&
+    !template.hideFromMainGrid &&
+    template.sourceKind !== "underReview" &&
+    template.sourceKind !== "sample" &&
+    template.templateType !== "infoOnly" &&
+    isTemplateFillable(template)
+  );
+}
+
+const STARTER_TEMPLATES = STARTER_TEMPLATE_SLUGS.flatMap((slug) => {
+  const template = getTemplateBySlug(slug);
+  if (!isTrustedStarterTemplate(template)) return [];
+
+  return [
+    {
+      file: template.file,
+      title: STARTER_TEMPLATE_LABELS[slug] ?? template.title,
+    },
+  ];
+});
 
 // Profile field matching keywords
 const PROFILE_MATCHERS: { key: string; keywords: string[] }[] = [
@@ -1071,14 +1113,7 @@ export default function EditorPage() {
               <div className="flex-1 h-px bg-border" />
             </div>
             <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
-              {[
-                { file: "ato-tfn-declaration.pdf", title: "TFN Declaration" },
-                { file: "ato-super-choice.pdf", title: "Super Choice" },
-                { file: "statutory-declaration.pdf", title: "Statutory Declaration" },
-                { file: "rental-application-nsw.pdf", title: "Rental Application" },
-                { file: "employment-separation.pdf", title: "Employment Separation" },
-                { file: "ndis-service-agreement.pdf", title: "NDIS Agreement" },
-              ].map(({ file, title }) => (
+              {STARTER_TEMPLATES.map(({ file, title }) => (
                 <button
                   key={file}
                   onClick={() => {
