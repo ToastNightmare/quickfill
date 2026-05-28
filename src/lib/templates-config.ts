@@ -1,9 +1,18 @@
+export type TemplateType = "officialForm" | "publicForm" | "genericWorksheet" | "infoOnly" | "flatForm";
+export type TemplateSourceKind = "governmentPublic" | "publicForm" | "genericWorksheet" | "sample" | "underReview";
+
 export interface TemplateConfig {
   slug: string;
   file: string;
   title: string;
   description: string;
   category: string;
+  templateType: TemplateType;
+  sourceKind: TemplateSourceKind;
+  hideFromMainGrid?: boolean;
+  qualityNote?: string;
+  allowFill?: boolean;
+  indexable?: boolean;
   seoTitle: string;
   seoDescription: string;
   whatIsThis: string;
@@ -21,6 +30,13 @@ export const templates: TemplateConfig[] = [
     title: "Tax File Number Declaration",
     description: "Public ATO form (NAT 3092) for declaring your TFN to your employer.",
     category: "ATO",
+    templateType: "infoOnly",
+    sourceKind: "underReview",
+    hideFromMainGrid: true,
+    qualityNote:
+      "This TFN Declaration entry is under review because the bundled PDF appears to be an information document rather than a fillable TFN declaration form.",
+    allowFill: false,
+    indexable: false,
     seoTitle: "Fill TFN Declaration Online Free | QuickFill Australia",
     seoDescription: "Fill your TFN Declaration form (NAT 3092) online for free. Public ATO form for new employees. No signup required.",
     whatIsThis: "The Tax File Number (TFN) Declaration is an ATO form that you must complete when starting a new job. It tells your employer how much tax to withhold from your pay based on your tax circumstances.",
@@ -59,6 +75,8 @@ export const templates: TemplateConfig[] = [
     title: "Superannuation Standard Choice",
     description: "Public ATO form (NAT 13080) to choose your super fund.",
     category: "ATO",
+    templateType: "officialForm",
+    sourceKind: "governmentPublic",
     seoTitle: "Superannuation Choice Form Online | Fill NAT 13080 Free",
     seoDescription: "Fill your Superannuation Standard Choice form (NAT 13080) online for free. Tell your employer which super fund to use.",
     whatIsThis: "The Superannuation Standard Choice form allows you to nominate which superannuation fund you want your employer to pay your super contributions into. This is your right under Australian law.",
@@ -97,6 +115,8 @@ export const templates: TemplateConfig[] = [
     title: "Employment Separation Certificate",
     description: "Public Centrelink form for when you leave a job.",
     category: "Services Australia",
+    templateType: "officialForm",
+    sourceKind: "governmentPublic",
     seoTitle: "Fill Centrelink Employment Separation Certificate Online",
     seoDescription: "Download and fill the Employment Separation Certificate (SU001) online. Required by Centrelink when claiming income support after leaving a job.",
     whatIsThis: "An Employment Separation Certificate is required by Centrelink when you leave a job and want to claim income support. Your employer must complete this form to verify your employment details and reason for leaving.",
@@ -135,6 +155,8 @@ export const templates: TemplateConfig[] = [
     title: "Medicare Enrolment Form",
     description: "Public Services Australia form (MS004) for new Medicare card applications.",
     category: "Services Australia",
+    templateType: "officialForm",
+    sourceKind: "governmentPublic",
     seoTitle: "Medicare Enrolment Form Online | Fill MS004 Free",
     seoDescription: "Apply for a Medicare card online with the MS004 enrolment form. For new residents and Australian citizens.",
     whatIsThis: "The Medicare Enrolment form is used to apply for a Medicare card if you're a new Australian resident or citizen. Medicare provides access to subsidised healthcare services across Australia.",
@@ -173,6 +195,8 @@ export const templates: TemplateConfig[] = [
     title: "Statutory Declaration Form",
     description: "Public form for making legal declarations in Australia.",
     category: "Legal",
+    templateType: "publicForm",
+    sourceKind: "publicForm",
     seoTitle: "Statutory Declaration Form Online Australia | FillFree",
     seoDescription: "Fill and download a statutory declaration form online for free. Australian format with witness section.",
     whatIsThis: "A statutory declaration is a written statement of fact that you declare to be true. It must be signed in the presence of an authorised witness such as a justice of the peace, lawyer, or police officer.",
@@ -211,6 +235,13 @@ export const templates: TemplateConfig[] = [
     title: "Centrelink Income and Assets Form SU415",
     description: "Services Australia form for declaring income and assets.",
     category: "Centrelink",
+    templateType: "infoOnly",
+    sourceKind: "underReview",
+    hideFromMainGrid: true,
+    qualityNote:
+      "This Centrelink SU415 entry is under review because the bundled PDF appears incorrect or mislabelled and should not be treated as a valid official form.",
+    allowFill: false,
+    indexable: false,
     seoTitle: "Centrelink Income and Assets Form SU415 | Fill Online Free",
     seoDescription: "Complete the SU415 income and assets declaration form online. Required for Centrelink payment assessments and reviews.",
     whatIsThis: "The SU415 form is used by Centrelink to assess your income and assets for payment eligibility. You'll need to provide details about your employment, other income, bank accounts, investments, and property.",
@@ -246,14 +277,16 @@ export const templates: TemplateConfig[] = [
   {
     slug: "rental-application-nsw",
     file: "tenancy-application-nsw.pdf",
-    title: "NSW Rental Application Form",
-    description: "New South Wales residential tenancy application.",
+    title: "NSW Rental Application Worksheet",
+    description: "Generic New South Wales residential tenancy application worksheet.",
     category: "Real Estate",
-    seoTitle: "NSW Rental Application Form Online | Fill Free",
-    seoDescription: "Complete your NSW rental application form online. Standard residential tenancy application for New South Wales properties.",
-    whatIsThis: "This is the standard rental application form used by landlords and property managers in New South Wales. It collects information about your identity, employment, rental history, and references to assess your tenancy application.",
+    templateType: "genericWorksheet",
+    sourceKind: "genericWorksheet",
+    seoTitle: "NSW Rental Application Worksheet Online | QuickFill",
+    seoDescription: "Complete a generic NSW rental application worksheet online. Check the agent or landlord's current instructions before submitting.",
+    whatIsThis: "This is a generic rental application worksheet for New South Wales. It collects information about your identity, employment, rental history, and references to help prepare a tenancy application.",
     keywords: ["rental application nsw", "tenancy application nsw", "rental form nsw", "nsw lease application", "rent application"],
-    whoNeedsThis: "You need to complete a rental application when seeking to rent a residential property in New South Wales. Landlords and property managers require this form to assess your suitability as a tenant. This applies whether you are a first-time renter, moving from another state, or looking for your next rental home in NSW.",
+    whoNeedsThis: "You may use this worksheet when preparing to apply for a residential rental property in New South Wales. Landlords and property managers may require their own current application process, so check the receiving organisation's instructions before submitting.",
     howToComplete: [
       "Provide accurate personal details including full name, date of birth, and current address",
       "Include employment details with your employer's contact information for verification",
@@ -284,14 +317,21 @@ export const templates: TemplateConfig[] = [
   {
     slug: "rental-application-vic",
     file: "tenancy-application-vic.pdf",
-    title: "VIC Rental Application Form",
-    description: "Victoria residential tenancy application.",
+    title: "VIC Rental Application Worksheet",
+    description: "Victoria rental application worksheet under review for currency and prescribed-form accuracy.",
     category: "Real Estate",
-    seoTitle: "VIC Rental Application Form Online | Fill Free",
-    seoDescription: "Complete your Victorian rental application form online. Standard residential tenancy application for Victoria properties.",
-    whatIsThis: "This is the standard rental application form used by landlords and property managers in Victoria. It collects information about your identity, employment, rental history, and references in accordance with Victorian tenancy laws.",
+    templateType: "genericWorksheet",
+    sourceKind: "underReview",
+    hideFromMainGrid: true,
+    qualityNote:
+      "This Victorian rental application is under review because it may be outdated or may not match the current prescribed rental application requirements.",
+    allowFill: false,
+    indexable: false,
+    seoTitle: "VIC Rental Application Worksheet | QuickFill",
+    seoDescription: "Victoria rental application worksheet under review. Check Consumer Affairs Victoria and the receiving agent's current instructions before using.",
+    whatIsThis: "This is a Victorian rental application worksheet that is currently under review. It should not be treated as the current prescribed rental application form unless you have checked the receiving organisation's instructions.",
     keywords: ["rental application vic", "tenancy application vic", "rental form victoria", "vic lease application", "rent application victoria"],
-    whoNeedsThis: "You need to complete a rental application when seeking to rent a residential property in Victoria. Landlords and property managers use this form to assess your suitability as a tenant under Victorian tenancy legislation. This applies to all prospective tenants regardless of whether you are renting for the first time or moving from another property.",
+    whoNeedsThis: "This page is retained only as an under-review reference. Victorian renters should check the current prescribed application requirements and the agent or landlord's instructions before submitting any rental application.",
     howToComplete: [
       "Enter your full legal name and current contact details including phone and email",
       "Provide detailed employment information including your employer's name, address, and supervisor contact",
@@ -325,6 +365,8 @@ export const templates: TemplateConfig[] = [
     title: "Superannuation Early Release - Financial Hardship",
     description: "Apply for early release of super on financial hardship grounds.",
     category: "Superannuation",
+    templateType: "genericWorksheet",
+    sourceKind: "genericWorksheet",
     seoTitle: "Super Early Release Financial Hardship Form | Fill Online",
     seoDescription: "Apply for early release of your superannuation due to financial hardship. Complete the application form online.",
     whatIsThis: "This form allows you to apply for early release of your superannuation on the grounds of financial hardship. You must meet specific criteria set by the Australian Prudential Regulation Authority (APRA) and provide evidence of your financial situation.",
@@ -363,6 +405,13 @@ export const templates: TemplateConfig[] = [
     title: "Australian Tax Invoice Template",
     description: "Professional tax invoice for Australian businesses.",
     category: "Business",
+    templateType: "genericWorksheet",
+    sourceKind: "sample",
+    hideFromMainGrid: true,
+    qualityNote:
+      "This tax invoice template is hidden while it is under review because the bundled PDF contains sample data and should be replaced before normal use.",
+    allowFill: false,
+    indexable: false,
     seoTitle: "Australian Tax Invoice Template | Fill Online Free",
     seoDescription: "Create professional Australian tax invoices online. Includes ABN, GST breakdown, and payment details. Free to use.",
     whatIsThis: "A tax invoice is a legal document required for GST-registered businesses in Australia. It must include specific information such as your ABN, the words 'Tax Invoice', itemised goods or services, and GST amounts if applicable.",
@@ -401,6 +450,8 @@ export const templates: TemplateConfig[] = [
     title: "New Employee Details Form",
     description: "Collect essential information from new staff members.",
     category: "Employment",
+    templateType: "genericWorksheet",
+    sourceKind: "genericWorksheet",
     seoTitle: "New Employee Details Form Australia | Fill Online",
     seoDescription: "Collect new employee details including TFN, bank account, and super fund. Essential for payroll setup in Australia.",
     whatIsThis: "This form collects essential information from new employees including their Tax File Number, bank account details, superannuation fund, and emergency contact information. It's required for setting up payroll and ensuring compliance with Australian employment laws.",
@@ -439,6 +490,8 @@ export const templates: TemplateConfig[] = [
     title: "NDIS Service Agreement",
     description: "Compliant service agreement between NDIS participant and provider.",
     category: "NDIS",
+    templateType: "genericWorksheet",
+    sourceKind: "genericWorksheet",
     seoTitle: "NDIS Service Agreement Form | Fill Online Free",
     seoDescription: "Complete NDIS service agreement between participant and provider. Includes support schedule, rates, and signatures.",
     whatIsThis: "An NDIS Service Agreement is a formal agreement between an NDIS participant and their service provider. It outlines the supports and services to be provided, including schedules, costs, and responsibilities of both parties. This is a requirement under NDIS quality and safety standards.",
@@ -477,6 +530,8 @@ export const templates: TemplateConfig[] = [
     title: "Medical Consent Form",
     description: "Patient consent for medical procedures and treatments.",
     category: "Healthcare",
+    templateType: "genericWorksheet",
+    sourceKind: "genericWorksheet",
     seoTitle: "Medical Consent Form Australia | Fill Online Free",
     seoDescription: "Complete a medical consent form online. Patient consent for procedures and treatments with Medicare details and emergency contact.",
     whatIsThis: "A medical consent form is used to document a patient's informed consent to medical procedures or treatments. It includes important medical information such as allergies, current medications, and emergency contact details to ensure safe and appropriate care.",
@@ -518,6 +573,14 @@ export function getTemplateBySlug(slug: string): TemplateConfig | undefined {
   return templates.find(t => t.slug === slug);
 }
 
+export function isTemplateFillable(template: TemplateConfig): boolean {
+  return template.allowFill !== false;
+}
+
+export function isTemplateIndexable(template: TemplateConfig): boolean {
+  return template.indexable !== false;
+}
+
 /**
  * Get related templates (same category, excluding current)
  */
@@ -526,13 +589,20 @@ export function getRelatedTemplates(currentSlug: string, limit: number = 3): Tem
   if (!current) return [];
   
   return templates
-    .filter(t => t.category === current.category && t.slug !== currentSlug)
+    .filter(t => t.category === current.category && t.slug !== currentSlug && isTemplateIndexable(t) && isTemplateFillable(t))
     .slice(0, limit);
 }
 
 /**
- * Get all template sligs for sitemap generation
+ * Get all template slugs for static route generation
  */
 export function getTemplateSlugs(): string[] {
   return templates.map(t => t.slug);
+}
+
+/**
+ * Get indexable template slugs for sitemap generation
+ */
+export function getIndexableTemplateSlugs(): string[] {
+  return templates.filter(isTemplateIndexable).map(t => t.slug);
 }

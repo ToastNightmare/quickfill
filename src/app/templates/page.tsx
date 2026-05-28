@@ -7,7 +7,7 @@ import { templateCount, templateDirectory } from "@/lib/template-directory";
 export const metadata: Metadata = {
   title: "Australian PDF Form Templates | QuickFill",
   description:
-    "Search and fill common Australian PDF form templates online, including ATO, Centrelink, employment, rental, NDIS, invoice, and consent forms.",
+    "Search and fill common Australian PDF form templates online, including ATO, Centrelink, employment, rental, finance, insurance, NDIS, health, and consent forms.",
   alternates: {
     canonical: "/templates",
   },
@@ -46,16 +46,26 @@ export default function TemplatesPage() {
         <div className="border-l-4 border-accent pl-5">
           <p className="text-4xl font-bold text-text">{templateCount}</p>
           <p className="mt-2 text-sm leading-6 text-text-muted">
-            Ready templates across tax, employment, Centrelink, rental, business, NDIS, health and consent forms.
+            Ready templates across tax, employment, Centrelink, rental, finance, insurance, NDIS, health and consent forms.
           </p>
         </div>
       </section>
+
+      <div className="mt-8 rounded-lg border border-border bg-surface-alt p-4">
+        <div className="flex items-start gap-3">
+          <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-accent" />
+          <p className="text-sm leading-6 text-text-muted">
+            QuickFill is independent and not government-affiliated. Templates may be official public forms or generic
+            worksheets. Always check the receiving organisation&apos;s current instructions.
+          </p>
+        </div>
+      </div>
 
       <div className="mt-8 grid gap-4 border-y border-border py-5 md:grid-cols-3">
         <div className="flex items-start gap-3">
           <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-accent" />
           <p className="text-sm leading-6 text-text-muted">
-            Independent from the ATO, Services Australia, NDIS and state agencies.
+            Labels distinguish official public forms from generic worksheets and templates under review.
           </p>
         </div>
         <div className="flex items-start gap-3">
