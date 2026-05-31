@@ -19,6 +19,17 @@ import {
   ShieldCheck,
   LockKeyhole,
   BadgeCheck,
+  Calendar,
+  CheckSquare,
+  Eraser,
+  Magnet,
+  PenTool,
+  RotateCcw,
+  Save,
+  SquareSplitHorizontal,
+  Trash2,
+  Type,
+  Undo2,
 } from "lucide-react";
 import { useAuth } from "@clerk/nextjs";
 import { APP_CONFIG } from "@/lib/config";
@@ -340,6 +351,604 @@ const securitySignals = [
 
 const testimonials: { name: string; role: string; text: string; initials: string }[] = [];
 
+const heroDemoWorkflow = [
+  { title: "Upload PDF", detail: "sample-form.pdf", icon: Upload },
+  { title: "Place fields", detail: "Text, date, checkbox", icon: FileText },
+  { title: "Type details", detail: "Alex Sample", icon: User },
+  { title: "Snap & align", detail: "Guides locked", icon: Check },
+  { title: "Download", detail: "Completed PDF", icon: Download },
+];
+
+function HeroProductDemo() {
+  const [stepIndex, setStepIndex] = useState(0);
+  const [prefersReducedMotion, setPrefersReducedMotion] = useState(false);
+
+  useEffect(() => {
+    const mediaQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const updatePreference = () => setPrefersReducedMotion(mediaQuery.matches);
+
+    updatePreference();
+    mediaQuery.addEventListener("change", updatePreference);
+    return () => mediaQuery.removeEventListener("change", updatePreference);
+  }, []);
+
+  useEffect(() => {
+    if (prefersReducedMotion) return;
+
+    const interval = window.setInterval(() => {
+      setStepIndex((current) => (current + 1) % heroDemoWorkflow.length);
+    }, 1800);
+
+    return () => window.clearInterval(interval);
+  }, [prefersReducedMotion]);
+
+  const activeStep = prefersReducedMotion ? heroDemoWorkflow.length - 1 : stepIndex;
+  const hasUploaded = activeStep >= 0;
+  const hasFields = activeStep >= 1;
+  const hasTyped = activeStep >= 2;
+  const hasAligned = activeStep >= 3;
+  const hasDownloaded = activeStep >= 4;
+  const statusItems: Array<[string, boolean]> = [
+    ["Fields placed", hasFields],
+    ["Details typed", hasTyped],
+    ["Snap guides aligned", hasAligned],
+    ["Download ready", hasDownloaded],
+  ];
+
+  return (
+    <div
+      className="mx-auto mt-12 max-w-5xl overflow-hidden rounded-lg border border-white/10 bg-white text-left shadow-2xl shadow-black/25"
+      aria-label="QuickFill product workflow demo"
+    >
+      <div className="flex flex-col gap-3 border-b border-border bg-white px-4 py-3 text-text sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex min-w-0 items-center gap-2 text-sm text-text-muted">
+          <FileText className="h-4 w-4 shrink-0 text-accent" />
+          <span>QuickFill</span>
+          <span>/</span>
+          <span className="truncate font-medium text-text">sample-application-form.pdf</span>
+        </div>
+        <div className="flex flex-wrap items-center gap-2 text-xs text-text-muted">
+          <span className="rounded-full bg-emerald-50 px-2 py-1 font-semibold text-emerald-700">
+            Generic demo
+          </span>
+          <span
+            className={`rounded-md px-2 py-1 font-semibold motion-safe:transition-colors motion-safe:duration-500 ${
+              hasAligned ? "bg-blue-50 text-blue-700" : "bg-surface-alt text-text-muted"
+            }`}
+          >
+            Snap {hasAligned ? "on" : "ready"}
+          </span>
+          <span
+            className={`rounded-md px-2 py-1 font-semibold motion-safe:transition-colors motion-safe:duration-500 ${
+              hasDownloaded ? "bg-accent text-white" : "bg-surface-alt text-text-muted"
+            }`}
+          >
+            {hasDownloaded ? "Ready to download" : "Editing"}
+          </span>
+        </div>
+      </div>
+
+      <div className="grid bg-surface-alt lg:grid-cols-[1fr_260px]">
+        <div className="p-4 sm:p-6">
+          <div className="grid gap-2 sm:grid-cols-5">
+            {heroDemoWorkflow.map((step, index) => {
+              const Icon = step.icon;
+              const isActive = index === activeStep;
+              const isComplete = index < activeStep || prefersReducedMotion;
+
+              return (
+                <div
+                  key={step.title}
+                  className={`rounded-lg border px-3 py-2 motion-safe:transition-all motion-safe:duration-500 motion-reduce:transition-none ${
+                    isActive
+                      ? "border-accent bg-white shadow-sm shadow-accent/15 motion-safe:scale-[1.02]"
+                      : isComplete
+                        ? "border-emerald-100 bg-emerald-50"
+                        : "border-border bg-white/70"
+                  }`}
+                >
+                  <div className="flex items-center gap-2">
+                    <span
+                      className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md ${
+                        isComplete
+                          ? "bg-emerald-600 text-white"
+                          : isActive
+                            ? "bg-accent text-white"
+                            : "bg-surface-alt text-text-muted"
+                      }`}
+                    >
+                      {isComplete ? <Check className="h-4 w-4" /> : <Icon className="h-4 w-4" />}
+                    </span>
+                    <span className="text-xs font-bold text-text">{step.title}</span>
+                  </div>
+                  <p className="mt-1 truncate text-[11px] text-text-muted">{step.detail}</p>
+                </div>
+              );
+            })}
+          </div>
+
+          <div className="mt-4 grid gap-4 md:grid-cols-[150px_1fr]">
+            <aside className="rounded-lg border border-border bg-white p-3">
+              <p className="text-[10px] font-bold uppercase tracking-widest text-text-muted">
+                Field tools
+              </p>
+              <div className="mt-3 grid grid-cols-2 gap-2 md:grid-cols-1">
+                {[
+                  ["T", "Text"],
+                  ["@", "Email"],
+                  ["Date", "Date"],
+                  ["X", "Checkbox"],
+                ].map(([icon, label], index) => (
+                  <div
+                    key={label}
+                    className={`flex h-9 items-center gap-2 rounded-md border px-2 text-xs font-semibold motion-safe:transition-all motion-safe:duration-500 motion-reduce:transition-none ${
+                      hasFields && index < 3
+                        ? "border-accent/30 bg-accent/10 text-accent"
+                        : "border-border bg-surface-alt text-text-muted"
+                    }`}
+                  >
+                    <span className="w-8 text-center text-[11px]">{icon}</span>
+                    {label}
+                  </div>
+                ))}
+              </div>
+              <div className="mt-4 rounded-lg border border-dashed border-border bg-surface-alt p-3 text-xs text-text-muted">
+                <div className="flex items-center gap-2">
+                  <Upload className="h-4 w-4 text-accent" />
+                  <span className="font-semibold text-text">Upload complete</span>
+                </div>
+                <p className="mt-1">1 page ready</p>
+              </div>
+            </aside>
+
+            <div className="relative min-h-[430px] overflow-hidden rounded-lg border border-border bg-[#e8edf5] p-4 sm:p-6">
+              <div
+                className={`absolute left-5 top-5 z-20 rounded-lg border border-accent/20 bg-white px-3 py-2 text-xs font-semibold text-text shadow-lg shadow-slate-900/10 motion-safe:transition-all motion-safe:duration-700 motion-reduce:transition-none ${
+                  hasUploaded ? "translate-y-0 opacity-100" : "-translate-y-2 opacity-0"
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <Upload className="h-4 w-4 text-accent" />
+                  sample-application-form.pdf
+                </div>
+              </div>
+
+              <div className="mx-auto max-w-[430px] rounded-md bg-white p-6 text-text shadow-xl shadow-slate-900/15">
+                <div className="flex items-start justify-between gap-4 border-b border-border pb-4">
+                  <div>
+                    <p className="text-[10px] font-bold uppercase tracking-widest text-accent">
+                      Demo only
+                    </p>
+                    <h3 className="mt-1 text-2xl font-extrabold tracking-tight text-text">
+                      Sample application form
+                    </h3>
+                  </div>
+                  <div className="rounded-md border border-border px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-text-muted">
+                    PDF
+                  </div>
+                </div>
+
+                <div className="relative mt-5 space-y-5">
+                  {hasAligned && (
+                    <>
+                      <div className="absolute left-[33%] top-2 h-[255px] w-px bg-accent/40 motion-safe:animate-pulse" />
+                      <div className="absolute left-0 right-4 top-[112px] h-px bg-accent/40 motion-safe:animate-pulse" />
+                      <div className="absolute left-0 right-4 top-[181px] h-px bg-accent/40 motion-safe:animate-pulse" />
+                    </>
+                  )}
+
+                  {[
+                    ["Full name", "Alex Sample", "top-0"],
+                    ["Address", "42 Example Road", "top-[68px]"],
+                    ["Email", "alex@example.com", "top-[137px]"],
+                    ["Date", "12 Jun 2026", "top-[206px]"],
+                  ].map(([label, value], index) => (
+                    <div key={label} className="grid grid-cols-[110px_1fr] items-center gap-4">
+                      <p className="text-sm font-semibold text-text">{label}</p>
+                      <div className="relative h-11 rounded-md border border-border bg-surface-alt">
+                        <div
+                          className={`absolute inset-0 rounded-md border-2 px-3 py-2 text-sm font-semibold text-navy motion-safe:transition-all motion-safe:duration-700 motion-reduce:transition-none ${
+                            hasFields
+                              ? hasAligned
+                                ? "translate-x-0 border-accent bg-blue-50"
+                                : index % 2 === 0
+                                  ? "-translate-x-1 border-accent/70 bg-white"
+                                  : "translate-x-1 border-accent/70 bg-white"
+                              : "scale-95 border-transparent bg-transparent opacity-0"
+                          }`}
+                        >
+                          <span
+                            className={`motion-safe:transition-opacity motion-safe:duration-500 motion-reduce:transition-none ${
+                              hasTyped ? "opacity-100" : "opacity-0"
+                            }`}
+                          >
+                            {value}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+
+                  <div className="grid grid-cols-[110px_1fr] items-center gap-4">
+                    <p className="text-sm font-semibold text-text">Consent</p>
+                    <div
+                      className={`flex h-9 w-9 items-center justify-center rounded border-2 text-accent motion-safe:transition-all motion-safe:duration-700 motion-reduce:transition-none ${
+                        hasFields ? "border-accent bg-blue-50 opacity-100" : "border-transparent opacity-0"
+                      }`}
+                    >
+                      {hasTyped && <Check className="h-5 w-5" />}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div
+                className={`absolute bottom-5 right-5 flex items-center gap-2 rounded-lg border bg-white px-3 py-2 text-xs font-semibold shadow-lg shadow-slate-900/10 motion-safe:transition-all motion-safe:duration-700 motion-reduce:transition-none ${
+                  hasDownloaded
+                    ? "translate-y-0 border-emerald-200 text-emerald-700 opacity-100"
+                    : "translate-y-3 border-border text-text-muted opacity-0"
+                }`}
+              >
+                <Check className="h-4 w-4" />
+                Completed PDF ready
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <aside className="border-t border-border bg-white p-4 lg:border-l lg:border-t-0">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-widest text-text-muted">
+                Live status
+              </p>
+              <p className="mt-1 text-sm font-semibold text-text">
+                {heroDemoWorkflow[activeStep].title}
+              </p>
+            </div>
+            <Sparkles className="h-5 w-5 text-accent" />
+          </div>
+
+          <div className="mt-5 space-y-3">
+            {statusItems.map(([label, done]) => (
+              <div key={label} className="flex items-center gap-3">
+                <span
+                  className={`flex h-6 w-6 items-center justify-center rounded-full motion-safe:transition-colors motion-safe:duration-500 ${
+                    done ? "bg-emerald-600 text-white" : "bg-surface-alt text-text-muted"
+                  }`}
+                >
+                  <Check className="h-3.5 w-3.5" />
+                </span>
+                <span className="text-sm text-text-muted">{label}</span>
+              </div>
+            ))}
+          </div>
+
+          <button
+            type="button"
+            className={`mt-6 flex h-11 w-full items-center justify-center gap-2 rounded-lg text-sm font-semibold motion-safe:transition-all motion-safe:duration-500 motion-reduce:transition-none ${
+              hasDownloaded
+                ? "bg-accent text-white shadow-lg shadow-accent/20"
+                : "bg-surface-alt text-text-muted"
+            }`}
+            tabIndex={-1}
+          >
+            <Download className="h-4 w-4" />
+            Download PDF
+          </button>
+        </aside>
+      </div>
+    </div>
+  );
+}
+
+function HeroEditorMiniDemo() {
+  const [stageIndex, setStageIndex] = useState(0);
+  const [prefersReducedMotion, setPrefersReducedMotion] = useState(false);
+  const demoStages = [
+    "Upload PDF",
+    "Place fields",
+    "Type details",
+    "Snap aligned",
+    "Download ready",
+  ];
+  const activeStage = prefersReducedMotion ? demoStages.length - 1 : stageIndex;
+  const hasFields = activeStage >= 1;
+  const hasTyped = activeStage >= 2;
+  const hasAligned = activeStage >= 3;
+  const hasDownloaded = activeStage >= 4;
+  const fieldTools = [
+    { label: "Text Field", icon: Type },
+    { label: "Box Field", icon: SquareSplitHorizontal },
+    { label: "Checkbox", icon: CheckSquare },
+    { label: "Signature", icon: PenTool },
+    { label: "Date", icon: Calendar },
+    { label: "Whiteout", icon: Eraser },
+  ];
+  const actions = [
+    { label: "Undo", icon: Undo2 },
+    { label: "Snap On", icon: Magnet },
+    { label: "Clear Fields", icon: Trash2 },
+    { label: "Save Progress", icon: Save },
+    { label: "Start Over", icon: RotateCcw },
+  ];
+  const demoFields = [
+    { label: "Full name", value: "Alex Sample" },
+    { label: "Address", value: "42 Example Road" },
+    { label: "Email", value: "alex@example.com" },
+    { label: "Date", value: "12 Jun 2026" },
+  ];
+  const statusItems: Array<[string, boolean]> = [
+    ["Fields placed", hasFields],
+    ["Details typed", hasTyped],
+    ["Snap aligned", hasAligned],
+    ["Completed PDF ready", hasDownloaded],
+  ];
+
+  useEffect(() => {
+    const mediaQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const updatePreference = () => setPrefersReducedMotion(mediaQuery.matches);
+
+    updatePreference();
+    mediaQuery.addEventListener("change", updatePreference);
+    return () => mediaQuery.removeEventListener("change", updatePreference);
+  }, []);
+
+  useEffect(() => {
+    if (prefersReducedMotion) return;
+
+    const interval = window.setInterval(() => {
+      setStageIndex((current) => (current + 1) % demoStages.length);
+    }, 1800);
+
+    return () => window.clearInterval(interval);
+  }, [demoStages.length, prefersReducedMotion]);
+
+  return (
+    <div
+      className="mx-auto mt-12 max-w-6xl overflow-hidden rounded-lg border border-white/10 bg-[#111827] text-left shadow-2xl shadow-black/25"
+      aria-label="QuickFill editor workflow demo"
+    >
+      <div className="flex flex-col gap-3 border-b border-white/10 bg-navy-light px-4 py-3 text-white sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex min-w-0 items-center gap-2 text-sm text-gray-300">
+          <FileText className="h-4 w-4 shrink-0 text-accent" />
+          <span>QuickFill</span>
+          <span>/</span>
+          <span className="truncate font-semibold text-white">sample-application.pdf</span>
+        </div>
+        <div className="flex flex-wrap items-center gap-2 text-xs">
+          <span className="rounded-md border border-white/10 bg-white/10 px-2 py-1 font-semibold text-gray-200">
+            100%
+          </span>
+          <span className="inline-flex items-center gap-1 rounded-md border border-accent/30 bg-accent/15 px-2 py-1 font-semibold text-blue-100">
+            <Magnet className="h-3.5 w-3.5" />
+            Snap on
+          </span>
+          <span
+            className={`rounded-md px-2 py-1 font-semibold motion-safe:transition-colors motion-safe:duration-500 ${
+              hasDownloaded ? "bg-emerald-500 text-white" : "bg-white/10 text-gray-200"
+            }`}
+          >
+            {hasDownloaded ? "5 of 5 filled" : `${Math.min(activeStage + 1, 5)} of 5 filling`}
+          </span>
+        </div>
+      </div>
+
+      <div className="grid bg-[#151b28] lg:grid-cols-[190px_minmax(0,1fr)_230px]">
+        <aside className="border-b border-white/10 bg-surface p-3 lg:border-b-0 lg:border-r lg:border-border">
+          <p className="px-1 text-[10px] font-semibold uppercase tracking-widest text-text-muted">
+            Place Fields
+          </p>
+          <div className="mt-2 grid grid-cols-2 gap-1.5 lg:grid-cols-1">
+            {fieldTools.map(({ label, icon: Icon }, index) => (
+              <button
+                key={label}
+                type="button"
+                tabIndex={-1}
+                className={`flex h-8 items-center gap-2 rounded-lg border px-2 text-xs font-semibold shadow-sm motion-safe:transition-colors motion-safe:duration-500 motion-reduce:transition-none ${
+                  hasFields && index === 0 && activeStage === 1
+                    ? "border-accent bg-accent text-white"
+                    : "border-border bg-surface-alt text-text-muted"
+                }`}
+              >
+                <Icon className="h-3.5 w-3.5 shrink-0" />
+                <span className="truncate">{label}</span>
+              </button>
+            ))}
+          </div>
+
+          <div className="mx-1 my-3 h-px bg-border" />
+          <p className="px-1 text-[10px] font-semibold uppercase tracking-widest text-text-muted">
+            Actions
+          </p>
+          <div className="mt-2 grid grid-cols-2 gap-1.5 lg:grid-cols-1">
+            {actions.map(({ label, icon: Icon }) => {
+              const isSnap = label === "Snap On";
+
+              return (
+                <button
+                  key={label}
+                  type="button"
+                  tabIndex={-1}
+                  className={`flex h-8 items-center gap-2 rounded-lg px-2 text-xs font-medium motion-safe:transition-colors motion-safe:duration-500 motion-reduce:transition-none ${
+                    isSnap && hasAligned
+                      ? "border border-accent bg-accent text-white shadow-sm"
+                      : "text-text-muted"
+                  }`}
+                >
+                  <Icon className="h-3.5 w-3.5 shrink-0" />
+                  <span className="truncate">{label}</span>
+                </button>
+              );
+            })}
+          </div>
+
+          <button
+            type="button"
+            tabIndex={-1}
+            className={`mt-3 flex h-9 w-full items-center justify-center gap-2 rounded-lg bg-accent text-xs font-semibold text-white shadow-sm motion-safe:transition-all motion-safe:duration-500 motion-reduce:transition-none ${
+              hasDownloaded ? "shadow-lg shadow-accent/30 ring-2 ring-accent/25" : ""
+            }`}
+          >
+            <Download className="h-3.5 w-3.5" />
+            Download PDF
+          </button>
+        </aside>
+
+        <div className="relative overflow-hidden bg-[#dfe6f1] p-4 sm:p-5 lg:min-h-[520px]">
+          <div
+            className={`absolute left-5 top-5 z-20 rounded-lg border border-accent/25 bg-white px-3 py-2 text-xs font-semibold text-text shadow-lg shadow-slate-900/10 motion-safe:transition-all motion-safe:duration-700 motion-reduce:transition-none ${
+              activeStage >= 0 ? "translate-y-0 opacity-100" : "-translate-y-2 opacity-0"
+            }`}
+          >
+            <div className="flex items-center gap-2">
+              <Upload className="h-4 w-4 text-accent" />
+              sample-application.pdf uploaded
+            </div>
+          </div>
+
+          <div
+            className={`absolute right-5 top-5 z-20 rounded-full border px-3 py-1 text-xs font-semibold shadow-sm motion-safe:transition-all motion-safe:duration-500 motion-reduce:transition-none ${
+              hasAligned
+                ? "border-accent/30 bg-blue-50 text-blue-700 opacity-100"
+                : "border-border bg-white text-text-muted opacity-0"
+            }`}
+          >
+            snap ready
+          </div>
+
+          <div className="relative mx-auto w-full max-w-[470px] rounded-sm bg-white px-7 py-8 text-text shadow-xl shadow-slate-900/20 sm:px-9">
+            <div className="flex items-start justify-between gap-4 border-b border-border pb-4">
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-widest text-accent">
+                  Generic demo form
+                </p>
+                <h3 className="mt-1 text-2xl font-extrabold tracking-tight text-text">
+                  Sample application form
+                </h3>
+              </div>
+              <span className="rounded border border-border px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-text-muted">
+                Page 1
+              </span>
+            </div>
+
+            <div className="relative mt-6 space-y-5">
+              <div
+                className={`pointer-events-none absolute left-[31%] top-0 h-[280px] w-px bg-accent/45 motion-safe:transition-opacity motion-safe:duration-500 ${
+                  hasAligned ? "opacity-100 motion-safe:animate-pulse" : "opacity-0"
+                }`}
+              />
+              <div
+                className={`pointer-events-none absolute left-0 right-0 top-[103px] h-px bg-accent/45 motion-safe:transition-opacity motion-safe:duration-500 ${
+                  hasAligned ? "opacity-100 motion-safe:animate-pulse" : "opacity-0"
+                }`}
+              />
+              <div
+                className={`pointer-events-none absolute left-0 right-0 top-[169px] h-px bg-accent/45 motion-safe:transition-opacity motion-safe:duration-500 ${
+                  hasAligned ? "opacity-100 motion-safe:animate-pulse" : "opacity-0"
+                }`}
+              />
+
+              {demoFields.map((field, index) => (
+                <div key={field.label} className="grid grid-cols-[104px_minmax(0,1fr)] items-center gap-4">
+                  <p className="text-sm font-semibold text-text">{field.label}</p>
+                  <div className="relative h-11 rounded border border-slate-300 bg-white">
+                    <div
+                      className={`absolute inset-0 rounded border-2 px-3 py-2 text-sm font-semibold text-navy motion-safe:transition-all motion-safe:duration-700 motion-reduce:transition-none ${
+                        hasFields
+                          ? hasAligned
+                            ? "translate-x-0 border-accent bg-blue-50"
+                            : index % 2 === 0
+                              ? "-translate-x-1 border-accent/80 bg-white"
+                              : "translate-x-1 border-accent/80 bg-white"
+                          : "scale-95 border-transparent opacity-0"
+                      }`}
+                    >
+                      <span
+                        className={`inline-block max-w-0 overflow-hidden whitespace-nowrap motion-safe:transition-all motion-safe:duration-700 motion-reduce:transition-none ${
+                          hasTyped ? "max-w-[220px] opacity-100" : "opacity-0"
+                        }`}
+                        style={{ transitionDelay: hasTyped ? `${index * 120}ms` : "0ms" }}
+                      >
+                        {field.value}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              ))}
+
+              <div className="grid grid-cols-[104px_minmax(0,1fr)] items-center gap-4">
+                <p className="text-sm font-semibold text-text">Consent</p>
+                <div className="flex items-center gap-3">
+                  <div
+                    className={`flex h-9 w-9 items-center justify-center rounded border-2 text-accent motion-safe:transition-all motion-safe:duration-700 motion-reduce:transition-none ${
+                      hasFields ? "border-accent bg-blue-50 opacity-100" : "border-transparent opacity-0"
+                    }`}
+                  >
+                    {hasTyped && <Check className="h-5 w-5" />}
+                  </div>
+                  <span className="text-xs text-text-muted">I confirm these sample details are correct.</span>
+                </div>
+              </div>
+            </div>
+
+            <div
+              className={`mt-7 flex items-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold motion-safe:transition-all motion-safe:duration-700 motion-reduce:transition-none ${
+                hasDownloaded
+                  ? "border-emerald-200 bg-emerald-50 text-emerald-700 opacity-100"
+                  : "border-transparent bg-transparent text-transparent opacity-0"
+              }`}
+            >
+              <Check className="h-4 w-4" />
+              Completed PDF ready
+            </div>
+          </div>
+        </div>
+
+        <aside className="border-t border-white/10 bg-surface p-4 lg:border-l lg:border-t-0 lg:border-border">
+          <div className="rounded-lg border border-border bg-surface-alt p-4">
+            <p className="text-[10px] font-semibold uppercase tracking-widest text-text-muted">
+              Inspector
+            </p>
+            <div className="mt-3 flex items-start gap-3">
+              <span
+                className={`mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full motion-safe:transition-colors motion-safe:duration-500 ${
+                  hasDownloaded ? "bg-emerald-600 text-white" : "bg-accent text-white"
+                }`}
+              >
+                {hasDownloaded ? <Check className="h-4 w-4" /> : <Sparkles className="h-4 w-4" />}
+              </span>
+              <div>
+                <h3 className="text-base font-bold text-text">
+                  {hasDownloaded ? "Ready to download" : demoStages[activeStage]}
+                </h3>
+                <p className="mt-1 text-xs leading-relaxed text-text-muted">
+                  Marketing preview only. Your real PDF keeps its own page layout.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-4 space-y-3">
+            {statusItems.map(([label, done]) => (
+              <div key={label} className="flex items-center gap-3">
+                <span
+                  className={`flex h-6 w-6 items-center justify-center rounded-full motion-safe:transition-colors motion-safe:duration-500 ${
+                    done ? "bg-emerald-600 text-white" : "bg-surface-alt text-text-muted"
+                  }`}
+                >
+                  <Check className="h-3.5 w-3.5" />
+                </span>
+                <span className="text-sm text-text-muted">{label}</span>
+              </div>
+            ))}
+          </div>
+        </aside>
+      </div>
+    </div>
+  );
+}
+
 export default function Home() {
   const { isLoaded, isSignedIn } = useAuth();
   const [upgradingPlan, setUpgradingPlan] = useState<string | null>(null);
@@ -456,135 +1065,7 @@ export default function Home() {
             Trusted by Australians filling TFN declarations, rental applications, Centrelink forms and NDIS paperwork
           </p>
 
-          <div className="mx-auto mt-12 max-w-5xl overflow-hidden rounded-lg border border-white/10 bg-white text-left shadow-2xl shadow-black/25">
-            <div className="flex flex-col gap-3 border-b border-border bg-white px-4 py-3 text-text sm:flex-row sm:items-center sm:justify-between">
-              <div className="flex min-w-0 items-center gap-2 text-sm text-text-muted">
-                <span className="text-base text-text-muted">&lt;</span>
-                <span>Templates</span>
-                <span>/</span>
-                <span className="truncate font-medium text-text">ato-withholding-declaration.pdf</span>
-              </div>
-              <div className="flex flex-wrap items-center gap-3 text-xs text-text-muted">
-                <span>150%</span>
-                <span className="rounded-full bg-emerald-50 px-2 py-1 font-semibold text-emerald-700">snap ready</span>
-                <span>Fit</span>
-                <span className="rounded-md bg-emerald-50 px-2 py-1 font-semibold text-emerald-700">Snap</span>
-              </div>
-            </div>
-            <div className="grid min-h-[420px] bg-surface-alt md:grid-cols-[210px_1fr]">
-              <aside className="hidden border-r border-border bg-surface p-3 md:block">
-                <p className="px-1 text-[10px] font-bold uppercase tracking-widest text-text-muted">Place fields</p>
-                <div className="mt-2 space-y-1">
-                  {[
-                    ["T", "Text Field"],
-                    ["[]", "Box Field"],
-                    ["X", "Checkbox"],
-                    ["Sig", "Signature"],
-                    ["Date", "Date"],
-                    ["Erase", "Whiteout"],
-                  ].map(([icon, label]) => (
-                    <div key={label} className="flex h-7 items-center gap-2 rounded-md border border-border bg-surface-alt px-2 text-xs font-semibold text-text-muted">
-                      <span className="w-5 text-center text-text-muted">{icon}</span>
-                      {label}
-                    </div>
-                  ))}
-                </div>
-                <p className="mt-4 px-1 text-[10px] font-bold uppercase tracking-widest text-text-muted">Actions</p>
-                <div className="mt-2 space-y-1 text-xs text-text-muted">
-                  {["Undo", "Snap Off", "Clear Fields", "Save Progress", "Start Over"].map((label) => (
-                    <div key={label} className="rounded-md px-2 py-1.5">{label}</div>
-                  ))}
-                  <div className="mt-2 rounded-md bg-accent px-2 py-2 text-center font-semibold text-white">
-                    Download PDF
-                  </div>
-                </div>
-              </aside>
-              <div className="overflow-hidden bg-white px-5 py-4 text-text sm:px-8">
-                <div className="min-w-[620px] origin-top-left scale-[0.48] sm:scale-[0.72] md:scale-[0.82] lg:scale-100">
-                  <h3 className="text-3xl font-light leading-tight">
-                    Section A: <span className="font-extrabold">Payee&apos;s declaration</span>
-                  </h3>
-                  <div className="mt-4 flex items-center gap-3">
-                    <div className="flex h-8 w-8 items-center justify-center rounded-full bg-cyan-500 text-xl font-bold text-white">&gt;</div>
-                    <p className="text-xl text-text">To be completed by payee.</p>
-                  </div>
-                  <div className="mt-4 grid grid-cols-[32px_1fr] gap-x-3">
-                    <p className="text-2xl font-bold">1</p>
-                    <div>
-                      <p className="text-xl font-extrabold">What is your name?</p>
-                      <div className="mt-3 flex flex-wrap items-center gap-4 text-lg">
-                        <span>Title:</span>
-                        {["Mr", "Mrs", "Miss", "Ms", "Other"].map((label) => (
-                          <div key={label} className="flex items-center gap-2">
-                            <span>{label}</span>
-                            <span className="flex h-8 w-8 items-center justify-center border border-text bg-white text-2xl font-bold">
-                              {label === "Mr" ? <Check className="h-6 w-6" /> : ""}
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                      <div className="mt-2">
-                        <p className="text-lg">Family name</p>
-                        <div className="h-9 w-full border border-text bg-white px-2 py-1 text-2xl leading-none text-navy">
-                          Sampleman
-                        </div>
-                      </div>
-                      <div className="mt-2 grid grid-cols-2 gap-10">
-                        <div>
-                          <p className="text-lg">First given name</p>
-                          <div className="h-9 border border-text bg-white px-2 py-1 text-2xl leading-none text-navy">
-                            Testy
-                          </div>
-                        </div>
-                        <div>
-                          <p className="text-lg">Other given names</p>
-                          <div className="h-9 border border-text bg-white px-2 py-1 text-2xl leading-none text-navy">
-                            McFormface
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                    <p className="mt-6 text-2xl font-bold">2</p>
-                    <div className="mt-6">
-                      <p className="text-xl font-extrabold">What is your date of birth?</p>
-                      <div className="mt-2 flex items-end gap-2">
-                        <div className="grid grid-cols-2 gap-1">
-                          {["1", "2"].map((digit, index) => (
-                            <span key={`day-${index}`} className="flex h-9 w-8 items-center justify-center border border-text text-xl">{digit}</span>
-                          ))}
-                        </div>
-                        <span className="text-2xl">/</span>
-                        <div className="grid grid-cols-2 gap-1">
-                          {["1", "2"].map((digit, index) => (
-                            <span key={`month-${index}`} className="flex h-9 w-8 items-center justify-center border border-text text-xl">{digit}</span>
-                          ))}
-                        </div>
-                        <span className="text-2xl">/</span>
-                        <div className="grid grid-cols-4 gap-1">
-                          {["1", "9", "9", "9"].map((digit, index) => (
-                            <span key={`year-${index}`} className="flex h-9 w-8 items-center justify-center border border-text text-xl">{digit}</span>
-                          ))}
-                        </div>
-                      </div>
-                    </div>
-                    <p className="mt-6 text-2xl font-bold">3</p>
-                    <div className="mt-6">
-                      <p className="text-xl font-extrabold">What is your tax file number (TFN)?</p>
-                      <div className="mt-2 flex gap-7">
-                        {["123", "456", "789"].map((group) => (
-                          <div key={group} className="grid grid-cols-3 gap-1">
-                            {group.split("").map((digit, index) => (
-                              <span key={`${group}-${index}`} className="flex h-9 w-8 items-center justify-center border border-text text-xl">{digit}</span>
-                            ))}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
+          <HeroEditorMiniDemo />
         </div>
       </section>
 
