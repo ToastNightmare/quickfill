@@ -8,6 +8,55 @@ This version has breaking changes. APIs, conventions, and file structure may dif
 
 QuickFill is a production PDF form filler at https://getquickfill.com. Treat this as a live SaaS with paying users.
 
+## Codex task discipline
+
+One task = one Codex chat = one worktree = one PR.
+
+Do not start extra Codex chats, sibling worktrees, recovery chats, background agents, or parallel attempts unless Kyle explicitly approves first.
+
+If a task runs into tooling trouble:
+
+- stay in the current chat;
+- stop editing;
+- report the blocker clearly;
+- provide a short handoff summary;
+- wait for Kyle's approval before opening a new chat or worktree.
+
+If Kyle approves a new recovery chat:
+
+- the new chat becomes the single source of truth;
+- the old chat becomes read-only/archive only;
+- do not keep working in both;
+- do not copy changes between worktrees unless the new source-of-truth chat explicitly owns that work.
+
+Do not ask Kyle to run routine PowerShell verification. Codex must run routine local verification itself, including:
+
+- git status and diff checks;
+- dependency install when needed;
+- build commands;
+- focused tests;
+- cleanup of .clerk, test-results, playwright-report, and generated files;
+- confirming changed files before PR prep.
+
+Only ask Kyle for:
+
+- approval gates;
+- login, MFA, password, or account access;
+- human visual judgement;
+- risky scope changes;
+- final PR/merge approval.
+
+Do not use GitHub connector full-file replacement for large source files unless Kyle explicitly approves it. Prefer local git operations from the active worktree. If built-in local git operations are unavailable, stop and report the blocker.
+
+Before PR prep, confirm:
+
+- this chat is the source of truth;
+- this worktree is the source of truth;
+- only approved files changed;
+- generated files are cleaned;
+- no unrelated files are included;
+- no commit, push, PR, deploy, or merge happens without the relevant explicit approval.
+
 ## Product Contract
 
 Users upload PDFs, place fields, fill values, and download accurate completed PDFs. Accuracy in downloaded PDF coordinates is core product behavior.
