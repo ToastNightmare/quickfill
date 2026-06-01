@@ -14,6 +14,7 @@ import {
   UserCheck,
   Eraser,
   Copy,
+  Pencil,
   ChevronDown,
   ChevronUp,
   SquareSplitHorizontal,
@@ -38,6 +39,7 @@ interface ContextPanelProps {
   onFieldUpdate: (id: string, updates: Partial<EditorField>) => void;
   onFieldDelete: (id: string) => void;
   onFieldDeselect: () => void;
+  onFieldEdit?: (id: string) => void;
   onFieldDuplicate?: (id: string) => void;
   onStampChange: (stamp: CheckboxStamp) => void;
   onSignatureRequest: (fieldId: string) => void;
@@ -86,6 +88,7 @@ export function ContextPanel({
   onFieldUpdate,
   onFieldDelete,
   onFieldDeselect,
+  onFieldEdit,
   onFieldDuplicate,
   onStampChange,
   onSignatureRequest,
@@ -115,6 +118,7 @@ export function ContextPanel({
           onFieldUpdate={onFieldUpdate}
           onFieldDelete={onFieldDelete}
           onFieldDeselect={onFieldDeselect}
+          onFieldEdit={onFieldEdit}
           onFieldDuplicate={onFieldDuplicate}
           onStampChange={onStampChange}
           onSignatureRequest={onSignatureRequest}
@@ -248,6 +252,7 @@ function MobileFieldSheet({
   onFieldUpdate,
   onFieldDelete,
   onFieldDeselect,
+  onFieldEdit,
   onFieldDuplicate,
   onStampChange,
   onSignatureRequest,
@@ -258,6 +263,7 @@ function MobileFieldSheet({
   onFieldUpdate: (id: string, updates: Partial<EditorField>) => void;
   onFieldDelete: (id: string) => void;
   onFieldDeselect: () => void;
+  onFieldEdit?: (id: string) => void;
   onFieldDuplicate?: (id: string) => void;
   onStampChange: (stamp: CheckboxStamp) => void;
   onSignatureRequest: (fieldId: string) => void;
@@ -267,7 +273,10 @@ function MobileFieldSheet({
   const TypeIcon = fieldIcon(selectedField.type);
 
   return (
-    <div className="fixed bottom-[8.25rem] left-3 right-3 z-30 max-h-[42svh] overflow-y-auto rounded-2xl border border-border bg-surface shadow-2xl sm:hidden">
+    <div
+      className="fixed bottom-[8.25rem] left-3 right-3 z-30 max-h-[42svh] overflow-y-auto rounded-2xl border border-border bg-surface shadow-2xl sm:hidden"
+      data-testid="mobile-field-sheet"
+    >
       <div className="sticky top-0 z-10 flex items-center justify-between gap-3 border-b border-border bg-surface px-4 py-3">
         <div className={`flex min-w-0 items-center gap-2 ${fieldColor(selectedField.type)}`}>
           <TypeIcon className="h-4 w-4 shrink-0" />
@@ -296,6 +305,16 @@ function MobileFieldSheet({
 
       <Section>
         <div className="grid grid-cols-2 gap-2">
+          {(selectedField.type === "text" || selectedField.type === "date") && onFieldEdit && (
+            <button
+              onClick={() => onFieldEdit(selectedField.id)}
+              className="flex h-11 items-center justify-center gap-2 rounded-xl border border-accent/30 bg-accent/5 text-sm font-semibold text-accent hover:bg-accent/10"
+              data-testid="mobile-field-edit"
+            >
+              <Pencil className="h-4 w-4" />
+              Edit
+            </button>
+          )}
           {onFieldDuplicate && (
             <button
               onClick={() => onFieldDuplicate(selectedField.id)}
@@ -308,6 +327,7 @@ function MobileFieldSheet({
           <button
             onClick={() => { onFieldDelete(selectedField.id); onFieldDeselect(); }}
             className="flex h-11 items-center justify-center gap-2 rounded-xl bg-red-50 text-sm font-semibold text-red-600 hover:bg-red-100"
+            data-testid="mobile-field-delete"
           >
             <Trash2 className="h-4 w-4" />
             Delete

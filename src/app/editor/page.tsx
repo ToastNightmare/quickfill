@@ -1351,6 +1351,7 @@ export default function EditorPage() {
           onFieldUpdate={handleFieldUpdate}
           onFieldDelete={handleFieldDelete}
           onFieldDeselect={() => setSelectedFieldId(null)}
+          onFieldEdit={(fieldId) => pdfViewerRef.current?.editField(fieldId)}
           onFieldDuplicate={handleFieldDuplicate}
           onStampChange={(stamp) => {
             if (selectedField) {
