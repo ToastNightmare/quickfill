@@ -13,6 +13,7 @@ export interface PdfViewerHandle {
   getCanvasDimensions: () => { width: number; height: number };
   getCanvas: () => HTMLCanvasElement | null;
   getViewportDims: () => { width: number; height: number } | null;
+  editField: (fieldId: string) => void;
 }
 
 interface PdfViewerProps {
@@ -46,6 +47,15 @@ interface SnapPreview {
   y: number;
   width: number;
   height: number;
+}
+
+function isMobileEditorViewport(): boolean {
+  if (typeof window === "undefined") return false;
+  return (
+    window.innerWidth < 768 ||
+    window.matchMedia?.("(pointer: coarse)").matches === true ||
+    (navigator.maxTouchPoints > 0 && window.innerWidth < 1024)
+  );
 }
 
 /** Infer a sensible font size from field height */
@@ -118,6 +128,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
 }, ref) {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const stageRef = useRef<Konva.Stage | null>(null);
   const [dimensions, setDimensions] = useState({ width: 800, height: 1100 });
   // fitScale: ratio from PDF points to base canvas pixels (before zoom)
   // Field coordinates are stored in PDF point space for consistency across resizes
@@ -134,6 +145,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
   const [cursorStyle, setCursorStyle] = useState("default");
   const [snapPreviewOpacity, setSnapPreviewOpacity] = useState(0);
   const [contextMenu, setContextMenu] = useState<{ x: number, y: number, fieldId: string } | null>(null);
+  const [isMobileEditor, setIsMobileEditor] = useState(false);
   const [whiteoutColorInternal, setWhiteoutColorInternal] = useState<string | null>(null);
   // Use controlled whiteout color if provided, otherwise use internal state
   const whiteoutColor = whiteoutColorProp !== undefined ? whiteoutColorProp : whiteoutColorInternal;
@@ -148,6 +160,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
   const dragStartedRef = useRef(false);
   const mouseDownPos = useRef<{x: number, y: number} | null>(null);
   const isDragMove = useRef(false);
+  const lastTouchEndAtRef = useRef(0);
   const snapPreviewTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const trRef = useRef<Konva.Transformer | null>(null);
   const nodeMapRef = useRef<Map<string, Konva.Group>>(new Map());
@@ -163,13 +176,37 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
     getCanvasDimensions: () => dimensions,
     getCanvas: () => canvasRef.current,
     getViewportDims: () => viewportAtScale1,
+    editField: (fieldId: string) => {
+      const field = fields.find((candidate) => candidate.id === fieldId);
+      if (!field || field.type === "checkbox" || field.type === "signature" || field.type === "whiteout" || field.type === "comb") {
+        return;
+      }
+      onToolSelect(null);
+      onFieldSelect(fieldId);
+      setEditingFieldId(fieldId);
+    },
   }));
+
+  useEffect(() => {
+    const updateMobileEditor = () => setIsMobileEditor(isMobileEditorViewport());
+    updateMobileEditor();
+
+    const coarsePointer = window.matchMedia?.("(pointer: coarse)");
+    window.addEventListener("resize", updateMobileEditor);
+    coarsePointer?.addEventListener?.("change", updateMobileEditor);
+
+    return () => {
+      window.removeEventListener("resize", updateMobileEditor);
+      coarsePointer?.removeEventListener?.("change", updateMobileEditor);
+    };
+  }, []);
 
   const zoomFactor = zoom / 100;
   const createFieldId = useCallback(
     (prefix = "field") => createEditorFieldId(fields, prefix),
     [fields],
   );
+  const pageFields = fields.filter((f) => f.page === currentPage);
 
   // Clear editing when field is deselected
   useEffect(() => {
@@ -486,6 +523,52 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
     };
   }, [contextMenu]);
 
+  const fieldFromNode = useCallback(
+    (node: Konva.Node | null, stage: Konva.Stage): EditorField | null => {
+      let current: Konva.Node | null = node;
+      while (current && current !== stage) {
+        const id = current.id();
+        if (id) {
+          const field = pageFields.find((candidate) => candidate.id === id);
+          if (field) return field;
+        }
+        current = current.getParent();
+      }
+      return null;
+    },
+    [pageFields],
+  );
+
+  const fieldFromStagePoint = useCallback(
+    (stage: Konva.Stage, pos: { x: number; y: number }): EditorField | null => {
+      return fieldFromNode(stage.getIntersection(pos), stage);
+    },
+    [fieldFromNode],
+  );
+
+  const selectFieldForInteraction = useCallback(
+    (field: EditorField) => {
+      onFieldSelect(field.id);
+      onToolSelect(null);
+
+      if (
+        isMobileEditor ||
+        field.type === "checkbox" ||
+        field.type === "signature" ||
+        field.type === "whiteout" ||
+        field.type === "comb"
+      ) {
+        setEditingFieldId(null);
+        return;
+      }
+
+      if (!dragStartedRef.current) {
+        setEditingFieldId(field.id);
+      }
+    },
+    [isMobileEditor, onFieldSelect, onToolSelect],
+  );
+
   // Update cursor based on context
   const updateCursor = useCallback((stage: Konva.Stage, pos: { x: number; y: number }) => {
     if (isDragging) {
@@ -671,6 +754,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
     (e: Konva.KonvaEventObject<MouseEvent>) => {
       const stage = e.target.getStage();
       if (!stage) return;
+      if (isMobileEditor && Date.now() - lastTouchEndAtRef.current < 700) return;
       // Use clientX/Y with getBoundingClientRect for consistent coordinates with mouseDown
       const nativeEvt = e.evt;
       const container = stage.container();
@@ -857,7 +941,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
 
           if (activeTool === "signature") {
             onSignatureFieldPlaced?.(addedField);
-          } else if (activeTool !== "checkbox" && activeTool !== "whiteout" && activeTool !== "comb") {
+          } else if (!isMobileEditor && activeTool !== "checkbox" && activeTool !== "whiteout" && activeTool !== "comb") {
             setEditingFieldId(addedField.id);
           }
         } else if (absDx <= 10 || absDy <= 10) {
@@ -1097,7 +1181,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
 
             if (activeTool === "signature") {
               onSignatureFieldPlaced?.(addedField);
-            } else if (activeTool !== "checkbox" && activeTool !== "whiteout" && activeTool !== "comb") {
+            } else if (!isMobileEditor && activeTool !== "checkbox" && activeTool !== "whiteout" && activeTool !== "comb") {
               setEditingFieldId(addedField.id);
             }
 
@@ -1115,7 +1199,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
         setDrawRect(null);
       }
     },
-    [activeTool, currentPage, zoomFactor, fitScale, onFieldAdd, onFieldSelect, onToolSelect, onSignatureFieldPlaced, snapPreview, whiteoutColor, fields, snapEnabled, createFieldId]
+    [activeTool, currentPage, zoomFactor, fitScale, onFieldAdd, onFieldSelect, onToolSelect, onSignatureFieldPlaced, snapPreview, whiteoutColor, fields, snapEnabled, createFieldId, isMobileEditor]
   );
 
   // Core field creation logic - shared by click and touch
@@ -1352,7 +1436,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
       // For signature fields, trigger signature placement flow
       if (activeTool === "signature") {
         onSignatureFieldPlaced?.(addedField);
-      } else if (activeTool !== "checkbox" && activeTool !== "whiteout" && activeTool !== "comb") {
+      } else if (!isMobileEditor && activeTool !== "checkbox" && activeTool !== "whiteout" && activeTool !== "comb") {
         // Immediately enter edit mode for text-like fields
         setEditingFieldId(addedField.id);
       }
@@ -1365,11 +1449,11 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
 
       return true;
     },
-    [activeTool, currentPage, onFieldAdd, onFieldSelect, onToolSelect, zoomFactor, fitScale, snapPreview, onSignatureFieldPlaced, snapEnabled, whiteoutColor, fields, createFieldId]
+    [activeTool, currentPage, onFieldAdd, onFieldSelect, onToolSelect, zoomFactor, fitScale, snapPreview, onSignatureFieldPlaced, snapEnabled, whiteoutColor, fields, createFieldId, isMobileEditor]
   );
 
   const handleStageClick = useCallback(
-    (e: Konva.KonvaEventObject<MouseEvent>) => {
+    (e: Konva.KonvaEventObject<MouseEvent | TouchEvent>) => {
       if (isDragMove.current) {
         isDragMove.current = false;
         return;
@@ -1381,58 +1465,15 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
       const pos = stage.getPointerPosition();
       if (!pos) return;
 
-      // Check if clicked on a whiteout field - treat as empty canvas
-      const shape = stage.getIntersection(pos);
-      if (shape) {
-        const parent = shape.getParent();
-        if (parent && parent.id()) {
-          const field = pageFields.find(f => f.id === parent.id());
-          if (field && field.type === "whiteout") {
-            // Whiteout is non-interactive, treat click as empty canvas
-            if (activeTool) {
-              createFieldAtPoint(pos.x, pos.y, true);
-            } else {
-              onFieldSelect(null);
-              setEditingFieldId(null);
-              if (trRef.current) {
-                trRef.current.nodes([]);
-                trRef.current.getLayer()?.batchDraw();
-              }
-            }
-            return;
-          }
-        }
+      const hitField = fieldFromNode(e.target, stage) ?? fieldFromStagePoint(stage, pos);
+      if (hitField && hitField.type !== "whiteout") {
+        selectFieldForInteraction(hitField);
+        return;
       }
 
-      const clickedOnEmpty = e.target === stage;
-
-      if (!clickedOnEmpty) {
-        // Clicked on a field element - select it and deactivate tool
+      if (hitField?.type === "whiteout") {
         if (activeTool) {
-          const currentFields = fields.filter((f) => f.page === currentPage);
-          let node: Konva.Node | null = e.target;
-          while (node && node !== stage) {
-            const parent = node.getParent();
-            if (parent) {
-              const matchedField = currentFields.find(
-                (f) => f.x === parent.x() && f.y === parent.y()
-              );
-              if (matchedField) {
-                onFieldSelect(matchedField.id);
-                onToolSelect(null);
-                // Reset cursor and skip transformer for whiteout fields
-                if (matchedField.type === "whiteout") {
-                  setCursorStyle("default");
-                  if (trRef.current) {
-                    trRef.current.nodes([]);
-                    trRef.current.getLayer()?.batchDraw();
-                  }
-                }
-                break;
-              }
-            }
-            node = parent;
-          }
+          createFieldAtPoint(pos.x, pos.y, true);
         } else {
           onFieldSelect(null);
           setEditingFieldId(null);
@@ -1440,6 +1481,15 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
             trRef.current.nodes([]);
             trRef.current.getLayer()?.batchDraw();
           }
+        }
+        return;
+      }
+
+      const clickedOnEmpty = e.target === stage;
+
+      if (!clickedOnEmpty) {
+        if (!activeTool) {
+          return;
         }
         return;
       }
@@ -1464,7 +1514,14 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
         }
       }
     },
-    [activeTool, currentPage, fields, onFieldSelect, onToolSelect, createFieldAtPoint, snapEnabled]
+    [activeTool, createFieldAtPoint, fieldFromNode, fieldFromStagePoint, onFieldSelect, selectFieldForInteraction]
+  );
+
+  const handleStageTap = useCallback(
+    (e: Konva.KonvaEventObject<TouchEvent>) => {
+      handleStageClick(e as Konva.KonvaEventObject<MouseEvent | TouchEvent>);
+    },
+    [handleStageClick],
   );
 
   // Touch handler for mobile tap-to-place, delegates to createFieldAtPoint
@@ -1480,14 +1537,23 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
       const touchY = touch.clientY - rect.top;
 
       if (touchX < 0 || touchY < 0 || touchX > rect.width || touchY > rect.height) return;
+      lastTouchEndAtRef.current = Date.now();
+
+      const stage = stageRef.current;
+      if (stage) {
+        const hitField = fieldFromStagePoint(stage, { x: touchX, y: touchY });
+        if (hitField && hitField.type !== "whiteout") {
+          e.preventDefault();
+          selectFieldForInteraction(hitField);
+          return;
+        }
+      }
 
       e.preventDefault();
       createFieldAtPoint(touchX, touchY, true);
     },
-    [activeTool, createFieldAtPoint]
+    [activeTool, createFieldAtPoint, fieldFromStagePoint, selectFieldForInteraction]
   );
-
-  const pageFields = fields.filter((f) => f.page === currentPage);
 
   // Determine if selected field is snapped (for transformer behavior)
   const selectedFieldIsSnapped = selectedFieldId
@@ -1498,8 +1564,9 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
     <div
       ref={containerRef}
       className="relative w-max min-w-full min-h-full bg-[#f0f0f0] p-4"
+      data-testid="pdf-viewer"
       onTouchEnd={handleTouchEnd}
-      style={{ touchAction: activeTool ? "none" : "pan-x pan-y" }}
+      style={{ touchAction: activeTool || isDragging ? "none" : "pan-x pan-y" }}
     >
       {loading && (
         <div className="absolute inset-0 z-10 flex items-center justify-center bg-surface/80">
@@ -1520,6 +1587,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
 
       <div
         className="relative mx-auto bg-white shadow-xl rounded-sm"
+        data-testid="pdf-page"
         style={{ width: dimensions.width, height: dimensions.height }}
       >
         <canvas
@@ -1601,6 +1669,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
           const selectedFieldIsSnapped = selectedField?.snapped ?? false;
           return (
             <Stage
+              ref={stageRef}
               width={dimensions.width}
               height={dimensions.height}
               scaleX={zoomFactor}
@@ -1608,6 +1677,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
           onMouseDown={handleStageMouseDown}
           onMouseUp={handleStageMouseUp}
           onClick={handleStageClick}
+          onTap={handleStageTap}
           onMouseMove={handleStageMouseMove}
           onMouseLeave={handleStageMouseLeave}
           style={{
@@ -1615,6 +1685,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
             top: 0,
             left: 0,
             cursor: activeTool ? cursorStyle : editingFieldId ? "text" : cursorStyle,
+            touchAction: activeTool || isDragging ? "none" : "pan-x pan-y",
           }}
         >
           <Layer>
@@ -1627,15 +1698,9 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
                 isEditing={field.id === editingFieldId}
                 isHighlighted={field.id === snappedFieldId || (highlightFieldIds?.has(field.id) ?? false)}
                 isHovered={field.id === hoveredFieldId}
+                isMobileEditor={isMobileEditor}
                 onSelect={() => {
-                  onFieldSelect(field.id);
-                  onToolSelect(null);
-                  // Whiteout and signature fields don't enter edit mode
-                  if (!dragStartedRef.current && field.type !== "signature" && field.type !== "whiteout" && field.type !== "comb") {
-                    setEditingFieldId(field.id);
-                  } else if (field.type === "comb") {
-                    setEditingFieldId(null);
-                  }
+                  selectFieldForInteraction(field);
                   // Reset cursor for whiteout fields
                   if (field.type === "whiteout") {
                     setCursorStyle("default");
@@ -1661,6 +1726,8 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
                   // Whiteout fields don't drag - skip
                   if (field.type === "whiteout") return;
                   dragStartedRef.current = true;
+                  onFieldSelect(field.id);
+                  onToolSelect(null);
                   setIsDragging(true);
                   setEditingFieldId(null);
                   setCursorStyle("grabbing");
@@ -1726,7 +1793,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
               borderStroke="#3b82f6"
               anchorStroke="#3b82f6"
               anchorFill="#fff"
-              anchorSize={8}
+              anchorSize={isMobileEditor ? 14 : 8}
               // BUG 3 FIX: Always enable all 8 anchors for resizing
               // Remove the conditional that disabled anchors for snapped fields
               enabledAnchors={["top-left", "top-center", "top-right", "middle-right", "bottom-right", "bottom-center", "bottom-left", "middle-left"]}
@@ -1841,6 +1908,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
                 key={editingFieldId}
                 autoFocus
                 type="text"
+                data-testid="pdf-field-editor"
                 className="absolute z-20 outline-none"
                 style={{
                   left: editField.x * effectiveScale,
@@ -1947,6 +2015,7 @@ function FieldShape({
   isEditing,
   isHighlighted,
   isHovered,
+  isMobileEditor,
   onSelect,
   onMouseEnter,
   onMouseLeave,
@@ -1968,6 +2037,7 @@ function FieldShape({
   isEditing: boolean;
   isHighlighted: boolean;
   isHovered: boolean;
+  isMobileEditor: boolean;
   onSelect: () => void;
   onMouseEnter?: () => void;
   onMouseLeave?: () => void;
@@ -1998,8 +2068,29 @@ function FieldShape({
   }, [field.id, field.type, registerNode, unregisterNode]);
 
   const [dragOpacity, setDragOpacity] = useState(1);
+  const lastTapHandledAt = useRef(0);
 
   const isSnapped = field.snapped ?? false;
+  const canDragField = field.type === "signature" || isMobileEditor || !isSnapped;
+  const mobileHitStrokeWidth = isMobileEditor ? 24 : "auto";
+
+  const markTapHandled = () => {
+    lastTapHandledAt.current = Date.now();
+  };
+
+  const wasRecentTap = () => Date.now() - lastTapHandledAt.current < 500;
+
+  const handleSelectClick = (e: Konva.KonvaEventObject<MouseEvent>) => {
+    e.cancelBubble = true;
+    if (wasRecentTap()) return;
+    onSelect();
+  };
+
+  const handleSelectTap = (e: Konva.KonvaEventObject<TouchEvent>) => {
+    e.cancelBubble = true;
+    markTapHandled();
+    onSelect();
+  };
 
   const hasValue = field.type === "checkbox" ? field.checked : !!(field as {value?: string}).value;
 
@@ -2043,15 +2134,28 @@ function FieldShape({
           width={stageW}
           height={stageH}
           opacity={dragOpacity}
-          draggable={!isSnapped}
+          draggable={canDragField}
         onMouseEnter={() => onMouseEnter?.()}
         onMouseLeave={() => onMouseLeave?.()}
         onClick={(e) => {
           e.cancelBubble = true;
+          if (wasRecentTap()) return;
           // Single click cycles: none to tick to cross to delete
           const current: CheckboxStamp = (field as { stamp?: CheckboxStamp }).stamp ?? (field.checked ? "tick" : "none");
           if (current === "cross") {
             // Third click = delete the field entirely
+            onDelete();
+            return;
+          }
+          const next: CheckboxStamp = current === "none" ? "tick" : "cross";
+          onValueChange(next);
+          if (!isSelected) onSelect();
+        }}
+        onTap={(e) => {
+          e.cancelBubble = true;
+          markTapHandled();
+          const current: CheckboxStamp = (field as { stamp?: CheckboxStamp }).stamp ?? (field.checked ? "tick" : "none");
+          if (current === "cross") {
             onDelete();
             return;
           }
@@ -2085,12 +2189,19 @@ function FieldShape({
           onContextMenu?.(e, field.id);
         }}
       >
+        <Rect
+          width={stageW}
+          height={stageH}
+          fill="rgba(0,0,0,0)"
+          hitStrokeWidth={mobileHitStrokeWidth}
+        />
         {/* Drag shadow, "lifted" feel without hiding the stamp */}
         {dragOpacity < 1 && (
           <Rect
             width={stageW}
             height={stageH}
             fill="transparent"
+            hitStrokeWidth={mobileHitStrokeWidth}
             shadowColor="rgba(0,0,0,0.25)"
             shadowBlur={8}
             shadowOffsetY={3}
@@ -2104,6 +2215,7 @@ function FieldShape({
             fill="transparent"
             stroke={isHighlighted ? "#2563eb" : isSelected ? "#3b82f6" : "rgba(59,130,246,0.4)"}
             strokeWidth={isHighlighted ? 2 : isSelected ? 1.5 : 1}
+            hitStrokeWidth={mobileHitStrokeWidth}
             cornerRadius={2}
             dash={isSelected ? undefined : [3, 2]}
           />
@@ -2208,13 +2320,11 @@ function FieldShape({
           width={stageW}
           height={stageH}
           opacity={dragOpacity}
-          draggable={!isSnapped}
+          draggable={canDragField}
           onMouseEnter={() => onMouseEnter?.()}
           onMouseLeave={() => onMouseLeave?.()}
-          onClick={(e) => {
-            e.cancelBubble = true;
-            onSelect();
-          }}
+          onClick={handleSelectClick}
+          onTap={handleSelectTap}
           onDragStart={() => {
             setDragOpacity(0.85);
             onDragStart?.();
@@ -2250,6 +2360,7 @@ function FieldShape({
             fill={getFill()}
             stroke={getBorderColor()}
             strokeWidth={getBorderWidth()}
+            hitStrokeWidth={mobileHitStrokeWidth}
             cornerRadius={3}
           />
           
@@ -2278,8 +2389,17 @@ function FieldShape({
                 height={slotHeight}
                 onClick={(e) => {
                   e.cancelBubble = true;
+                  if (wasRecentTap()) return;
                   handleSlotClick(i);
                   // Also select the field if not already selected
+                  if (!isSelected) {
+                    onSelect();
+                  }
+                }}
+                onTap={(e) => {
+                  e.cancelBubble = true;
+                  markTapHandled();
+                  handleSlotClick(i);
                   if (!isSelected) {
                     onSelect();
                   }
@@ -2292,6 +2412,7 @@ function FieldShape({
                   fill={isCurrent && isSelected ? "rgba(59,130,246,0.18)" : isSelected ? "rgba(59,130,246,0.05)" : "transparent"}
                   stroke={isCurrent && isSelected ? "#3b82f6" : isSelected ? "rgba(59,130,246,0.4)" : "transparent"}
                   strokeWidth={isCurrent && isSelected ? 2.5 : isSelected ? 1 : 0}
+                  hitStrokeWidth={mobileHitStrokeWidth}
                 />
                 {/* Character centered in slot */}
                 {char && char !== " " && (
@@ -2356,13 +2477,11 @@ function FieldShape({
         height={stageH}
         opacity={dragOpacity}
         // BUG 3 FIX: Signature fields are always draggable (never snapped)
-        draggable={field.type === "signature" ? true : !isSnapped}
+        draggable={canDragField}
         onMouseEnter={() => onMouseEnter?.()}
         onMouseLeave={() => onMouseLeave?.()}
-        onClick={(e) => {
-          e.cancelBubble = true;
-          onSelect();
-        }}
+        onClick={handleSelectClick}
+        onTap={handleSelectTap}
         onDblClick={(e) => {
           e.cancelBubble = true;
           onDoubleClick();
@@ -2410,7 +2529,8 @@ function FieldShape({
                   : (isSelected ? "#3b82f6" : isHovered ? "rgba(59,130,246,0.5)" : "rgba(79,142,247,0.35)"))
               : getBorderColor()
           }
-          strokeWidth={isSelected ? 1 : 0}
+          strokeWidth={isSelected ? (isMobileEditor ? 2 : 1.5) : isMobileEditor ? getBorderWidth() : 0}
+          hitStrokeWidth={mobileHitStrokeWidth}
           dash={field.type === "signature" && !hasSignatureImage ? [4, 3] : undefined}
           cornerRadius={isSnapped ? 3 : 4}
         />
