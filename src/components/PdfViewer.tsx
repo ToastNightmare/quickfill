@@ -2363,7 +2363,18 @@ function FieldShape({
           e.cancelBubble = true;
           onSelect();
         }}
+        // MOBILE HITBOX FIX: Konva dispatches `tap` for touch, not `click`.
+        // Without this, mobile taps on the Group itself (e.g. on the visible Text
+        // node) could fall through to the Stage and trigger deselect.
+        onTap={(e) => {
+          e.cancelBubble = true;
+          onSelect();
+        }}
         onDblClick={(e) => {
+          e.cancelBubble = true;
+          onDoubleClick();
+        }}
+        onDblTap={(e) => {
           e.cancelBubble = true;
           onDoubleClick();
         }}
@@ -2394,6 +2405,44 @@ function FieldShape({
           onContextMenu?.(e, field.id);
         }}
       >
+        {/*
+          MOBILE HITBOX FIX (fix/mobile-text-field-reselect-hitbox):
+          Invisible listening Rect that guarantees the whole field box is tappable.
+          Konva's hit detection ignores fully transparent fills, so text/date/signature
+          fields with no value (or with text only covering the left edge) were missing
+          taps on mobile. A near-transparent fill (alpha 0.001) keeps the field visually
+          unchanged while making every pixel inside the field reliably hittable.
+
+          - Sits FIRST in the Group so it renders underneath the visible Rect/Text.
+          - Does not stop the parent Group's onClick - we let the event bubble to the
+            Group so the existing select/edit flow runs unchanged.
+          - cancelBubble prevents the Stage's empty-space deselect from firing after.
+          - Listening is on by default; no effect on Transformer handles because the
+            Transformer is mounted on a separate Layer above this Group.
+        */}
+        <Rect
+          width={stageW}
+          height={stageH}
+          fill="rgba(0,0,0,0.001)"
+          strokeWidth={0}
+          listening={true}
+          onClick={(e) => {
+            e.cancelBubble = true;
+            onSelect();
+          }}
+          onTap={(e) => {
+            e.cancelBubble = true;
+            onSelect();
+          }}
+          onDblClick={(e) => {
+            e.cancelBubble = true;
+            onDoubleClick();
+          }}
+          onDblTap={(e) => {
+            e.cancelBubble = true;
+            onDoubleClick();
+          }}
+        />
         <Rect
           // BUG FIX: Rect must match Group dimensions exactly - no padding subtraction
           width={stageW}
