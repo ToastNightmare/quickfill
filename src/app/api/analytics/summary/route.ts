@@ -128,6 +128,7 @@ export async function GET(request: NextRequest) {
     };
   });
 
+  const landingViews = rangeCounts.landing_page_view;
   const totalDownloads = rangeCounts.download_attempt;
   const successfulDownloads = rangeCounts.download_success;
   const failedDownloads = rangeCounts.download_failed;
@@ -139,6 +140,8 @@ export async function GET(request: NextRequest) {
   const paidConversions = rangeCounts.subscription_started;
 
   const funnel = {
+    landingViews,
+    landingToCtaRate: landingViews > 0 ? Math.round((homeClicks / landingViews) * 100) : null,
     homeClicks,
     templateStarts: rangeCounts.template_start,
     uploads,

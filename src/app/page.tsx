@@ -953,6 +953,10 @@ export default function Home() {
   const { isLoaded, isSignedIn } = useAuth();
   const [upgradingPlan, setUpgradingPlan] = useState<string | null>(null);
 
+  useEffect(() => {
+    trackEvent("landing_page_view", { page: "home" });
+  }, []);
+
   const handleUpgrade = async (plan: "pro", annual = true) => {
     trackEvent("checkout_start", { source: "home_pricing", plan, billing: annual ? "annual" : "monthly" });
     if (!isLoaded) return;

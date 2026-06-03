@@ -75,6 +75,7 @@ interface SummaryResponse {
 }
 
 const EVENT_LABELS: Record<AnalyticsEventName, string> = {
+  landing_page_view: "Landing page views",
   home_cta_click: "Home CTA",
   template_start: "Template starts",
   editor_upload_started: "Upload starts",
@@ -93,6 +94,7 @@ const EVENT_LABELS: Record<AnalyticsEventName, string> = {
 };
 
 const EVENT_ICONS: Record<AnalyticsEventName, typeof MousePointerClick> = {
+  landing_page_view: BarChart3,
   home_cta_click: MousePointerClick,
   template_start: FileText,
   editor_upload_started: Upload,
