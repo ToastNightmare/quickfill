@@ -1,4 +1,5 @@
 export const ANALYTICS_EVENTS = [
+  "landing_page_view",
   "home_cta_click",
   "template_start",
   "editor_upload_started",
