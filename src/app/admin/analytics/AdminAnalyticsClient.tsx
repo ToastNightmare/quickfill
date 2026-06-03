@@ -40,6 +40,8 @@ interface SummaryResponse {
     createdAt?: string;
   }[];
   funnel: {
+    landingViews: number;
+    landingToCtaRate: number | null;
     homeClicks: number;
     templateStarts: number;
     uploads: number;
@@ -238,6 +240,23 @@ export default function AdminAnalyticsClient() {
     );
   }, [summary]);
 
+  const funnelSteps = useMemo(() => {
+    const f = summary?.funnel;
+    function pct(num: number, den: number): number | null {
+      return den > 0 ? Math.min(Math.max(Math.round((num / den) * 100), 0), 100) : null;
+    }
+    return [
+      { label: "Landing views",    count: f?.landingViews ?? 0,        conv: null },
+      { label: "CTA clicks",       count: f?.homeClicks ?? 0,          conv: f?.landingToCtaRate ?? null },
+      { label: "Upload starts",    count: f?.uploads ?? 0,             conv: pct(f?.uploads ?? 0, f?.homeClicks ?? 0) },
+      { label: "PDF loaded",       count: f?.pdfLoaded ?? 0,           conv: f?.uploadToLoadedRate ?? null },
+      { label: "Downloads",        count: f?.successfulDownloads ?? 0, conv: pct(f?.successfulDownloads ?? 0, f?.pdfLoaded ?? 0) },
+      { label: "Upgrade prompted", count: f?.limitHits ?? 0,           conv: null },
+      { label: "Checkout starts",  count: f?.checkoutStarts ?? 0,      conv: f?.checkoutFromLimitRate ?? null },
+      { label: "Paid conversions", count: f?.paidConversions ?? 0,     conv: f?.paidFromCheckoutRate ?? null },
+    ];
+  }, [summary]);
+
   const kpis = [
     { name: "home_cta_click" as AnalyticsEventName, title: "Visitors showed intent", value: totals.home_cta_click ?? 0, sub: "Homepage CTA clicks", icon: MousePointerClick },
     { name: "editor_upload_started" as AnalyticsEventName, title: "Upload starts", value: totals.editor_upload_started ?? 0, sub: "User PDFs selected", icon: Upload },
@@ -308,6 +327,37 @@ export default function AdminAnalyticsClient() {
             );
           })}
         </div>
+
+        {/* Conversion Funnel */}
+        <section className="mt-6 rounded-lg border border-border bg-surface p-6 shadow-sm">
+          <div className="flex items-center gap-2">
+            <BarChart3 className="h-5 w-5 text-accent" />
+            <h2 className="text-lg font-semibold">Conversion Funnel</h2>
+          </div>
+          <div className="mt-5 divide-y divide-border">
+            {funnelSteps.map((step, i) => (
+              <div key={step.label} className="flex items-center justify-between gap-4 py-3">
+                <div className="flex items-center gap-3">
+                  <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-accent/10 text-xs font-bold text-accent">
+                    {i + 1}
+                  </span>
+                  <span className="text-sm font-medium">{step.label}</span>
+                </div>
+                <div className="flex items-center gap-6">
+                  <span className="w-16 text-right text-sm font-bold tabular-nums">
+                    {loading ? "..." : step.count}
+                  </span>
+                  <span className="w-16 text-right text-xs text-text-muted tabular-nums">
+                    {loading ? "" : step.conv === null ? "\u2014" : `${step.conv}%`}
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+          <p className="mt-3 text-xs text-text-muted">
+            Conversion % is relative to the previous step.
+          </p>
+        </section>
 
         <div className="mt-6 grid gap-6 lg:grid-cols-[1.2fr_0.8fr]">
           <section className="rounded-lg border border-border bg-surface p-6 shadow-sm">
