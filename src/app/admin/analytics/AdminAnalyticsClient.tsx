@@ -19,6 +19,7 @@ import {
   Zap,
 } from "lucide-react";
 import type { AnalyticsEventName } from "@/lib/analytics-events";
+import InteractiveTimeline from "./InteractiveTimeline";
 
 interface SummaryResponse {
   updatedAt: string;
@@ -462,6 +463,8 @@ export default function AdminAnalyticsClient() {
             </div>
           </section>
         </div>
+
+        <InteractiveTimeline events={summary?.recent ?? []} loading={loading} />
 
         <section className="mt-6 rounded-lg border border-border bg-surface p-6 shadow-sm">
           <div className="flex items-center justify-between">
