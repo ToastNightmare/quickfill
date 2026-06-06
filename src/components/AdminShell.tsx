@@ -136,7 +136,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
             </div>
           </header>
 
-          <div className="flex-1 bg-surface-alt text-text">{children}</div>
+          <div className="flex-1 bg-slate-900 text-slate-100">{children}</div>
         </div>
       </div>
     </div>
