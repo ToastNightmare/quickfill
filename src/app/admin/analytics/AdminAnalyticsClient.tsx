@@ -496,7 +496,7 @@ export default function AdminAnalyticsClient() {
                 </thead>
                 <tbody className="divide-y divide-border">
                   {summary.utmBreakdown.map((row) => (
-                    <tr key={row.source} className="bg-surface">
+                    <tr key={`${row.source}-${row.medium ?? ""}-${row.campaign ?? ""}`} className="bg-surface">
                       <td className="px-4 py-2 text-sm font-medium text-text">{row.source}</td>
                       <td className="px-4 py-2 text-sm text-text-muted">{row.medium ?? "-"}</td>
                       <td className="px-4 py-2 text-sm text-text-muted">{row.campaign ?? "-"}</td>

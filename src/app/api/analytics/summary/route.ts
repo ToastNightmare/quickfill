@@ -174,25 +174,30 @@ export async function GET(request: NextRequest) {
   // not a reliable attribution join. For accurate UTM-to-purchase attribution, implement
   // server-side UTM capture at checkout or use a dedicated analytics platform.
   const utmBreakdown: UtmBreakdownRow[] = (() => {
-    const sourceMap = new Map<string, { medium: string | null; campaign: string | null; landingViews: number; checkoutStarts: number; paidConversions: number }>();
+    const breakdownMap = new Map<string, { source: string; medium: string | null; campaign: string | null; landingViews: number; checkoutStarts: number; paidConversions: number }>();
 
     for (const event of recentRaw) {
       const utmSource = event.properties?.utm_source as string | undefined;
       const utmMedium = event.properties?.utm_medium as string | undefined;
       const utmCampaign = event.properties?.utm_campaign as string | undefined;
-      const sourceKey = utmSource ?? "(direct)";
+      const source = utmSource ?? "(direct)";
+      const medium = utmMedium ?? null;
+      const campaign = utmCampaign ?? null;
+      // Composite key: source + medium + campaign
+      const key = `${source}|${medium ?? ""}|${campaign ?? ""}`;
 
-      if (!sourceMap.has(sourceKey)) {
-        sourceMap.set(sourceKey, {
-          medium: utmMedium ?? null,
-          campaign: utmCampaign ?? null,
+      if (!breakdownMap.has(key)) {
+        breakdownMap.set(key, {
+          source,
+          medium,
+          campaign,
           landingViews: 0,
           checkoutStarts: 0,
           paidConversions: 0,
         });
       }
 
-      const row = sourceMap.get(sourceKey)!;
+      const row = breakdownMap.get(key)!;
 
       if (event.name === "landing_page_view") {
         row.landingViews++;
@@ -203,15 +208,7 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    return Array.from(sourceMap.entries())
-      .map(([source, data]) => ({
-        source,
-        medium: data.medium,
-        campaign: data.campaign,
-        landingViews: data.landingViews,
-        checkoutStarts: data.checkoutStarts,
-        paidConversions: data.paidConversions,
-      }))
+    return Array.from(breakdownMap.values())
       .sort((a, b) => b.landingViews - a.landingViews)
       .slice(0, 20);
   })();
