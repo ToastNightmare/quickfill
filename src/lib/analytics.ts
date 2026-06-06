@@ -1,9 +1,13 @@
+import { getStoredUtm } from "@/lib/utm";
+
 export type AnalyticsProperties = Record<string, string | number | boolean | null | undefined>;
 
 export function trackEvent(name: string, properties: AnalyticsProperties = {}) {
   if (typeof window === "undefined") return;
 
-  const payload = JSON.stringify({ name, properties });
+  const utm = getStoredUtm();
+  const mergedProperties = { ...utm, ...properties };
+  const payload = JSON.stringify({ name, properties: mergedProperties });
 
   try {
     const blob = new Blob([payload], { type: "application/json" });
