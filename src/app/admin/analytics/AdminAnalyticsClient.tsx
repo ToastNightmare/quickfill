@@ -1,11 +1,9 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import Link from "next/link";
 import {
   Activity,
   AlertTriangle,
-  ArrowLeft,
   BarChart3,
   CheckCircle2,
   Download,
@@ -168,7 +166,7 @@ function insightText(summary: SummaryResponse | null) {
   if (f.failedDownloads > 0) {
     items.push({
       title: "Fix download failures first",
-      body: `${f.failedDownloads} failed download event${f.failedDownloads === 1 ? "" : "s"} in this range. That is the fastest place to protect trust.`,
+      body: `${f.failedDownloads} failed download event${f.failedDownloads === 1 ? "" : "s"} in this range. That is the fastest way to protect trust.`,
       tone: "warn",
     });
   }
@@ -209,6 +207,26 @@ function insightText(summary: SummaryResponse | null) {
     });
   }
   return items.slice(0, 3);
+}
+
+function sourceBadge(source: string): string {
+  const s = source.toLowerCase();
+  if (s === "meta" || s === "facebook") return "bg-blue-500/20 text-blue-300 border border-blue-500/30";
+  if (s === "google")  return "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30";
+  if (s === "zeely")   return "bg-purple-500/20 text-purple-300 border border-purple-500/30";
+  if (s === "soro")    return "bg-amber-500/20 text-amber-300 border border-amber-500/30";
+  if (s === "(direct)") return "bg-slate-600/50 text-slate-300 border border-slate-500/30";
+  return "bg-slate-700 text-slate-300 border border-slate-600";
+}
+
+function RevenueMetric({ label, value, note }: { label: string; value: string; note?: string }) {
+  return (
+    <div className="rounded-lg bg-slate-900 p-3">
+      <p className="text-xs text-slate-500">{label}</p>
+      <p className="mt-1 text-lg font-bold text-slate-100">{value}</p>
+      {note && <p className="mt-0.5 text-xs text-slate-600">{note}</p>}
+    </div>
+  );
 }
 
 export default function AdminAnalyticsClient() {
@@ -269,303 +287,373 @@ export default function AdminAnalyticsClient() {
   }, [summary]);
 
   const kpis = [
-    { name: "home_cta_click" as AnalyticsEventName, title: "Visitors showed intent", value: totals.home_cta_click ?? 0, sub: "Homepage CTA clicks", icon: MousePointerClick },
-    { name: "editor_upload_started" as AnalyticsEventName, title: "Upload starts", value: totals.editor_upload_started ?? 0, sub: "User PDFs selected", icon: Upload },
-    { name: "editor_pdf_loaded" as AnalyticsEventName, title: "PDFs loaded", value: totals.editor_pdf_loaded ?? 0, sub: "Editor became usable", icon: FileText },
-    { name: "download_success" as AnalyticsEventName, title: "Downloads", value: totals.download_success ?? 0, sub: "Completed value", icon: Download },
-    { name: "checkout_start" as AnalyticsEventName, title: "Checkouts", value: totals.checkout_start ?? 0, sub: "Revenue intent", icon: Sparkles },
-    { name: "subscription_started" as AnalyticsEventName, title: "Paid conversions", value: totals.subscription_started ?? 0, sub: "Stripe confirmed", icon: TrendingUp },
+    { name: "landing_page_view" as AnalyticsEventName,   title: "Landing Views",     sub: "Page impressions",      icon: BarChart3,          accent: "blue"   },
+    { name: "home_cta_click" as AnalyticsEventName,       title: "CTA Clicks",        sub: "Homepage intent",       icon: MousePointerClick,  accent: "blue"   },
+    { name: "editor_upload_started" as AnalyticsEventName,title: "Upload Starts",     sub: "User PDFs selected",    icon: Upload,             accent: "purple" },
+    { name: "editor_pdf_loaded" as AnalyticsEventName,    title: "PDFs Loaded",       sub: "Editor usable",         icon: FileText,           accent: "purple" },
+    { name: "download_success" as AnalyticsEventName,     title: "Downloads",         sub: "Value delivered",       icon: Download,           accent: "green"  },
+    { name: "upgrade_prompted" as AnalyticsEventName,     title: "Upgrade Prompted",  sub: "Limit reached",         icon: Sparkles,           accent: "amber"  },
+    { name: "checkout_start" as AnalyticsEventName,       title: "Checkout Starts",   sub: "Revenue intent",        icon: Zap,                accent: "amber"  },
+    { name: "subscription_started" as AnalyticsEventName, title: "Paid Conversions",  sub: "Stripe confirmed",      icon: TrendingUp,         accent: "green"  },
   ];
 
+  const accentMap = {
+    blue:   { bg: "bg-blue-500/15",   text: "text-blue-400",    border: "border-blue-500/30"   },
+    purple: { bg: "bg-purple-500/15", text: "text-purple-400",  border: "border-purple-500/30" },
+    green:  { bg: "bg-emerald-500/15",text: "text-emerald-400", border: "border-emerald-500/30"},
+    amber:  { bg: "bg-amber-500/15",  text: "text-amber-400",   border: "border-amber-500/30"  },
+  };
+
   return (
-    <div>
-      <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <Link href="/admin" className="inline-flex items-center gap-2 text-sm font-medium text-text-muted hover:text-text">
-              <ArrowLeft className="h-4 w-4" />
-              Admin
-            </Link>
-            <h1 className="mt-4 text-3xl font-bold tracking-tight">Growth analytics</h1>
-            <p className="mt-2 max-w-2xl text-sm text-text-muted">
-              Funnel, revenue, and product quality signals for growing QuickFill.
-            </p>
-          </div>
-          <div className="flex flex-wrap items-center gap-3">
-            <div className="grid grid-cols-4 rounded-lg border border-border bg-surface p-1">
-              {rangeOptions.map((option) => (
-                <button
-                  key={option}
-                  onClick={() => setDays(option)}
-                  className={`rounded-md px-3 py-2 text-sm font-semibold transition-colors ${days === option ? "bg-accent text-white" : "text-text-muted hover:text-text"}`}
-                >
-                  {option}d
-                </button>
-              ))}
-            </div>
-            <button
-              onClick={() => loadSummary(days)}
-              disabled={loading}
-              className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-border bg-surface px-4 text-sm font-semibold hover:bg-white disabled:opacity-60"
-            >
-              <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
-              Refresh
-            </button>
-          </div>
+    <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8 space-y-6">
+      {/* Section A -- Page header */}
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-slate-100">Growth Command Centre</h1>
+          <p className="mt-1 text-sm text-slate-400">
+            Funnel, traffic, and revenue signals for QuickFill.
+          </p>
         </div>
-
-        {error && (
-          <div className="mt-6 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-            {error}
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="flex rounded-lg bg-slate-800 border border-slate-700/50 p-1 gap-1">
+            {rangeOptions.map((option) => (
+              <button
+                key={option}
+                onClick={() => setDays(option)}
+                className={`rounded-md px-3 py-1.5 text-sm font-semibold transition-colors ${days === option ? "bg-blue-600 text-white" : "text-slate-400 hover:text-slate-200 hover:bg-slate-700"}`}
+              >
+                {option}d
+              </button>
+            ))}
           </div>
-        )}
+          <button
+            onClick={() => loadSummary(days)}
+            disabled={loading}
+            className="inline-flex h-9 items-center gap-2 rounded-lg border border-slate-600 bg-slate-800 px-3 text-sm font-semibold text-slate-300 hover:bg-slate-700 disabled:opacity-50"
+          >
+            <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
+            Refresh
+          </button>
+        </div>
+      </div>
+      {summary && (
+        <p className="text-xs text-slate-500">Updated {formatDate(summary.updatedAt)}</p>
+      )}
 
-        <div className="mt-8 grid gap-4 sm:grid-cols-2 xl:grid-cols-6">
-          {kpis.map((item) => {
-            const Icon = item.icon;
-            return (
-              <div key={item.name} className="rounded-lg border border-border bg-surface p-5 shadow-sm">
-                <div className="flex items-center justify-between">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-accent/10">
-                    <Icon className="h-5 w-5 text-accent" />
-                  </div>
-                  <span className="text-xs font-medium text-text-muted">{summary?.days ?? days} days</span>
+      {/* Section B -- KPI Summary Cards */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 xl:grid-cols-8 gap-3">
+        {kpis.map((item) => {
+          const Icon = item.icon;
+          const colors = accentMap[item.accent as keyof typeof accentMap];
+          return (
+            <div key={item.name} className="rounded-xl bg-slate-800 border border-slate-700/50 p-4">
+              <div className="flex items-center justify-between mb-3">
+                <div className={`flex h-8 w-8 items-center justify-center rounded-lg ${colors.bg}`}>
+                  <Icon className={`h-4 w-4 ${colors.text}`} />
                 </div>
-                <p className="mt-5 text-3xl font-bold">{loading ? "..." : item.value}</p>
-                <p className="mt-1 text-sm font-semibold">{item.title}</p>
-                <p className="mt-1 text-xs text-text-muted">{item.sub}</p>
+                <span className="text-xs font-medium text-slate-500">{days}d</span>
+              </div>
+              <p className="text-2xl font-bold text-slate-100 tabular-nums">
+                {loading ? "..." : (totals[item.name] ?? 0)}
+              </p>
+              <p className="mt-0.5 text-xs font-semibold text-slate-300">{item.title}</p>
+              <p className="mt-0.5 text-xs text-slate-500">{item.sub}</p>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Section C -- Conversion Funnel */}
+      <section className="rounded-xl bg-slate-800 border border-slate-700/50 p-6">
+        <div className="flex items-center gap-2">
+          <BarChart3 className="h-5 w-5 text-slate-100" />
+          <h2 className="text-lg font-semibold text-slate-100">Conversion Funnel</h2>
+        </div>
+        <div className="space-y-3 mt-5">
+          {funnelSteps.map((step, i) => {
+            const barW = funnelSteps[0].count > 0
+              ? Math.max(2, Math.round((step.count / funnelSteps[0].count) * 100))
+              : 2;
+            const barColors = ["bg-blue-500","bg-blue-500","bg-purple-500","bg-purple-500","bg-emerald-500","bg-emerald-500","bg-amber-500","bg-amber-500"];
+            const isLowConv = step.conv !== null && step.conv < 30;
+            return (
+              <div key={step.label}>
+                <div className="flex items-center justify-between mb-1">
+                  <div className="flex items-center gap-2">
+                    <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-slate-700 text-xs font-bold text-slate-300">
+                      {i + 1}
+                    </span>
+                    <span className="text-sm font-medium text-slate-200">{step.label}</span>
+                  </div>
+                  <div className="flex items-center gap-4">
+                    <span className="text-sm font-bold text-slate-100 tabular-nums">
+                      {loading ? "..." : step.count}
+                    </span>
+                    <span className={`w-16 text-right text-xs tabular-nums font-medium ${isLowConv ? "text-amber-400" : "text-slate-500"}`}>
+                      {loading ? "" : step.conv === null ? "—" : `${step.conv}%`}
+                    </span>
+                  </div>
+                </div>
+                <div className="h-1.5 w-full rounded-full bg-slate-900 overflow-hidden">
+                  <div
+                    className={`h-1.5 rounded-full ${barColors[i]} transition-all duration-500`}
+                    style={{ width: loading ? "0%" : `${barW}%` }}
+                  />
+                </div>
               </div>
             );
           })}
         </div>
+        <p className="mt-4 text-xs text-slate-500">
+          Conversion % is relative to the previous step. Amber indicates less than 30%.
+        </p>
+      </section>
 
-        {/* Conversion Funnel */}
-        <section className="mt-6 rounded-lg border border-border bg-surface p-6 shadow-sm">
+      {/* Section D -- Revenue Signal + Funnel Health */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <section className="rounded-xl bg-slate-800 border border-slate-700/50 p-6 lg:col-span-2">
           <div className="flex items-center gap-2">
-            <BarChart3 className="h-5 w-5 text-accent" />
-            <h2 className="text-lg font-semibold">Conversion Funnel</h2>
+            <TrendingUp className="h-5 w-5 text-emerald-400" />
+            <h2 className="text-lg font-semibold text-slate-100">Revenue Signal</h2>
           </div>
-          <div className="mt-5 divide-y divide-border">
-            {funnelSteps.map((step, i) => (
-              <div key={step.label} className="flex items-center justify-between gap-4 py-3">
-                <div className="flex items-center gap-3">
-                  <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-accent/10 text-xs font-bold text-accent">
-                    {i + 1}
-                  </span>
-                  <span className="text-sm font-medium">{step.label}</span>
-                </div>
-                <div className="flex items-center gap-6">
-                  <span className="w-16 text-right text-sm font-bold tabular-nums">
-                    {loading ? "..." : step.count}
-                  </span>
-                  <span className="w-16 text-right text-xs text-text-muted tabular-nums">
-                    {loading ? "" : step.conv === null ? "\u2014" : `${step.conv}%`}
-                  </span>
-                </div>
-              </div>
-            ))}
+          <div className="mt-5 mb-5 pb-5 border-b border-slate-700/50">
+            <p className="text-xs uppercase tracking-wide text-slate-500 font-semibold">Est. Monthly Run Rate</p>
+            <p className="text-4xl font-bold text-emerald-400 mt-1 tabular-nums">
+              {loading ? "..." : money(summary?.revenue.range.monthlyRunRateCents ?? 0)}
+            </p>
+            <p className="text-xs text-slate-500 mt-1">Stripe webhook-based, {days}-day range</p>
           </div>
-          <p className="mt-3 text-xs text-text-muted">
-            Conversion % is relative to the previous step.
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+            <RevenueMetric label="Paid Conversions" value={loading ? "..." : String(summary?.revenue.range.paidConversions ?? 0)} />
+            <RevenueMetric label="Est. First Period" value={loading ? "..." : money(summary?.revenue.range.firstPeriodCents ?? 0)} />
+            <RevenueMetric label="All-time Paid" value={loading ? "..." : String(summary?.revenue.total.paidConversions ?? 0)} />
+            <RevenueMetric
+              label="Simple MRR Estimate"
+              value={loading ? "..." : `A$${((summary?.revenue.range.paidConversions ?? 0) * 11.40).toFixed(2)}`}
+              note="$11.40/user signal only"
+            />
+          </div>
+          <p className="mt-4 text-xs text-slate-500">
+            Revenue uses Stripe webhook confirmations. Annual plans count as A$100 first period and A$8.33 monthly run rate. Simple MRR estimate is a signal only - based on $11.40/user/month.
           </p>
         </section>
 
-        <div className="mt-6 grid gap-6 lg:grid-cols-[1.2fr_0.8fr]">
-          <section className="rounded-lg border border-border bg-surface p-6 shadow-sm">
-            <div className="flex items-center justify-between">
-              <div>
-                <h2 className="text-lg font-semibold">Activity by day</h2>
-                <p className="mt-1 text-sm text-text-muted">PDF loads, successful downloads, and checkout starts.</p>
-              </div>
-              <BarChart3 className="h-5 w-5 text-accent" />
-            </div>
-            <div className="mt-8 flex h-56 items-end gap-2">
-              {(summary?.daily ?? []).map((day) => {
-                const loaded = day.counts.editor_pdf_loaded;
-                const downloads = day.counts.download_success;
-                const checkouts = day.counts.checkout_start;
-                const combined = loaded + downloads + checkouts;
-                const height = Math.max(6, Math.round((combined / maxDaily) * 100));
-                return (
-                  <div key={day.day} className="flex min-w-0 flex-1 flex-col items-center gap-2">
-                    <div className="flex h-44 w-full items-end rounded bg-surface-alt">
-                      <div
-                        className="w-full rounded bg-accent"
-                        style={{ height: `${height}%` }}
-                        title={`${day.day}: ${combined} tracked events`}
-                      />
-                    </div>
-                    <span className="truncate text-[10px] text-text-muted">{day.day.slice(5)}</span>
-                  </div>
-                );
-              })}
-              {loading && <div className="h-44 w-full animate-pulse rounded-lg bg-surface-alt" />}
-            </div>
-            <div className="mt-4 flex flex-wrap gap-4 text-xs text-text-muted">
-              <span>PDF loaded: {totals.editor_pdf_loaded ?? 0}</span>
-              <span>Downloads: {totals.download_success ?? 0}</span>
-              <span>Checkouts: {totals.checkout_start ?? 0}</span>
-            </div>
-          </section>
-
-          <section className="rounded-lg border border-border bg-surface p-6 shadow-sm">
-            <div className="flex items-center gap-2">
-              <TrendingUp className="h-5 w-5 text-accent" />
-              <h2 className="text-lg font-semibold">Funnel health</h2>
-            </div>
-            <div className="mt-5 space-y-4">
-              {[
-                ["Upload to PDF loaded", summary?.funnel.uploadToLoadedRate ?? null],
-                ["Download success rate", summary?.funnel.downloadSuccessRate ?? null],
-                ["Checkout from limit hit", summary?.funnel.checkoutFromLimitRate ?? null],
-                ["Paid from checkout", summary?.funnel.paidFromCheckoutRate ?? null],
-              ].map(([label, value]) => (
-                <div key={label as string}>
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-text-muted">{label as string}</span>
-                    <span className="font-semibold">{rate(value as number | null)}</span>
-                  </div>
-                  <div className="mt-2 h-2 overflow-hidden rounded-full bg-surface-alt">
-                    <div className="h-2 rounded-full bg-accent" style={{ width: progressWidth(value as number | null) }} />
-                  </div>
-                </div>
-              ))}
-              <div className="grid grid-cols-2 gap-3 pt-2">
-                <Metric label="Limit hits" value={summary?.funnel.limitHits ?? 0} />
-                <Metric label="Failed downloads" value={summary?.funnel.failedDownloads ?? 0} />
-              </div>
-            </div>
-          </section>
-        </div>
-
-        <div className="mt-6 grid gap-6 lg:grid-cols-[0.85fr_1.15fr]">
-          <section className="rounded-lg border border-border bg-surface p-6 shadow-sm">
-            <div className="flex items-center gap-2">
-              <Sparkles className="h-5 w-5 text-accent" />
-              <h2 className="text-lg font-semibold">Revenue signal</h2>
-            </div>
-            <div className="mt-5 grid gap-3 sm:grid-cols-2">
-              <Metric label="Paid conversions" value={summary?.revenue.range.paidConversions ?? 0} />
-              <Metric label="Est. first period" value={money(summary?.revenue.range.firstPeriodCents ?? 0)} />
-              <Metric label="Est. monthly run rate" value={money(summary?.revenue.range.monthlyRunRateCents ?? 0)} />
-              <Metric label="All-time paid conversions" value={summary?.revenue.total.paidConversions ?? 0} />
-            </div>
-            <p className="mt-4 text-xs text-text-muted">
-              Revenue uses Stripe webhook confirmations. Annual plans count as A$100 first period and A$8.33 monthly run rate.
-            </p>
-          </section>
-
-          <section className="rounded-lg border border-border bg-surface p-6 shadow-sm">
-            <div className="flex items-center gap-2">
-              <Activity className="h-5 w-5 text-accent" />
-              <h2 className="text-lg font-semibold">Recommendations</h2>
-            </div>
-            <div className="mt-5 grid gap-3">
-              {insightText(summary).map((item) => (
-                <div
-                  key={item.title}
-                  className={`rounded-lg border p-4 ${item.tone === "warn" ? "border-amber-200 bg-amber-50" : item.tone === "good" ? "border-emerald-200 bg-emerald-50" : "border-border bg-surface-alt"}`}
-                >
-                  <p className="text-sm font-semibold">{item.title}</p>
-                  <p className="mt-1 text-sm text-text-muted">{item.body}</p>
-                </div>
-              ))}
-            </div>
-          </section>
-        </div>
-
-        {/* Traffic Sources */}
-        <section className="mt-6 rounded-lg border border-border bg-surface p-6 shadow-sm">
+        <section className="rounded-xl bg-slate-800 border border-slate-700/50 p-6">
           <div className="flex items-center gap-2">
-            <Activity className="h-5 w-5 text-accent" />
-            <h2 className="text-lg font-semibold">Traffic Sources</h2>
+            <Activity className="h-5 w-5 text-slate-100" />
+            <h2 className="text-lg font-semibold text-slate-100">Funnel Health</h2>
           </div>
-          <p className="mt-1 text-sm text-text-muted">UTM parameter breakdown from recent events.</p>
-          {summary?.utmBreakdown && summary.utmBreakdown.length > 0 ? (
-            <div className="mt-4 overflow-x-auto">
-              <table className="min-w-full text-sm">
-                <thead className="bg-surface-alt">
-                  <tr>
-                    <th className="px-4 py-2 text-left font-semibold text-text">Source</th>
-                    <th className="px-4 py-2 text-left font-semibold text-text">Medium</th>
-                    <th className="px-4 py-2 text-left font-semibold text-text">Campaign</th>
-                    <th className="px-4 py-2 text-right font-semibold text-text">Landing Views</th>
-                    <th className="px-4 py-2 text-right font-semibold text-text">Checkout Starts</th>
-                    <th className="px-4 py-2 text-right font-semibold text-text">Paid Conversions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border">
-                  {summary.utmBreakdown.map((row) => (
-                    <tr key={`${row.source}-${row.medium ?? ""}-${row.campaign ?? ""}`} className="bg-surface">
-                      <td className="px-4 py-2 text-sm font-medium text-text">{row.source}</td>
-                      <td className="px-4 py-2 text-sm text-text-muted">{row.medium ?? "-"}</td>
-                      <td className="px-4 py-2 text-sm text-text-muted">{row.campaign ?? "-"}</td>
-                      <td className="px-4 py-2 text-sm text-right font-semibold tabular-nums">{row.landingViews}</td>
-                      <td className="px-4 py-2 text-sm text-right tabular-nums">{row.checkoutStarts}</td>
-                      <td className="px-4 py-2 text-sm text-right tabular-nums">{row.paidConversions}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          ) : (
-            <div className="mt-4 rounded-lg border border-border bg-surface-alt p-6 text-center">
-              <p className="text-sm text-text-muted">No attributed traffic yet. UTM parameters will appear here once paid campaigns send traffic.</p>
-            </div>
-          )}
-        </section>
-
-        <InteractiveTimeline events={summary?.recent ?? []} loading={loading} />
-
-        <section className="mt-6 rounded-lg border border-border bg-surface p-6 shadow-sm">
-          <div className="flex items-center justify-between">
-            <h2 className="text-lg font-semibold">Recent events</h2>
-            <p className="text-xs text-text-muted">
-              Updated {summary ? formatDate(summary.updatedAt) : "..."}
-            </p>
-          </div>
-          <div className="mt-5 divide-y divide-border">
-            {(summary?.recent ?? []).slice(0, 30).map((event, index) => {
-              const Icon = EVENT_ICONS[event.name] ?? MousePointerClick;
-              const properties = Object.entries(event.properties ?? {}).filter(([, value]) => value !== null && value !== "");
-              return (
-                <div key={index} className="flex flex-col gap-2 py-3 sm:flex-row sm:items-center sm:justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-accent/10">
-                      <Icon className="h-4 w-4 text-accent" />
-                    </div>
-                    <div>
-                      <p className="text-sm font-semibold">{EVENT_LABELS[event.name]}</p>
-                      <p className="text-xs text-text-muted">{formatDate(event.createdAt)} {event.signedIn ? "signed in" : "guest"}</p>
-                    </div>
-                  </div>
-                  {properties.length > 0 && (
-                    <div className="flex flex-wrap gap-2 sm:justify-end">
-                      {properties.slice(0, 5).map(([key, value]) => (
-                        <span key={key} className="rounded-full bg-surface-alt px-2.5 py-1 text-xs text-text-muted">
-                          {key}: {formatProperty(value)}
-                        </span>
-                      ))}
-                    </div>
-                  )}
+          <div className="mt-5 space-y-4">
+            {[
+              ["Upload to PDF loaded",    summary?.funnel.uploadToLoadedRate    ?? null],
+              ["Download success rate",   summary?.funnel.downloadSuccessRate   ?? null],
+              ["Checkout from limit hit", summary?.funnel.checkoutFromLimitRate ?? null],
+              ["Paid from checkout",      summary?.funnel.paidFromCheckoutRate  ?? null],
+            ].map(([label, value]) => (
+              <div key={label as string}>
+                <div className="flex items-center justify-between text-sm mb-1.5">
+                  <span className="text-slate-400 text-xs">{label as string}</span>
+                  <span className="font-semibold text-slate-200 text-xs">{rate(value as number | null)}</span>
                 </div>
-              );
-            })}
-            {!loading && (summary?.recent.length ?? 0) === 0 && (
-              <p className="py-8 text-center text-sm text-text-muted">No analytics events yet.</p>
-            )}
+                <div className="h-1.5 overflow-hidden rounded-full bg-slate-900">
+                  <div className="h-1.5 rounded-full bg-blue-500 transition-all duration-500" style={{ width: progressWidth(value as number | null) }} />
+                </div>
+              </div>
+            ))}
+            <div className="grid grid-cols-2 gap-3 pt-2">
+              <div className="rounded-lg bg-slate-900 p-3">
+                <p className="text-xs text-slate-500">Limit hits</p>
+                <p className="mt-1 text-xl font-bold text-slate-100">{summary?.funnel.limitHits ?? 0}</p>
+              </div>
+              <div className="rounded-lg bg-slate-900 p-3">
+                <p className="text-xs text-slate-500">Failed downloads</p>
+                <p className="mt-1 text-xl font-bold text-red-400">{summary?.funnel.failedDownloads ?? 0}</p>
+              </div>
+            </div>
           </div>
         </section>
       </div>
-    </div>
-  );
-}
 
-function Metric({ label, value }: { label: string; value: string | number }) {
-  return (
-    <div className="rounded-lg bg-surface-alt p-3">
-      <p className="text-xs text-text-muted">{label}</p>
-      <p className="mt-1 text-xl font-bold">{value}</p>
+      {/* Section E -- Activity Chart */}
+      <section className="rounded-xl bg-slate-800 border border-slate-700/50 p-6">
+        <div className="flex items-center gap-2">
+          <BarChart3 className="h-5 w-5 text-slate-100" />
+          <div>
+            <h2 className="text-lg font-semibold text-slate-100">Activity by Day</h2>
+            <p className="text-sm text-slate-400">PDF loads, downloads, and checkout starts.</p>
+          </div>
+        </div>
+        <div className="mt-6 flex h-48 items-end gap-1">
+          {(summary?.daily ?? []).map((day) => {
+            const loaded   = day.counts.editor_pdf_loaded;
+            const downloads = day.counts.download_success;
+            const checkouts = day.counts.checkout_start;
+            const combined  = loaded + downloads + checkouts;
+            const totalH = Math.max(6, Math.round((combined / maxDaily) * 100));
+            const loadedH   = combined > 0 ? Math.round((loaded   / combined) * totalH) : 0;
+            const downloadH = combined > 0 ? Math.round((downloads/ combined) * totalH) : 0;
+            const checkoutH = combined > 0 ? totalH - loadedH - downloadH : 0;
+            return (
+              <div key={day.day} className="flex min-w-0 flex-1 flex-col items-center gap-1">
+                <div className="flex h-40 w-full flex-col items-stretch justify-end rounded overflow-hidden bg-slate-900">
+                  {checkouts > 0 && <div className="w-full bg-amber-500/70" style={{ height: `${checkoutH}%` }} title={`Checkouts: ${checkouts}`} />}
+                  {downloads > 0 && <div className="w-full bg-emerald-500/70" style={{ height: `${downloadH}%` }} title={`Downloads: ${downloads}`} />}
+                  {loaded > 0    && <div className="w-full bg-blue-500/70"    style={{ height: `${loadedH}%`   }} title={`PDF loads: ${loaded}`} />}
+                </div>
+                <span className="truncate text-[10px] text-slate-600">{day.day.slice(5)}</span>
+              </div>
+            );
+          })}
+          {loading && <div className="h-40 w-full animate-pulse rounded-lg bg-slate-700" />}
+        </div>
+        <div className="mt-3 flex flex-wrap gap-4 text-xs text-slate-500">
+          <span className="flex items-center gap-1.5"><span className="inline-block h-2 w-2 rounded-full bg-blue-500/70" />PDF loaded: {totals.editor_pdf_loaded ?? 0}</span>
+          <span className="flex items-center gap-1.5"><span className="inline-block h-2 w-2 rounded-full bg-emerald-500/70" />Downloads: {totals.download_success ?? 0}</span>
+          <span className="flex items-center gap-1.5"><span className="inline-block h-2 w-2 rounded-full bg-amber-500/70" />Checkouts: {totals.checkout_start ?? 0}</span>
+        </div>
+      </section>
+
+      {/* Section F -- Traffic Sources */}
+      <section className="rounded-xl bg-slate-800 border border-slate-700/50 p-6">
+        <div className="flex items-center gap-2">
+          <Activity className="h-5 w-5 text-slate-100" />
+          <div>
+            <h2 className="text-lg font-semibold text-slate-100">Traffic Sources</h2>
+            <p className="text-sm text-slate-400">UTM parameter breakdown from recent events.</p>
+          </div>
+        </div>
+        {summary?.utmBreakdown && summary.utmBreakdown.length > 0 ? (
+          <>
+            {(() => {
+              const maxLandingViews = Math.max(1, ...(summary?.utmBreakdown ?? []).map(r => r.landingViews));
+              return (
+                <div className="mt-4 overflow-x-auto">
+                  <table className="min-w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-slate-700/50">
+                        <th className="px-3 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Source</th>
+                        <th className="px-3 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Medium</th>
+                        <th className="px-3 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Campaign</th>
+                        <th className="px-3 py-2.5 text-right text-xs font-semibold uppercase tracking-wide text-slate-500">Landing</th>
+                        <th className="px-3 py-2.5 text-right text-xs font-semibold uppercase tracking-wide text-slate-500">Checkouts</th>
+                        <th className="px-3 py-2.5 text-right text-xs font-semibold uppercase tracking-wide text-slate-500">Paid</th>
+                        <th className="px-3 py-2.5 text-right text-xs font-semibold uppercase tracking-wide text-slate-500">Conv.%</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-700/50">
+                      {summary.utmBreakdown.map((row) => {
+                        const convRate = row.landingViews > 0
+                          ? ((row.checkoutStarts / row.landingViews) * 100).toFixed(1) + "%"
+                          : "n/a";
+                        const barW = Math.max(4, Math.round((row.landingViews / maxLandingViews) * 100));
+                        return (
+                          <tr key={`${row.source}-${row.medium ?? ""}-${row.campaign ?? ""}`} className="hover:bg-slate-700/30 transition-colors">
+                            <td className="px-3 py-3">
+                              <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${sourceBadge(row.source)}`}>
+                                {row.source}
+                              </span>
+                            </td>
+                            <td className="px-3 py-3 text-sm text-slate-400">{row.medium ?? "-"}</td>
+                            <td className="px-3 py-3 text-sm text-slate-400">{row.campaign ?? "-"}</td>
+                            <td className="px-3 py-3 text-right">
+                              <div className="flex flex-col items-end gap-1">
+                                <span className="text-sm font-semibold text-slate-100 tabular-nums">{row.landingViews}</span>
+                                <div className="h-1 w-16 rounded-full bg-slate-900 overflow-hidden">
+                                  <div className="h-1 rounded-full bg-blue-500/60" style={{ width: `${barW}%` }} />
+                                </div>
+                              </div>
+                            </td>
+                            <td className="px-3 py-3 text-right text-sm tabular-nums text-slate-300">{row.checkoutStarts}</td>
+                            <td className="px-3 py-3 text-right text-sm tabular-nums">
+                              <span className={row.paidConversions > 0 ? "text-emerald-400 font-semibold" : "text-slate-400"}>
+                                {row.paidConversions}
+                              </span>
+                            </td>
+                            <td className="px-3 py-3 text-right text-xs tabular-nums text-slate-400">{convRate}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              );
+            })()}
+            <p className="mt-3 text-xs text-slate-500">
+              Paid conversions here use the recent events buffer - best-effort attribution only, not exact Stripe data.
+            </p>
+          </>
+        ) : (
+          <div className="mt-4 rounded-lg border border-slate-700/50 bg-slate-900 p-6 text-center">
+            <p className="text-sm text-slate-500">No attributed traffic yet. UTM parameters will appear here once paid campaigns send traffic.</p>
+          </div>
+        )}
+      </section>
+
+      {/* Section G -- Recommendations */}
+      <section className="rounded-xl bg-slate-800 border border-slate-700/50 p-6">
+        <div className="flex items-center gap-2">
+          <Activity className="h-5 w-5 text-slate-100" />
+          <h2 className="text-lg font-semibold text-slate-100">Recommendations</h2>
+        </div>
+        <div className="mt-5 grid gap-3">
+          {insightText(summary).map((item) => (
+            <div
+              key={item.title}
+              className={`rounded-r-lg border-l-4 p-4 ${
+                item.tone === "warn" ? "border-l-amber-500 bg-slate-900"
+                : item.tone === "good" ? "border-l-emerald-500 bg-slate-900"
+                : "border-l-blue-500 bg-slate-900"
+              }`}
+            >
+              <p className="text-sm font-semibold text-slate-100">{item.title}</p>
+              <p className="mt-1 text-sm text-slate-400">{item.body}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* Section H -- Recent Events */}
+      <section className="rounded-xl bg-slate-800 border border-slate-700/50 p-6">
+        <div className="flex items-center justify-between">
+          <h2 className="text-lg font-semibold text-slate-100">Recent events</h2>
+          <p className="text-xs text-slate-500">
+            Updated {summary ? formatDate(summary.updatedAt) : "..."}
+          </p>
+        </div>
+        <div className="mt-5 divide-y divide-slate-700/50">
+          {(summary?.recent ?? []).slice(0, 30).map((event, index) => {
+            const Icon = EVENT_ICONS[event.name] ?? MousePointerClick;
+            const properties = Object.entries(event.properties ?? {}).filter(([, value]) => value !== null && value !== "");
+            return (
+              <div key={index} className="flex flex-col gap-2 py-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-slate-700">
+                    <Icon className="h-4 w-4 text-blue-400" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-semibold text-slate-200">{EVENT_LABELS[event.name]}</p>
+                    <p className="text-xs text-slate-500">{formatDate(event.createdAt)} {event.signedIn ? "signed in" : "guest"}</p>
+                  </div>
+                </div>
+                {properties.length > 0 && (
+                  <div className="flex flex-wrap gap-2 sm:justify-end">
+                    {properties.slice(0, 5).map(([key, value]) => (
+                      <span key={key} className="rounded-full bg-slate-900 px-2.5 py-1 text-xs text-slate-400">
+                        {key}: {formatProperty(value)}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+          {!loading && (summary?.recent.length ?? 0) === 0 && (
+            <p className="py-8 text-center text-sm text-slate-500">No analytics events yet.</p>
+          )}
+        </div>
+      </section>
+
+      <InteractiveTimeline events={summary?.recent ?? []} loading={loading} />
     </div>
   );
 }

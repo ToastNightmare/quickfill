@@ -55,10 +55,10 @@ const EVENT_LABELS: Record<AnalyticsEventName, string> = {
 };
 
 const CATEGORY_PILL_CLASSES: Record<string, string> = {
-  Acquisition: "bg-blue-100 text-blue-700",
-  Editor: "bg-purple-100 text-purple-700",
-  Downloads: "bg-green-100 text-green-700",
-  Conversion: "bg-amber-100 text-amber-700",
+  Acquisition: "bg-blue-500/20 text-blue-300",
+  Editor: "bg-purple-500/20 text-purple-300",
+  Downloads: "bg-green-500/20 text-green-300",
+  Conversion: "bg-amber-500/20 text-amber-300",
 };
 
 function getTimeGroup(createdAt?: string): string {
@@ -117,7 +117,7 @@ export default function InteractiveTimeline({ events, loading }: InteractiveTime
   ];
 
   return (
-    <section className="mt-6 rounded-lg border border-border bg-surface p-6 shadow-sm">
+    <section className="mt-6 rounded-lg border border-slate-700/50 bg-slate-800 p-6 shadow-sm">
       <div className="flex items-center gap-2">
         <Activity className="h-5 w-5 text-accent" />
         <h2 className="text-lg font-semibold">Interactive Timeline</h2>
@@ -137,7 +137,7 @@ export default function InteractiveTimeline({ events, loading }: InteractiveTime
                   ? cat === "All"
                     ? "bg-accent text-white"
                     : CATEGORY_PILL_CLASSES[cat]
-                  : "bg-surface-alt text-text-muted hover:text-text"
+                  : "bg-slate-700 text-slate-400 hover:text-slate-200"
               }`}
             >
               {cat}
@@ -152,7 +152,7 @@ export default function InteractiveTimeline({ events, loading }: InteractiveTime
               className={`rounded-full px-3 py-1 text-xs font-semibold transition-colors cursor-pointer ${
                 signInFilter === opt.value
                   ? "bg-accent text-white"
-                  : "bg-surface-alt text-text-muted hover:text-text"
+                  : "bg-slate-700 text-slate-400 hover:text-slate-200"
               }`}
             >
               {opt.label}
@@ -164,25 +164,25 @@ export default function InteractiveTimeline({ events, loading }: InteractiveTime
       <div className="mt-6 relative">
         {loading ? (
           <>
-            <div className="absolute left-3.5 top-0 bottom-0 w-0.5 bg-border" />
-            <div className="ml-8 divide-y divide-border">
+            <div className="absolute left-3.5 top-0 bottom-0 w-0.5 bg-slate-700" />
+            <div className="ml-8 divide-y divide-slate-700/50">
               {[...Array(5)].map((_, i) => (
                 <div key={i} className="flex items-center gap-3 py-3">
-                  <div className="h-2.5 w-2.5 rounded-full bg-surface-alt animate-pulse" />
-                  <div className="h-3 w-32 rounded bg-surface-alt animate-pulse" />
-                  <div className="h-3 w-16 rounded bg-surface-alt animate-pulse ml-auto" />
+                  <div className="h-2.5 w-2.5 rounded-full bg-slate-700 animate-pulse" />
+                  <div className="h-3 w-32 rounded bg-slate-700 animate-pulse" />
+                  <div className="h-3 w-16 rounded bg-slate-700 animate-pulse ml-auto" />
                 </div>
               ))}
             </div>
           </>
         ) : filtered.length === 0 ? (
-          <p className="py-8 text-center text-sm text-text-muted">
+          <p className="py-8 text-center text-sm text-slate-500">
             No events match the selected filters.
           </p>
         ) : (
           <>
-            <div className="absolute left-3.5 top-0 bottom-0 w-0.5 bg-border" />
-            <div className="ml-8 divide-y divide-border">
+            <div className="absolute left-3.5 top-0 bottom-0 w-0.5 bg-slate-700" />
+            <div className="ml-8 divide-y divide-slate-700/50">
               {(() => {
                 let lastGroup = "";
                 return filtered.slice(0, visibleCount).map((event) => {
@@ -191,14 +191,14 @@ export default function InteractiveTimeline({ events, loading }: InteractiveTime
                   const hasProperties =
                     event.properties &&
                     Object.values(event.properties).some((v) => v !== null);
-                  const dotClass = CATEGORY_MAP[event.name]?.dotClass ?? "bg-surface-alt";
+                  const dotClass = CATEGORY_MAP[event.name]?.dotClass ?? "bg-slate-700";
                   const showGroupSeparator = group !== lastGroup;
                   lastGroup = group;
 
                   return (
                     <div key={expandKey}>
                       {showGroupSeparator && (
-                        <div className="py-2 text-xs font-semibold text-text-muted uppercase tracking-wide">
+                        <div className="py-2 text-xs font-semibold text-slate-500 uppercase tracking-wide">
                           {group}
                         </div>
                       )}
@@ -221,18 +221,18 @@ export default function InteractiveTimeline({ events, loading }: InteractiveTime
                             {getRelativeTime(event.createdAt)}
                           </span>
                           {event.signedIn === true ? (
-                            <span className="rounded-full border border-green-200 bg-green-50 px-2 py-0.5 text-xs text-green-700">
+                            <span className="rounded-full border border-green-500/30 bg-green-500/15 px-2 py-0.5 text-xs text-green-400">
                               Signed in
                             </span>
                           ) : (
-                            <span className="rounded-full border border-border bg-surface-alt px-2 py-0.5 text-xs text-text-muted">
+                            <span className="rounded-full border border-slate-600 bg-slate-700 px-2 py-0.5 text-xs text-slate-400">
                               Guest
                             </span>
                           )}
                           {hasProperties && (
                             <button
                               onClick={() => toggleExpand(expandKey)}
-                              className="text-text-muted hover:text-text"
+                              className="text-slate-400 hover:text-slate-200"
                             >
                               {expandedKeys.has(expandKey) ? (
                                 <ChevronUp className="h-3.5 w-3.5" />
@@ -243,19 +243,19 @@ export default function InteractiveTimeline({ events, loading }: InteractiveTime
                           )}
                         </div>
                         {expandedKeys.has(expandKey) && (
-                          <div className="ml-4 mt-2 mb-3 rounded-lg bg-surface-alt p-3">
+                          <div className="ml-4 mt-2 mb-3 rounded-lg bg-slate-900 p-3">
                             {event.properties &&
                             Object.values(event.properties).some((v) => v !== null) ? (
                               Object.entries(event.properties)
                                 .filter(([, value]) => value !== null)
                                 .map(([key, value]) => (
                                   <div key={key} className="flex gap-2 text-xs">
-                                    <span className="font-mono text-text-muted">{key}</span>
+                                    <span className="font-mono text-slate-500">{key}</span>
                                     <span>{String(value)}</span>
                                   </div>
                                 ))
                             ) : (
-                              <p className="text-xs text-text-muted">
+                              <p className="text-xs text-slate-500">
                                 No details available.
                               </p>
                             )}
@@ -272,7 +272,7 @@ export default function InteractiveTimeline({ events, loading }: InteractiveTime
                 onClick={() =>
                   setVisibleCount((c) => Math.min(c + 40, filtered.length))
                 }
-                className="mt-4 text-sm font-semibold text-accent hover:underline"
+                className="mt-4 text-sm font-semibold text-blue-400 hover:text-blue-300 hover:underline"
               >
                 Show more ({filtered.length - visibleCount} remaining)
               </button>
