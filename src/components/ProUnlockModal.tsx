@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { CheckCircle2, Sparkles, Lock, X, Loader2 } from "lucide-react";
+import { trackEvent } from "@/lib/analytics";
 
 interface ProUnlockModalProps {
   open: boolean;
@@ -16,6 +17,12 @@ function isPaidUsage(data: { isPro?: boolean; tier?: string | null } | null): bo
 
 export function ProUnlockModal({ open, onClose, featureName }: ProUnlockModalProps) {
   const [isPaid, setIsPaid] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    if (open && isPaid === false) {
+      trackEvent("upgrade_prompted", { feature: featureName ?? "pro_feature" });
+    }
+  }, [open, isPaid, featureName]);
 
   useEffect(() => {
     if (!open) return;

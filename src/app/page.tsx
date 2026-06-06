@@ -34,6 +34,7 @@ import {
 import { useAuth } from "@clerk/nextjs";
 import { APP_CONFIG } from "@/lib/config";
 import { trackEvent } from "@/lib/analytics";
+import { captureAndStoreUtm } from "@/lib/utm";
 
 interface FillEntry {
   filename: string;
@@ -954,6 +955,7 @@ export default function Home() {
   const [upgradingPlan, setUpgradingPlan] = useState<string | null>(null);
 
   useEffect(() => {
+    captureAndStoreUtm();
     trackEvent("landing_page_view", { page: "home" });
   }, []);
 

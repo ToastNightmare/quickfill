@@ -59,6 +59,14 @@ interface SummaryResponse {
     checkoutFromLimitRate: number | null;
     paidFromCheckoutRate: number | null;
   };
+  utmBreakdown: {
+    source: string;
+    medium: string | null;
+    campaign: string | null;
+    landingViews: number;
+    checkoutStarts: number;
+    paidConversions: number;
+  }[];
   revenue: {
     range: {
       paidConversions: number;
@@ -90,6 +98,7 @@ const EVENT_LABELS: Record<AnalyticsEventName, string> = {
   download_success: "Successful downloads",
   download_failed: "Failed downloads",
   free_limit_hit: "Limit hits",
+  upgrade_prompted: "Upgrade prompted",
   checkout_start: "Checkout starts",
   subscription_started: "Paid conversions",
   subscription_updated: "Subscription updates",
@@ -109,6 +118,7 @@ const EVENT_ICONS: Record<AnalyticsEventName, typeof MousePointerClick> = {
   download_success: CheckCircle2,
   download_failed: AlertTriangle,
   free_limit_hit: Gauge,
+  upgrade_prompted: Sparkles,
   checkout_start: Sparkles,
   subscription_started: TrendingUp,
   subscription_updated: TrendingUp,
@@ -463,6 +473,47 @@ export default function AdminAnalyticsClient() {
             </div>
           </section>
         </div>
+
+        {/* Traffic Sources */}
+        <section className="mt-6 rounded-lg border border-border bg-surface p-6 shadow-sm">
+          <div className="flex items-center gap-2">
+            <Activity className="h-5 w-5 text-accent" />
+            <h2 className="text-lg font-semibold">Traffic Sources</h2>
+          </div>
+          <p className="mt-1 text-sm text-text-muted">UTM parameter breakdown from recent events.</p>
+          {summary?.utmBreakdown && summary.utmBreakdown.length > 0 ? (
+            <div className="mt-4 overflow-x-auto">
+              <table className="min-w-full text-sm">
+                <thead className="bg-surface-alt">
+                  <tr>
+                    <th className="px-4 py-2 text-left font-semibold text-text">Source</th>
+                    <th className="px-4 py-2 text-left font-semibold text-text">Medium</th>
+                    <th className="px-4 py-2 text-left font-semibold text-text">Campaign</th>
+                    <th className="px-4 py-2 text-right font-semibold text-text">Landing Views</th>
+                    <th className="px-4 py-2 text-right font-semibold text-text">Checkout Starts</th>
+                    <th className="px-4 py-2 text-right font-semibold text-text">Paid Conversions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {summary.utmBreakdown.map((row) => (
+                    <tr key={row.source} className="bg-surface">
+                      <td className="px-4 py-2 text-sm font-medium text-text">{row.source}</td>
+                      <td className="px-4 py-2 text-sm text-text-muted">{row.medium ?? "-"}</td>
+                      <td className="px-4 py-2 text-sm text-text-muted">{row.campaign ?? "-"}</td>
+                      <td className="px-4 py-2 text-sm text-right font-semibold tabular-nums">{row.landingViews}</td>
+                      <td className="px-4 py-2 text-sm text-right tabular-nums">{row.checkoutStarts}</td>
+                      <td className="px-4 py-2 text-sm text-right tabular-nums">{row.paidConversions}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div className="mt-4 rounded-lg border border-border bg-surface-alt p-6 text-center">
+              <p className="text-sm text-text-muted">No attributed traffic yet. UTM parameters will appear here once paid campaigns send traffic.</p>
+            </div>
+          )}
+        </section>
 
         <InteractiveTimeline events={summary?.recent ?? []} loading={loading} />
 
