@@ -269,6 +269,12 @@ export default function AdminAnalyticsClient() {
     );
   }, [summary]);
 
+  const hasActivityData = useMemo(() => {
+    return (summary?.daily ?? []).some(
+      (d) => d.counts.editor_pdf_loaded + d.counts.download_success + d.counts.checkout_start > 0
+    );
+  }, [summary]);
+
   const funnelSteps = useMemo(() => {
     const f = summary?.funnel;
     function pct(num: number, den: number): number | null {
@@ -287,14 +293,14 @@ export default function AdminAnalyticsClient() {
   }, [summary]);
 
   const kpis = [
-    { name: "landing_page_view" as AnalyticsEventName,   title: "Landing Views",     sub: "Page impressions",      icon: BarChart3,          accent: "blue"   },
-    { name: "home_cta_click" as AnalyticsEventName,       title: "CTA Clicks",        sub: "Homepage intent",       icon: MousePointerClick,  accent: "blue"   },
-    { name: "editor_upload_started" as AnalyticsEventName,title: "Upload Starts",     sub: "User PDFs selected",    icon: Upload,             accent: "purple" },
-    { name: "editor_pdf_loaded" as AnalyticsEventName,    title: "PDFs Loaded",       sub: "Editor usable",         icon: FileText,           accent: "purple" },
-    { name: "download_success" as AnalyticsEventName,     title: "Downloads",         sub: "Value delivered",       icon: Download,           accent: "green"  },
-    { name: "upgrade_prompted" as AnalyticsEventName,     title: "Upgrade Prompted",  sub: "Limit reached",         icon: Sparkles,           accent: "amber"  },
-    { name: "checkout_start" as AnalyticsEventName,       title: "Checkout Starts",   sub: "Revenue intent",        icon: Zap,                accent: "amber"  },
-    { name: "subscription_started" as AnalyticsEventName, title: "Paid Conversions",  sub: "Stripe confirmed",      icon: TrendingUp,         accent: "green"  },
+    { name: "landing_page_view" as AnalyticsEventName,   title: "Landing Views",     sub: "Page impressions",      icon: BarChart3,          accent: "blue",   primary: true  },
+    { name: "home_cta_click" as AnalyticsEventName,       title: "CTA Clicks",        sub: "Homepage intent",       icon: MousePointerClick,  accent: "blue",   primary: false },
+    { name: "editor_upload_started" as AnalyticsEventName,title: "Upload Starts",     sub: "User PDFs selected",    icon: Upload,             accent: "purple", primary: true  },
+    { name: "editor_pdf_loaded" as AnalyticsEventName,    title: "PDFs Loaded",       sub: "Editor usable",         icon: FileText,           accent: "purple", primary: false },
+    { name: "download_success" as AnalyticsEventName,     title: "Downloads",         sub: "Value delivered",       icon: Download,           accent: "green",  primary: true  },
+    { name: "upgrade_prompted" as AnalyticsEventName,     title: "Upgrade Prompted",  sub: "Limit reached",         icon: Sparkles,           accent: "amber",  primary: false },
+    { name: "checkout_start" as AnalyticsEventName,       title: "Checkout Starts",   sub: "Revenue intent",        icon: Zap,                accent: "amber",  primary: false },
+    { name: "subscription_started" as AnalyticsEventName, title: "Paid Conversions",  sub: "Stripe confirmed",      icon: TrendingUp,         accent: "green",  primary: true  },
   ];
 
   const accentMap = {
@@ -345,18 +351,25 @@ export default function AdminAnalyticsClient() {
         {kpis.map((item) => {
           const Icon = item.icon;
           const colors = accentMap[item.accent as keyof typeof accentMap];
+          const isPrimary = item.primary ?? false;
+          const topAccent = isPrimary
+            ? item.accent === "blue"   ? "border-t-blue-500"
+            : item.accent === "purple" ? "border-t-purple-500"
+            : item.accent === "green"  ? "border-t-emerald-500"
+            : "border-t-amber-500"
+            : "border-t-transparent";
           return (
-            <div key={item.name} className="rounded-xl bg-slate-800 border border-slate-700/50 p-4">
+            <div key={item.name} className={`rounded-xl border border-slate-700/50 p-4 border-t-4 ${isPrimary ? 'bg-slate-800' : 'bg-slate-800/60'} ${topAccent}`}>
               <div className="flex items-center justify-between mb-3">
                 <div className={`flex h-8 w-8 items-center justify-center rounded-lg ${colors.bg}`}>
                   <Icon className={`h-4 w-4 ${colors.text}`} />
                 </div>
                 <span className="text-xs font-medium text-slate-500">{days}d</span>
               </div>
-              <p className="text-2xl font-bold text-slate-100 tabular-nums">
+              <p className={`${isPrimary ? 'text-3xl font-bold text-slate-100' : 'text-xl font-bold text-slate-300'} tabular-nums`}>
                 {loading ? "..." : (totals[item.name] ?? 0)}
               </p>
-              <p className="mt-0.5 text-xs font-semibold text-slate-300">{item.title}</p>
+              <p className={`mt-0.5 text-xs ${isPrimary ? 'font-bold text-slate-200' : 'font-medium text-slate-400'}`}>{item.title}</p>
               <p className="mt-0.5 text-xs text-slate-500">{item.sub}</p>
             </div>
           );
@@ -411,7 +424,7 @@ export default function AdminAnalyticsClient() {
 
       {/* Section D -- Revenue Signal + Funnel Health */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <section className="rounded-xl bg-slate-800 border border-slate-700/50 p-6 lg:col-span-2">
+        <section className="rounded-xl bg-slate-800 border border-slate-700/50 border-t-2 border-t-emerald-500/60 p-6 lg:col-span-2">
           <div className="flex items-center gap-2">
             <TrendingUp className="h-5 w-5 text-emerald-400" />
             <h2 className="text-lg font-semibold text-slate-100">Revenue Signal</h2>
@@ -483,29 +496,39 @@ export default function AdminAnalyticsClient() {
             <p className="text-sm text-slate-400">PDF loads, downloads, and checkout starts.</p>
           </div>
         </div>
-        <div className="mt-6 flex h-48 items-end gap-1">
-          {(summary?.daily ?? []).map((day) => {
-            const loaded   = day.counts.editor_pdf_loaded;
-            const downloads = day.counts.download_success;
-            const checkouts = day.counts.checkout_start;
-            const combined  = loaded + downloads + checkouts;
-            const totalH = Math.max(6, Math.round((combined / maxDaily) * 100));
-            const loadedH   = combined > 0 ? Math.round((loaded   / combined) * totalH) : 0;
-            const downloadH = combined > 0 ? Math.round((downloads/ combined) * totalH) : 0;
-            const checkoutH = combined > 0 ? totalH - loadedH - downloadH : 0;
-            return (
-              <div key={day.day} className="flex min-w-0 flex-1 flex-col items-center gap-1">
-                <div className="flex h-40 w-full flex-col items-stretch justify-end rounded overflow-hidden bg-slate-900">
-                  {checkouts > 0 && <div className="w-full bg-amber-500/70" style={{ height: `${checkoutH}%` }} title={`Checkouts: ${checkouts}`} />}
-                  {downloads > 0 && <div className="w-full bg-emerald-500/70" style={{ height: `${downloadH}%` }} title={`Downloads: ${downloads}`} />}
-                  {loaded > 0    && <div className="w-full bg-blue-500/70"    style={{ height: `${loadedH}%`   }} title={`PDF loads: ${loaded}`} />}
-                </div>
-                <span className="truncate text-[10px] text-slate-600">{day.day.slice(5)}</span>
-              </div>
-            );
-          })}
-          {loading && <div className="h-40 w-full animate-pulse rounded-lg bg-slate-700" />}
-        </div>
+        {!loading && !hasActivityData ? (
+          <div className="mt-6 rounded-lg border border-dashed border-slate-700 bg-slate-900/50 px-6 py-8 text-center">
+            <BarChart3 className="mx-auto h-8 w-8 text-slate-700 mb-3" />
+            <p className="text-sm font-semibold text-slate-400">No activity yet for this range</p>
+            <p className="mt-1 text-xs text-slate-600">PDF loads, downloads, and checkout starts will chart here once traffic arrives.</p>
+          </div>
+        ) : (
+          <>
+            <div className="mt-6 flex h-48 items-end gap-1">
+              {(summary?.daily ?? []).map((day) => {
+                const loaded   = day.counts.editor_pdf_loaded;
+                const downloads = day.counts.download_success;
+                const checkouts = day.counts.checkout_start;
+                const combined  = loaded + downloads + checkouts;
+                const totalH = Math.max(6, Math.round((combined / maxDaily) * 100));
+                const loadedH   = combined > 0 ? Math.round((loaded   / combined) * totalH) : 0;
+                const downloadH = combined > 0 ? Math.round((downloads/ combined) * totalH) : 0;
+                const checkoutH = combined > 0 ? totalH - loadedH - downloadH : 0;
+                return (
+                  <div key={day.day} className="flex min-w-0 flex-1 flex-col items-center gap-1">
+                    <div className="flex h-40 w-full flex-col items-stretch justify-end rounded overflow-hidden bg-slate-900">
+                      {checkouts > 0 && <div className="w-full bg-amber-500/70" style={{ height: `${checkoutH}%` }} title={`Checkouts: ${checkouts}`} />}
+                      {downloads > 0 && <div className="w-full bg-emerald-500/70" style={{ height: `${downloadH}%` }} title={`Downloads: ${downloads}`} />}
+                      {loaded > 0    && <div className="w-full bg-blue-500/70"    style={{ height: `${loadedH}%`   }} title={`PDF loads: ${loaded}`} />}
+                    </div>
+                    <span className="truncate text-[10px] text-slate-600">{day.day.slice(5)}</span>
+                  </div>
+                );
+              })}
+              {loading && <div className="h-40 w-full animate-pulse rounded-lg bg-slate-700" />}
+            </div>
+          </>
+        )}
         <div className="mt-3 flex flex-wrap gap-4 text-xs text-slate-500">
           <span className="flex items-center gap-1.5"><span className="inline-block h-2 w-2 rounded-full bg-blue-500/70" />PDF loaded: {totals.editor_pdf_loaded ?? 0}</span>
           <span className="flex items-center gap-1.5"><span className="inline-block h-2 w-2 rounded-full bg-emerald-500/70" />Downloads: {totals.download_success ?? 0}</span>
@@ -583,8 +606,19 @@ export default function AdminAnalyticsClient() {
             </p>
           </>
         ) : (
-          <div className="mt-4 rounded-lg border border-slate-700/50 bg-slate-900 p-6 text-center">
-            <p className="text-sm text-slate-500">No attributed traffic yet. UTM parameters will appear here once paid campaigns send traffic.</p>
+          <div className="mt-4 rounded-lg border border-dashed border-slate-700 bg-slate-900/50 p-6">
+            <p className="text-sm font-semibold text-slate-400 mb-2">No campaign data yet</p>
+            <p className="text-xs text-slate-500 mb-4">
+              Run traffic through tracked links to populate this panel. Each UTM source will appear as a row with landing views, checkout starts, paid conversions, and conversion rate.
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {["meta / paid", "zeely / paid", "soro / referral", "google / organic", "(direct)"].map((label) => (
+                <span key={label} className="rounded-full border border-slate-700 bg-slate-800 px-3 py-1 text-xs text-slate-500">
+                  {label}
+                </span>
+              ))}
+            </div>
+            <p className="mt-3 text-xs text-slate-600">Expected sources once campaigns are live.</p>
           </div>
         )}
       </section>
@@ -610,6 +644,21 @@ export default function AdminAnalyticsClient() {
             </div>
           ))}
         </div>
+        {!loading && summary && insightText(summary).length === 1 && insightText(summary)[0].title === "Need more signal" && (
+          <div className="mt-3 grid gap-2">
+            {[
+              { icon: "arrow", text: "Watch checkout starts vs paid conversions -- that gap is your first revenue signal." },
+              { icon: "arrow", text: "Track which campaign produces uploads, not just clicks. Uploads mean intent." },
+              { icon: "arrow", text: "Traffic source data will appear after the first UTM-tagged visit arrives." },
+              { icon: "arrow", text: "Aim for upload-to-download rate above 60% before scaling paid spend." },
+            ].map((tip) => (
+              <div key={tip.text} className="flex items-start gap-2 rounded-lg bg-slate-900 px-4 py-3">
+                <span className="mt-0.5 text-slate-600 text-xs">-</span>
+                <p className="text-xs text-slate-500">{tip.text}</p>
+              </div>
+            ))}
+          </div>
+        )}
       </section>
 
       {/* Section H -- Recent Events */}
@@ -648,7 +697,13 @@ export default function AdminAnalyticsClient() {
             );
           })}
           {!loading && (summary?.recent.length ?? 0) === 0 && (
-            <p className="py-8 text-center text-sm text-slate-500">No analytics events yet.</p>
+            <div className="py-10 text-center">
+              <Activity className="mx-auto h-8 w-8 text-slate-700 mb-3" />
+              <p className="text-sm font-semibold text-slate-400">No events recorded yet</p>
+              <p className="mt-1 text-xs text-slate-600">
+                Events appear here as users visit the landing page, upload PDFs, and complete downloads.
+              </p>
+            </div>
           )}
         </div>
       </section>
