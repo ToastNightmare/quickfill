@@ -48,20 +48,26 @@ export function MetaPixel() {
   return (
     <>
       {/*
-       * Synchronous fbq stub — defines window.fbq and queues fbq('init').
-       * No PageView here; useEffect owns all PageView calls.
+       * Single Script block: stub + fbevents.js load in one atomic unit.
+       * fbevents.js is appended to the DOM by the stub itself, guaranteeing
+       * it only loads after window.fbq is fully defined. This avoids the
+       * race condition caused by splitting stub and loader into separate scripts.
        */}
-      <script
-        dangerouslySetInnerHTML={{
-          __html: `!function(f,b,e,v,n,t,s){if(f.fbq)return;n=f.fbq=function(){n.callMethod?n.callMethod.apply(n,arguments):n.queue.push(arguments)};if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';n.queue=[]}(window,document,'script','https://connect.facebook.net/en_US/fbevents.js');fbq('init','${pixelId}');`,
-        }}
-      />
-
-      {/* Async load of fbevents.js — processes queued init, no PageView */}
       <Script
-        id="meta-pixel-sdk"
+        id="meta-pixel-init"
         strategy="afterInteractive"
-        src="https://connect.facebook.net/en_US/fbevents.js"
+        dangerouslySetInnerHTML={{
+          __html: `
+            !function(f,b,e,v,n,t,s){
+              if(f.fbq)return;
+              n=f.fbq=function(){n.callMethod?n.callMethod.apply(n,arguments):n.queue.push(arguments)};
+              if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';n.queue=[];
+              t=b.createElement(e);t.async=!0;t.src=v;
+              s=b.getElementsByTagName(e)[0];s.parentNode.insertBefore(t,s)
+            }(window,document,'script','https://connect.facebook.net/en_US/fbevents.js');
+            window.fbq('init','${pixelId}');
+          `,
+        }}
       />
 
       {/* Noscript fallback */}
