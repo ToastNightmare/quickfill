@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { ClerkProvider } from "@clerk/nextjs";
 import "./globals.css";
 import { AppShell } from "@/components/AppShell";
+import { MetaPixel } from "@/components/MetaPixel";
 import { APP_CONFIG } from "@/lib/config";
 
 const themeInitializerScript = `
@@ -69,6 +70,7 @@ export default function RootLayout({
       <html lang="en" className="h-full antialiased" suppressHydrationWarning>
         <body className="min-h-full flex flex-col bg-surface text-text">
           <script dangerouslySetInnerHTML={{ __html: themeInitializerScript }} />
+          <MetaPixel />
           <AppShell>{children}</AppShell>
         </body>
       </html>
