@@ -33,7 +33,7 @@ declare global {
  * so dev/CI builds never fail without the env var.
  */
 export function MetaPixel() {
-  const pixelId = process.env.NEXT_PUBLIC_META_PIXEL_ID;
+  const pixelId = process.env.NEXT_PUBLIC_META_PIXEL_ID?.trim();
   const pathname = usePathname();
 
   // Fire PageView on initial mount and every client-side navigation.
