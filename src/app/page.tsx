@@ -34,6 +34,7 @@ import {
 import { useAuth } from "@clerk/nextjs";
 import { APP_CONFIG } from "@/lib/config";
 import { trackEvent } from "@/lib/analytics";
+import { trackMetaEvent } from "@/lib/meta-pixel";
 import { captureAndStoreUtm } from "@/lib/utm";
 
 interface FillEntry {
@@ -961,6 +962,7 @@ export default function Home() {
 
   const handleUpgrade = async (plan: "pro", annual = true) => {
     trackEvent("checkout_start", { source: "home_pricing", plan, billing: annual ? "annual" : "monthly" });
+    trackMetaEvent('InitiateCheckout', { content_name: plan, content_type: annual ? 'annual' : 'monthly' });
     if (!isLoaded) return;
     if (!isSignedIn) {
       window.location.href = `/checkout?plan=${plan}&billing=${annual ? "annual" : "monthly"}&source=home_pricing`;
@@ -1053,7 +1055,10 @@ export default function Home() {
           <div className="mt-10 flex flex-col items-center gap-4 sm:flex-row sm:justify-center">
             <Link
               href="/editor"
-              onClick={() => trackEvent("home_cta_click", { cta: "hero_fill_pdf" })}
+              onClick={() => {
+                trackEvent("home_cta_click", { cta: "hero_fill_pdf" });
+                trackMetaEvent('Lead', { content_name: 'hero_fill_pdf' });
+              }}
               className="flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-accent px-6 text-base font-semibold text-white shadow-lg shadow-accent/25 hover:bg-accent-hover transition-colors sm:w-auto"
             >
               Fill a PDF Free
@@ -1115,7 +1120,10 @@ export default function Home() {
           <div className="mt-8 flex flex-col items-center gap-3 sm:flex-row sm:justify-center">
             <Link
               href="/editor"
-              onClick={() => trackEvent("home_cta_click", { cta: "trust_fill_pdf" })}
+              onClick={() => {
+                trackEvent("home_cta_click", { cta: "trust_fill_pdf" });
+                trackMetaEvent('Lead', { content_name: 'trust_fill_pdf' });
+              }}
               className="flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-accent px-5 text-sm font-semibold text-white hover:bg-accent-hover transition-colors sm:w-auto"
             >
               Upload a PDF
@@ -1448,7 +1456,10 @@ export default function Home() {
               <div className="mt-auto pt-8">
                 <Link
                   href="/sign-up"
-                  onClick={() => trackEvent("home_cta_click", { cta: "pricing_free" })}
+                  onClick={() => {
+                    trackEvent("home_cta_click", { cta: "pricing_free" });
+                    trackMetaEvent('Lead', { content_name: 'pricing_free' });
+                  }}
                   className="flex h-11 items-center justify-center rounded-lg border-2 border-accent text-sm font-semibold text-accent hover:bg-accent/10 transition-colors"
                 >
                   Get Started Free

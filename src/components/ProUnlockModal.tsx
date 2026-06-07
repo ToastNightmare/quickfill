@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { CheckCircle2, Sparkles, Lock, X, Loader2 } from "lucide-react";
 import { trackEvent } from "@/lib/analytics";
+import { trackMetaEvent } from "@/lib/meta-pixel";
 
 interface ProUnlockModalProps {
   open: boolean;
@@ -21,6 +22,7 @@ export function ProUnlockModal({ open, onClose, featureName }: ProUnlockModalPro
   useEffect(() => {
     if (open && isPaid === false) {
       trackEvent("upgrade_prompted", { feature: featureName ?? "pro_feature" });
+      trackMetaEvent('QF_UpgradePrompted', { content_name: featureName ?? 'pro_feature' });
     }
   }, [open, isPaid, featureName]);
 

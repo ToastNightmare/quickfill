@@ -33,6 +33,7 @@ import type { EditorField, ToolType } from "@/lib/types";
 import { useAuth } from "@clerk/nextjs";
 import Link from "next/link";
 import { trackEvent } from "@/lib/analytics";
+import { trackMetaEvent } from "@/lib/meta-pixel";
 import { runEditorProfileAutofill, trackEditorAutofillShadowReport } from "@/lib/editor-profile-autofill";
 import { createEditorFieldId, repairDuplicateEditorFieldIds, withUniqueEditorFieldId } from "@/lib/field-ids";
 import { getTemplateBySlug, isTemplateFillable, type TemplateConfig } from "@/lib/templates-config";
@@ -396,6 +397,7 @@ export default function EditorPage() {
       setIsLoading(true);
       if (source === "upload") {
         trackEvent("editor_upload_started", { sizeKb: Math.round(bytes.byteLength / 1024) });
+        trackMetaEvent('QF_UploadStarted', { sizeKb: Math.round(bytes.byteLength / 1024) });
       }
       try {
         // Check file size limit (15MB max)
@@ -472,6 +474,7 @@ export default function EditorPage() {
           hasAcroForm: detectedAcroFieldCount > 0,
           detectedFieldCount: detectedAcroFieldCount,
         });
+        trackMetaEvent('ViewContent', { content_name: 'pdf_editor', content_type: source });
       } catch {
         setPdfBytes(null);
         setToast("This PDF could not be opened. It may be encrypted or corrupted. Try a different file.");
@@ -759,6 +762,7 @@ export default function EditorPage() {
       pageCount: totalPages || 1,
       hasAcroForm,
     });
+    trackMetaEvent('QF_DownloadAttempt', { fieldCount: fields.length, pageCount: totalPages || 1 });
     setIsDownloading(true);
     setLastDownloadError(null);
     try {
