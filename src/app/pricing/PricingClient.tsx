@@ -5,6 +5,7 @@ import { useAuth } from "@clerk/nextjs";
 import Link from "next/link";
 import { useEffect, useState, type ReactNode } from "react";
 import { trackEvent } from "@/lib/analytics";
+import { trackMetaEvent } from "@/lib/meta-pixel";
 
 const freeIncludes = [
   "3 downloads per month",
@@ -160,6 +161,7 @@ export default function PricingPage() {
 
   const handleUpgrade = async () => {
     trackEvent("checkout_start", { source: "pricing", plan: annual ? "annual" : "monthly" });
+    trackMetaEvent('InitiateCheckout', { content_name: annual ? 'pro_annual' : 'pro_monthly' });
     setCheckoutNotice(null);
     setCheckoutError(null);
 
