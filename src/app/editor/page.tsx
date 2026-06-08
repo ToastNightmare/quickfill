@@ -1539,11 +1539,12 @@ export default function EditorPage() {
             
             <div className="flex flex-col gap-3">
               <Link
-                href="/pricing"
+                href="/checkout?plan=pro&billing=annual&source=editor_guest_upsell"
                 className="flex h-11 w-full items-center justify-center rounded-xl bg-accent text-sm font-semibold text-white hover:bg-accent-hover transition-colors"
               >
-                Upgrade to Pro: $12/month
+                Upgrade to Pro: A$8.33/month
               </Link>
+              <p className="text-xs text-text-muted">Billed A$100/year. Cancel anytime.</p>
               <button
                 onClick={() => setShowGuestUpsellModal(false)}
                 className="text-sm text-text-muted hover:text-text transition-colors"
@@ -1565,15 +1566,23 @@ export default function EditorPage() {
               </div>
               <h2 className="mt-4 text-xl font-bold">Free limit reached</h2>
               <p className="mt-2 text-sm text-text-muted">
-                You have used all 3 of your free fills this month. Upgrade to Pro for unlimited fills with no watermarks.
+                You have used all 3 of your free fills this month.
               </p>
-              <div className="mt-6 flex flex-col gap-3">
+              <div className="mt-4 rounded-xl bg-surface-alt p-4">
+                <div className="flex items-center justify-center gap-4 text-sm">
+                  <span className="text-text-muted line-through">Adobe $24/mo</span>
+                  <span className="font-bold text-green-500">vs</span>
+                  <span className="font-bold text-accent">QuickFill Pro A$8.33/mo</span>
+                </div>
+              </div>
+              <div className="mt-5 flex flex-col gap-3">
                 <Link
-                  href="/pricing"
+                  href="/checkout?plan=pro&billing=annual&source=editor_limit_modal"
                   className="flex h-11 w-full items-center justify-center rounded-xl bg-accent text-sm font-semibold text-white hover:bg-accent-hover transition-colors"
                 >
-                  Upgrade to Pro, $12/month
+                  Upgrade to Pro: A$8.33/month
                 </Link>
+                <p className="text-xs text-text-muted">Billed A$100/year. Cancel anytime.</p>
                 <button
                   onClick={() => setShowUpgradeModal(false)}
                   className="flex h-11 w-full items-center justify-center rounded-xl border border-border text-sm font-semibold hover:bg-surface-alt transition-colors"

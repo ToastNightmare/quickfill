@@ -1064,12 +1064,13 @@ export default function Home() {
               Fill a PDF Free
               <ArrowRight className="h-4 w-4" />
             </Link>
-            <a
-              href="#how-it-works"
+            <Link
+              href="/templates"
+              onClick={() => trackEvent("home_cta_click", { cta: "hero_browse_templates" })}
               className="flex h-12 w-full items-center justify-center rounded-xl border border-white/20 px-6 text-base font-semibold text-white hover:bg-white/10 transition-colors sm:w-auto"
             >
-              See How It Works
-            </a>
+              Browse Templates
+            </Link>
           </div>
           {/* Social proof */}
           <p className="mt-4 text-center text-xs text-gray-400">
