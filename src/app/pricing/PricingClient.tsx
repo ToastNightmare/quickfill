@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useEffect, useState, type ReactNode } from "react";
 import { trackEvent } from "@/lib/analytics";
 import { trackMetaEvent } from "@/lib/meta-pixel";
+import { getStoredUtm } from "@/lib/utm";
 
 const freeIncludes = [
   "3 downloads per month",
@@ -179,10 +180,11 @@ export default function PricingPage() {
 
     setUpgrading(true);
     try {
+      const utm = getStoredUtm();
       const res = await fetch("/api/stripe/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ plan: "pro", annual }),
+        body: JSON.stringify({ plan: "pro", annual, ...utm }),
       });
       const data = await res.json().catch(() => ({}));
 
