@@ -203,7 +203,7 @@ function CheckoutSuccessContent() {
               <ul className="mt-3 grid gap-2 sm:grid-cols-2">
                 <li className="flex items-center gap-2"><CheckCircle2 className="h-4 w-4 text-accent" /> Unlimited fills</li>
                 <li className="flex items-center gap-2"><CheckCircle2 className="h-4 w-4 text-accent" /> No watermarks</li>
-                <li className="flex items-center gap-2"><CheckCircle2 className="h-4 w-4 text-accent" /> Profile auto-fill</li>
+                <li className="flex items-center gap-2"><CheckCircle2 className="h-4 w-4 text-accent" /> Saved details</li>
                 <li className="flex items-center gap-2"><CheckCircle2 className="h-4 w-4 text-accent" /> Priority support</li>
               </ul>
             </div>

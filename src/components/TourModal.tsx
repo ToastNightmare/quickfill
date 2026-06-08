@@ -19,7 +19,7 @@ const steps: Step[] = [
   {
     icon: FileText,
     title: "Upload or pick a template",
-    description: "Start by uploading any PDF from your computer, or choose from our library of real Australian government forms and professional templates.",
+    description: "Start by uploading any PDF from your computer, or choose from our library of ready-to-fill templates and real government forms.",
   },
   {
     icon: MousePointer2,

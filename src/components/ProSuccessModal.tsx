@@ -85,7 +85,7 @@ export function ProSuccessModal({ open, onClose, onGetStarted }: ProSuccessModal
               <div className="flex h-6 w-6 items-center justify-center rounded-full bg-green-500/20">
                 <Check className="h-4 w-4 text-green-500" />
               </div>
-              <span className="text-sm font-medium">All 13+ Australian government templates</span>
+              <span className="text-sm font-medium">All ready-to-fill templates</span>
             </div>
             <div className="flex items-center gap-3">
               <div className="flex h-6 w-6 items-center justify-center rounded-full bg-green-500/20">

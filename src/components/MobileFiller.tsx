@@ -400,7 +400,7 @@ export function MobileFiller() {
         <div className="mt-10 w-full max-w-sm rounded-2xl border border-border bg-surface-alt p-4">
           <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-text-muted">Works best with</p>
           <div className="flex flex-col gap-2 text-sm text-text-muted">
-            {["ATO tax forms", "Medicare and Centrelink", "Rental applications", "Council and permit forms"].map((s) => (
+            {["Tax and government forms", "Employment forms", "Rental applications", "Business and permit forms"].map((s) => (
               <div key={s} className="flex items-center gap-2">
                 <div className="h-1.5 w-1.5 shrink-0 rounded-full bg-accent/60" />
                 {s}
