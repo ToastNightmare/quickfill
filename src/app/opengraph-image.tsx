@@ -60,7 +60,7 @@ export default function OGImage() {
 
         {/* Bottom, trust signals */}
         <div style={{ display: "flex", gap: "32px", alignItems: "center" }}>
-          {["No software to install", "Free to start", "Australian forms supported"].map((t) => (
+          {["No software to install", "Free to start", "Works with any PDF"].map((t) => (
             <div key={t} style={{ display: "flex", alignItems: "center", gap: "8px" }}>
               <div style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: "#2d8ef7" }} />
               <span style={{ fontSize: 20, color: "rgba(255,255,255,0.6)" }}>{t}</span>

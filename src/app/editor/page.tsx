@@ -1500,7 +1500,7 @@ export default function EditorPage() {
             </div>
             <h2 className="text-xl font-bold mb-2">Your PDF is ready!</h2>
             <p className="text-text-muted text-sm mb-6">
-              Create a free account to get 3 fills per month, save your Australian profile, and re-fill forms instantly.
+              Create a free account to get 3 fills per month, save your details, and re-fill forms faster.
             </p>
             <Link href="/sign-up" className="flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-accent text-sm font-semibold text-white hover:bg-accent-hover transition-colors mb-3">
               Create Free Account
