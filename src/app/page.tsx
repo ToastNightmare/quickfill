@@ -1270,7 +1270,7 @@ export default function Home() {
               {
                 icon: LockKeyhole,
                 title: "Private by Design",
-                description: "PDFs are processed securely in memory for download generation and are not stored on our servers.",
+                description: "Your PDF is not read by us, not stored on our servers, and not shared with anyone.",
               },
             ].map((f) => (
               <div key={f.title} className="rounded-xl border border-border bg-surface p-6 shadow-sm">
