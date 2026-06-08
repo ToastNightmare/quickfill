@@ -206,7 +206,7 @@ function LoggedInHome() {
           <div className="grid gap-4 sm:grid-cols-2">
             {[
               { label: "Fill a Form", href: "/editor", icon: FileText },
-              { label: "Auto-fill Profile", href: "/profile", icon: User },
+              { label: "Saved Details", href: "/profile", icon: User },
               { label: "View History", href: "/dashboard", icon: LayoutDashboard },
               { label: "Pricing & Plans", href: "/pricing", icon: CreditCard },
             ].map((action) => (
@@ -252,15 +252,15 @@ function LoggedInHome() {
 const features = [
   {
     icon: Upload,
-    title: "Upload Any Australian Form",
+    title: "Upload Any PDF Form",
     description:
-      "ATO tax returns, Medicare claims, Centrelink forms, rental applications, council permits: QuickFill handles them all.",
+      "Tax forms, rental applications, government documents, employment paperwork: QuickFill handles them all.",
   },
   {
     icon: User,
-    title: "Auto-fill from Your Profile",
+    title: "Fill Faster with Saved Details",
     description:
-      "Save your name, address, TFN, Medicare number, ABN and more. QuickFill fills matching fields instantly across any form.",
+      "Save your name, address, and contact details once. Use them to fill matching fields faster across any form.",
   },
   {
     icon: Download,
@@ -287,7 +287,7 @@ const verticals = [
     icon: FileText,
     title: "Bookkeepers & Sole Traders",
     description:
-      "ATO BAS forms, tax declarations, and business registrations, done fast.",
+      "Tax declarations, invoices, and business registration forms, done fast.",
   },
   {
     icon: ShieldCheck,
@@ -299,18 +299,18 @@ const verticals = [
     icon: BadgeCheck,
     title: "Healthcare & Community Services",
     description:
-      "Medicare, Centrelink, and client intake forms filled accurately every time.",
+      "Client intake forms, referral documents, and service agreements filled accurately every time.",
   },
 ];
 
 const heroTrustPills = [
   { icon: Check, text: "Fill any PDF without locked fields stopping you" },
   { icon: CreditCard, text: "Free plan, Pro is $12/month" },
-  { icon: BadgeCheck, text: "Built for Australian forms: TFN, Centrelink, rentals, NDIS" },
+  { icon: BadgeCheck, text: "Australian templates included. Works with any PDF." },
 ];
 
 const proofStats = [
-  { value: "15+", label: "Australian templates" },
+  { value: "15+", label: "ready templates" },
   { value: "3", label: "free fills each month" },
   { value: "0", label: "stored PDF uploads" },
   { value: "50MB", label: "PDF upload limit" },
@@ -325,7 +325,7 @@ const buyerQuestions = [
   {
     icon: ShieldCheck,
     title: "Will it work with official forms?",
-    body: "Yes. QuickFill is tested against real Australian templates including ATO, Services Australia, Medicare, NDIS, rental, and business forms.",
+    body: "Yes. QuickFill works with any PDF form and includes ready-made templates for tax, rental, government, and business documents.",
   },
   {
     icon: BadgeCheck,
@@ -347,8 +347,8 @@ const securitySignals = [
   },
   {
     icon: BadgeCheck,
-    title: "Made for Australian forms",
-    body: "ATO, Medicare, Centrelink, council forms, rentals and NDIS paperwork are the forms QuickFill is built around.",
+    title: "Built in Australia",
+    body: "QuickFill is built in Australia and includes templates for ATO, Medicare, Centrelink, and rental forms. Works with any PDF, anywhere.",
   },
 ];
 
@@ -700,7 +700,7 @@ export default function Home() {
             applicationCategory: "BusinessApplication",
             operatingSystem: "Any",
             description:
-              "Fill PDF forms online free. Upload any PDF, ATO tax forms, Medicare, Centrelink, rental applications, council forms, and fill it in seconds. Smart field detection and instant download.",
+              "Fill any PDF form online free. Upload your PDF, fill it with text, signatures, checkboxes, and dates, then download your completed document instantly. No software required.",
             offers: [
               {
                 "@type": "Offer",
@@ -722,9 +722,9 @@ export default function Home() {
               "PDF form filling",
               "AcroForm field detection",
               "Text, checkbox, signature, and date fields",
-              "AI-powered field detection",
+              "Drag-and-drop form filling",
               "Instant PDF download",
-              "Auto-fill from saved profile",
+              "Fill faster with saved details",
             ],
           }),
         }}
@@ -737,7 +737,7 @@ export default function Home() {
             Stop printing locked PDFs forever
           </h1>
           <p className="mx-auto mt-6 max-w-2xl text-lg text-gray-300 sm:text-xl">
-            Fill Australian government and business forms online: no Adobe, no printing, no scanning. Works on any device.
+            Fill any PDF form online: no Adobe, no printing, no scanning. Works on any device.
           </p>
           {/* Feature pills */}
           <div className="mt-6 flex flex-wrap items-center justify-center gap-3 text-sm text-gray-300">
@@ -770,7 +770,7 @@ export default function Home() {
           </div>
           {/* Social proof */}
           <p className="mt-4 text-center text-xs text-gray-400">
-            Trusted by Australians filling TFN declarations, rental applications, Centrelink forms and NDIS paperwork
+            Works with tax forms, rental applications, government paperwork, and any PDF you need to fill.
           </p>
 
           <HeroEditorDemo />
@@ -800,7 +800,7 @@ export default function Home() {
               The answers people need before uploading a form
             </h2>
             <p className="mx-auto mt-4 max-w-2xl text-text-muted">
-              QuickFill is designed for sensitive Australian paperwork where privacy, accuracy, and speed matter.
+              QuickFill is designed for sensitive paperwork where privacy, accuracy, and speed matter.
             </p>
           </div>
           <div className="mt-10 grid gap-5 md:grid-cols-3">
@@ -844,7 +844,7 @@ export default function Home() {
           </h2>
           <p className="mx-auto mt-4 max-w-2xl text-center text-text-muted">
             No more printing, hand-writing, and scanning. Fill any PDF form
-            directly in your browser, Australian government forms, tax documents, and more.
+            directly in your browser. Any PDF form, government documents, tax forms, and more.
           </p>
           <div className="mt-16 grid gap-8 sm:grid-cols-2 lg:grid-cols-3">
             {features.map((feature) => (
@@ -929,12 +929,12 @@ export default function Home() {
       <section className="bg-surface-alt px-4 py-20 sm:px-6 lg:px-8">
         <div className="mx-auto max-w-4xl">
           <div className="text-center">
-            <span className="inline-flex items-center gap-2 rounded-full bg-accent/10 px-4 py-1.5 text-sm font-semibold text-accent">Built for Australian forms</span>
+            <span className="inline-flex items-center gap-2 rounded-full bg-accent/10 px-4 py-1.5 text-sm font-semibold text-accent">Built in Australia</span>
             <h2 className="mt-4 text-3xl font-bold tracking-tight sm:text-4xl">
-              Features made for Australia
+              Features built for real paperwork
             </h2>
             <p className="mx-auto mt-4 max-w-2xl text-text-muted">
-              No other PDF filler understands Australian forms like QuickFill. From TFN validation to ABN lookup, we handle the details that matter.
+              QuickFill is built in Australia, with AU-specific tools alongside features that work with any PDF form, anywhere.
             </p>
           </div>
           <div className="mt-12 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
@@ -951,8 +951,8 @@ export default function Home() {
               },
               {
                 icon: User,
-                title: "Australian Profile Auto-fill",
-                description: "Save your TFN, Medicare number, ABN, address, and driver licence once. QuickFill fills matching fields across any form.",
+                title: "Saved Details",
+                description: "Save your name, address, and other details once. Use them to fill matching fields faster across any form.",
               },
               {
                 icon: Clock,
@@ -989,7 +989,7 @@ export default function Home() {
             Who uses QuickFill?
           </h2>
           <p className="mx-auto mt-4 max-w-2xl text-center text-text-muted">
-            Professionals across Australia rely on QuickFill to save hours on paperwork.
+            Professionals rely on QuickFill to save hours on paperwork.
           </p>
           <div className="mt-12 grid gap-6 sm:grid-cols-2">
             {verticals.map((v) => (
@@ -1053,11 +1053,10 @@ export default function Home() {
       <section className="bg-surface-alt px-4 py-16 sm:px-6 lg:px-8">
         <div className="mx-auto max-w-4xl text-center">
           <h2 className="text-2xl font-bold tracking-tight sm:text-3xl">
-            Works with any Australian PDF form
+            Works with any PDF form
           </h2>
           <p className="mx-auto mt-4 max-w-2xl text-text-muted">
-            Fill and submit forms for the ATO, Medicare, Centrelink, state government agencies,
-            councils, real estate agents, and more.
+            Fill and submit tax forms, rental applications, employment paperwork, government documents, and any other PDF you need.
           </p>
           <div className="mt-8 flex flex-wrap justify-center gap-3">
             {[
@@ -1069,6 +1068,8 @@ export default function Home() {
               "Tenancy Agreements",
               "ABN Registration",
               "Business Forms",
+              "Employment Contracts",
+              "Consent Forms",
             ].map((label) => (
               <span
                 key={label}
@@ -1102,11 +1103,11 @@ export default function Home() {
             </div>
             <div className="rounded-xl border border-border bg-surface-alt p-6">
               <h3 className="font-semibold text-base">Can I use it for government forms?</h3>
-              <p className="mt-2 text-sm text-text-muted">Yes. QuickFill includes real Australian government forms: TFN declarations, Centrelink income forms, Medicare enrolment, NDIS service agreements, and more.</p>
+              <p className="mt-2 text-sm text-text-muted">Yes. QuickFill works with any PDF form and includes ready-made government templates: TFN declarations, Centrelink income forms, Medicare enrolment, NDIS service agreements, and more.</p>
             </div>
             <div className="rounded-xl border border-border bg-surface-alt p-6">
               <h3 className="font-semibold text-base">What&apos;s the difference between free and Pro?</h3>
-              <p className="mt-2 text-sm text-text-muted">Free gives 3 fills per month. Pro ($12/month) gives unlimited fills and access to all Australian templates.</p>
+              <p className="mt-2 text-sm text-text-muted">Free gives 3 fills per month. Pro ($12/month) gives unlimited fills and access to all ready-made templates.</p>
             </div>
           </div>
         </div>
@@ -1190,7 +1191,7 @@ export default function Home() {
                   {[
                     "Unlimited documents",
                     "No watermarks",
-                    "Auto-fill from profile",
+                    "Fill faster with saved details",
                     "Save and resume",
                     "Re-fill from history",
                     "Priority support",
