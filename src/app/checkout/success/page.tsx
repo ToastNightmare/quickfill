@@ -100,6 +100,33 @@ function CheckoutSuccessContent() {
     syncBilling();
   }, [initialSyncError, syncAlreadyRan, syncBilling]);
 
+  useEffect(() => {
+    // Only fire on confirmed new purchases
+    if (status !== "ready") return;
+    if (alreadyPro || repairedBilling) return;
+    if (!sessionId) return;
+
+    const flagKey = `qf_purchase_fired_${sessionId}`;
+    try {
+      if (sessionStorage.getItem(flagKey)) return;
+    } catch {
+      return; // sessionStorage unavailable (private browsing restriction)
+    }
+
+    if (typeof window.fbq !== "function") return;
+
+    const billing = searchParams.get("billing");
+    const value = billing === "annual" ? 100.00 : 12.00;
+
+    window.fbq("track", "Purchase", { value, currency: "AUD" });
+
+    try {
+      sessionStorage.setItem(flagKey, "1");
+    } catch {
+      // sessionStorage write failed - acceptable
+    }
+  }, [status, alreadyPro, repairedBilling, sessionId, searchParams]);
+
   const handleRetry = async () => {
     setRetrying(true);
     await syncBilling();
