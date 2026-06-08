@@ -17,10 +17,7 @@ export default function PrivacyPage() {
         <section>
           <h2 className="text-lg font-semibold text-text">Document Processing</h2>
           <p className="mt-2">
-            QuickFill processes PDFs in your browser and on our servers for download generation only.
-            PDF files are processed in memory and never stored on our servers. We do not read,
-            store, or share the contents of your documents. Your PDF data is used solely to
-            generate the filled PDF for immediate download.
+            When you upload a PDF, it is loaded in your browser and sent to our servers only to generate your filled download. The file is processed in memory and never saved to disk, a database, or any storage service. We do not read, store, or share the contents of your documents.
           </p>
         </section>
 

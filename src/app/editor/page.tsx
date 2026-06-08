@@ -1084,7 +1084,7 @@ export default function EditorPage() {
               <Sparkles className="mt-0.5 h-5 w-5 shrink-0 text-accent" />
               <div className="flex-1 text-sm">
                 <span className="font-semibold text-accent">Welcome to QuickFill!</span>
-                <span className="ml-1 text-text-muted">Upload any PDF form to get started. PDFs are processed securely and not stored.</span>
+                <span className="ml-1 text-text-muted">Upload any PDF form to get started. Your PDF is processed to generate your download and is not saved to our servers.</span>
               </div>
               <button onClick={dismissWelcome} className="shrink-0 text-text-muted hover:text-text transition-colors">
                 <X className="h-4 w-4" />
@@ -1095,7 +1095,7 @@ export default function EditorPage() {
 
           <div className="mx-8 -mt-2 mb-8 grid gap-3 lg:grid-cols-3">
             {[
-              { icon: LockKeyhole, title: "No PDF storage", body: "Processed in memory for download generation." },
+              { icon: LockKeyhole, title: "No PDF storage", body: "Your PDF is used to create your download, then discarded. Never saved." },
               { icon: ShieldCheck, title: "Free to start", body: "Three free fills each month, with watermark." },
               { icon: BadgeCheck, title: "Pro removes friction", body: "Unlimited fills, no watermark, full history." },
             ].map((item) => (

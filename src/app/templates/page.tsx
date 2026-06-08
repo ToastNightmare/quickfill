@@ -77,7 +77,7 @@ export default function TemplatesPage() {
         <div className="flex items-start gap-3">
           <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-accent" />
           <p className="text-sm leading-6 text-text-muted">
-            PDFs are processed for download generation and are not stored on QuickFill servers.
+            Your PDF is used to generate your download only and is not saved to QuickFill servers.
           </p>
         </div>
       </div>

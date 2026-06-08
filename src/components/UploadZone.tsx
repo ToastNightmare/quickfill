@@ -73,16 +73,16 @@ export function UploadZone({ onFileLoad }: UploadZoneProps) {
             <div>
               <p className="text-xs font-semibold text-text">PDF not stored</p>
               <p className="mt-0.5 text-[11px] leading-snug text-text-muted">
-                Processed for your download only.
+                Your PDF is used to generate your download, then discarded. It is never saved.
               </p>
             </div>
           </div>
           <div className="flex items-start gap-2 rounded-lg border border-border bg-surface px-3 py-2">
             <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-accent" />
             <div>
-              <p className="text-xs font-semibold text-text">Private by default</p>
+              <p className="text-xs font-semibold text-text">Not read, not shared</p>
               <p className="mt-0.5 text-[11px] leading-snug text-text-muted">
-                Your form stays focused on the task.
+                We don't access the contents of your document.
               </p>
             </div>
           </div>
