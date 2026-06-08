@@ -319,7 +319,7 @@ const buyerQuestions = [
   {
     icon: LockKeyhole,
     title: "Will QuickFill keep my PDF?",
-    body: "No. Uploaded PDFs are processed for download generation and are not stored on our servers.",
+    body: "No. Your PDF is used to generate your filled download, then discarded. It is never saved to our servers.",
   },
   {
     icon: ShieldCheck,
@@ -337,12 +337,12 @@ const securitySignals = [
   {
     icon: LockKeyhole,
     title: "No PDF storage",
-    body: "PDFs are processed securely in memory for download generation and are not stored on our servers.",
+    body: "Your PDF is used to create your download, then discarded. We don't save it.",
   },
   {
     icon: ShieldCheck,
     title: "Private by design",
-    body: "Your form data stays focused on the task: fill the PDF, download it, and keep moving.",
+    body: "Your PDF is not read by us, not stored on our servers, and not shared with anyone.",
   },
   {
     icon: BadgeCheck,
@@ -1397,7 +1397,7 @@ export default function Home() {
             </div>
             <div className="rounded-xl border border-border bg-surface-alt p-6">
               <h3 className="font-semibold text-base">Is it secure?</h3>
-              <p className="mt-2 text-sm text-text-muted">PDFs are processed securely in memory for download generation and are not stored on our servers.</p>
+              <p className="mt-2 text-sm text-text-muted">Your PDF is processed to generate your download and is never saved to our servers. We do not read or share the contents of your document.</p>
             </div>
             <div className="rounded-xl border border-border bg-surface-alt p-6">
               <h3 className="font-semibold text-base">Does it work on my phone?</h3>
