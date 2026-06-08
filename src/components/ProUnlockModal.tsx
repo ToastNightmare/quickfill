@@ -84,7 +84,7 @@ export function ProUnlockModal({ open, onClose, featureName }: ProUnlockModalPro
             ? `${featureName ?? "This feature"} is included in your active Pro plan.`
             : checkingPlan
               ? "One moment while QuickFill gets your account ready."
-              : `${featureName ?? "This feature"} is available on the Pro plan. Upgrade for A$12/month to unlock unlimited fills and all templates.`}
+              : `${featureName ?? "This feature"} is available on the Pro plan. Upgrade to Pro for A$8.33/month (billed A$100/year) to unlock unlimited fills, no watermarks, and all templates.`}
         </p>
 
         <div className="bg-surface-alt rounded-xl p-4 mb-6 text-left">
@@ -122,13 +122,16 @@ export function ProUnlockModal({ open, onClose, featureName }: ProUnlockModalPro
             Loading...
           </button>
         ) : (
-          <a
-            href="/pricing"
-            className="w-full h-11 rounded-xl bg-accent text-sm font-semibold text-white hover:bg-accent-hover transition-colors flex items-center justify-center gap-2"
-          >
-            <Sparkles className="h-4 w-4" />
-            Upgrade to Pro
-          </a>
+          <>
+            <a
+              href="/checkout?plan=pro&billing=annual&source=pro_unlock_modal"
+              className="w-full h-11 rounded-xl bg-accent text-sm font-semibold text-white hover:bg-accent-hover transition-colors flex items-center justify-center gap-2"
+            >
+              <Sparkles className="h-4 w-4" />
+              Upgrade to Pro: A$8.33/month
+            </a>
+            <p className="mt-2 text-xs text-text-muted">Billed A$100/year. Cancel anytime.</p>
+          </>
         )}
 
         {!paidPlan && !checkingPlan && (

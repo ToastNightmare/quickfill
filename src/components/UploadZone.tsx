@@ -67,6 +67,7 @@ export function UploadZone({ onFileLoad }: UploadZoneProps) {
         </p>
         <p className="mt-1 text-sm text-text-muted hidden sm:block">or click to browse</p>
         <p className="mt-4 text-xs text-text-muted">PDF files only, up to 50MB</p>
+        <p className="mt-2 text-xs text-text-muted">No account needed. Works with any PDF.</p>
         <div className="mt-5 grid w-full max-w-md gap-2 text-left sm:grid-cols-2">
           <div className="flex items-start gap-2 rounded-lg border border-border bg-surface px-3 py-2">
             <LockKeyhole className="mt-0.5 h-4 w-4 shrink-0 text-accent" />
