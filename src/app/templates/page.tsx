@@ -5,9 +5,9 @@ import { TemplatesExplorer } from "@/components/TemplatesExplorer";
 import { templateCount, templateDirectory } from "@/lib/template-directory";
 
 export const metadata: Metadata = {
-  title: "Australian PDF Form Templates | QuickFill",
+  title: "PDF Form Templates | QuickFill",
   description:
-    "Search and fill common Australian PDF form templates online, including ATO, Centrelink, employment, rental, finance, insurance, NDIS, health, and consent forms.",
+    "Search and fill PDF form templates online. Includes tax, employment, rental, finance, insurance, NDIS, health, and consent forms, plus upload your own PDF.",
   alternates: {
     canonical: "/templates",
   },

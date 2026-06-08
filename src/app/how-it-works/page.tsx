@@ -6,9 +6,9 @@ import HowItWorksContent from "./content";
 export const metadata: Metadata = {
   title: "How to Fill a PDF Form Online Free | QuickFill",
   description:
-    "Learn how to fill any PDF form online in 3 simple steps. Upload your ATO tax form, Medicare claim, rental application or any Australian PDF, fill in the fields, and download instantly. No software required.",
+    "Learn how to fill any PDF form online in 3 simple steps. Upload your PDF, fill in the fields using simple tools, and download your completed form instantly. No software required.",
   keywords:
-    "how to fill PDF online, fill ATO form online, fill Medicare form, PDF form filler Australia, fill rental application PDF, online form filler",
+    "how to fill PDF online, fill PDF form online free, PDF form filler, fill form online, online PDF editor, fill PDF without software, fill and download PDF",
 };
 
 const steps = [
@@ -43,7 +43,7 @@ export default function HowItWorksPage() {
             "@type": "HowTo",
             name: "How to Fill a PDF Form Online",
             description:
-              "Fill any PDF form online in 3 simple steps using QuickFill. Works with ATO, Medicare, Centrelink, rental applications, and all Australian government forms.",
+              "Fill any PDF form online in 3 simple steps using QuickFill. Upload your PDF, fill in the fields, and download your completed document instantly.",
             step: steps.map((s, i) => ({
               "@type": "HowToStep",
               position: i + 1,
