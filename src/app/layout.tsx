@@ -41,9 +41,9 @@ export const metadata: Metadata = {
   },
   title: "Fill PDF Forms Online Free | QuickFill",
   description:
-    "Fill PDF forms online free. Upload ATO tax forms, Medicare claims, Centrelink forms, rental applications, council permits and Australian documents. Add text, boxes, signatures and dates, then download instantly. No software required.",
+    "Fill PDF forms online free. Upload any PDF form, fill it with text, signatures, checkboxes, and dates, then download your completed document instantly. No software required. Free to start.",
   keywords:
-    "fill PDF online, PDF form filler, fill PDF free, online PDF editor, ATO form filler, fill form online Australia, Medicare form filler, Centrelink form, rental application PDF, council form filler, Australian PDF forms",
+    "fill PDF online, PDF form filler, fill PDF free, online PDF editor, fill PDF form, PDF filler no download, fill tax form online, rental application PDF, government form filler, online document filler",
   openGraph: {
     title: "Fill PDF Forms Online Free | QuickFill",
     description:
@@ -51,7 +51,7 @@ export const metadata: Metadata = {
     url: APP_CONFIG.url,
     siteName: "QuickFill",
     type: "website",
-    locale: "en_AU",
+    locale: "en_US",
     images: [{ url: "/opengraph-image", width: 1200, height: 630 }],
   },
   robots: {
