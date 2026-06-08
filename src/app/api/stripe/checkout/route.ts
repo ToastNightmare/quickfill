@@ -263,10 +263,18 @@ export async function POST(req: NextRequest) {
 
   let plan: "pro" | "business" = "pro";
   let annual = false;
+  const utmKeys = ["utm_source", "utm_medium", "utm_campaign", "utm_content", "utm_term"] as const;
+  const utmMetadata: Record<string, string> = {};
+  let bodyJson: Record<string, unknown> = {};
   try {
-    const body = await req.json();
-    if (body.plan === "business") plan = "business";
-    if (body.annual === true) annual = true;
+    bodyJson = await req.json();
+    if (bodyJson.plan === "business") plan = "business";
+    if (bodyJson.annual === true) annual = true;
+    for (const key of utmKeys) {
+      if (typeof bodyJson[key] === "string" && bodyJson[key].length > 0) {
+        utmMetadata[key] = String(bodyJson[key]).slice(0, 100);
+      }
+    }
   } catch {
     // Default to Pro monthly when no JSON body is supplied.
   }
@@ -274,7 +282,7 @@ export async function POST(req: NextRequest) {
   const billing = annual ? "annual" : "monthly";
 
   try {
-    const metadata = { userId, plan, billing, firstName };
+    const metadata = { userId, plan, billing, firstName, ...utmMetadata };
     const { snapshot, cachedCustomerId } = await checkoutBillingContext(userId);
     let existingCustomerId = snapshot?.stripeCustomerId ?? cachedCustomerId;
 

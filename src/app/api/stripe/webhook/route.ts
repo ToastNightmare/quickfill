@@ -197,10 +197,22 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
     });
   }
 
+  const utmProperties: Record<string, string | undefined> = {
+    utm_source: session.metadata?.utm_source,
+    utm_medium: session.metadata?.utm_medium,
+    utm_campaign: session.metadata?.utm_campaign,
+    utm_content: session.metadata?.utm_content,
+    utm_term: session.metadata?.utm_term,
+  };
+  const definedUtm = Object.fromEntries(
+    Object.entries(utmProperties).filter(([, v]) => typeof v === "string" && v.length > 0)
+  );
+
   await trackServerEvent("subscription_started", {
     source: "stripe_checkout",
     tier,
     billing: session.metadata?.billing ?? "monthly",
+    ...definedUtm,
   });
 }
 

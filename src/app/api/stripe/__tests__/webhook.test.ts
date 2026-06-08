@@ -287,4 +287,55 @@ describe("Stripe webhook payment truth", () => {
       }),
     );
   });
+
+  it("handleCheckoutCompleted with UTM in session.metadata passes utm_source, utm_medium, utm_campaign to trackServerEvent", async () => {
+    const sessionWithUtm = {
+      id: "cs_test",
+      customer: "cus_test",
+      customer_email: "user@example.com",
+      metadata: { userId: "user_test", plan: "pro", billing: "annual", utm_source: "google", utm_medium: "cpc", utm_campaign: "summer_sale" },
+      subscription: "sub_test",
+    };
+
+    stripe.webhooks.constructEvent.mockReturnValue(makeEvent("checkout.session.completed", sessionWithUtm, "evt_utm_test"));
+    stripe.subscriptions.retrieve.mockResolvedValue(makeSubscription({ id: "sub_test" }));
+
+    const response = await POST(makeRequest());
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body).toEqual({ received: true });
+    expect(mockTrackServerEvent).toHaveBeenCalledWith("subscription_started", {
+      source: "stripe_checkout",
+      tier: "pro",
+      billing: "annual",
+      utm_source: "google",
+      utm_medium: "cpc",
+      utm_campaign: "summer_sale",
+    });
+  });
+
+  it("handleCheckoutCompleted with NO UTM in session.metadata calls trackServerEvent without UTM keys", async () => {
+    const sessionWithoutUtm = {
+      id: "cs_test",
+      customer: "cus_test",
+      customer_email: "user@example.com",
+      metadata: { userId: "user_test", plan: "pro", billing: "monthly" },
+      subscription: "sub_test",
+    };
+
+    stripe.webhooks.constructEvent.mockReturnValue(makeEvent("checkout.session.completed", sessionWithoutUtm, "evt_no_utm"));
+    stripe.subscriptions.retrieve.mockResolvedValue(makeSubscription({ id: "sub_test" }));
+
+    const response = await POST(makeRequest());
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body).toEqual({ received: true });
+    expect(mockTrackServerEvent).toHaveBeenCalledWith("subscription_started", {
+      source: "stripe_checkout",
+      tier: "pro",
+      billing: "monthly",
+    });
+  });
 });
