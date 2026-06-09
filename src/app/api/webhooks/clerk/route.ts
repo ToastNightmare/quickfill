@@ -46,11 +46,11 @@ export async function POST(req: NextRequest) {
               <img src="https://getquickfill.com/logo.svg" alt="QuickFill" style="height: 40px; margin-bottom: 32px;" />
               <h1 style="font-size: 24px; font-weight: 700; margin: 0 0 16px;">Welcome${firstName ? `, ${firstName}` : ""}!</h1>
               <p style="font-size: 15px; line-height: 1.6; color: #555; margin: 0 0 24px;">
-                QuickFill is the fastest way to fill Australian PDF forms. Here is how to get started:
+                QuickFill is the fastest way to fill PDF forms online. Here is how to get started:
               </p>
               <div style="background: #f8f9fa; border-radius: 12px; padding: 24px; margin: 0 0 24px;">
                 <p style="font-size: 14px; font-weight: 600; margin: 0 0 12px; color: #1a1a2e;">3 steps to your first filled form:</p>
-                <p style="font-size: 14px; margin: 0 0 8px; color: #555;">1. <a href="https://getquickfill.com/profile" style="color: #2d8ef7;">Set up your Australian profile</a> with your TFN, Medicare number, ABN and address</p>
+                <p style="font-size: 14px; margin: 0 0 8px; color: #555;">1. <a href="https://getquickfill.com/profile" style="color: #2d8ef7;">Set up your profile</a> with your name, address, and any relevant identifiers (ABN, TFN, etc.)</p>
                 <p style="font-size: 14px; margin: 0 0 8px; color: #555;">2. <a href="https://getquickfill.com/templates" style="color: #2d8ef7;">Pick a template</a> or upload your own PDF</p>
                 <p style="font-size: 14px; margin: 0; color: #555;">3. Hit Auto-fill and download your completed form</p>
               </div>
