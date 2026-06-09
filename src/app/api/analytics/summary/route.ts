@@ -93,6 +93,8 @@ export async function GET(request: NextRequest) {
 
   const redis = getRedis();
   const days = daysBack(dayCount);
+  const rangeStart = new Date(`${days[0]}T00:00:00.000Z`).toISOString();
+  const rangeEnd   = new Date().toISOString();
 
   const [totalRaw, revenueRaw, recentRaw, ...rawRows] = await Promise.all([
     redis.hgetall<Record<string, string | number>>("analytics:total"),
@@ -215,6 +217,8 @@ export async function GET(request: NextRequest) {
 
   return NextResponse.json({
     updatedAt: new Date().toISOString(),
+    rangeStart,
+    rangeEnd,
     days: dayCount,
     totals,
     daily,

@@ -21,6 +21,8 @@ import InteractiveTimeline from "./InteractiveTimeline";
 
 interface SummaryResponse {
   updatedAt: string;
+  rangeStart: string;
+  rangeEnd: string;
   days: number;
   totals: { name: AnalyticsEventName; label: string; count: number; rangeCount: number }[];
   daily: {
@@ -125,14 +127,18 @@ const EVENT_ICONS: Record<AnalyticsEventName, typeof MousePointerClick> = {
 
 const rangeOptions = [1, 7, 14, 30] as const;
 
-function formatDate(value?: string) {
-  if (!value) return "Just now";
-  return new Date(value).toLocaleString("en-AU", {
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+function formatAWST(iso?: string) {
+  if (!iso) return "Just now";
+  return (
+    new Date(iso).toLocaleString("en-AU", {
+      timeZone: "Australia/Perth",
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    }) + " AWST"
+  );
 }
 
 function formatProperty(value: unknown) {
@@ -322,15 +328,23 @@ export default function AdminAnalyticsClient() {
         </div>
         <div className="flex flex-wrap items-center gap-3">
           <div className="flex rounded-lg bg-slate-800 border border-slate-700/50 p-1 gap-1">
-            {rangeOptions.map((option) => (
-              <button
-                key={option}
-                onClick={() => setDays(option)}
-                className={`rounded-md px-3 py-1.5 text-sm font-semibold transition-colors ${days === option ? "bg-blue-600 text-white" : "text-slate-400 hover:text-slate-200 hover:bg-slate-700"}`}
-              >
-                {option}d
-              </button>
-            ))}
+            {(() => {
+              const rangeLabelMap: Record<number, string> = {
+                1:  "Current analytics day",
+                7:  "7 days",
+                14: "14 days",
+                30: "30 days",
+              };
+              return rangeOptions.map((option) => (
+                <button
+                  key={option}
+                  onClick={() => setDays(option)}
+                  className={`rounded-md px-3 py-1.5 text-sm font-semibold transition-colors ${days === option ? "bg-blue-600 text-white" : "text-slate-400 hover:text-slate-200 hover:bg-slate-700"}`}
+                >
+                  {rangeLabelMap[option] ?? `${option}d`}
+                </button>
+              ));
+            })()}
           </div>
           <button
             onClick={() => loadSummary(days)}
@@ -343,7 +357,41 @@ export default function AdminAnalyticsClient() {
         </div>
       </div>
       {summary && (
-        <p className="text-xs text-slate-500">Updated {formatDate(summary.updatedAt)}</p>
+        <div className="rounded-lg border border-slate-700/50 bg-slate-800/60 px-4 py-3 text-xs text-slate-400 space-y-1">
+          <div className="flex flex-wrap gap-x-6 gap-y-1">
+            <span>
+              <span className="text-slate-500">Selected range:</span>{" "}
+              <span className="text-slate-200 font-medium">{(() => {
+                const rangeLabelMap: Record<number, string> = {
+                  1:  "Current analytics day",
+                  7:  "7 days",
+                  14: "14 days",
+                  30: "30 days",
+                };
+                return rangeLabelMap[days] ?? `${days}d`;
+              })()}</span>
+            </span>
+            <span>
+              <span className="text-slate-500">From:</span>{" "}
+              <span className="text-slate-200">{formatAWST(summary.rangeStart)}</span>
+            </span>
+            <span>
+              <span className="text-slate-500">To:</span>{" "}
+              <span className="text-slate-200">{formatAWST(summary.rangeEnd)}</span>
+            </span>
+            <span>
+              <span className="text-slate-500">Updated:</span>{" "}
+              <span className="text-slate-200">{formatAWST(summary.updatedAt)}</span>
+            </span>
+            <span>
+              <span className="text-slate-500">Timezone:</span>{" "}
+              <span className="text-slate-200">Australia/Perth</span>
+            </span>
+          </div>
+          <p className="text-slate-600 text-[11px]">
+            Analytics days use UTC date boundaries, which start at 8:00 AM AWST. Ranges are UTC calendar-day windows, not rolling 24-hour periods.
+          </p>
+        </div>
       )}
 
       {/* Section B -- KPI Summary Cards */}
@@ -666,7 +714,7 @@ export default function AdminAnalyticsClient() {
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-semibold text-slate-100">Recent events</h2>
           <p className="text-xs text-slate-500">
-            Updated {summary ? formatDate(summary.updatedAt) : "..."}
+            Updated {summary ? formatAWST(summary.updatedAt) : "..."}
           </p>
         </div>
         <div className="mt-5 divide-y divide-slate-700/50">
@@ -681,7 +729,7 @@ export default function AdminAnalyticsClient() {
                   </div>
                   <div>
                     <p className="text-sm font-semibold text-slate-200">{EVENT_LABELS[event.name]}</p>
-                    <p className="text-xs text-slate-500">{formatDate(event.createdAt)} {event.signedIn ? "signed in" : "guest"}</p>
+                    <p className="text-xs text-slate-500">{formatAWST(event.createdAt)} {event.signedIn ? "signed in" : "guest"}</p>
                   </div>
                 </div>
                 {properties.length > 0 && (
