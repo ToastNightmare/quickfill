@@ -35,7 +35,7 @@ export default function PdfFormFillerClient() {
       answer: "Yes. QuickFill overlays text, checkboxes, signatures, and dates directly onto the PDF, even fields that are locked or read-only in other tools.",
     },
     {
-      question: "What Australian forms does it support?",
+      question: "What forms and templates does it include?",
       answer: "Any PDF. QuickFill includes 15+ built-in templates: TFN declarations, Medicare, Centrelink, NDIS, rental applications, and ATO BAS forms. Your own PDFs work too.",
     },
     {
@@ -61,7 +61,7 @@ export default function PdfFormFillerClient() {
             Stop printing PDF forms. Fill them online instead.
           </h1>
           <p className="mx-auto mt-6 max-w-2xl text-lg text-gray-300 sm:text-xl">
-            Upload any Australian PDF, fill it in your browser, download it instantly. No Adobe. No printing. No scanning. Free to start.
+            Upload any PDF form, fill it in your browser, download it instantly. No Adobe. No printing. No scanning. Free to start.
           </p>
 
           {/* Trust pills */}
@@ -69,7 +69,7 @@ export default function PdfFormFillerClient() {
             {[
               "Fill any PDF without locked fields stopping you",
               "3 free fills every month, no card needed",
-              "Built for Australian forms: TFN, Centrelink, rentals, NDIS",
+              "15+ ready templates: tax, rental, employment, NDIS, and more",
             ].map((text) => (
               <span key={text} className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-sm text-gray-300">
                 <Check className="h-4 w-4 text-accent" />
@@ -114,7 +114,7 @@ export default function PdfFormFillerClient() {
       <section className="bg-surface border-y border-border px-4 py-8 sm:px-6 lg:px-8">
         <div className="mx-auto grid max-w-5xl gap-4 sm:grid-cols-4">
           {[
-            { value: "15+", label: "Australian templates" },
+            { value: "15+", label: "ready templates" },
             { value: "3", label: "free fills/month" },
             { value: "0", label: "PDFs stored" },
             { value: "60 sec", label: "average fill time" },
@@ -184,7 +184,7 @@ export default function PdfFormFillerClient() {
           </div>
 
           <p className="text-text-muted text-sm text-center max-w-2xl mx-auto mt-6">
-            Whether it is a TFN declaration, Centrelink form, rental application, or NDIS paperwork: QuickFill handles it. No software to install. Works on any device, any browser.
+            Whether it is a tax form, rental application, employment document, or government paperwork: QuickFill handles it. No software to install. Works on any device, any browser.
           </p>
 
           <Link
@@ -262,8 +262,8 @@ export default function PdfFormFillerClient() {
               },
               {
                 icon: BadgeCheck,
-                title: "Built for AU forms",
-                body: "ATO, Medicare, Centrelink, NDIS, council, and rental forms. Tested on the documents Australians actually use.",
+                title: "Ready-made templates",
+                body: "Tax, rental, employment, healthcare, government, and consent forms. 15+ ready templates included, plus upload any PDF.",
               },
             ].map((item) => (
               <div key={item.title} className="rounded-xl border border-border bg-surface-alt p-6">
