@@ -4,6 +4,7 @@ import Link from "next/link";
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { CheckCircle2, FileText, Loader2, RefreshCw, Sparkles } from "lucide-react";
+import { trackGoogleAdsConversion } from "@/lib/google-ads";
 
 type SyncStatus = "checking" | "ready" | "waiting" | "error";
 
@@ -127,6 +128,36 @@ function CheckoutSuccessContent() {
     }
   }, [status, alreadyPro, repairedBilling, sessionId, searchParams]);
 
+  useEffect(() => {
+    // Only fire on confirmed new purchases
+    if (status !== "ready") return;
+    if (alreadyPro || repairedBilling) return;
+    if (!sessionId) return;
+
+    const flagKey = `qf_gads_fired_${sessionId}`;
+    try {
+      if (sessionStorage.getItem(flagKey)) return;
+    } catch {
+      return; // sessionStorage unavailable
+    }
+
+    const conversionLabel = process.env.NEXT_PUBLIC_GOOGLE_ADS_CONVERSION_LABEL;
+    if (!conversionLabel || conversionLabel.trim() === '') return;
+
+    // Only mark the dedup flag if the conversion was successfully queued.
+    // If the helper returns false (missing env var or SSR), the flag is NOT set
+    // so a real paid conversion is not silently lost.
+    const fired = trackGoogleAdsConversion(conversionLabel.trim(), 11.40, 'AUD');
+
+    if (fired) {
+      try {
+        sessionStorage.setItem(flagKey, "1");
+      } catch {
+        // sessionStorage write failed - acceptable
+      }
+    }
+  }, [status, alreadyPro, repairedBilling, sessionId]);
+
   const handleRetry = async () => {
     setRetrying(true);
     await syncBilling();
@@ -148,7 +179,7 @@ function CheckoutSuccessContent() {
               )}
             </div>
             <p className="mt-5 text-sm font-semibold uppercase tracking-wide text-accent">QuickFill Pro</p>
-            <h1 className="mt-2 text-3xl font-extrabold sm:text-4xl">You're Pro now</h1>
+            <h1 className="mt-2 text-3xl font-extrabold sm:text-4xl">You&apos;re Pro now</h1>
             <p className="mx-auto mt-3 max-w-xl text-sm leading-6 text-gray-300 sm:text-base">{contextText}</p>
           </div>
 
@@ -199,7 +230,7 @@ function CheckoutSuccessContent() {
             </div>
 
             <div className="mt-8 rounded-xl bg-surface-alt p-5 text-sm text-text-muted">
-              <p className="font-semibold text-text">What's unlocked</p>
+              <p className="font-semibold text-text">What&apos;s unlocked</p>
               <ul className="mt-3 grid gap-2 sm:grid-cols-2">
                 <li className="flex items-center gap-2"><CheckCircle2 className="h-4 w-4 text-accent" /> Unlimited fills</li>
                 <li className="flex items-center gap-2"><CheckCircle2 className="h-4 w-4 text-accent" /> No watermarks</li>

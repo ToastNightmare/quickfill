@@ -37,6 +37,12 @@ jest.mock("lucide-react", () => ({
 // Mock window.fbq
 const mockFbq = jest.fn();
 
+// Mock google-ads
+const mockTrackGoogleAdsConversion = jest.fn();
+jest.mock("@/lib/google-ads", () => ({
+  trackGoogleAdsConversion: (...args: unknown[]) => mockTrackGoogleAdsConversion(...args),
+}));
+
 // Mock fetch
 const originalFetch = global.fetch;
 
@@ -63,6 +69,8 @@ describe("CheckoutSuccessPage - Purchase Event", () => {
     jest.clearAllMocks();
     setupSessionStorage();
     mockFbq.mockClear();
+    mockTrackGoogleAdsConversion.mockClear();
+    process.env.NEXT_PUBLIC_GOOGLE_ADS_CONVERSION_LABEL = 'jzjNCNyf970cEP-s4vzD';
     global.fetch = jest.fn();
   });
 
@@ -303,5 +311,239 @@ describe("CheckoutSuccessPage - Purchase Event", () => {
     await waitFor(() => {
       expect(mockFbq).not.toHaveBeenCalled();
     });
+  });
+});
+
+describe("CheckoutSuccessPage - Google Ads Conversion Event", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    setupSessionStorage();
+    // Default: helper returns true so the dedup flag is set correctly.
+    // Individual tests override this when testing the false-return path.
+    mockTrackGoogleAdsConversion.mockReturnValue(true);
+    process.env.NEXT_PUBLIC_GOOGLE_ADS_CONVERSION_LABEL = 'jzjNCNyf970cEP-s4vzD';
+    global.fetch = jest.fn();
+  });
+
+  afterEach(() => {
+    global.fetch = originalFetch;
+    jest.restoreAllMocks();
+    delete process.env.NEXT_PUBLIC_GOOGLE_ADS_CONVERSION_LABEL;
+  });
+
+  it("status reaches ready, new purchase -> trackGoogleAdsConversion called with correct args", async () => {
+    setupSearchParams({
+      session_id: "gads-session-001",
+      billing: "monthly",
+      synced: "true",
+    });
+
+    (global.fetch as jest.Mock).mockResolvedValue({
+      ok: true,
+      json: async () => ({ ok: true, result: { updated: 1 } }),
+    });
+
+    render(<CheckoutSuccessPage />);
+
+    await waitFor(() => {
+      expect(mockTrackGoogleAdsConversion).toHaveBeenCalledWith(
+        'jzjNCNyf970cEP-s4vzD',
+        11.40,
+        'AUD'
+      );
+    });
+  });
+
+  it("billing=annual, status reaches ready -> still fires fixed value 11.40 (not varied)", async () => {
+    setupSearchParams({
+      session_id: "gads-session-002",
+      billing: "annual",
+      synced: "true",
+    });
+
+    (global.fetch as jest.Mock).mockResolvedValue({
+      ok: true,
+      json: async () => ({ ok: true, result: { updated: 1 } }),
+    });
+
+    render(<CheckoutSuccessPage />);
+
+    await waitFor(() => {
+      expect(mockTrackGoogleAdsConversion).toHaveBeenCalledWith(
+        'jzjNCNyf970cEP-s4vzD',
+        11.40,
+        'AUD'
+      );
+    });
+  });
+
+  it("alreadyPro=true -> trackGoogleAdsConversion NOT called", async () => {
+    setupSearchParams({
+      session_id: "gads-session-003",
+      alreadyPro: "true",
+      synced: "true",
+    });
+
+    (global.fetch as jest.Mock).mockResolvedValue({
+      ok: true,
+      json: async () => ({ ok: true, result: { updated: 1 } }),
+    });
+
+    render(<CheckoutSuccessPage />);
+
+    await waitFor(() => {
+      expect(mockTrackGoogleAdsConversion).not.toHaveBeenCalled();
+    });
+  });
+
+  it("repair=true -> trackGoogleAdsConversion NOT called", async () => {
+    setupSearchParams({
+      session_id: "gads-session-004",
+      repair: "true",
+      synced: "true",
+    });
+
+    (global.fetch as jest.Mock).mockResolvedValue({
+      ok: true,
+      json: async () => ({ ok: true, result: { updated: 1 } }),
+    });
+
+    render(<CheckoutSuccessPage />);
+
+    await waitFor(() => {
+      expect(mockTrackGoogleAdsConversion).not.toHaveBeenCalled();
+    });
+  });
+
+  it("no session_id -> trackGoogleAdsConversion NOT called", async () => {
+    setupSearchParams({
+      billing: "monthly",
+      synced: "true",
+    });
+
+    (global.fetch as jest.Mock).mockResolvedValue({
+      ok: true,
+      json: async () => ({ ok: true, result: { updated: 1 } }),
+    });
+
+    render(<CheckoutSuccessPage />);
+
+    await waitFor(() => {
+      expect(mockTrackGoogleAdsConversion).not.toHaveBeenCalled();
+    });
+  });
+
+  it("status === waiting -> trackGoogleAdsConversion NOT called", async () => {
+    setupSearchParams({
+      session_id: "gads-session-005",
+      billing: "monthly",
+    });
+
+    (global.fetch as jest.Mock).mockResolvedValue({
+      ok: true,
+      json: async () => ({ ok: false, result: { updated: 0 } }),
+    });
+
+    render(<CheckoutSuccessPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText(/QuickFill is finishing your Pro setup now/i)).toBeInTheDocument();
+    });
+
+    expect(mockTrackGoogleAdsConversion).not.toHaveBeenCalled();
+  });
+
+  it("status === error -> trackGoogleAdsConversion NOT called", async () => {
+    setupSearchParams({
+      session_id: "gads-session-006",
+      billing: "monthly",
+    });
+
+    (global.fetch as jest.Mock).mockRejectedValue(new Error("Network error"));
+
+    render(<CheckoutSuccessPage />);
+
+    await waitFor(() => {
+      expect(mockTrackGoogleAdsConversion).not.toHaveBeenCalled();
+    });
+  });
+
+  it("sessionStorage dedup - ready fires once, second render does NOT fire again", async () => {
+    setupSearchParams({
+      session_id: "gads-session-007",
+      billing: "monthly",
+      synced: "true",
+    });
+
+    (global.fetch as jest.Mock).mockResolvedValue({
+      ok: true,
+      json: async () => ({ ok: true, result: { updated: 1 } }),
+    });
+
+    const { unmount } = render(<CheckoutSuccessPage />);
+
+    await waitFor(() => {
+      expect(mockTrackGoogleAdsConversion).toHaveBeenCalledTimes(1);
+    });
+
+    unmount();
+
+    render(<CheckoutSuccessPage />);
+
+    await waitFor(() => {
+      expect(mockTrackGoogleAdsConversion).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it("conversion label env var missing -> trackGoogleAdsConversion NOT called", async () => {
+    delete process.env.NEXT_PUBLIC_GOOGLE_ADS_CONVERSION_LABEL;
+
+    setupSearchParams({
+      session_id: "gads-session-008",
+      billing: "monthly",
+      synced: "true",
+    });
+
+    (global.fetch as jest.Mock).mockResolvedValue({
+      ok: true,
+      json: async () => ({ ok: true, result: { updated: 1 } }),
+    });
+
+    render(<CheckoutSuccessPage />);
+
+    await waitFor(() => {
+      expect(mockTrackGoogleAdsConversion).not.toHaveBeenCalled();
+    });
+  });
+
+  it("trackGoogleAdsConversion returns false -> dedup key NOT set, conversion not silently lost", async () => {
+    // Simulate the helper returning false (e.g. gtag not available, env var issue).
+    // The dedup flag must NOT be written so the next page load can retry.
+    mockTrackGoogleAdsConversion.mockReturnValue(false);
+
+    const sessionStorageSetSpy = jest.spyOn(Storage.prototype, "setItem");
+
+    setupSearchParams({
+      session_id: "gads-session-009",
+      billing: "monthly",
+      synced: "true",
+    });
+
+    (global.fetch as jest.Mock).mockResolvedValue({
+      ok: true,
+      json: async () => ({ ok: true, result: { updated: 1 } }),
+    });
+
+    render(<CheckoutSuccessPage />);
+
+    await waitFor(() => {
+      expect(mockTrackGoogleAdsConversion).toHaveBeenCalledTimes(1);
+    });
+
+    // The dedup key must not have been written.
+    const dedupKeyCalls = sessionStorageSetSpy.mock.calls.filter(
+      ([key]) => key === "qf_gads_fired_gads-session-009"
+    );
+    expect(dedupKeyCalls).toHaveLength(0);
   });
 });
