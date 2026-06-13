@@ -37,6 +37,7 @@ import { trackMetaEvent } from "@/lib/meta-pixel";
 import { runEditorProfileAutofill, trackEditorAutofillShadowReport } from "@/lib/editor-profile-autofill";
 import { createEditorFieldId, repairDuplicateEditorFieldIds, withUniqueEditorFieldId } from "@/lib/field-ids";
 import { getTemplateBySlug, isTemplateFillable, type TemplateConfig } from "@/lib/templates-config";
+import { PRICING } from "@/lib/pricing";
 
 const ZOOM_LEVELS = [50, 75, 100, 125, 150, 175, 200];
 const SNAP_MIN = 125;
@@ -1532,7 +1533,7 @@ export default function EditorPage() {
                 </div>
                 <div className="text-green-500 font-bold">vs</div>
                 <div className="text-accent font-bold">
-                  QuickFill Pro $12/mo
+                  QuickFill Pro {PRICING.pro.annual.perMonthLabel}
                 </div>
               </div>
             </div>
@@ -1542,9 +1543,9 @@ export default function EditorPage() {
                 href="/checkout?plan=pro&billing=annual&source=editor_guest_upsell"
                 className="flex h-11 w-full items-center justify-center rounded-xl bg-accent text-sm font-semibold text-white hover:bg-accent-hover transition-colors"
               >
-                Upgrade to Pro: A$8.33/month
+                Upgrade to Pro: {PRICING.pro.annual.perMonthLabel}
               </Link>
-              <p className="text-xs text-text-muted">Billed A$100/year. Cancel anytime.</p>
+              <p className="text-xs text-text-muted">{PRICING.pro.annual.disclosure}</p>
               <button
                 onClick={() => setShowGuestUpsellModal(false)}
                 className="text-sm text-text-muted hover:text-text transition-colors"
@@ -1572,7 +1573,7 @@ export default function EditorPage() {
                 <div className="flex items-center justify-center gap-4 text-sm">
                   <span className="text-text-muted line-through">Adobe $24/mo</span>
                   <span className="font-bold text-green-500">vs</span>
-                  <span className="font-bold text-accent">QuickFill Pro A$8.33/mo</span>
+                  <span className="font-bold text-accent">QuickFill Pro {PRICING.pro.annual.perMonthLabel}</span>
                 </div>
               </div>
               <div className="mt-5 flex flex-col gap-3">
@@ -1580,9 +1581,9 @@ export default function EditorPage() {
                   href="/checkout?plan=pro&billing=annual&source=editor_limit_modal"
                   className="flex h-11 w-full items-center justify-center rounded-xl bg-accent text-sm font-semibold text-white hover:bg-accent-hover transition-colors"
                 >
-                  Upgrade to Pro: A$8.33/month
+                  Upgrade to Pro: {PRICING.pro.annual.perMonthLabel}
                 </Link>
-                <p className="text-xs text-text-muted">Billed A$100/year. Cancel anytime.</p>
+                <p className="text-xs text-text-muted">{PRICING.pro.annual.disclosure}</p>
                 <button
                   onClick={() => setShowUpgradeModal(false)}
                   className="flex h-11 w-full items-center justify-center rounded-xl border border-border text-sm font-semibold hover:bg-surface-alt transition-colors"

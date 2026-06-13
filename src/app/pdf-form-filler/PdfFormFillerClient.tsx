@@ -15,6 +15,7 @@ import { trackEvent } from "@/lib/analytics";
 import { trackMetaEvent } from "@/lib/meta-pixel";
 import { captureAndStoreUtm } from "@/lib/utm";
 import { LandingUploadBox } from "@/components/LandingUploadBox";
+import { PRICING } from "@/lib/pricing";
 
 const FAQS = [
   {
@@ -332,9 +333,9 @@ export default function PdfFormFillerClient() {
                 MOST POPULAR
               </span>
               <p className="text-4xl font-extrabold mt-4">
-                A$12 <span className="text-lg font-normal text-text-muted">/month</span>
+                {PRICING.pro.monthly.label} <span className="text-lg font-normal text-text-muted">/month</span>
               </p>
-              <p className="text-sm text-text-muted">or A$100/year (save A$44)</p>
+              <p className="text-sm text-text-muted">or {PRICING.pro.annual.labelWithPeriod} ({PRICING.pro.annual.savingsLabel})</p>
 
               <ul className="mt-6 space-y-3">
                 {[
@@ -365,8 +366,11 @@ export default function PdfFormFillerClient() {
               >
                 <Sparkles className="h-4 w-4" /> Go Pro
               </Link>
-              <p className="text-xs text-text-muted text-center mt-3">
-                Secure checkout by Stripe. Cancel anytime.
+              <p className="text-xs font-medium text-text text-center mt-3">
+                {PRICING.pro.monthly.disclosure}
+              </p>
+              <p className="text-xs text-text-muted text-center mt-1">
+                Annual: {PRICING.pro.annual.disclosure} Secure checkout by Stripe.
               </p>
             </div>
           </div>

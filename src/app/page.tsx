@@ -34,6 +34,7 @@ import {
 } from "lucide-react";
 import { useAuth } from "@clerk/nextjs";
 import { APP_CONFIG } from "@/lib/config";
+import { PRICING } from "@/lib/pricing";
 import { trackEvent } from "@/lib/analytics";
 import { trackMetaEvent } from "@/lib/meta-pixel";
 import { captureAndStoreUtm } from "@/lib/utm";
@@ -305,7 +306,7 @@ const verticals = [
 
 const heroTrustPills = [
   { icon: Check, text: "Fill any PDF without locked fields stopping you" },
-  { icon: CreditCard, text: "Free plan, Pro is $12/month" },
+  { icon: CreditCard, text: `Free plan, Pro is ${PRICING.pro.monthly.labelWithPeriod}` },
   { icon: BadgeCheck, text: "Australian templates included. Works with any PDF." },
 ];
 
@@ -884,7 +885,7 @@ export default function Home() {
                     <th className="px-6 py-4 text-left font-semibold text-gray-900">Feature</th>
                     <th className="px-6 py-4 text-left font-semibold text-gray-900">General PDF suites</th>
                     <th className="px-6 py-4 text-left font-semibold text-gray-900">E-signature tools</th>
-                    <th className="px-6 py-4 text-left font-semibold text-accent bg-accent/10">QuickFill ($12/mo)</th>
+                    <th className="px-6 py-4 text-left font-semibold text-accent bg-accent/10">QuickFill ({PRICING.pro.monthly.label}/mo)</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
@@ -916,7 +917,7 @@ export default function Home() {
                     <td className="px-6 py-4 font-medium text-gray-900">Price</td>
                     <td className="px-6 py-4 text-gray-900">$20+/mo</td>
                     <td className="px-6 py-4 text-gray-900">$20+/mo</td>
-                    <td className="px-6 py-4 font-semibold text-accent bg-accent/5">$12/mo</td>
+                    <td className="px-6 py-4 font-semibold text-accent bg-accent/5">{PRICING.pro.monthly.label}/mo</td>
                   </tr>
                 </tbody>
               </table>
@@ -1091,7 +1092,7 @@ export default function Home() {
           <div className="mt-12 space-y-6">
             <div className="rounded-xl border border-border bg-surface-alt p-6">
               <h3 className="font-semibold text-base">Is it really free?</h3>
-              <p className="mt-2 text-sm text-text-muted">Yes! Get 3 free fills per month with no credit card required. Pro gives unlimited fills for $12/month.</p>
+              <p className="mt-2 text-sm text-text-muted">Yes! Get 3 free fills per month with no credit card required. Pro gives unlimited fills for {PRICING.pro.monthly.labelWithPeriod}.</p>
             </div>
             <div className="rounded-xl border border-border bg-surface-alt p-6">
               <h3 className="font-semibold text-base">Is it secure?</h3>
@@ -1107,7 +1108,7 @@ export default function Home() {
             </div>
             <div className="rounded-xl border border-border bg-surface-alt p-6">
               <h3 className="font-semibold text-base">What&apos;s the difference between free and Pro?</h3>
-              <p className="mt-2 text-sm text-text-muted">Free gives 3 fills per month. Pro ($12/month) gives unlimited fills and access to all ready-made templates.</p>
+              <p className="mt-2 text-sm text-text-muted">Free gives 3 fills per month. Pro ({PRICING.pro.monthly.labelWithPeriod}) gives unlimited fills and access to all ready-made templates.</p>
             </div>
           </div>
         </div>
@@ -1178,10 +1179,10 @@ export default function Home() {
                 </div>
                 <div className="mt-6">
                   <div className="flex items-end gap-2">
-                    <span className="text-4xl font-extrabold leading-none">A$100</span>
+                    <span className="text-4xl font-extrabold leading-none">{PRICING.pro.annual.label}</span>
                     <span className="pb-1 text-sm text-gray-300">/year</span>
                   </div>
-                  <p className="mt-2 text-sm text-gray-300">Works out to A$8.33/month. Save A$44 a year.</p>
+                  <p className="mt-2 text-sm text-gray-300">Works out to {PRICING.pro.annual.perMonthLabel}. {PRICING.pro.annual.savingsLabel.charAt(0).toUpperCase() + PRICING.pro.annual.savingsLabel.slice(1)}.</p>
                 </div>
               </div>
 
@@ -1212,7 +1213,7 @@ export default function Home() {
                     {upgradingPlan === "pro_annual" ? (
                       <><div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" /> Loading...</>
                     ) : (
-                      <><Sparkles className="h-4 w-4" /> Get Pro, A$100/year</>
+                      <><Sparkles className="h-4 w-4" /> Get Pro, {PRICING.pro.annual.labelWithPeriod}</>
                     )}
                   </button>
                   <button
@@ -1220,10 +1221,13 @@ export default function Home() {
                     disabled={!!upgradingPlan}
                     className="mt-3 flex h-10 w-full items-center justify-center rounded-lg border border-border text-sm font-semibold text-text hover:bg-surface-alt transition-colors disabled:opacity-70"
                   >
-                    {upgradingPlan === "pro_monthly" ? "Loading..." : "Pay monthly, A$12/month"}
+                    {upgradingPlan === "pro_monthly" ? "Loading..." : `Pay monthly, ${PRICING.pro.monthly.labelWithPeriod}`}
                   </button>
-                  <p className="mt-3 text-center text-xs text-text-muted">
-                    Secure checkout by Stripe. Cancel any time.
+                  <p className="mt-3 text-center text-xs font-medium text-text">
+                    {PRICING.pro.monthly.disclosure}
+                  </p>
+                  <p className="mt-1 text-center text-xs text-text-muted">
+                    Secure checkout by Stripe.
                   </p>
                 </div>
               </div>
