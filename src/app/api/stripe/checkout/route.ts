@@ -325,6 +325,25 @@ export async function POST(req: NextRequest) {
 
     const cancelParams = new URLSearchParams({ checkout: "cancelled", plan, billing });
 
+    // Intro pricing: apply the once-off Stripe coupon (e.g. A$12.50 off the
+    // first invoice) ONLY for Pro monthly, and ONLY when the coupon env is set.
+    // Stripe rejects a session that has both `discounts` and
+    // `allow_promotion_codes`, so when the intro coupon applies we omit the
+    // promo-code box; every other flow keeps manual promo codes enabled.
+    const introCouponId =
+      plan === "pro" && !annual ? process.env.STRIPE_PRO_INTRO_COUPON_ID?.trim() : undefined;
+
+    if (plan === "pro" && !annual && !introCouponId) {
+      log.warn("stripe_checkout_intro_coupon_missing", {
+        userId,
+        message: "STRIPE_PRO_INTRO_COUPON_ID is not set; Pro monthly checkout will start at full price with promo codes enabled.",
+      });
+    }
+
+    const discountConfig = introCouponId
+      ? { discounts: [{ coupon: introCouponId }] }
+      : { allow_promotion_codes: true };
+
     const session = await getStripe().checkout.sessions.create({
       mode: "subscription",
       payment_method_types: ["card"],
@@ -336,7 +355,7 @@ export async function POST(req: NextRequest) {
         billing,
       }),
       cancel_url: `${origin}/pricing?${cancelParams.toString()}`,
-      allow_promotion_codes: true,
+      ...discountConfig,
       metadata,
       subscription_data: { metadata },
     });

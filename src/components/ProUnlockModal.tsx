@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { CheckCircle2, Sparkles, Lock, X, Loader2 } from "lucide-react";
 import { trackEvent } from "@/lib/analytics";
 import { trackMetaEvent } from "@/lib/meta-pixel";
+import { PRICING } from "@/lib/pricing";
 
 interface ProUnlockModalProps {
   open: boolean;
@@ -84,7 +85,7 @@ export function ProUnlockModal({ open, onClose, featureName }: ProUnlockModalPro
             ? `${featureName ?? "This feature"} is included in your active Pro plan.`
             : checkingPlan
               ? "One moment while QuickFill gets your account ready."
-              : `${featureName ?? "This feature"} is available on the Pro plan. Upgrade to Pro for A$8.33/month (billed A$100/year) to unlock unlimited fills, no watermarks, and all templates.`}
+              : `${featureName ?? "This feature"} is available on the Pro plan. Upgrade to Pro for ${PRICING.pro.annual.perMonthLabel} (${PRICING.pro.annual.disclosure}) to unlock unlimited fills, no watermarks, and all templates.`}
         </p>
 
         <div className="bg-surface-alt rounded-xl p-4 mb-6 text-left">
@@ -128,9 +129,9 @@ export function ProUnlockModal({ open, onClose, featureName }: ProUnlockModalPro
               className="w-full h-11 rounded-xl bg-accent text-sm font-semibold text-white hover:bg-accent-hover transition-colors flex items-center justify-center gap-2"
             >
               <Sparkles className="h-4 w-4" />
-              Upgrade to Pro: A$8.33/month
+              Upgrade to Pro: {PRICING.pro.annual.perMonthLabel}
             </a>
-            <p className="mt-2 text-xs text-text-muted">Billed A$100/year. Cancel anytime.</p>
+            <p className="mt-2 text-xs text-text-muted">{PRICING.pro.annual.disclosure}</p>
           </>
         )}
 

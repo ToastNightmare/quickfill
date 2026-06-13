@@ -265,3 +265,82 @@ describe("Stripe checkout UTM attribution", () => {
     expect(callArgs.metadata.utm_source).toBe("a".repeat(100));
   });
 });
+
+describe("Stripe checkout intro coupon (Pro monthly)", () => {
+  let stripe: StripeMock;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+
+    process.env.STRIPE_PRO_PRICE_ID = "price_pro_monthly";
+    process.env.STRIPE_PRO_ANNUAL_PRICE_ID = "price_pro_annual";
+    process.env.STRIPE_BUSINESS_PRICE_ID = "price_business_monthly";
+    process.env.STRIPE_BUSINESS_ANNUAL_PRICE_ID = "price_business_annual";
+    process.env.STRIPE_PRO_INTRO_COUPON_ID = "coupon_intro_1250";
+
+    stripe = {
+      customers: {
+        list: jest.fn().mockResolvedValue({ data: [] }),
+        search: jest.fn().mockResolvedValue({ data: [] }),
+        retrieve: jest.fn(),
+      },
+      checkout: { sessions: { create: jest.fn() } },
+      billingPortal: { sessions: { create: jest.fn() } },
+      subscriptions: { list: jest.fn().mockResolvedValue({ data: [] }) },
+    };
+
+    mockGetStripe.mockReturnValue(stripe as never);
+    mockAuth.mockResolvedValue({ userId: "user_test" } as never);
+    mockCurrentUser.mockResolvedValue({
+      primaryEmailAddress: { emailAddress: "user@example.com" },
+      firstName: "Test",
+    } as never);
+    mockGetStoredSubscriptionSnapshot.mockResolvedValue(null);
+    mockIsRedisConfigured.mockReturnValue(false);
+    mockGetRedis.mockReturnValue({ get: jest.fn(), set: jest.fn() } as never);
+    mockTrackServerEvent.mockResolvedValue(undefined as never);
+    mockAlertAdmins.mockResolvedValue(undefined as never);
+    stripe.checkout.sessions.create.mockResolvedValue({ url: "https://checkout.stripe.com/test" });
+  });
+
+  it("Pro monthly with coupon env set -> applies discount and omits allow_promotion_codes", async () => {
+    const response = await POST(makeRequest({ plan: "pro", annual: false }));
+    expect(response.status).toBe(200);
+
+    const callArgs = (stripe.checkout.sessions.create as jest.Mock).mock.calls[0][0];
+    expect(callArgs.discounts).toEqual([{ coupon: "coupon_intro_1250" }]);
+    expect(callArgs.allow_promotion_codes).toBeUndefined();
+    expect(callArgs.line_items).toEqual([{ price: "price_pro_monthly", quantity: 1 }]);
+  });
+
+  it("Pro annual -> uses allow_promotion_codes and no discount", async () => {
+    const response = await POST(makeRequest({ plan: "pro", annual: true }));
+    expect(response.status).toBe(200);
+
+    const callArgs = (stripe.checkout.sessions.create as jest.Mock).mock.calls[0][0];
+    expect(callArgs.allow_promotion_codes).toBe(true);
+    expect(callArgs.discounts).toBeUndefined();
+    expect(callArgs.line_items).toEqual([{ price: "price_pro_annual", quantity: 1 }]);
+  });
+
+  it("Business -> uses allow_promotion_codes and no discount", async () => {
+    const response = await POST(makeRequest({ plan: "business", annual: false }));
+    expect(response.status).toBe(200);
+
+    const callArgs = (stripe.checkout.sessions.create as jest.Mock).mock.calls[0][0];
+    expect(callArgs.allow_promotion_codes).toBe(true);
+    expect(callArgs.discounts).toBeUndefined();
+  });
+
+  it("Pro monthly fallback when coupon env missing -> creates checkout safely with promo codes", async () => {
+    delete process.env.STRIPE_PRO_INTRO_COUPON_ID;
+
+    const response = await POST(makeRequest({ plan: "pro", annual: false }));
+    expect(response.status).toBe(200);
+
+    const callArgs = (stripe.checkout.sessions.create as jest.Mock).mock.calls[0][0];
+    expect(callArgs.allow_promotion_codes).toBe(true);
+    expect(callArgs.discounts).toBeUndefined();
+    expect(callArgs.line_items).toEqual([{ price: "price_pro_monthly", quantity: 1 }]);
+  });
+});

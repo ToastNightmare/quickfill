@@ -6,6 +6,7 @@ import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { AlertTriangle, FileText, Sparkles, ExternalLink, Lock, Clock, User, RotateCcw } from "lucide-react";
 import { ProSuccessModal } from "@/components/ProSuccessModal";
+import { PRICING } from "@/lib/pricing";
 import { SupportForm } from "@/components/SupportForm";
 
 interface BillingState {
@@ -399,8 +400,9 @@ function DashboardContent() {
                     className="mt-4 flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-accent text-sm font-semibold text-white hover:bg-accent-hover transition-colors"
                   >
                     <Sparkles className="h-4 w-4" />
-                    Upgrade to Pro: A$12/month
+                    Upgrade to Pro: {PRICING.pro.monthly.labelWithPeriod}
                   </button>
+                  <p className="mt-2 text-center text-xs text-text-muted">{PRICING.pro.monthly.disclosure}</p>
                 </>
               )}
             </>
@@ -518,7 +520,7 @@ function DashboardContent() {
             <div>
               <h3 className="text-lg font-semibold">Unlock unlimited fills</h3>
               <p className="mt-1 text-sm text-gray-300">
-                Upgrade to Pro for A$12/month and never hit a limit. No watermarks on downloads.
+                Upgrade to Pro for {PRICING.pro.monthly.labelWithPeriod} and never hit a limit. {PRICING.pro.monthly.disclosure} No watermarks on downloads.
               </p>
             </div>
             <button

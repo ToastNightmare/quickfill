@@ -7,6 +7,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { trackEvent } from "@/lib/analytics";
 import { trackMetaEvent } from "@/lib/meta-pixel";
 import { getStoredUtm } from "@/lib/utm";
+import { PRICING, formatAud } from "@/lib/pricing";
 
 const freeIncludes = [
   "3 downloads per month",
@@ -56,7 +57,7 @@ const faqs = [
   },
   {
     q: "Is annual cheaper?",
-    a: "Yes. Annual is A$100/year, which works out to A$8.33/month and saves A$44 compared with monthly billing.",
+    a: `Yes. Annual is ${PRICING.pro.annual.labelWithPeriod}, which works out to ${PRICING.pro.annual.perMonthLabel} and saves ${formatAud(PRICING.pro.annual.savingsVsMonthly)} compared with monthly billing.`,
   },
 ];
 
@@ -138,7 +139,7 @@ export default function PricingPage() {
 
   const isPro = isPaidUsage(usage);
   const planStillLoading = Boolean(isSignedIn && (usage === null || checkingPlan));
-  const priceLabel = annual ? "A$100/year" : "A$12/month";
+  const priceLabel = annual ? PRICING.pro.annual.labelWithPeriod : PRICING.pro.monthly.labelWithPeriod;
 
   const handleManageBilling = async () => {
     trackEvent("billing_portal_open", { source: "pricing" });
@@ -343,15 +344,15 @@ export default function PricingPage() {
                       <div className="mt-6 grid gap-3 sm:grid-cols-2 sm:items-end">
                         <div>
                           <div className="flex items-end gap-2">
-                            <span className="text-4xl font-extrabold leading-none">{annual ? "A$100" : "A$12"}</span>
+                            <span className="text-4xl font-extrabold leading-none">{annual ? PRICING.pro.annual.label : PRICING.pro.monthly.label}</span>
                             <span className="pb-1 text-sm text-gray-300">{annual ? "/year" : "/month"}</span>
                           </div>
                           <p className="mt-2 text-sm text-gray-300">
-                            {annual ? "Works out to A$8.33/month." : "Flexible monthly billing."}
+                            {annual ? `Works out to ${PRICING.pro.annual.perMonthLabel}.` : `${PRICING.pro.monthly.introLabel} first month, then ${PRICING.pro.monthly.labelWithPeriod}.`}
                           </p>
                         </div>
                         <div className="rounded-lg bg-white/10 px-3 py-2 text-sm text-blue-100">
-                          {annual ? "Save A$44 a year vs monthly." : "Annual saves A$44 a year."}
+                          {annual ? `${PRICING.pro.annual.savingsLabel}.` : `Annual: ${PRICING.pro.annual.savingsLabel}.`}
                         </div>
                       </div>
                     </div>
@@ -383,7 +384,10 @@ export default function PricingPage() {
                             </>
                           )}
                         </button>
-                        <p className="mt-3 text-center text-xs text-text-muted">Secure checkout by Stripe. Cancel any time.</p>
+                        <p className="mt-3 text-center text-xs font-medium text-text">
+                          {annual ? PRICING.pro.annual.disclosure : PRICING.pro.monthly.disclosure}
+                        </p>
+                        <p className="mt-1 text-center text-xs text-text-muted">Secure checkout by Stripe.</p>
                       </div>
                     </div>
                   </div>
