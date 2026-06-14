@@ -332,10 +332,14 @@ export default function PdfFormFillerClient() {
               <span className="inline-flex rounded-full bg-accent/10 px-3 py-1 text-xs font-bold uppercase tracking-wide text-accent">
                 MOST POPULAR
               </span>
-              <p className="text-4xl font-extrabold mt-4">
-                {PRICING.pro.monthly.label} <span className="text-lg font-normal text-text-muted">/month</span>
+              <span className="mt-4 inline-flex rounded-full bg-emerald-500/10 px-3 py-1 text-xs font-bold uppercase tracking-wide text-emerald-600">
+                {PRICING.pro.monthly.introBadge}
+              </span>
+              <p className="text-4xl font-extrabold mt-2">
+                {PRICING.pro.monthly.introTodayLabel}
               </p>
-              <p className="text-sm text-text-muted">or {PRICING.pro.annual.labelWithPeriod} ({PRICING.pro.annual.savingsLabel})</p>
+              <p className="text-sm font-medium text-text-muted">{PRICING.pro.monthly.thenLabel}. Cancel anytime.</p>
+              <p className="mt-1 text-sm text-text-muted">{PRICING.pro.annual.orLabel} ({PRICING.pro.annual.savingsLabel})</p>
 
               <ul className="mt-6 space-y-3">
                 {[
@@ -353,6 +357,23 @@ export default function PdfFormFillerClient() {
               </ul>
 
               <Link
+                href="/checkout?plan=pro&billing=monthly&source=ad_landing"
+                onClick={() => {
+                  trackEvent("checkout_start", {
+                    source: "ad_landing_pricing",
+                    plan: "pro",
+                    billing: "monthly",
+                  });
+                  trackMetaEvent("InitiateCheckout", { content_name: "pro", content_type: "monthly" });
+                }}
+                className="mt-8 flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-accent text-sm font-semibold text-white hover:bg-accent-hover transition-colors shadow-lg shadow-accent/20"
+              >
+                <Sparkles className="h-4 w-4" /> {PRICING.pro.monthly.ctaLabel}
+              </Link>
+              <p className="text-xs font-medium text-text text-center mt-2">
+                {PRICING.pro.monthly.finePrint}
+              </p>
+              <Link
                 href="/checkout?plan=pro&billing=annual&source=ad_landing"
                 onClick={() => {
                   trackEvent("checkout_start", {
@@ -362,14 +383,11 @@ export default function PdfFormFillerClient() {
                   });
                   trackMetaEvent("InitiateCheckout", { content_name: "pro", content_type: "annual" });
                 }}
-                className="mt-8 flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-accent text-sm font-semibold text-white hover:bg-accent-hover transition-colors shadow-lg shadow-accent/20"
+                className="mt-3 flex h-10 w-full items-center justify-center rounded-lg border border-border text-sm font-semibold text-text hover:bg-surface-alt transition-colors"
               >
-                <Sparkles className="h-4 w-4" /> Go Pro
+                {PRICING.pro.annual.ctaLabel}
               </Link>
-              <p className="text-xs font-medium text-text text-center mt-3">
-                {PRICING.pro.monthly.disclosure}
-              </p>
-              <p className="text-xs text-text-muted text-center mt-1">
+              <p className="text-xs text-text-muted text-center mt-2">
                 Annual: {PRICING.pro.annual.disclosure} Secure checkout by Stripe.
               </p>
             </div>

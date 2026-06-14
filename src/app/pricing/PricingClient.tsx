@@ -219,14 +219,14 @@ export default function PricingPage() {
             offers: [
               {
                 "@type": "Offer",
-                price: "12.00",
+                price: "12.50",
                 priceCurrency: "AUD",
                 availability: "https://schema.org/InStock",
                 name: "Pro Monthly",
               },
               {
                 "@type": "Offer",
-                price: "100.00",
+                price: "149",
                 priceCurrency: "AUD",
                 availability: "https://schema.org/InStock",
                 name: "Pro Annual",

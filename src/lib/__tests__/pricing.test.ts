@@ -18,6 +18,17 @@ describe("pricing module", () => {
     );
   });
 
+  it("has intro-led monthly display fields and conversion value", () => {
+    expect(PRICING.pro.monthly.introTodayLabel).toBe("A$12.50 today");
+    expect(PRICING.pro.monthly.introBadge).toBe("First month intro offer");
+    expect(PRICING.pro.monthly.thenLabel).toBe("Then A$25/month");
+    expect(PRICING.pro.monthly.ctaLabel).toBe("Start monthly for A$12.50");
+    expect(PRICING.pro.monthly.finePrint).toBe(
+      "First month only. Then A$25/month unless cancelled."
+    );
+    expect(PRICING.pro.monthly.conversionValue).toBe(12.5);
+  });
+
   it("has correct Pro annual values, derived figures, and disclosure", () => {
     expect(PRICING.pro.annual.amount).toBe(149);
     expect(PRICING.pro.annual.label).toBe("A$149");
@@ -26,5 +37,13 @@ describe("pricing module", () => {
     expect(PRICING.pro.annual.savingsVsMonthly).toBe(151);
     expect(PRICING.pro.annual.savingsLabel).toBe("save A$151 vs monthly");
     expect(PRICING.pro.annual.disclosure).toBe("A$149/year. Cancel anytime.");
+  });
+
+  it("has annual display fields and conversion value", () => {
+    expect(PRICING.pro.annual.orLabel).toBe("or A$149/year");
+    expect(PRICING.pro.annual.ctaLabel).toBe("Save with annual A$149");
+    expect(PRICING.pro.annual.perMonthBilledAnnually).toBe("A$12.42/month billed annually");
+    expect(PRICING.pro.annual.savingsLabelCap).toBe("Save A$151 vs monthly");
+    expect(PRICING.pro.annual.conversionValue).toBe(149);
   });
 });

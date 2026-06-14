@@ -489,13 +489,13 @@ export default function AdminAnalyticsClient() {
             <RevenueMetric label="Est. First Period" value={loading ? "..." : money(summary?.revenue.range.firstPeriodCents ?? 0)} />
             <RevenueMetric label="All-time Paid" value={loading ? "..." : String(summary?.revenue.total.paidConversions ?? 0)} />
             <RevenueMetric
-              label="Simple MRR Estimate"
-              value={loading ? "..." : `A$${((summary?.revenue.range.paidConversions ?? 0) * 11.40).toFixed(2)}`}
-              note="$11.40/user signal only"
+              label="Recurring Run-rate (MRR)"
+              value={loading ? "..." : money(summary?.revenue.range.monthlyRunRateCents ?? 0)}
+              note="live Stripe-derived"
             />
           </div>
           <p className="mt-4 text-xs text-slate-500">
-            Revenue uses Stripe webhook confirmations. Annual plans count as A$100 first period and A$8.33 monthly run rate. Simple MRR estimate is a signal only - based on $11.40/user/month.
+            Revenue is derived from live Stripe amounts. First-period reflects the actual first charge (monthly intro A$12.50 or annual A$149), and recurring run-rate reflects the normalised monthly value of active subscriptions (A$25/month, annual counted as A$149/12).
           </p>
         </section>
 

@@ -5,6 +5,7 @@ import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { CheckCircle2, FileText, Loader2, RefreshCw, Sparkles } from "lucide-react";
 import { trackGoogleAdsConversion } from "@/lib/google-ads";
+import { PRICING } from "@/lib/pricing";
 
 type SyncStatus = "checking" | "ready" | "waiting" | "error";
 
@@ -117,7 +118,9 @@ function CheckoutSuccessContent() {
     if (typeof window.fbq !== "function") return;
 
     const billing = searchParams.get("billing");
-    const value = billing === "annual" ? 100.00 : 12.00;
+    const value = billing === "annual"
+      ? PRICING.pro.annual.conversionValue
+      : PRICING.pro.monthly.conversionValue;
 
     window.fbq("track", "Purchase", { value, currency: "AUD" });
 
@@ -144,10 +147,17 @@ function CheckoutSuccessContent() {
     const conversionLabel = process.env.NEXT_PUBLIC_GOOGLE_ADS_CONVERSION_LABEL;
     if (!conversionLabel || conversionLabel.trim() === '') return;
 
+    // Conversion value reflects the actual first charge: monthly intro A$12.50,
+    // annual A$149. Driven by the billing URL param set on the checkout success URL.
+    const billing = searchParams.get("billing");
+    const conversionValue = billing === "annual"
+      ? PRICING.pro.annual.conversionValue
+      : PRICING.pro.monthly.conversionValue;
+
     // Only mark the dedup flag if the conversion was successfully queued.
     // If the helper returns false (missing env var or SSR), the flag is NOT set
     // so a real paid conversion is not silently lost.
-    const fired = trackGoogleAdsConversion(conversionLabel.trim(), 11.40, 'AUD');
+    const fired = trackGoogleAdsConversion(conversionLabel.trim(), conversionValue, 'AUD');
 
     if (fired) {
       try {
@@ -156,7 +166,7 @@ function CheckoutSuccessContent() {
         // sessionStorage write failed - acceptable
       }
     }
-  }, [status, alreadyPro, repairedBilling, sessionId]);
+  }, [status, alreadyPro, repairedBilling, sessionId, searchParams]);
 
   const handleRetry = async () => {
     setRetrying(true);

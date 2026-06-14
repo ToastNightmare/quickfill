@@ -44,8 +44,20 @@ export const PRICING = {
       introLabel: formatAud(PRO_MONTHLY_INTRO_AMOUNT),
       /** "A$12.50 first month" */
       introLabelWithPeriod: `${formatAud(PRO_MONTHLY_INTRO_AMOUNT)} first month`,
+      /** "A$12.50 today" - primary intro headline */
+      introTodayLabel: `${formatAud(PRO_MONTHLY_INTRO_AMOUNT)} today`,
+      /** Intro badge text */
+      introBadge: "First month intro offer",
+      /** "Then A$25/month" - must sit next to the intro price */
+      thenLabel: `Then ${formatAud(PRO_MONTHLY_AMOUNT)}/month`,
+      /** Primary monthly CTA */
+      ctaLabel: `Start monthly for ${formatAud(PRO_MONTHLY_INTRO_AMOUNT)}`,
+      /** Fine print under the monthly CTA */
+      finePrint: `First month only. Then ${formatAud(PRO_MONTHLY_AMOUNT)}/month unless cancelled.`,
       /** Required public disclosure for monthly. */
       disclosure: `${formatAud(PRO_MONTHLY_INTRO_AMOUNT)} first month, then ${formatAud(PRO_MONTHLY_AMOUNT)}/month. Cancel anytime.`,
+      /** Google Ads + Meta conversion value (actual first charge). */
+      conversionValue: PRO_MONTHLY_INTRO_AMOUNT,
     },
     annual: {
       amount: PRO_ANNUAL_AMOUNT,
@@ -56,11 +68,21 @@ export const PRICING = {
       perMonthEquivalent: PRO_ANNUAL_PER_MONTH,
       /** "A$12.42/month" */
       perMonthLabel: `${formatAud(Number(PRO_ANNUAL_PER_MONTH.toFixed(2)))}/month`,
+      /** "A$12.42/month billed annually" */
+      perMonthBilledAnnually: `${formatAud(Number(PRO_ANNUAL_PER_MONTH.toFixed(2)))}/month billed annually`,
+      /** "or A$149/year" */
+      orLabel: `or ${formatAud(PRO_ANNUAL_AMOUNT)}/year`,
+      /** Secondary annual CTA */
+      ctaLabel: `Save with annual ${formatAud(PRO_ANNUAL_AMOUNT)}`,
       savingsVsMonthly: PRO_ANNUAL_SAVINGS_VS_MONTHLY,
       /** "save A$151 vs monthly" */
       savingsLabel: `save ${formatAud(PRO_ANNUAL_SAVINGS_VS_MONTHLY)} vs monthly`,
+      /** "Save A$151 vs monthly" (capitalised) */
+      savingsLabelCap: `Save ${formatAud(PRO_ANNUAL_SAVINGS_VS_MONTHLY)} vs monthly`,
       /** Required public disclosure for annual. */
       disclosure: `${formatAud(PRO_ANNUAL_AMOUNT)}/year. Cancel anytime.`,
+      /** Google Ads + Meta conversion value (actual first charge). */
+      conversionValue: PRO_ANNUAL_AMOUNT,
     },
   },
 } as const;

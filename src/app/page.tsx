@@ -1178,11 +1178,15 @@ export default function Home() {
                   </span>
                 </div>
                 <div className="mt-6">
-                  <div className="flex items-end gap-2">
-                    <span className="text-4xl font-extrabold leading-none">{PRICING.pro.annual.label}</span>
-                    <span className="pb-1 text-sm text-gray-300">/year</span>
+                  <span className="inline-flex rounded-full bg-emerald-400/20 px-3 py-1 text-xs font-bold uppercase tracking-wide text-emerald-300">
+                    {PRICING.pro.monthly.introBadge}
+                  </span>
+                  <div className="mt-2 flex items-end gap-2">
+                    <span className="text-4xl font-extrabold leading-none">{PRICING.pro.monthly.introLabel}</span>
+                    <span className="pb-1 text-sm text-gray-300">today</span>
                   </div>
-                  <p className="mt-2 text-sm text-gray-300">Works out to {PRICING.pro.annual.perMonthLabel}. {PRICING.pro.annual.savingsLabel.charAt(0).toUpperCase() + PRICING.pro.annual.savingsLabel.slice(1)}.</p>
+                  <p className="mt-2 text-sm text-gray-300">{PRICING.pro.monthly.thenLabel}. Cancel anytime.</p>
+                  <p className="mt-1 text-sm text-gray-300">{PRICING.pro.annual.orLabel}, {PRICING.pro.annual.savingsLabel}.</p>
                 </div>
               </div>
 
@@ -1206,25 +1210,25 @@ export default function Home() {
 
                 <div className="mt-auto pt-8">
                   <button
-                    onClick={() => handleUpgrade("pro", true)}
+                    onClick={() => handleUpgrade("pro", false)}
                     disabled={!!upgradingPlan}
                     className="flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-accent text-sm font-semibold text-white hover:bg-accent-hover transition-colors disabled:opacity-70"
                   >
-                    {upgradingPlan === "pro_annual" ? (
+                    {upgradingPlan === "pro_monthly" ? (
                       <><div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" /> Loading...</>
                     ) : (
-                      <><Sparkles className="h-4 w-4" /> Get Pro, {PRICING.pro.annual.labelWithPeriod}</>
+                      <><Sparkles className="h-4 w-4" /> {PRICING.pro.monthly.ctaLabel}</>
                     )}
                   </button>
                   <button
-                    onClick={() => handleUpgrade("pro", false)}
+                    onClick={() => handleUpgrade("pro", true)}
                     disabled={!!upgradingPlan}
                     className="mt-3 flex h-10 w-full items-center justify-center rounded-lg border border-border text-sm font-semibold text-text hover:bg-surface-alt transition-colors disabled:opacity-70"
                   >
-                    {upgradingPlan === "pro_monthly" ? "Loading..." : `Pay monthly, ${PRICING.pro.monthly.labelWithPeriod}`}
+                    {upgradingPlan === "pro_annual" ? "Loading..." : PRICING.pro.annual.ctaLabel}
                   </button>
                   <p className="mt-3 text-center text-xs font-medium text-text">
-                    {PRICING.pro.monthly.disclosure}
+                    {PRICING.pro.monthly.finePrint}
                   </p>
                   <p className="mt-1 text-center text-xs text-text-muted">
                     Secure checkout by Stripe.
