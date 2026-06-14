@@ -139,7 +139,6 @@ export default function PricingPage() {
 
   const isPro = isPaidUsage(usage);
   const planStillLoading = Boolean(isSignedIn && (usage === null || checkingPlan));
-  const priceLabel = annual ? PRICING.pro.annual.labelWithPeriod : PRICING.pro.monthly.labelWithPeriod;
 
   const handleManageBilling = async () => {
     trackEvent("billing_portal_open", { source: "pricing" });
@@ -343,16 +342,21 @@ export default function PricingPage() {
 
                       <div className="mt-6 grid gap-3 sm:grid-cols-2 sm:items-end">
                         <div>
+                          {!annual && (
+                            <span className="mt-4 inline-flex rounded-full bg-emerald-400/20 px-3 py-1 text-xs font-bold uppercase tracking-wide text-emerald-300">
+                              {PRICING.pro.monthly.introBadge}
+                            </span>
+                          )}
                           <div className="flex items-end gap-2">
-                            <span className="text-4xl font-extrabold leading-none">{annual ? PRICING.pro.annual.label : PRICING.pro.monthly.label}</span>
-                            <span className="pb-1 text-sm text-gray-300">{annual ? "/year" : "/month"}</span>
+                            <span className="text-4xl font-extrabold leading-none">{annual ? PRICING.pro.annual.label : PRICING.pro.monthly.introLabel}</span>
+                            <span className="pb-1 text-sm text-gray-300">{annual ? "/year" : "today"}</span>
                           </div>
                           <p className="mt-2 text-sm text-gray-300">
-                            {annual ? `Works out to ${PRICING.pro.annual.perMonthLabel}.` : `${PRICING.pro.monthly.introLabel} first month, then ${PRICING.pro.monthly.labelWithPeriod}.`}
+                            {annual ? `Works out to ${PRICING.pro.annual.perMonthLabel}.` : `${PRICING.pro.monthly.thenLabel}. Cancel anytime.`}
                           </p>
                         </div>
                         <div className="rounded-lg bg-white/10 px-3 py-2 text-sm text-blue-100">
-                          {annual ? `${PRICING.pro.annual.savingsLabel}.` : `Annual: ${PRICING.pro.annual.savingsLabel}.`}
+                          {annual ? `${PRICING.pro.annual.savingsLabelCap}.` : `${PRICING.pro.annual.orLabel}, ${PRICING.pro.annual.savingsLabel}.`}
                         </div>
                       </div>
                     </div>
@@ -380,12 +384,12 @@ export default function PricingPage() {
                             </>
                           ) : (
                             <>
-                              <Sparkles className="h-4 w-4" /> Get Pro, {priceLabel}
+                              <Sparkles className="h-4 w-4" /> {annual ? PRICING.pro.annual.ctaLabel : PRICING.pro.monthly.ctaLabel}
                             </>
                           )}
                         </button>
                         <p className="mt-3 text-center text-xs font-medium text-text">
-                          {annual ? PRICING.pro.annual.disclosure : PRICING.pro.monthly.disclosure}
+                          {annual ? PRICING.pro.annual.disclosure : PRICING.pro.monthly.finePrint}
                         </p>
                         <p className="mt-1 text-center text-xs text-text-muted">Secure checkout by Stripe.</p>
                       </div>
