@@ -73,7 +73,7 @@ function isPaidUsage(usage: UsageState | null): boolean {
 
 export default function PricingPage() {
   const { isLoaded, isSignedIn } = useAuth();
-  const [annual, setAnnual] = useState(true);
+  const [annual, setAnnual] = useState(false);
   const [upgrading, setUpgrading] = useState(false);
   const [managingBilling, setManagingBilling] = useState(false);
   const [usage, setUsage] = useState<UsageState | null>(null);
