@@ -20,9 +20,11 @@ jest.mock("@clerk/nextjs", () => ({
 
 // Mock next/link
 jest.mock("next/link", () => {
-  return ({ children, href }: { children: React.ReactNode; href: string }) => (
+  const MockLink = ({ children, href }: { children: React.ReactNode; href: string }) => (
     <a href={href}>{children}</a>
   );
+  MockLink.displayName = "MockLink";
+  return MockLink;
 });
 
 // Mock lucide-react icons
@@ -80,7 +82,7 @@ describe("CheckoutSuccessPage - Purchase Event", () => {
     jest.restoreAllMocks();
   });
 
-  it("billing=monthly, status reaches ready -> fbq called with { value: 12.00, currency: 'AUD' }", async () => {
+  it("billing=monthly, status reaches ready -> fbq called with { value: 12.50, currency: 'AUD' }", async () => {
     setupSearchParams({
       session_id: "test-session-123",
       billing: "monthly",
@@ -97,13 +99,13 @@ describe("CheckoutSuccessPage - Purchase Event", () => {
 
     await waitFor(() => {
       expect(mockFbq).toHaveBeenCalledWith("track", "Purchase", {
-        value: 12.00,
+        value: 12.50,
         currency: "AUD",
       });
     });
   });
 
-  it("billing=annual, status reaches ready -> fbq called with { value: 100.00, currency: 'AUD' }", async () => {
+  it("billing=annual, status reaches ready -> fbq called with { value: 149, currency: 'AUD' }", async () => {
     setupSearchParams({
       session_id: "test-session-456",
       billing: "annual",
@@ -120,13 +122,13 @@ describe("CheckoutSuccessPage - Purchase Event", () => {
 
     await waitFor(() => {
       expect(mockFbq).toHaveBeenCalledWith("track", "Purchase", {
-        value: 100.00,
+        value: 149,
         currency: "AUD",
       });
     });
   });
 
-  it("billing param missing, status reaches ready -> fbq called with { value: 12.00, currency: 'AUD' }", async () => {
+  it("billing param missing, status reaches ready -> fbq called with { value: 12.50, currency: 'AUD' }", async () => {
     setupSearchParams({
       session_id: "test-session-789",
       synced: "true",
@@ -142,7 +144,7 @@ describe("CheckoutSuccessPage - Purchase Event", () => {
 
     await waitFor(() => {
       expect(mockFbq).toHaveBeenCalledWith("track", "Purchase", {
-        value: 12.00,
+        value: 12.50,
         currency: "AUD",
       });
     });
@@ -331,7 +333,7 @@ describe("CheckoutSuccessPage - Google Ads Conversion Event", () => {
     delete process.env.NEXT_PUBLIC_GOOGLE_ADS_CONVERSION_LABEL;
   });
 
-  it("status reaches ready, new purchase -> trackGoogleAdsConversion called with correct args", async () => {
+  it("billing=monthly, status reaches ready -> trackGoogleAdsConversion called with value 12.50", async () => {
     setupSearchParams({
       session_id: "gads-session-001",
       billing: "monthly",
@@ -348,13 +350,13 @@ describe("CheckoutSuccessPage - Google Ads Conversion Event", () => {
     await waitFor(() => {
       expect(mockTrackGoogleAdsConversion).toHaveBeenCalledWith(
         'jzjNCNyf970cEP-s4vzD',
-        11.40,
+        12.50,
         'AUD'
       );
     });
   });
 
-  it("billing=annual, status reaches ready -> still fires fixed value 11.40 (not varied)", async () => {
+  it("billing=annual, status reaches ready -> fires value 149", async () => {
     setupSearchParams({
       session_id: "gads-session-002",
       billing: "annual",
@@ -371,7 +373,7 @@ describe("CheckoutSuccessPage - Google Ads Conversion Event", () => {
     await waitFor(() => {
       expect(mockTrackGoogleAdsConversion).toHaveBeenCalledWith(
         'jzjNCNyf970cEP-s4vzD',
-        11.40,
+        149,
         'AUD'
       );
     });

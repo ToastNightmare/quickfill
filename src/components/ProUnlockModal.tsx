@@ -31,7 +31,11 @@ export function ProUnlockModal({ open, onClose, featureName }: ProUnlockModalPro
     if (!open) return;
 
     let cancelled = false;
-    setIsPaid(null);
+
+    // Reset state asynchronously to avoid cascading renders
+    Promise.resolve().then(() => {
+      if (!cancelled) setIsPaid(null);
+    });
 
     fetch("/api/usage")
       .then((res) => (res.ok ? res.json() : null))
@@ -85,7 +89,7 @@ export function ProUnlockModal({ open, onClose, featureName }: ProUnlockModalPro
             ? `${featureName ?? "This feature"} is included in your active Pro plan.`
             : checkingPlan
               ? "One moment while QuickFill gets your account ready."
-              : `${featureName ?? "This feature"} is available on the Pro plan. Upgrade to Pro for ${PRICING.pro.annual.perMonthLabel} (${PRICING.pro.annual.disclosure}) to unlock unlimited fills, no watermarks, and all templates.`}
+              : `${featureName ?? "This feature"} is available on the Pro plan. ${PRICING.pro.monthly.disclosure} Unlock unlimited fills, no watermarks, and all templates.`}
         </p>
 
         <div className="bg-surface-alt rounded-xl p-4 mb-6 text-left">
@@ -125,13 +129,20 @@ export function ProUnlockModal({ open, onClose, featureName }: ProUnlockModalPro
         ) : (
           <>
             <a
-              href="/checkout?plan=pro&billing=annual&source=pro_unlock_modal"
+              href="/checkout?plan=pro&billing=monthly&source=pro_unlock_modal"
               className="w-full h-11 rounded-xl bg-accent text-sm font-semibold text-white hover:bg-accent-hover transition-colors flex items-center justify-center gap-2"
             >
               <Sparkles className="h-4 w-4" />
-              Upgrade to Pro: {PRICING.pro.annual.perMonthLabel}
+              {PRICING.pro.monthly.ctaLabel}
             </a>
-            <p className="mt-2 text-xs text-text-muted">{PRICING.pro.annual.disclosure}</p>
+            <p className="mt-2 text-xs text-text-muted">{PRICING.pro.monthly.finePrint}</p>
+            <a
+              href="/checkout?plan=pro&billing=annual&source=pro_unlock_modal"
+              className="mt-2 w-full h-10 rounded-xl border border-border text-sm font-semibold text-text hover:bg-surface-alt transition-colors flex items-center justify-center"
+            >
+              {PRICING.pro.annual.ctaLabel}
+            </a>
+            <p className="mt-2 text-xs text-text-muted">{PRICING.pro.annual.perMonthBilledAnnually}. {PRICING.pro.annual.disclosure}</p>
           </>
         )}
 

@@ -1540,12 +1540,19 @@ export default function EditorPage() {
             
             <div className="flex flex-col gap-3">
               <Link
-                href="/checkout?plan=pro&billing=annual&source=editor_guest_upsell"
+                href="/checkout?plan=pro&billing=monthly&source=editor_guest_upsell"
                 className="flex h-11 w-full items-center justify-center rounded-xl bg-accent text-sm font-semibold text-white hover:bg-accent-hover transition-colors"
               >
-                Upgrade to Pro: {PRICING.pro.annual.perMonthLabel}
+                {PRICING.pro.monthly.ctaLabel}
               </Link>
-              <p className="text-xs text-text-muted">{PRICING.pro.annual.disclosure}</p>
+              <p className="text-xs text-text-muted">{PRICING.pro.monthly.finePrint}</p>
+              <Link
+                href="/checkout?plan=pro&billing=annual&source=editor_guest_upsell"
+                className="flex h-10 w-full items-center justify-center rounded-xl border border-border text-sm font-semibold text-text hover:bg-surface-alt transition-colors"
+              >
+                {PRICING.pro.annual.ctaLabel}
+              </Link>
+              <p className="text-xs text-text-muted">{PRICING.pro.annual.perMonthBilledAnnually}. {PRICING.pro.annual.disclosure}</p>
               <button
                 onClick={() => setShowGuestUpsellModal(false)}
                 className="text-sm text-text-muted hover:text-text transition-colors"
@@ -1578,12 +1585,19 @@ export default function EditorPage() {
               </div>
               <div className="mt-5 flex flex-col gap-3">
                 <Link
-                  href="/checkout?plan=pro&billing=annual&source=editor_limit_modal"
+                  href="/checkout?plan=pro&billing=monthly&source=editor_limit_modal"
                   className="flex h-11 w-full items-center justify-center rounded-xl bg-accent text-sm font-semibold text-white hover:bg-accent-hover transition-colors"
                 >
-                  Upgrade to Pro: {PRICING.pro.annual.perMonthLabel}
+                  {PRICING.pro.monthly.ctaLabel}
                 </Link>
-                <p className="text-xs text-text-muted">{PRICING.pro.annual.disclosure}</p>
+                <p className="text-xs text-text-muted">{PRICING.pro.monthly.finePrint}</p>
+                <Link
+                  href="/checkout?plan=pro&billing=annual&source=editor_limit_modal"
+                  className="flex h-10 w-full items-center justify-center rounded-xl border border-border text-sm font-semibold text-text hover:bg-surface-alt transition-colors"
+                >
+                  {PRICING.pro.annual.ctaLabel}
+                </Link>
+                <p className="text-xs text-text-muted">{PRICING.pro.annual.perMonthBilledAnnually}. {PRICING.pro.annual.disclosure}</p>
                 <button
                   onClick={() => setShowUpgradeModal(false)}
                   className="flex h-11 w-full items-center justify-center rounded-xl border border-border text-sm font-semibold hover:bg-surface-alt transition-colors"
