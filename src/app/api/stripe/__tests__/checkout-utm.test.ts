@@ -264,6 +264,70 @@ describe("Stripe checkout UTM attribution", () => {
     expect(callArgs.metadata.utm_source).toHaveLength(100);
     expect(callArgs.metadata.utm_source).toBe("a".repeat(100));
   });
+
+  it("POST body with gclid and UTM values -> Stripe session metadata includes both", async () => {
+    const response = await POST(makeRequest({
+      plan: "pro",
+      annual: true,
+      utm_source: "google",
+      utm_medium: "cpc",
+      gclid: "test-click-id",
+    }));
+
+    expect(response.status).toBe(200);
+    expect(stripe.checkout.sessions.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        metadata: expect.objectContaining({
+          utm_source: "google",
+          utm_medium: "cpc",
+          gclid: "test-click-id",
+        }),
+      }),
+    );
+  });
+
+  it("POST body with long gclid -> preserves beyond 100 chars and caps at 500", async () => {
+    const longClickId = "g".repeat(450);
+
+    const response = await POST(makeRequest({
+      plan: "pro",
+      annual: false,
+      gclid: longClickId,
+    }));
+
+    expect(response.status).toBe(200);
+    const callArgs = (stripe.checkout.sessions.create as jest.Mock).mock.calls[0][0];
+    expect(callArgs.metadata.gclid).toHaveLength(450);
+    expect(callArgs.metadata.gclid).toBe(longClickId);
+  });
+
+  it("POST body with empty or undefined click IDs -> filters them out", async () => {
+    const response = await POST(makeRequest({
+      plan: "pro",
+      annual: false,
+      gclid: "",
+      gbraid: undefined,
+      wbraid: "valid-wbraid",
+    }));
+
+    expect(response.status).toBe(200);
+    const callArgs = (stripe.checkout.sessions.create as jest.Mock).mock.calls[0][0];
+    expect(callArgs.metadata.gclid).toBeUndefined();
+    expect(callArgs.metadata.gbraid).toBeUndefined();
+    expect(callArgs.metadata.wbraid).toBe("valid-wbraid");
+  });
+
+  it("POST body with gclid -> includes it in subscription metadata", async () => {
+    const response = await POST(makeRequest({
+      plan: "pro",
+      annual: true,
+      gclid: "subscription-click-id",
+    }));
+
+    expect(response.status).toBe(200);
+    const callArgs = (stripe.checkout.sessions.create as jest.Mock).mock.calls[0][0];
+    expect(callArgs.subscription_data.metadata.gclid).toBe("subscription-click-id");
+  });
 });
 
 describe("Stripe checkout intro coupon (Pro monthly)", () => {

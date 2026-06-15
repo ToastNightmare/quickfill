@@ -13,6 +13,8 @@ export const ANALYTICS_EVENTS = [
   "free_limit_hit",
   "upgrade_prompted",
   "checkout_start",
+  "checkout_cancelled",
+  "billing_portal_open",
   "subscription_started",
   "subscription_updated",
   "subscription_cancelled"

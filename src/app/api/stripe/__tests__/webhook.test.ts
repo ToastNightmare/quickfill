@@ -315,6 +315,71 @@ describe("Stripe webhook payment truth", () => {
     });
   });
 
+  it("handleCheckoutCompleted with gclid in session.metadata passes gclid to trackServerEvent", async () => {
+    const sessionWithClickId = {
+      id: "cs_test",
+      customer: "cus_test",
+      customer_email: "user@example.com",
+      metadata: { userId: "user_test", plan: "pro", billing: "monthly", gclid: "test-click-id" },
+      subscription: "sub_test",
+    };
+
+    stripe.webhooks.constructEvent.mockReturnValue(makeEvent("checkout.session.completed", sessionWithClickId, "evt_gclid_test"));
+    stripe.subscriptions.retrieve.mockResolvedValue(makeSubscription({ id: "sub_test" }));
+
+    const response = await POST(makeRequest());
+
+    expect(response.status).toBe(200);
+    expect(mockTrackServerEvent).toHaveBeenCalledWith("subscription_started", {
+      source: "stripe_checkout",
+      tier: "pro",
+      billing: "monthly",
+      gclid: "test-click-id",
+    });
+    expect(stripe.subscriptions.update).toHaveBeenCalledWith("sub_test", {
+      metadata: expect.objectContaining({
+        userId: "user_test",
+        plan: "pro",
+        billing: "monthly",
+        gclid: "test-click-id",
+      }),
+    });
+  });
+
+  it("handleCheckoutCompleted with UTM and gclid in session.metadata passes all attribution to trackServerEvent", async () => {
+    const sessionWithAttribution = {
+      id: "cs_test",
+      customer: "cus_test",
+      customer_email: "user@example.com",
+      metadata: {
+        userId: "user_test",
+        plan: "pro",
+        billing: "annual",
+        utm_source: "google",
+        utm_medium: "cpc",
+        utm_campaign: "summer_sale",
+        gclid: "test-click-id",
+      },
+      subscription: "sub_test",
+    };
+
+    stripe.webhooks.constructEvent.mockReturnValue(makeEvent("checkout.session.completed", sessionWithAttribution, "evt_attr_test"));
+    stripe.subscriptions.retrieve.mockResolvedValue(makeSubscription({ id: "sub_test" }));
+
+    const response = await POST(makeRequest());
+
+    expect(response.status).toBe(200);
+    expect(mockTrackServerEvent).toHaveBeenCalledWith("subscription_started", {
+      source: "stripe_checkout",
+      tier: "pro",
+      billing: "annual",
+      utm_source: "google",
+      utm_medium: "cpc",
+      utm_campaign: "summer_sale",
+      gclid: "test-click-id",
+    });
+  });
+
   it("handleCheckoutCompleted with NO UTM in session.metadata calls trackServerEvent without UTM keys", async () => {
     const sessionWithoutUtm = {
       id: "cs_test",

@@ -4,6 +4,7 @@ import { useAuth } from "@clerk/nextjs";
 import { Loader2, ShieldCheck } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { captureAndStoreUtm, getStoredUtm } from "@/lib/utm";
 
 function checkoutParams() {
   const params = new URLSearchParams(window.location.search);
@@ -20,6 +21,7 @@ export default function CheckoutPage() {
   useEffect(() => {
     if (!isLoaded) return;
 
+    captureAndStoreUtm();
     const { billing, source } = checkoutParams();
     const checkoutPath = `/checkout?plan=pro&billing=${billing}&source=${encodeURIComponent(source)}`;
 
@@ -38,7 +40,7 @@ export default function CheckoutPage() {
         const res = await fetch("/api/stripe/checkout", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ plan: "pro", annual: billing === "annual" }),
+          body: JSON.stringify({ plan: "pro", annual: billing === "annual", ...getStoredUtm() }),
         });
         const data = await res.json().catch(() => ({}));
         if (cancelled) return;

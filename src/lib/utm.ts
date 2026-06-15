@@ -4,6 +4,9 @@ export interface UtmParams {
   utm_campaign?: string;
   utm_content?: string;
   utm_term?: string;
+  gclid?: string;
+  gbraid?: string;
+  wbraid?: string;
 }
 
 interface StoredUtm extends UtmParams {
@@ -13,6 +16,7 @@ interface StoredUtm extends UtmParams {
 const UTM_STORAGE_KEY = "qf_utm";
 const UTM_TTL_DAYS = 30;
 const UTM_KEYS = ["utm_source", "utm_medium", "utm_campaign", "utm_content", "utm_term"] as const;
+const CLICK_ID_KEYS = ["gclid", "gbraid", "wbraid"] as const;
 
 function getLocalStorage(): Storage | null {
   if (typeof window === "undefined") return null;
@@ -25,37 +29,49 @@ export function captureAndStoreUtm(): void {
 
   const params = new URLSearchParams(window.location.search);
 
-  // Check if any UTM params exist in the URL BEFORE building the stored object
   const hasAnyUtm = UTM_KEYS.some((key) => {
     const val = params.get(key);
     return val !== null && val !== "";
   });
+  const clickIds = Object.fromEntries(
+    CLICK_ID_KEYS.map((key) => [key, params.get(key) ?? undefined]).filter(([, value]) => value !== undefined && value !== "")
+  ) as Pick<UtmParams, (typeof CLICK_ID_KEYS)[number]>;
+  const hasAnyClickId = Object.keys(clickIds).length > 0;
 
-  if (!hasAnyUtm) return; // No UTMs in URL — do nothing
+  if (!hasAnyUtm && !hasAnyClickId) return;
 
-  // Check existing stored UTM for first-touch model
+  let existing: StoredUtm | null = null;
+  let hasFreshExisting = false;
   const existingRaw = storage.getItem(UTM_STORAGE_KEY);
   if (existingRaw) {
     try {
-      const existing: StoredUtm = JSON.parse(existingRaw);
-      const capturedAt = new Date(existing.capturedAt);
+      const parsed = JSON.parse(existingRaw) as StoredUtm;
+      existing = parsed;
+      const capturedAt = new Date(parsed.capturedAt);
       const now = new Date();
       const daysDiff = (now.getTime() - capturedAt.getTime()) / (1000 * 60 * 60 * 24);
       if (daysDiff < UTM_TTL_DAYS) {
-        return; // Fresh first-touch already exists, preserve it
+        hasFreshExisting = true;
       }
     } catch {
       // Parse failed, will overwrite with new data
     }
   }
 
-  // Build and store the UTM object
+  if (hasFreshExisting && existing) {
+    if (hasAnyClickId) {
+      storage.setItem(UTM_STORAGE_KEY, JSON.stringify({ ...existing, ...clickIds }));
+    }
+    return;
+  }
+
   const utm: StoredUtm = {
     utm_source: params.get("utm_source") ?? undefined,
     utm_medium: params.get("utm_medium") ?? undefined,
     utm_campaign: params.get("utm_campaign") ?? undefined,
     utm_content: params.get("utm_content") ?? undefined,
     utm_term: params.get("utm_term") ?? undefined,
+    ...clickIds,
     capturedAt: new Date().toISOString(),
   };
 

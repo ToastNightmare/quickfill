@@ -264,6 +264,7 @@ export async function POST(req: NextRequest) {
   let plan: "pro" | "business" = "pro";
   let annual = false;
   const utmKeys = ["utm_source", "utm_medium", "utm_campaign", "utm_content", "utm_term"] as const;
+  const CLICK_ID_KEYS = ["gclid", "gbraid", "wbraid"] as const;
   const utmMetadata: Record<string, string> = {};
   let bodyJson: Record<string, unknown> = {};
   try {
@@ -273,6 +274,11 @@ export async function POST(req: NextRequest) {
     for (const key of utmKeys) {
       if (typeof bodyJson[key] === "string" && bodyJson[key].length > 0) {
         utmMetadata[key] = String(bodyJson[key]).slice(0, 100);
+      }
+    }
+    for (const key of CLICK_ID_KEYS) {
+      if (typeof bodyJson[key] === "string" && bodyJson[key].length > 0) {
+        utmMetadata[key] = String(bodyJson[key]).slice(0, 500);
       }
     }
   } catch {

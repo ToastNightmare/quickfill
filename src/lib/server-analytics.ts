@@ -29,9 +29,9 @@ function cleanProperties(input: AnalyticsProperties = {}) {
 
 function centsForBilling(billing: unknown) {
   if (billing === "annual") {
-    return { firstPeriodCents: 10000, monthlyRunRateCents: 833, annualStarts: 1, monthlyStarts: 0 };
+    return { firstPeriodCents: 14900, monthlyRunRateCents: 1242, annualStarts: 1, monthlyStarts: 0 };
   }
-  return { firstPeriodCents: 1200, monthlyRunRateCents: 1200, annualStarts: 0, monthlyStarts: 1 };
+  return { firstPeriodCents: 2500, monthlyRunRateCents: 2500, annualStarts: 0, monthlyStarts: 1 };
 }
 
 export async function trackServerEvent(name: AnalyticsEventName, properties: AnalyticsProperties = {}) {
