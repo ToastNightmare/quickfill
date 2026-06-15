@@ -8,6 +8,7 @@ import { AlertTriangle, FileText, Sparkles, ExternalLink, Lock, Clock, User, Rot
 import { ProSuccessModal } from "@/components/ProSuccessModal";
 import { PRICING } from "@/lib/pricing";
 import { SupportForm } from "@/components/SupportForm";
+import { getStoredUtm } from "@/lib/utm";
 
 interface BillingState {
   status: string;
@@ -224,7 +225,11 @@ function DashboardContent() {
   const handleUpgrade = async () => {
     try {
       setCheckoutError(null);
-      const res = await fetch("/api/stripe/checkout", { method: "POST" });
+      const res = await fetch("/api/stripe/checkout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(getStoredUtm()),
+      });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data.url) {
         throw new Error(data.error || "Checkout could not be started. Please try again.");

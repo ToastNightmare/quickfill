@@ -161,15 +161,30 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
 
   let tier: QuickFillTier = session.metadata?.plan === "business" ? "business" : "pro";
   let subscription: Stripe.Subscription | null = null;
+  const attributionProperties: Record<string, string | undefined> = {
+    utm_source: session.metadata?.utm_source,
+    utm_medium: session.metadata?.utm_medium,
+    utm_campaign: session.metadata?.utm_campaign,
+    utm_content: session.metadata?.utm_content,
+    utm_term: session.metadata?.utm_term,
+    gclid: session.metadata?.gclid,
+    gbraid: session.metadata?.gbraid,
+    wbraid: session.metadata?.wbraid,
+  };
+  const definedAttribution = Object.fromEntries(
+    Object.entries(attributionProperties).filter(([, v]) => typeof v === "string" && v.length > 0)
+  );
 
   if (session.subscription) {
     subscription = await getStripe().subscriptions.retrieve(session.subscription as string);
     tier = subscriptionTier(subscription);
     await getStripe().subscriptions.update(subscription.id, {
       metadata: {
+        ...subscription.metadata,
         userId,
         plan: tier,
         billing: session.metadata?.billing ?? "monthly",
+        ...definedAttribution,
       },
     });
   }
@@ -197,22 +212,11 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
     });
   }
 
-  const utmProperties: Record<string, string | undefined> = {
-    utm_source: session.metadata?.utm_source,
-    utm_medium: session.metadata?.utm_medium,
-    utm_campaign: session.metadata?.utm_campaign,
-    utm_content: session.metadata?.utm_content,
-    utm_term: session.metadata?.utm_term,
-  };
-  const definedUtm = Object.fromEntries(
-    Object.entries(utmProperties).filter(([, v]) => typeof v === "string" && v.length > 0)
-  );
-
   await trackServerEvent("subscription_started", {
     source: "stripe_checkout",
     tier,
     billing: session.metadata?.billing ?? "monthly",
-    ...definedUtm,
+    ...definedAttribution,
   });
 }
 

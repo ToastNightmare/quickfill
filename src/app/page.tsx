@@ -37,7 +37,7 @@ import { APP_CONFIG } from "@/lib/config";
 import { PRICING } from "@/lib/pricing";
 import { trackEvent } from "@/lib/analytics";
 import { trackMetaEvent } from "@/lib/meta-pixel";
-import { captureAndStoreUtm } from "@/lib/utm";
+import { captureAndStoreUtm, getStoredUtm } from "@/lib/utm";
 
 interface FillEntry {
   filename: string;
@@ -670,7 +670,7 @@ export default function Home() {
       const res = await fetch("/api/stripe/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ plan, annual }),
+        body: JSON.stringify({ plan, annual, ...getStoredUtm() }),
       });
       const data = await res.json();
       if (data.error) {
