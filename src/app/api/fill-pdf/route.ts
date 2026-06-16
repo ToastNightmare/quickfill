@@ -14,6 +14,7 @@ import { getRequestEntitlement } from "@/lib/entitlements";
 import { orderFieldsForPdfDraw } from "@/lib/pdf-utils";
 import { buildPdfDownloadHeaders, filledPdfFilename } from "@/lib/pdf-download-response";
 import { finalizePdfForDownload } from "@/lib/pdf-finalize";
+import { PDF_UPLOAD_MAX_BYTES, PDF_UPLOAD_MAX_LABEL } from "@/lib/upload-limits";
 
 /** Replace control characters (including newlines) with a space */
 function sanitize(text: string): string {
@@ -180,9 +181,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Free fill limit reached. Upgrade to Pro for unlimited downloads." }, { status: 402 });
     }
 
-    // Check file size limit (15MB max)
-    const MAX_SIZE = 15 * 1024 * 1024;
-    if (pdfFile.size > MAX_SIZE) {
+    if (pdfFile.size > PDF_UPLOAD_MAX_BYTES) {
       await recordDownloadLog({
         status: "blocked",
         userId: accessForLog?.userId,
@@ -192,7 +191,7 @@ export async function POST(request: NextRequest) {
         reason: "file_too_large",
         message: "PDF too large",
       });
-      return NextResponse.json({ error: "PDF too large (max 15MB)" }, { status: 413 });
+      return NextResponse.json({ error: `PDF too large (max ${PDF_UPLOAD_MAX_LABEL})` }, { status: 413 });
     }
 
     const pdfBytes = await pdfFile.arrayBuffer();

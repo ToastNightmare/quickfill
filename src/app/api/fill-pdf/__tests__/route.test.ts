@@ -2,12 +2,12 @@
  * @jest-environment node
  */
 
-import { File } from "node:buffer";
 import { NextRequest } from "next/server";
 import { PDFDocument } from "pdf-lib";
 
 import { POST } from "../route";
 import { recordDownloadLog } from "@/lib/admin-logs";
+import { PDF_UPLOAD_MAX_BYTES, PDF_UPLOAD_MAX_LABEL } from "@/lib/upload-limits";
 
 jest.mock("@/lib/admin-logs", () => ({
   recordDownloadLog: jest.fn().mockResolvedValue(undefined),
@@ -39,7 +39,7 @@ async function makeFillPdfRequest() {
   const sourceBytes = await createSourcePdf();
   const formData = new FormData();
 
-  formData.set("pdf", new File([sourceBytes], "edge sample.pdf", { type: "application/pdf" }));
+  formData.set("pdf", new Blob([sourceBytes], { type: "application/pdf" }), "edge sample.pdf");
   formData.set(
     "fields",
     JSON.stringify([
@@ -56,6 +56,27 @@ async function makeFillPdfRequest() {
       },
     ]),
   );
+  formData.set("pageScales", JSON.stringify([[0, 1]]));
+  formData.set("hasAcroForm", "false");
+
+  return new NextRequest("https://getquickfill.com/api/fill-pdf", {
+    method: "POST",
+    body: formData,
+    headers: {
+      "x-quickfill-qa-token": "test-token",
+    },
+  });
+}
+
+function makeOversizeFillPdfRequest() {
+  const formData = new FormData();
+
+  formData.set(
+    "pdf",
+    new Blob([new Uint8Array(PDF_UPLOAD_MAX_BYTES + 1)], { type: "application/pdf" }),
+    "too-large.pdf",
+  );
+  formData.set("fields", JSON.stringify([]));
   formData.set("pageScales", JSON.stringify([[0, 1]]));
   formData.set("hasAcroForm", "false");
 
@@ -94,5 +115,18 @@ describe("fill-pdf route", () => {
     expect(Buffer.from(bytes).toString("latin1")).toContain("%%EOF");
     expect(resultDoc.getPageCount()).toBe(1);
     expect(recordDownloadLog).toHaveBeenCalledWith(expect.objectContaining({ status: "success" }));
+  });
+
+  it("rejects PDFs over the shared upload limit", async () => {
+    const response = await POST(makeOversizeFillPdfRequest());
+
+    expect(response.status).toBe(413);
+    await expect(response.json()).resolves.toEqual({
+      error: `PDF too large (max ${PDF_UPLOAD_MAX_LABEL})`,
+    });
+    expect(recordDownloadLog).toHaveBeenCalledWith(expect.objectContaining({
+      reason: "file_too_large",
+      status: "blocked",
+    }));
   });
 });

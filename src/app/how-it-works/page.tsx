@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Upload, MousePointerClick, Download, ArrowRight } from "lucide-react";
 import HowItWorksContent from "./content";
+import { PDF_UPLOAD_MAX_LABEL } from "@/lib/upload-limits";
 
 export const metadata: Metadata = {
   title: "How to Fill a PDF Form Online Free | QuickFill",
@@ -16,7 +17,7 @@ const steps = [
     icon: Upload,
     title: "Step 1: Upload Your PDF",
     description:
-      "Drag and drop any PDF form into the QuickFill editor, or click to browse your files. We support all standard PDF forms including ATO tax returns, Medicare claims, Centrelink forms, rental applications, council permits, and tenancy agreements. Files up to 50 MB are accepted.",
+      `Drag and drop any PDF form into the QuickFill editor, or click to browse your files. We support all standard PDF forms including ATO tax returns, Medicare claims, Centrelink forms, rental applications, council permits, and tenancy agreements. Files up to ${PDF_UPLOAD_MAX_LABEL} are accepted.`,
   },
   {
     icon: MousePointerClick,

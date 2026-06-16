@@ -38,6 +38,7 @@ import { runEditorProfileAutofill, trackEditorAutofillShadowReport } from "@/lib
 import { createEditorFieldId, repairDuplicateEditorFieldIds, withUniqueEditorFieldId } from "@/lib/field-ids";
 import { getTemplateBySlug, isTemplateFillable, type TemplateConfig } from "@/lib/templates-config";
 import { PRICING } from "@/lib/pricing";
+import { PDF_UPLOAD_MAX_BYTES, PDF_UPLOAD_MAX_LABEL } from "@/lib/upload-limits";
 
 const ZOOM_LEVELS = [50, 75, 100, 125, 150, 175, 200];
 const SNAP_MIN = 125;
@@ -401,10 +402,8 @@ export default function EditorPage() {
         trackMetaEvent('QF_UploadStarted', { sizeKb: Math.round(bytes.byteLength / 1024) });
       }
       try {
-        // Check file size limit (15MB max)
-        const MAX_SIZE = 15 * 1024 * 1024; // 15MB in bytes
-        if (bytes.byteLength > MAX_SIZE) {
-          setToast("This PDF is too large (max 15MB)");
+        if (bytes.byteLength > PDF_UPLOAD_MAX_BYTES) {
+          setToast(`This PDF is too large (max ${PDF_UPLOAD_MAX_LABEL})`);
           setTimeout(() => setToast(null), 5000);
           setIsLoading(false);
           return;
