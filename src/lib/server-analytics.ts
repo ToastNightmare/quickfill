@@ -1,5 +1,6 @@
 import { getRedis } from "@/lib/redis";
 import { ANALYTICS_EVENT_SET, type AnalyticsEventName } from "@/lib/analytics-events";
+import { PRICING } from "@/lib/pricing";
 
 type AnalyticsProperties = Record<string, string | number | boolean | null | undefined>;
 
@@ -28,10 +29,25 @@ function cleanProperties(input: AnalyticsProperties = {}) {
 }
 
 function centsForBilling(billing: unknown) {
+  const monthlyFirstPeriodCents = Math.round(PRICING.pro.monthly.conversionValue * 100);
+  const monthlyRunRateCents = Math.round(PRICING.pro.monthly.amount * 100);
+  const annualFirstPeriodCents = Math.round(PRICING.pro.annual.amount * 100);
+  const annualMonthlyRunRateCents = Math.round(annualFirstPeriodCents / 12);
+
   if (billing === "annual") {
-    return { firstPeriodCents: 14900, monthlyRunRateCents: 1242, annualStarts: 1, monthlyStarts: 0 };
+    return {
+      firstPeriodCents: annualFirstPeriodCents,
+      monthlyRunRateCents: annualMonthlyRunRateCents,
+      annualStarts: 1,
+      monthlyStarts: 0,
+    };
   }
-  return { firstPeriodCents: 2500, monthlyRunRateCents: 2500, annualStarts: 0, monthlyStarts: 1 };
+  return {
+    firstPeriodCents: monthlyFirstPeriodCents,
+    monthlyRunRateCents,
+    annualStarts: 0,
+    monthlyStarts: 1,
+  };
 }
 
 export async function trackServerEvent(name: AnalyticsEventName, properties: AnalyticsProperties = {}) {
