@@ -3,6 +3,7 @@
 import { useCallback, useState } from "react";
 import { useDropzone, type FileRejection } from "react-dropzone";
 import { LockKeyhole, ShieldCheck, Upload } from "lucide-react";
+import { PDF_UPLOAD_MAX_BYTES, PDF_UPLOAD_MAX_LABEL } from "@/lib/upload-limits";
 
 interface UploadZoneProps {
   onFileLoad: (file: File, bytes: ArrayBuffer) => void;
@@ -36,7 +37,7 @@ export function UploadZone({ onFileLoad }: UploadZoneProps) {
     onDrop,
     accept: { "application/pdf": [".pdf"] },
     multiple: false,
-    maxSize: 50 * 1024 * 1024, // 50MB
+    maxSize: PDF_UPLOAD_MAX_BYTES,
   });
 
   return (
@@ -66,7 +67,7 @@ export function UploadZone({ onFileLoad }: UploadZoneProps) {
           )}
         </p>
         <p className="mt-1 text-sm text-text-muted hidden sm:block">or click to browse</p>
-        <p className="mt-4 text-xs text-text-muted">PDF files only, up to 50MB</p>
+        <p className="mt-4 text-xs text-text-muted">PDF files only, up to {PDF_UPLOAD_MAX_LABEL}</p>
         <p className="mt-2 text-xs text-text-muted">No account needed. Works with any PDF.</p>
         <div className="mt-5 grid w-full max-w-md gap-2 text-left sm:grid-cols-2">
           <div className="flex items-start gap-2 rounded-lg border border-border bg-surface px-3 py-2">
@@ -90,7 +91,7 @@ export function UploadZone({ onFileLoad }: UploadZoneProps) {
         </div>
         {sizeError && (
           <p className="mt-3 text-sm font-medium text-red-500">
-            File too large. Please upload a PDF under 50MB.
+            File too large. Please upload a PDF under {PDF_UPLOAD_MAX_LABEL}.
           </p>
         )}
       </div>

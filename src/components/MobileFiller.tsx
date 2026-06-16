@@ -28,8 +28,8 @@ import {
   savePdfToIndexedDB,
 } from "@/lib/persistence";
 import type { EditorField } from "@/lib/types";
+import { PDF_UPLOAD_MAX_BYTES, PDF_UPLOAD_MAX_LABEL } from "@/lib/upload-limits";
 
-const MAX_PDF_BYTES = 15 * 1024 * 1024;
 const SIG_KEYWORDS = ["signature", "sign here", "signed", "sig", "esign", "e-sign"];
 
 function isSignatureField(name: string): boolean {
@@ -179,8 +179,8 @@ export function MobileFiller() {
       return;
     }
 
-    if (file.size > MAX_PDF_BYTES) {
-      showToast("This PDF is too large. Please use a file under 15 MB.", 5000);
+    if (file.size > PDF_UPLOAD_MAX_BYTES) {
+      showToast(`This PDF is too large. Please use a file under ${PDF_UPLOAD_MAX_LABEL}.`, 5000);
       return;
     }
 
@@ -395,7 +395,7 @@ export function MobileFiller() {
           {isLoading ? <Loader2 className="h-5 w-5 animate-spin" /> : <Upload className="h-5 w-5" />}
           {isLoading ? "Reading PDF..." : "Choose PDF"}
         </button>
-        <p className="mt-4 text-xs text-text-muted">PDF files only, up to 15 MB</p>
+        <p className="mt-4 text-xs text-text-muted">PDF files only, up to {PDF_UPLOAD_MAX_LABEL}</p>
 
         <div className="mt-10 w-full max-w-sm rounded-2xl border border-border bg-surface-alt p-4">
           <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-text-muted">Works best with</p>

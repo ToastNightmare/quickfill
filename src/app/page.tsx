@@ -38,6 +38,7 @@ import { PRICING } from "@/lib/pricing";
 import { trackEvent } from "@/lib/analytics";
 import { trackMetaEvent } from "@/lib/meta-pixel";
 import { captureAndStoreUtm, getStoredUtm } from "@/lib/utm";
+import { PDF_UPLOAD_MAX_LABEL } from "@/lib/upload-limits";
 
 interface FillEntry {
   filename: string;
@@ -314,7 +315,7 @@ const proofStats = [
   { value: "15+", label: "ready templates" },
   { value: "3", label: "free fills each month" },
   { value: "0", label: "stored PDF uploads" },
-  { value: "50MB", label: "PDF upload limit" },
+  { value: PDF_UPLOAD_MAX_LABEL, label: "PDF upload limit" },
 ];
 
 const buyerQuestions = [

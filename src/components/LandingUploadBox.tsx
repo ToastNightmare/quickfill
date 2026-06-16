@@ -9,8 +9,7 @@ import {
   saveFileNameToLocalStorage,
   clearEditorState,
 } from "@/lib/persistence";
-
-const MAX_SIZE = 15 * 1024 * 1024; // 15MB, matches editor limit
+import { PDF_UPLOAD_MAX_BYTES, PDF_UPLOAD_MAX_LABEL } from "@/lib/upload-limits";
 
 /**
  * Real above-the-fold upload box for the /pdf-form-filler landing page.
@@ -48,7 +47,7 @@ export function LandingUploadBox() {
     (acceptedFiles: File[], rejectedFiles: FileRejection[]) => {
       setError(null);
       if (rejectedFiles.length > 0) {
-        setError("Please upload a PDF under 15MB.");
+        setError(`Please upload a PDF under ${PDF_UPLOAD_MAX_LABEL}.`);
         return;
       }
       const file = acceptedFiles[0];
@@ -61,7 +60,7 @@ export function LandingUploadBox() {
     onDrop,
     accept: { "application/pdf": [".pdf"] },
     multiple: false,
-    maxSize: MAX_SIZE,
+    maxSize: PDF_UPLOAD_MAX_BYTES,
   });
 
   return (
@@ -95,7 +94,7 @@ export function LandingUploadBox() {
               <FileText className="h-4 w-4" /> Choose PDF
             </span>
             <p className="mt-3 text-xs text-gray-400">
-              PDF files only, up to 15MB. No account needed to start.
+              PDF files only, up to {PDF_UPLOAD_MAX_LABEL}. No account needed to start.
             </p>
           </>
         )}

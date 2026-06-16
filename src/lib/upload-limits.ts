@@ -1,0 +1,3 @@
+export const PDF_UPLOAD_MAX_MB = 15;
+export const PDF_UPLOAD_MAX_BYTES = PDF_UPLOAD_MAX_MB * 1024 * 1024;
+export const PDF_UPLOAD_MAX_LABEL = "15MB";

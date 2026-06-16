@@ -2,6 +2,7 @@ import { test, expect, type APIRequestContext, type Page, type TestInfo } from "
 import { PDFDict, PDFDocument, PDFName, StandardFonts, rgb } from "pdf-lib";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
+import { PDF_UPLOAD_MAX_LABEL } from "../src/lib/upload-limits";
 
 type TestPdf = {
   name: string;
@@ -470,7 +471,15 @@ test.describe("PDF accuracy pack", () => {
     await expect(page.getByText("Flat PDF detected")).toBeVisible({ timeout: 15000 });
     await page.getByRole("link", { name: /open full editor/i }).click();
     await expect(page).toHaveURL(/advanced=1/);
-    await expect(page.getByText("PDF files only, up to 50MB").last()).toBeVisible();
+    await expect(page.getByRole("button", { name: "Text" })).toBeVisible();
+  });
+
+  test("desktop upload prompt shows the PDF upload limit", async ({ page }) => {
+    await installQaHeaders(page);
+    await page.setViewportSize({ width: 1365, height: 900 });
+    await page.goto("/editor?advanced=1");
+
+    await expect(page.getByText(`PDF files only, up to ${PDF_UPLOAD_MAX_LABEL}`).last()).toBeVisible();
   });
 
   test("desktop upload renders the full editor without page overflow", async ({ page }) => {
