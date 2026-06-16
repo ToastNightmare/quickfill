@@ -486,7 +486,7 @@ export default function AdminAnalyticsClient() {
             <p className="text-4xl font-bold text-emerald-400 mt-1 tabular-nums">
               {loading ? "..." : money(summary?.revenue.range.monthlyRunRateCents ?? 0)}
             </p>
-            <p className="text-xs text-slate-500 mt-1">Stripe webhook-based, {days}-day range</p>
+            <p className="text-xs text-slate-500 mt-1">Subscription-start estimate, {days}-day range</p>
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
             <RevenueMetric label="Paid Conversions" value={loading ? "..." : String(summary?.revenue.range.paidConversions ?? 0)} />
@@ -495,11 +495,11 @@ export default function AdminAnalyticsClient() {
             <RevenueMetric
               label="Recurring Run-rate (MRR)"
               value={loading ? "..." : money(summary?.revenue.range.monthlyRunRateCents ?? 0)}
-              note="live Stripe-derived"
+              note="estimated run-rate"
             />
           </div>
           <p className="mt-4 text-xs text-slate-500">
-            Revenue is derived from live Stripe amounts. First-period reflects the actual first charge (monthly intro A$12.50 or annual A$149), and recurring run-rate reflects the normalised monthly value of active subscriptions (A$25/month, annual counted as A$149/12).
+            Revenue signal is estimated from subscription-start analytics events using current pricing assumptions. First-period revenue reflects estimated first charges: monthly intro A$12.50 or annual A$149. Run-rate reflects estimated ongoing monthly value: A$25/month or annual counted as A$149/12. For live Stripe-derived revenue, use the admin revenue view.
           </p>
         </section>
 
