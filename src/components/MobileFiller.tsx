@@ -380,9 +380,9 @@ export function MobileFiller() {
         <div className="mb-5 flex h-16 w-16 items-center justify-center rounded-2xl bg-accent/10">
           <FileText className="h-8 w-8 text-accent" />
         </div>
-        <h1 className="mb-2 text-center text-2xl font-bold text-text">Fill a PDF</h1>
+        <h1 className="mb-2 text-center text-2xl font-bold text-text">Finish paperwork fast</h1>
         <p className="mb-8 max-w-xs text-center text-sm leading-relaxed text-text-muted">
-          Upload a PDF form, fill the detected fields, sign where needed, and download.
+          Upload a PDF, add text, ticks, signatures, and dates, then download your finished document.
         </p>
 
         <input ref={fileInputRef} type="file" accept="application/pdf" className="hidden" onChange={handleFilePick} />
@@ -398,9 +398,9 @@ export function MobileFiller() {
         <p className="mt-4 text-xs text-text-muted">PDF files only, up to {PDF_UPLOAD_MAX_LABEL}</p>
 
         <div className="mt-10 w-full max-w-sm rounded-2xl border border-border bg-surface-alt p-4">
-          <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-text-muted">Works best with</p>
+          <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-text-muted">Works well for</p>
           <div className="flex flex-col gap-2 text-sm text-text-muted">
-            {["Tax and government forms", "Employment forms", "Rental applications", "Business and permit forms"].map((s) => (
+            {["Everyday paperwork", "Applications", "Agreements", "Worksheets"].map((s) => (
               <div key={s} className="flex items-center gap-2">
                 <div className="h-1.5 w-1.5 shrink-0 rounded-full bg-accent/60" />
                 {s}
@@ -485,9 +485,9 @@ export function MobileFiller() {
         {!hasAcroForm || fields.length === 0 ? (
           <div className="rounded-2xl border border-border bg-surface p-6 text-center shadow-sm">
             <FileText className="mx-auto mb-3 h-8 w-8 text-text-muted" />
-            <p className="mb-1 text-sm font-semibold text-text">Flat PDF detected</p>
+            <p className="mb-1 text-sm font-semibold text-text">Need to place fields manually?</p>
             <p className="text-xs leading-relaxed text-text-muted">
-              This file does not expose standard fields. The full editor will open this same PDF so you can place text, boxes, signatures, and ticks manually.
+              Open the full editor with this same PDF to add text, boxes, signatures, dates, and ticks wherever you need them.
             </p>
             <div className="mt-5 grid gap-2">
               <a

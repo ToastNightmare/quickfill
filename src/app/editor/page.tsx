@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useEffect, useRef, useMemo } from "react";
+import { Suspense, useState, useCallback, useEffect, useRef, useMemo } from "react";
 import { ChevronLeft, ChevronRight, Sparkles, X, RotateCcw, Minus, Plus, Download, Zap, ShieldCheck, LockKeyhole, BadgeCheck, FileText, CheckCircle } from "lucide-react";
 import { UploadZone } from "@/components/UploadZone";
 import { MobileFiller } from "@/components/MobileFiller";
@@ -32,6 +32,7 @@ import {
 import type { EditorField, ToolType } from "@/lib/types";
 import { useAuth } from "@clerk/nextjs";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { trackEvent } from "@/lib/analytics";
 import { trackMetaEvent } from "@/lib/meta-pixel";
 import { runEditorProfileAutofill, trackEditorAutofillShadowReport } from "@/lib/editor-profile-autofill";
@@ -154,7 +155,7 @@ function pollCanvasForContent(
   setTimeout(poll, initialDelayMs);
 }
 
-export default function EditorPage() {
+function EditorPageContent() {
   const [pdfBytes, setPdfBytes] = useState<ArrayBuffer | null>(null);
   const [fileName, setFileName] = useState<string>("");
   const [activeTool, setActiveTool] = useState<ToolType | null>(null);
@@ -193,14 +194,18 @@ export default function EditorPage() {
   const { fields, set: setFields, undo, redo, reset, canUndo, canRedo } = useHistory();
   const restoredRef = useRef(false);
   const initialRestoreDoneRef = useRef(false);
-  const [advancedMobile, setAdvancedMobile] = useState(false);
+  const searchParams = useSearchParams();
+  const advancedMobile = searchParams.get("advanced") === "1";
+  const showFullEditorOnMobile = advancedMobile || Boolean(pdfBytes);
+  const fullEditorUploadClassName = showFullEditorOnMobile
+    ? "flex flex-col flex-1"
+    : "hidden sm:flex sm:flex-col sm:flex-1";
+  const fullEditorCanvasClassName = showFullEditorOnMobile
+    ? "flex flex-col h-[calc(100svh-64px)]"
+    : "hidden sm:flex sm:flex-col h-[calc(100svh-64px)]";
 
   const pdfViewerRef = useRef<PdfViewerHandle>(null);
   const viewerContainerRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    setAdvancedMobile(new URLSearchParams(window.location.search).get("advanced") === "1");
-  }, []);
 
   // Dynamic page title based on fileName
   useEffect(() => {
@@ -420,12 +425,12 @@ export default function EditorPage() {
         // Mark as ready for field persistence
         initialRestoreDoneRef.current = true;
 
+        // Persist before showing the editor so a route refresh cannot lose the loaded PDF.
+        await savePdfToIndexedDB(bytes);
+        saveFileNameToLocalStorage(file.name);
+
         setPdfBytes(bytes);
         setFileName(file.name);
-
-        // Persist PDF and filename
-        savePdfToIndexedDB(bytes);
-        saveFileNameToLocalStorage(file.name);
 
         // Detect AcroForm fields
         let detectedAcroFieldCount = 0;
@@ -1070,7 +1075,7 @@ export default function EditorPage() {
           <MobileFiller />
         </div>
         {/* Desktop and advanced mobile full editor upload */}
-        <div className={advancedMobile ? "flex flex-col flex-1" : "hidden sm:flex sm:flex-col sm:flex-1"}>
+        <div className={fullEditorUploadClassName}>
           {isLoading && (
             <div className="fixed inset-0 z-[100] flex items-center justify-center bg-surface/80">
               <div className="flex flex-col items-center gap-3">
@@ -1146,12 +1151,8 @@ export default function EditorPage() {
 
   return (
     <>
-    {/* Mobile, filler flow (replaces canvas editor entirely) */}
-    <div className={advancedMobile ? "hidden" : "sm:hidden"}>
-      <MobileFiller />
-    </div>
-    {/* Desktop and advanced mobile full canvas editor */}
-    <div className={advancedMobile ? "flex flex-col h-[calc(100svh-64px)]" : "hidden sm:flex sm:flex-col h-[calc(100svh-64px)]"}>
+    {/* Keep loaded PDFs in the full editor on mobile so restored work stays visible. */}
+    <div className={fullEditorCanvasClassName}>
       {/* Loading overlay */}
       {isLoading && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-surface/80">
@@ -1627,5 +1628,13 @@ export default function EditorPage() {
       />
     </div>
     </>
+  );
+}
+
+export default function EditorPage() {
+  return (
+    <Suspense fallback={null}>
+      <EditorPageContent />
+    </Suspense>
   );
 }
