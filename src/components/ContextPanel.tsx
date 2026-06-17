@@ -131,6 +131,9 @@ export function ContextPanel({
               <TypeIcon className="h-4 w-4 shrink-0" />
               <p className="text-sm font-bold text-text">{fieldLabel(fieldType)} selected</p>
             </div>
+            <p className="mt-2 text-xs leading-5 text-text-muted">
+              Adjust this field here. Changes autosave locally in this browser.
+            </p>
           </Section>
 
           <Divider />

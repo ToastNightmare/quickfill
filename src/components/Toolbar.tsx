@@ -32,6 +32,7 @@ interface ToolbarProps {
   onClear: () => void;
   onDownload: () => void;
   onSaveProgress?: () => void;
+  isSavingProgress?: boolean;
   onStartOver?: () => void;
   canUndo: boolean;
   canRedo: boolean;
@@ -74,6 +75,7 @@ export function Toolbar({
   onClear,
   onDownload,
   onSaveProgress,
+  isSavingProgress,
   onStartOver,
   canUndo,
   canRedo,
@@ -168,7 +170,12 @@ export function Toolbar({
             active={snapEnabled}
           />
           {onSaveProgress ? (
-            <IconButton onClick={onSaveProgress} title="Save progress" icon={Save} />
+            <IconButton
+              onClick={onSaveProgress}
+              title="Save progress to your account. Local browser autosave is automatic."
+              icon={Save}
+              disabled={isSavingProgress}
+            />
           ) : (
             <IconButton onClick={onClear} title="Clear fields" icon={Trash2} disabled={fieldCount === 0} danger />
           )}
@@ -253,11 +260,12 @@ export function Toolbar({
         {onSaveProgress && (
           <button
             onClick={onSaveProgress}
-            title="Save Progress"
+            disabled={isSavingProgress}
+            title="Save progress to your account. Local browser autosave is automatic."
             className="flex h-8 items-center gap-3 rounded-lg px-2 text-sm font-medium text-text-muted transition-colors hover:bg-surface-alt hover:text-text"
           >
             <Save className="h-4 w-4 shrink-0" />
-            <span className="hidden sm:inline">Save Progress</span>
+            <span className="hidden sm:inline">{isSavingProgress ? "Saving Progress" : "Save Progress"}</span>
           </button>
         )}
 
