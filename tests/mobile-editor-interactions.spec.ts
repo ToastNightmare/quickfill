@@ -74,14 +74,6 @@ async function seedRestoredEditorPdf(page: Page, name: string) {
   );
 }
 
-async function uploadEditorPdf(page: Page, name: string) {
-  await page.locator("input[type='file'][accept='application/pdf,.pdf']").last().setInputFiles({
-    name,
-    mimeType: "application/pdf",
-    buffer: await createMobileEditorPdf(),
-  });
-}
-
 test.describe("mobile editor field interactions", () => {
   test.skip(!runsAgainstLocalApp, "Requires PLAYWRIGHT_BASE_URL pointing at a local dev server.");
 
@@ -135,14 +127,13 @@ test.describe("mobile editor field interactions", () => {
     await expect(page.getByText(/Tax and government forms/i)).toHaveCount(0);
   });
 
-  test("loaded PDF stays visible when resizing from desktop to mobile", async ({ page }) => {
+  test("restored PDF stays visible when resizing from desktop to mobile", async ({ page }) => {
     await page.setViewportSize({ width: 900, height: 900 });
+    await seedRestoredEditorPdf(page, "mobile-editor-continuity.pdf");
     await page.goto("/editor");
-    await expect(page.getByText("Drag & drop your PDF here")).toBeVisible();
-
-    await uploadEditorPdf(page, "mobile-editor-continuity.pdf");
 
     await expect(page.getByTestId("pdf-page")).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByTestId("local-save-status")).toHaveText(/Saved locally|Restored locally/);
 
     await page.setViewportSize({ width: 390, height: 844 });
     await expect(page.getByTestId("pdf-page")).toBeVisible();

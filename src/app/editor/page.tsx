@@ -46,6 +46,7 @@ const SNAP_MIN = 125;
 const SNAP_MAX = 175;
 // On mobile we allow zooming below SNAP_MIN so the full page fits the screen
 const isMobileDevice = () => typeof window !== "undefined" && window.innerWidth < 640;
+type LocalSaveStatus = "idle" | "saved" | "restored";
 
 const STARTER_TEMPLATE_SLUGS = [
   "super-choice",
@@ -155,6 +156,22 @@ function pollCanvasForContent(
   setTimeout(poll, initialDelayMs);
 }
 
+function LocalSaveBadge({ status }: { status: LocalSaveStatus }) {
+  if (status === "idle") return null;
+
+  const label = status === "restored" ? "Restored locally" : "Saved locally";
+
+  return (
+    <span
+      data-testid="local-save-status"
+      title="Saved in this browser only. Use Save Progress for account save when available."
+      className="inline-flex shrink-0 rounded-full border border-green-200 bg-green-50 px-2 py-0.5 text-[11px] font-semibold text-green-700"
+    >
+      {label}
+    </span>
+  );
+}
+
 function EditorPageContent() {
   const [pdfBytes, setPdfBytes] = useState<ArrayBuffer | null>(null);
   const [fileName, setFileName] = useState<string>("");
@@ -187,6 +204,7 @@ function EditorPageContent() {
   const [minimapCanvas, setMinimapCanvas] = useState<HTMLCanvasElement | null>(null);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
   const [savingProgress, setSavingProgress] = useState(false);
+  const [localSaveStatus, setLocalSaveStatus] = useState<LocalSaveStatus>("idle");
   const [snapEnabled, setSnapEnabled] = useState(false); // OFF by default
   const [showWelcomeModal, setShowWelcomeModal] = useState(false);
   const [showTour, setShowTour] = useState(false);
@@ -206,6 +224,10 @@ function EditorPageContent() {
 
   const pdfViewerRef = useRef<PdfViewerHandle>(null);
   const viewerContainerRef = useRef<HTMLDivElement>(null);
+
+  const markLocalSave = useCallback((status: LocalSaveStatus) => {
+    setLocalSaveStatus(status);
+  }, []);
 
   // Dynamic page title based on fileName
   useEffect(() => {
@@ -267,6 +289,7 @@ function EditorPageContent() {
         reset(savedFields);
         saveFieldsToLocalStorage(savedFields);
       }
+      markLocalSave("restored");
       setShowRestoredBanner(true);
       setTimeout(() => setShowRestoredBanner(false), 3000);
       pollCanvasForContent(pdfViewerRef, setMinimapCanvas);
@@ -282,27 +305,31 @@ function EditorPageContent() {
         // silent
       }
     });
-  }, [reset]);
+  }, [reset, markLocalSave]);
 
   // Persist fields on change (only after initial restoration is complete)
   useEffect(() => {
     if (pdfBytes && initialRestoreDoneRef.current) {
       saveFieldsToLocalStorage(fields);
+      markLocalSave("saved");
     }
-  }, [fields, pdfBytes]);
+  }, [fields, pdfBytes, markLocalSave]);
 
   // Persist page on change + update minimap
   useEffect(() => {
     if (pdfBytes) {
       savePageToLocalStorage(currentPage);
+      markLocalSave("saved");
       pollCanvasForContent(pdfViewerRef, setMinimapCanvas);
     }
-  }, [currentPage, pdfBytes]);
+  }, [currentPage, pdfBytes, markLocalSave]);
 
   // Persist zoom on change
   useEffect(() => {
+    if (!pdfBytes) return;
     saveZoomToLocalStorage(zoom);
-  }, [zoom]);
+    markLocalSave("saved");
+  }, [zoom, pdfBytes, markLocalSave]);
 
   // Welcome modal and tour logic for new users
   // Only runs once on mount when pdfBytes is available
@@ -428,6 +455,7 @@ function EditorPageContent() {
         // Persist before showing the editor so a route refresh cannot lose the loaded PDF.
         await savePdfToIndexedDB(bytes);
         saveFileNameToLocalStorage(file.name);
+        markLocalSave("saved");
 
         setPdfBytes(bytes);
         setFileName(file.name);
@@ -505,7 +533,7 @@ function EditorPageContent() {
         setTimeout(pollCanvas, 300);
       }
     },
-    [reset, pageScales]
+    [reset, pageScales, markLocalSave]
   );
 
   // Load template from URL param - reset state when template changes
@@ -634,6 +662,7 @@ function EditorPageContent() {
 
   const handleStartOver = useCallback(() => {
     clearEditorState();
+    setLocalSaveStatus("idle");
     setPdfBytes(null);
     setFileName("");
     setCurrentPage(0);
@@ -664,10 +693,10 @@ function EditorPageContent() {
         }),
       });
       if (res.ok) {
-        showToast("Progress saved");
+        showToast("Progress saved to your account");
       }
     } catch {
-      showToast("Failed to save progress");
+      showToast("Account save failed. Local autosave is still on.");
     } finally {
       setSavingProgress(false);
     }
@@ -1191,6 +1220,7 @@ function EditorPageContent() {
             </Link>
             <span className="hidden sm:inline text-text-muted/30 text-xs">/</span>
             <p className="truncate text-sm font-medium text-text-muted">{fileName}</p>
+            <LocalSaveBadge status={localSaveStatus} />
           </div>
 
           {/* Center: zoom controls */}
@@ -1293,6 +1323,7 @@ function EditorPageContent() {
             onClear={handleClear}
             onDownload={handleDownload}
             onSaveProgress={handleSaveProgress}
+            isSavingProgress={savingProgress}
             canUndo={canUndo}
             canRedo={canRedo}
             isDownloading={isDownloading}
@@ -1405,6 +1436,7 @@ function EditorPageContent() {
         onClear={handleClear}
         onDownload={handleDownload}
         onSaveProgress={handleSaveProgress}
+        isSavingProgress={savingProgress}
         canUndo={canUndo}
         canRedo={canRedo}
         isDownloading={isDownloading}
