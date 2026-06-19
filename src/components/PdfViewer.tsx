@@ -7,6 +7,7 @@ import type { EditorField, ToolType, SignatureField, CheckboxStamp, WhiteoutFiel
 import { detectSnapBox, detectAllBoxes, snapCredibilityScore, floodFillCell, detectCombCells } from "@/lib/snap-detect";
 import type { SnapResult, CombDetectResult } from "@/lib/snap-detect";
 import { createEditorFieldId } from "@/lib/field-ids";
+import { loadPdfjsClient } from "@/lib/pdfjs-client";
 
 export interface PdfViewerHandle {
   getCanvasDataURL: () => string | null;
@@ -246,8 +247,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
       setError(null);
 
       try {
-        const pdfjsLib = await import("pdfjs-dist");
-        pdfjsLib.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs";
+        const pdfjsLib = await loadPdfjsClient();
 
         const pdf = await pdfjsLib.getDocument({ data: pdfBytes.slice(0) }).promise;
 
