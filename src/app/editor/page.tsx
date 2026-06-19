@@ -37,6 +37,7 @@ import { trackEvent } from "@/lib/analytics";
 import { trackMetaEvent } from "@/lib/meta-pixel";
 import { runEditorProfileAutofill, trackEditorAutofillShadowReport } from "@/lib/editor-profile-autofill";
 import { createEditorFieldId, repairDuplicateEditorFieldIds, withUniqueEditorFieldId } from "@/lib/field-ids";
+import { loadPdfjsClient } from "@/lib/pdfjs-client";
 import { getTemplateBySlug, isTemplateFillable, type TemplateConfig } from "@/lib/templates-config";
 import { PRICING } from "@/lib/pricing";
 import { PDF_UPLOAD_MAX_BYTES, PDF_UPLOAD_MAX_LABEL } from "@/lib/upload-limits";
@@ -844,8 +845,7 @@ function EditorPageContent() {
         // Since we can only access current page's viewport, we'll fetch all pages' viewports
         // by temporarily rendering each page (this is done client-side, so it's acceptable)
         try {
-          const pdfjsLib = await import("pdfjs-dist");
-          pdfjsLib.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs";
+          const pdfjsLib = await loadPdfjsClient();
           const pdf = await pdfjsLib.getDocument({ data: pdfBytes.slice(0) }).promise;
           for (let i = 0; i < pdf.numPages; i++) {
             const page = await pdf.getPage(i + 1);
