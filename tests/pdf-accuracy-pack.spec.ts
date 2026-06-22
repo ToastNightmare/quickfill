@@ -468,7 +468,7 @@ test.describe("PDF accuracy pack", () => {
     const pdf = await createFlatPdf();
     await uploadMobilePdf(page, pdf);
 
-    await expect(page.getByText("Flat PDF detected")).toBeVisible({ timeout: 15000 });
+    await expect(page.getByText("Need to place fields manually?")).toBeVisible({ timeout: 15000 });
     await page.getByRole("link", { name: /open full editor/i }).click();
     await expect(page).toHaveURL(/advanced=1/);
     await expect(page.getByRole("button", { name: "Text" })).toBeVisible();
@@ -530,7 +530,7 @@ test.describe("PDF accuracy pack", () => {
 
   test("homepage template links point to real PDFs", async ({ page }) => {
     await page.goto("/templates");
-    await expect(page.getByText("Tax File Number Declaration")).toBeVisible();
+    await expect(page.getByText("Superannuation Standard Choice")).toBeVisible();
 
     for (const templateFile of realTemplateFiles.slice(0, 6)) {
       const response = await page.request.get(`/templates/${templateFile}`);
