@@ -41,6 +41,7 @@ import { loadPdfjsClient } from "@/lib/pdfjs-client";
 import { getTemplateBySlug, isTemplateFillable, type TemplateConfig } from "@/lib/templates-config";
 import { PRICING } from "@/lib/pricing";
 import { PDF_UPLOAD_MAX_BYTES, PDF_UPLOAD_MAX_LABEL } from "@/lib/upload-limits";
+import { filledDocumentFilename, type NormalizedDocumentUpload } from "@/lib/document-intake";
 
 const ZOOM_LEVELS = [50, 75, 100, 125, 150, 175, 200];
 const SNAP_MIN = 125;
@@ -428,7 +429,12 @@ function EditorPageContent() {
   }, []);
 
   const handleFileLoad = useCallback(
-    async (file: File, bytes: ArrayBuffer, source: "upload" | "template" = "upload") => {
+    async (
+      file: File,
+      bytes: ArrayBuffer,
+      source: "upload" | "template" = "upload",
+      options?: { skipAcroFormDetection?: boolean }
+    ) => {
       setIsLoading(true);
       if (source === "upload") {
         trackEvent("editor_upload_started", { sizeKb: Math.round(bytes.byteLength / 1024) });
@@ -436,7 +442,7 @@ function EditorPageContent() {
       }
       try {
         if (bytes.byteLength > PDF_UPLOAD_MAX_BYTES) {
-          setToast(`This PDF is too large (max ${PDF_UPLOAD_MAX_LABEL})`);
+          setToast(`This file is too large (max ${PDF_UPLOAD_MAX_LABEL})`);
           setTimeout(() => setToast(null), 5000);
           setIsLoading(false);
           return;
@@ -463,44 +469,49 @@ function EditorPageContent() {
 
         // Detect AcroForm fields
         let detectedAcroFieldCount = 0;
-        try {
-          const acroFields = await detectAcroFormFields(bytes);
-          if (acroFields.length > 0) {
-            detectedAcroFieldCount = acroFields.length;
-            setHasAcroForm(true);
-            const editorFields: EditorField[] = acroFields.map((af) => {
-              if (af.type === "checkbox") {
+        if (options?.skipAcroFormDetection) {
+          setHasAcroForm(false);
+          reset([]);
+        } else {
+          try {
+            const acroFields = await detectAcroFormFields(bytes);
+            if (acroFields.length > 0) {
+              detectedAcroFieldCount = acroFields.length;
+              setHasAcroForm(true);
+              const editorFields: EditorField[] = acroFields.map((af) => {
+                if (af.type === "checkbox") {
+                  return {
+                    id: af.name,
+                    type: "checkbox" as const,
+                    x: af.x,
+                    y: af.y,
+                    width: af.width,
+                    height: af.height,
+                    page: af.page,
+                    checked: false,
+                  };
+                }
                 return {
                   id: af.name,
-                  type: "checkbox" as const,
+                  type: "text" as const,
                   x: af.x,
                   y: af.y,
                   width: af.width,
                   height: af.height,
                   page: af.page,
-                  checked: false,
+                  value: af.value,
+                  fontSize: 12,
                 };
-              }
-              return {
-                id: af.name,
-                type: "text" as const,
-                x: af.x,
-                y: af.y,
-                width: af.width,
-                height: af.height,
-                page: af.page,
-                value: af.value,
-                fontSize: 12,
-              };
-            });
-            reset(repairDuplicateEditorFieldIds(editorFields));
-          } else {
+              });
+              reset(repairDuplicateEditorFieldIds(editorFields));
+            } else {
+              setHasAcroForm(false);
+              reset([]);
+            }
+          } catch {
             setHasAcroForm(false);
             reset([]);
           }
-        } catch {
-          setHasAcroForm(false);
-          reset([]);
         }
         trackEvent("editor_pdf_loaded", {
           source,
@@ -876,7 +887,7 @@ function EditorPageContent() {
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = fileName.replace(/\.pdf$/i, "") + "-filled.pdf";
+      a.download = filledDocumentFilename(fileName);
       a.click();
       URL.revokeObjectURL(url);
 
@@ -1109,7 +1120,7 @@ function EditorPageContent() {
             <div className="fixed inset-0 z-[100] flex items-center justify-center bg-surface/80">
               <div className="flex flex-col items-center gap-3">
                 <div className="h-10 w-10 animate-spin rounded-full border-3 border-accent border-t-transparent" />
-                <p className="text-sm font-medium text-text-muted">Loading PDF...</p>
+                <p className="text-sm font-medium text-text-muted">Loading file...</p>
               </div>
             </div>
           )}
@@ -1118,18 +1129,27 @@ function EditorPageContent() {
               <Sparkles className="mt-0.5 h-5 w-5 shrink-0 text-accent" />
               <div className="flex-1 text-sm">
                 <span className="font-semibold text-accent">Welcome to QuickFill!</span>
-                <span className="ml-1 text-text-muted">Upload any PDF form to get started. Your PDF is processed to generate your download and is not saved to our servers.</span>
+                <span className="ml-1 text-text-muted">Upload a PDF, JPG, or PNG. Your file is processed to generate your download and is not saved to our servers.</span>
               </div>
               <button onClick={dismissWelcome} className="shrink-0 text-text-muted hover:text-text transition-colors">
                 <X className="h-4 w-4" />
               </button>
             </div>
           )}
-          <UploadZone onFileLoad={handleFileLoad} />
+          <UploadZone
+            onFileLoad={(upload: NormalizedDocumentUpload) =>
+              handleFileLoad(
+                new File([upload.pdfBytes], upload.fileName, { type: "application/pdf" }),
+                upload.pdfBytes,
+                "upload",
+                { skipAcroFormDetection: upload.skipAcroFormDetection }
+              )
+            }
+          />
 
           <div className="mx-8 -mt-2 mb-8 grid gap-3 lg:grid-cols-3">
             {[
-              { icon: LockKeyhole, title: "No PDF storage", body: "Your PDF is used to create your download, then discarded. Never saved." },
+              { icon: LockKeyhole, title: "No file storage", body: "Your file is used to create your download, then discarded. Never saved." },
               { icon: ShieldCheck, title: "Free to start", body: "Three free fills each month, with watermark." },
               { icon: BadgeCheck, title: "Pro removes friction", body: "Unlimited fills, no watermark, full history." },
             ].map((item) => (
@@ -1187,7 +1207,7 @@ function EditorPageContent() {
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-surface/80">
           <div className="flex flex-col items-center gap-3">
             <div className="h-10 w-10 animate-spin rounded-full border-3 border-accent border-t-transparent" />
-            <p className="text-sm font-medium text-text-muted">Loading PDF...</p>
+            <p className="text-sm font-medium text-text-muted">Loading file...</p>
           </div>
         </div>
       )}

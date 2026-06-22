@@ -115,14 +115,21 @@ test.describe("mobile editor field interactions", () => {
     await page.goto("/editor");
 
     await expect(page.getByRole("heading", { name: "Finish paperwork fast" })).toBeVisible();
-    await expect(page.getByText("Upload a PDF, add text, ticks, signatures, and dates, then download your finished document.")).toBeVisible();
+    await expect(page.getByText("Upload a PDF, JPG, or PNG. Add text, ticks, signatures, and dates, then download your finished document.")).toBeVisible();
     await expect(page.getByText("Everyday paperwork")).toBeVisible();
     await expect(page.getByText("Applications")).toBeVisible();
     await expect(page.getByText("Agreements")).toBeVisible();
     await expect(page.getByText("Worksheets")).toBeVisible();
-    await expect(page.getByRole("button", { name: "Choose PDF" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Choose file" })).toBeVisible();
     await expect(page.getByText("Drag & drop your PDF here")).toBeHidden();
-    await expect(page.locator("input[type='file'][accept='application/pdf,.pdf']")).toBeHidden();
+    const uploadInputs = page.locator("input[type='file']");
+    await expect(uploadInputs).toHaveCount(2);
+    await expect(uploadInputs.first()).toBeHidden();
+    await expect(uploadInputs.nth(1)).toBeHidden();
+    await expect(page.getByTestId("document-upload-input")).toBeHidden();
+    await expect(uploadInputs.first()).toHaveAttribute("accept", /application\/pdf/);
+    await expect(uploadInputs.first()).toHaveAttribute("accept", /image\/jpeg/);
+    await expect(uploadInputs.first()).toHaveAttribute("accept", /image\/png/);
     await expect(page.getByText(/detected fields/i)).toHaveCount(0);
     await expect(page.getByText(/Tax and government forms/i)).toHaveCount(0);
   });
@@ -137,7 +144,7 @@ test.describe("mobile editor field interactions", () => {
 
     await page.setViewportSize({ width: 390, height: 844 });
     await expect(page.getByTestId("pdf-page")).toBeVisible();
-    await expect(page.getByRole("button", { name: "Choose PDF" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Choose file" })).toHaveCount(0);
     await expect(page.getByText("Finish paperwork fast")).toHaveCount(0);
   });
 
@@ -145,11 +152,11 @@ test.describe("mobile editor field interactions", () => {
     await page.setViewportSize({ width: 900, height: 900 });
     await page.goto("/editor?advanced=1");
 
-    await expect(page.getByText("Drag & drop your PDF here")).toBeVisible();
+    await expect(page.getByText("Drag & drop your file here")).toBeVisible();
     await page.setViewportSize({ width: 390, height: 844 });
-    await expect(page.locator("input[type='file'][accept='application/pdf,.pdf']")).toHaveCount(1);
+    await expect(page.getByText("Tap to browse your file")).toBeVisible();
     await expect(page.getByText("Finish paperwork fast")).toBeHidden();
-    await expect(page.getByRole("button", { name: "Choose PDF" })).toBeHidden();
+    await expect(page.getByText("PDF, JPG, or PNG, up to 15MB")).toBeHidden();
   });
 
 });

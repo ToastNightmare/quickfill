@@ -3,39 +3,56 @@
 import { useCallback, useState } from "react";
 import { useDropzone, type FileRejection } from "react-dropzone";
 import { LockKeyhole, ShieldCheck, Upload } from "lucide-react";
-import { PDF_UPLOAD_MAX_BYTES, PDF_UPLOAD_MAX_LABEL } from "@/lib/upload-limits";
+import { normalizeDocumentUpload, type NormalizedDocumentUpload } from "@/lib/document-intake";
+import {
+  DOCUMENT_DROPZONE_ACCEPT,
+  DOCUMENT_UPLOAD_LABEL,
+  PDF_UPLOAD_MAX_BYTES,
+  PDF_UPLOAD_MAX_LABEL,
+} from "@/lib/upload-limits";
 
 interface UploadZoneProps {
-  onFileLoad: (file: File, bytes: ArrayBuffer) => void;
+  onFileLoad: (upload: NormalizedDocumentUpload) => void | Promise<void>;
 }
 
 export function UploadZone({ onFileLoad }: UploadZoneProps) {
-  const [sizeError, setSizeError] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const onDrop = useCallback(
-    (acceptedFiles: File[], rejectedFiles: FileRejection[]) => {
-      setSizeError(false);
-      if (rejectedFiles.length > 0) {
-        setSizeError(true);
-        setTimeout(() => setSizeError(false), 4000);
-        return;
-      }
-      const file = acceptedFiles[0];
+  const handleAcceptedFile = useCallback(
+    async (file: File | undefined) => {
       if (!file) return;
-      const reader = new FileReader();
-      reader.onload = () => {
-        if (reader.result instanceof ArrayBuffer) {
-          onFileLoad(file, reader.result);
-        }
-      };
-      reader.readAsArrayBuffer(file);
+      try {
+        await onFileLoad(await normalizeDocumentUpload(file));
+      } catch (err) {
+        const message = err instanceof Error ? err.message : `Please upload a ${DOCUMENT_UPLOAD_LABEL}.`;
+        setError(message);
+        setTimeout(() => setError(null), 5000);
+      }
     },
     [onFileLoad]
   );
 
+  const onDrop = useCallback(
+    async (acceptedFiles: File[], rejectedFiles: FileRejection[]) => {
+      setError(null);
+      if (rejectedFiles.length > 0) {
+        const rejection = rejectedFiles[0];
+        const message = rejection?.errors.some((item) => item.code === "file-too-large")
+          ? `This file is too large. Please use a file under ${PDF_UPLOAD_MAX_LABEL}.`
+          : `Please upload a ${DOCUMENT_UPLOAD_LABEL}.`;
+        setError(message);
+        setTimeout(() => setError(null), 4000);
+        return;
+      }
+      const file = acceptedFiles[0];
+      await handleAcceptedFile(file);
+    },
+    [handleAcceptedFile]
+  );
+
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
-    accept: { "application/pdf": [".pdf"] },
+    accept: DOCUMENT_DROPZONE_ACCEPT,
     multiple: false,
     maxSize: PDF_UPLOAD_MAX_BYTES,
   });
@@ -50,7 +67,12 @@ export function UploadZone({ onFileLoad }: UploadZoneProps) {
             : "border-border hover:border-accent/50 hover:bg-surface-alt"
         }`}
       >
-        <input {...getInputProps()} />
+        <input
+          {...getInputProps({
+            "data-testid": "document-upload-input",
+            "aria-label": "Upload a PDF, JPG, or PNG",
+          })}
+        />
         {isDragActive ? (
           <div className="flex h-16 w-16 items-center justify-center rounded-full bg-accent/10">
             <Upload className="h-8 w-8 text-accent" />
@@ -59,23 +81,23 @@ export function UploadZone({ onFileLoad }: UploadZoneProps) {
           <img src="/logo-mark.png" alt="QuickFill" className="h-16 w-16 opacity-80" />
         )}
         <p className="mt-4 text-lg font-semibold text-text">
-          {isDragActive ? "Drop your PDF here" : (
+          {isDragActive ? "Drop your file here" : (
             <>
-              <span className="hidden sm:inline">Drag &amp; drop your PDF here</span>
-              <span className="sm:hidden">Tap to browse your PDF</span>
+              <span className="hidden sm:inline">Drag &amp; drop your file here</span>
+              <span className="sm:hidden">Tap to browse your file</span>
             </>
           )}
         </p>
         <p className="mt-1 text-sm text-text-muted hidden sm:block">or click to browse</p>
-        <p className="mt-4 text-xs text-text-muted">PDF files only, up to {PDF_UPLOAD_MAX_LABEL}</p>
-        <p className="mt-2 text-xs text-text-muted">No account needed. Works with any PDF.</p>
+        <p className="mt-4 text-xs text-text-muted">Upload a PDF, JPG, or PNG. Up to {PDF_UPLOAD_MAX_LABEL}.</p>
+        <p className="mt-2 text-xs text-text-muted">No account needed. Works with PDFs and common images.</p>
         <div className="mt-5 grid w-full max-w-md gap-2 text-left sm:grid-cols-2">
           <div className="flex items-start gap-2 rounded-lg border border-border bg-surface px-3 py-2">
             <LockKeyhole className="mt-0.5 h-4 w-4 shrink-0 text-accent" />
             <div>
-              <p className="text-xs font-semibold text-text">PDF not stored</p>
+              <p className="text-xs font-semibold text-text">File not stored</p>
               <p className="mt-0.5 text-[11px] leading-snug text-text-muted">
-                Your PDF is used to generate your download, then discarded. It is never saved.
+                Your file is used to generate your download, then discarded. It is never saved.
               </p>
             </div>
           </div>
@@ -84,14 +106,14 @@ export function UploadZone({ onFileLoad }: UploadZoneProps) {
             <div>
               <p className="text-xs font-semibold text-text">Not read, not shared</p>
               <p className="mt-0.5 text-[11px] leading-snug text-text-muted">
-                We don't access the contents of your document.
+                We don&apos;t access the contents of your document.
               </p>
             </div>
           </div>
         </div>
-        {sizeError && (
+        {error && (
           <p className="mt-3 text-sm font-medium text-red-500">
-            File too large. Please upload a PDF under {PDF_UPLOAD_MAX_LABEL}.
+            {error}
           </p>
         )}
       </div>

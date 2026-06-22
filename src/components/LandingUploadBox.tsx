@@ -9,7 +9,8 @@ import {
   saveFileNameToLocalStorage,
   clearEditorState,
 } from "@/lib/persistence";
-import { PDF_UPLOAD_MAX_BYTES, PDF_UPLOAD_MAX_LABEL } from "@/lib/upload-limits";
+import { normalizeDocumentUpload } from "@/lib/document-intake";
+import { DOCUMENT_DROPZONE_ACCEPT, PDF_UPLOAD_MAX_BYTES, PDF_UPLOAD_MAX_LABEL } from "@/lib/upload-limits";
 
 /**
  * Real above-the-fold upload box for the /pdf-form-filler landing page.
@@ -29,14 +30,14 @@ export function LandingUploadBox() {
       setError(null);
       setLoading(true);
       try {
-        const bytes = await file.arrayBuffer();
+        const upload = await normalizeDocumentUpload(file);
         // Clear any previous editor session so the new file restores cleanly.
         await clearEditorState();
-        await savePdfToIndexedDB(bytes);
-        saveFileNameToLocalStorage(file.name);
+        await savePdfToIndexedDB(upload.pdfBytes);
+        saveFileNameToLocalStorage(upload.fileName);
         router.push("/editor");
-      } catch {
-        setError("That PDF could not be opened. Try a different file.");
+      } catch (error) {
+        setError(error instanceof Error ? error.message : "That file could not be opened. Try a different file.");
         setLoading(false);
       }
     },
@@ -47,7 +48,12 @@ export function LandingUploadBox() {
     (acceptedFiles: File[], rejectedFiles: FileRejection[]) => {
       setError(null);
       if (rejectedFiles.length > 0) {
-        setError(`Please upload a PDF under ${PDF_UPLOAD_MAX_LABEL}.`);
+        const rejection = rejectedFiles[0];
+        setError(
+          rejection?.errors.some((item) => item.code === "file-too-large")
+            ? `Please upload a file under ${PDF_UPLOAD_MAX_LABEL}.`
+            : "Please upload a PDF, JPG, or PNG."
+        );
         return;
       }
       const file = acceptedFiles[0];
@@ -58,7 +64,7 @@ export function LandingUploadBox() {
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
-    accept: { "application/pdf": [".pdf"] },
+    accept: DOCUMENT_DROPZONE_ACCEPT,
     multiple: false,
     maxSize: PDF_UPLOAD_MAX_BYTES,
   });
@@ -73,7 +79,7 @@ export function LandingUploadBox() {
             : "border-white/25 hover:border-accent/70 hover:bg-white/10"
         }`}
       >
-        <input {...getInputProps()} aria-label="Upload a PDF" />
+        <input {...getInputProps()} aria-label="Upload a PDF, JPG, or PNG" />
         <div className="flex h-14 w-14 items-center justify-center rounded-full bg-accent/15">
           {loading ? (
             <div className="h-6 w-6 animate-spin rounded-full border-2 border-accent border-t-transparent" />
@@ -83,18 +89,18 @@ export function LandingUploadBox() {
         </div>
         <p className="mt-4 text-lg font-semibold text-white">
           {loading
-            ? "Opening your PDF..."
+            ? "Opening your file..."
             : isDragActive
-              ? "Drop your PDF here"
-              : "Drag and drop your PDF here"}
+              ? "Drop your file here"
+              : "Drag and drop your file here"}
         </p>
         {!loading && (
           <>
             <span className="mt-4 inline-flex items-center gap-2 rounded-xl bg-accent px-5 py-2.5 text-sm font-semibold text-white shadow-lg shadow-accent/25">
-              <FileText className="h-4 w-4" /> Choose PDF
+              <FileText className="h-4 w-4" /> Choose file
             </span>
             <p className="mt-3 text-xs text-gray-400">
-              PDF files only, up to {PDF_UPLOAD_MAX_LABEL}. No account needed to start.
+              Upload a PDF, JPG, or PNG. Up to {PDF_UPLOAD_MAX_LABEL}. No account needed to start.
             </p>
           </>
         )}
