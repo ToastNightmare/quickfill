@@ -479,7 +479,7 @@ test.describe("PDF accuracy pack", () => {
     await page.setViewportSize({ width: 1365, height: 900 });
     await page.goto("/editor?advanced=1");
 
-    await expect(page.getByText(`PDF files only, up to ${PDF_UPLOAD_MAX_LABEL}`).last()).toBeVisible();
+    await expect(page.getByText(`Upload a PDF, JPG, or PNG. Up to ${PDF_UPLOAD_MAX_LABEL}.`).last()).toBeVisible();
   });
 
   test("desktop upload renders the full editor without page overflow", async ({ page }) => {

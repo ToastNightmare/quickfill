@@ -28,7 +28,11 @@ import {
   savePdfToIndexedDB,
 } from "@/lib/persistence";
 import type { EditorField } from "@/lib/types";
-import { PDF_UPLOAD_MAX_BYTES, PDF_UPLOAD_MAX_LABEL } from "@/lib/upload-limits";
+import {
+  DOCUMENT_FILE_INPUT_ACCEPT,
+  PDF_UPLOAD_MAX_LABEL,
+} from "@/lib/upload-limits";
+import { filledDocumentFilename, normalizeDocumentUpload } from "@/lib/document-intake";
 
 const SIG_KEYWORDS = ["signature", "sign here", "signed", "sig", "esign", "e-sign"];
 
@@ -174,27 +178,20 @@ export function MobileFiller() {
   }, [fields, showToast]);
 
   const handleFile = useCallback(async (file: File) => {
-    if (!file.name.toLowerCase().endsWith(".pdf")) {
-      showToast("Please upload a PDF file");
-      return;
-    }
-
-    if (file.size > PDF_UPLOAD_MAX_BYTES) {
-      showToast(`This PDF is too large. Please use a file under ${PDF_UPLOAD_MAX_LABEL}.`, 5000);
-      return;
-    }
-
     setIsLoading(true);
-    setFileName(file.name);
 
     try {
-      const bytes = await file.arrayBuffer();
+      const upload = await normalizeDocumentUpload(file);
+      const bytes = upload.pdfBytes;
+      setFileName(upload.fileName);
       setPdfBytes(bytes);
       await savePdfToIndexedDB(bytes);
-      saveFileNameToLocalStorage(file.name);
+      saveFileNameToLocalStorage(upload.fileName);
       savePageToLocalStorage(0);
 
-      const detected = await detectAcroFormFields(bytes).catch(() => []);
+      const detected = upload.skipAcroFormDetection
+        ? []
+        : await detectAcroFormFields(bytes).catch(() => []);
       if (detected.length > 0) {
         const nextFields = detected.map((f) => ({
           id: f.name,
@@ -217,10 +214,16 @@ export function MobileFiller() {
         saveFieldsToLocalStorage([]);
       }
 
+      if (upload.skipAcroFormDetection && typeof window !== "undefined") {
+        window.location.assign("/editor?advanced=1");
+        return;
+      }
+
       setStep("filling");
-    } catch {
+    } catch (error) {
       setPdfBytes(null);
-      showToast("This PDF could not be opened. Try a different file.", 5000);
+      const message = error instanceof Error ? error.message : "This file could not be opened. Try a different file.";
+      showToast(message, 5000);
     } finally {
       setIsLoading(false);
     }
@@ -328,7 +331,7 @@ export function MobileFiller() {
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = fileName.replace(/\.pdf$/i, "") + "-filled.pdf";
+      a.download = filledDocumentFilename(fileName);
       a.click();
       URL.revokeObjectURL(url);
 
@@ -382,10 +385,10 @@ export function MobileFiller() {
         </div>
         <h1 className="mb-2 text-center text-2xl font-bold text-text">Finish paperwork fast</h1>
         <p className="mb-8 max-w-xs text-center text-sm leading-relaxed text-text-muted">
-          Upload a PDF, add text, ticks, signatures, and dates, then download your finished document.
+          Upload a PDF, JPG, or PNG. Add text, ticks, signatures, and dates, then download your finished document.
         </p>
 
-        <input ref={fileInputRef} type="file" accept="application/pdf" className="hidden" onChange={handleFilePick} />
+        <input ref={fileInputRef} type="file" accept={DOCUMENT_FILE_INPUT_ACCEPT} className="hidden" onChange={handleFilePick} />
 
         <button
           onClick={() => fileInputRef.current?.click()}
@@ -393,9 +396,9 @@ export function MobileFiller() {
           className="flex w-full max-w-sm items-center justify-center gap-3 rounded-2xl bg-accent py-4 text-base font-semibold text-white shadow-lg transition-colors hover:bg-accent-hover disabled:opacity-60"
         >
           {isLoading ? <Loader2 className="h-5 w-5 animate-spin" /> : <Upload className="h-5 w-5" />}
-          {isLoading ? "Reading PDF..." : "Choose PDF"}
+          {isLoading ? "Reading file..." : "Choose file"}
         </button>
-        <p className="mt-4 text-xs text-text-muted">PDF files only, up to {PDF_UPLOAD_MAX_LABEL}</p>
+        <p className="mt-4 text-xs text-text-muted">PDF, JPG, or PNG, up to {PDF_UPLOAD_MAX_LABEL}</p>
 
         <div className="mt-10 w-full max-w-sm rounded-2xl border border-border bg-surface-alt p-4">
           <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-text-muted">Works well for</p>

@@ -77,26 +77,28 @@ async function expectPdfRendered(page: Page) {
 test.describe("PdfViewer render path", () => {
   test.skip(!runsAgainstLocalApp, "Requires PLAYWRIGHT_BASE_URL pointing at a local dev server.");
 
-  test("advanced editor renders a starter template PDF", async ({ page }) => {
-    await page.setViewportSize({ width: 1365, height: 900 });
-    await page.goto("/editor?advanced=1");
-
-    await page.getByRole("button", { name: "Statutory Declaration" }).click();
-    await expect(page.getByText("statutory-declaration.pdf")).toBeVisible({ timeout: 15_000 });
-    await expectPdfRendered(page);
-  });
-
   test("advanced editor uploads and renders a dummy PDF", async ({ page }) => {
     await page.setViewportSize({ width: 1365, height: 900 });
     await page.goto("/editor?advanced=1");
 
-    await page.locator("input[type='file'][accept='application/pdf,.pdf']").setInputFiles({
+    await expect(page.getByText("Upload a PDF, JPG, or PNG. Up to 15MB.")).toBeVisible();
+    await expect(page.getByTestId("document-upload-input")).toBeAttached();
+    await page.getByTestId("document-upload-input").setInputFiles({
       name: "pdfviewer-dummy.pdf",
       mimeType: "application/pdf",
       buffer: await createDummyPdf(),
     });
 
     await expect(page.getByText("pdfviewer-dummy.pdf")).toBeVisible({ timeout: 15_000 });
+    await expectPdfRendered(page);
+  });
+
+  test("advanced editor renders a starter template PDF", async ({ page }) => {
+    await page.setViewportSize({ width: 1365, height: 900 });
+    await page.goto("/editor?advanced=1");
+
+    await page.getByRole("button", { name: "Statutory Declaration" }).click();
+    await expect(page.getByText("statutory-declaration.pdf")).toBeVisible({ timeout: 15_000 });
     await expectPdfRendered(page);
   });
 });
