@@ -1,7 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 
-const localBaseUrl = process.env.PLAYWRIGHT_BASE_URL ?? "";
-const runsAgainstLocalApp = /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(?::\d+)?/i.test(localBaseUrl);
+const hasExplicitBaseUrl = Boolean(process.env.PLAYWRIGHT_BASE_URL);
 
 async function prepareEditor(page: Page) {
   await page.goto("/editor?advanced=1");
@@ -59,7 +58,7 @@ async function uploadPng(page: Page) {
 }
 
 test.describe("editor select tool", () => {
-  test.skip(!runsAgainstLocalApp, "Requires PLAYWRIGHT_BASE_URL pointing at a local app.");
+  test.skip(!hasExplicitBaseUrl, "Requires PLAYWRIGHT_BASE_URL to be set. Set it to a local or remote app URL to run this test.");
 
   test("defaults to Select and keeps selection behavior intact", async ({ page }) => {
     await page.setViewportSize({ width: 1100, height: 900 });
