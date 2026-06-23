@@ -1,9 +1,47 @@
-export type ToolType = "text" | "checkbox" | "signature" | "date" | "whiteout" | "comb";
+export type ToolType =
+  | "select"
+  | "text"
+  | "date"
+  | "checkbox"
+  | "signature"
+  | "box"
+  | "whiteout"
+  | "line"
+  | "eraser";
+export type PlacementToolType = Extract<ToolType, "text" | "date" | "checkbox" | "signature" | "box" | "whiteout">;
+export type FieldType = Exclude<PlacementToolType, "box"> | "comb";
 export type FieldLayerDirection = "back" | "backward" | "forward" | "front";
+
+export interface ToolDefaultState {
+  select: Record<string, never>;
+  text: {
+    fontSize: number;
+  };
+  date: {
+    fontSize: number;
+    format: "en-AU";
+  };
+  checkbox: {
+    stamp: CheckboxStamp;
+  };
+  signature: {
+    fontSize: number;
+  };
+  box: {
+    charCount: number;
+  };
+  whiteout: {
+    fillColor: string | null;
+  };
+  line: {
+    strokeWidth: number;
+  };
+  eraser: Record<string, never>;
+}
 
 export interface FieldBase {
   id: string;
-  type: ToolType;
+  type: FieldType;
   x: number;
   y: number;
   width: number;

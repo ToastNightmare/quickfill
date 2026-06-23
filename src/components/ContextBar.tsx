@@ -7,12 +7,15 @@ import type { CheckboxStamp } from "@/lib/types";
 const FONT_SIZES = [8, 10, 11, 12, 14, 16, 18, 24, 36];
 
 const TOOL_META: Record<ToolType, { icon: typeof Type; label: string; hint: string }> = {
+  select:    { icon: MousePointer2, label: "Select",      hint: "Select an existing QuickFill field" },
   text:      { icon: Type,        label: "Text Field",  hint: "Click the PDF to place a text field" },
   checkbox:  { icon: CheckSquare, label: "Checkbox",    hint: "Click to stamp a tick or cross" },
   signature: { icon: PenTool,     label: "Signature",   hint: "Click the PDF to place a signature field" },
   date:      { icon: Calendar,    label: "Date",        hint: "Click the PDF to place a date field" },
-  comb:      { icon: SquareSplitHorizontal, label: "Box Field", hint: "Drag across character boxes for TFN, ABN, etc." },
+  box:       { icon: SquareSplitHorizontal, label: "Box Field", hint: "Drag across character boxes for TFN, ABN, etc." },
   whiteout:  { icon: Eraser,      label: "Whiteout",    hint: "Drag to draw a rectangle to cover text" },
+  line:      { icon: Type,        label: "Line",        hint: "Line defaults will appear here when available" },
+  eraser:    { icon: Eraser,      label: "Eraser",      hint: "Eraser defaults will appear here when available" },
 };
 
 interface ContextBarProps {

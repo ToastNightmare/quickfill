@@ -3,7 +3,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, useCallback, useImperativeHandle, forwardRef } from "react";
 import { Stage, Layer, Rect, Text, Group, Transformer, Image as KonvaImage, Line } from "react-konva";
 import type Konva from "konva";
-import type { EditorField, ToolType, SignatureField, CheckboxStamp, WhiteoutField, CombField } from "@/lib/types";
+import type { EditorField, PlacementToolType, SignatureField, CheckboxStamp, WhiteoutField, CombField } from "@/lib/types";
 import { detectSnapBox, detectAllBoxes, snapCredibilityScore, floodFillCell, detectCombCells } from "@/lib/snap-detect";
 import type { SnapResult, CombDetectResult } from "@/lib/snap-detect";
 import { createEditorFieldId } from "@/lib/field-ids";
@@ -21,14 +21,14 @@ interface PdfViewerProps {
   pdfBytes: ArrayBuffer;
   currentPage: number;
   fields: EditorField[];
-  activeTool: ToolType | null;
+  activeTool: PlacementToolType | null;
   selectedFieldId: string | null;
   onFieldAdd: (field: EditorField) => EditorField;
   onFieldUpdate: (id: string, updates: Partial<EditorField>) => void;
   onFieldSelect: (id: string | null) => void;
   onFieldDelete: (id: string) => void;
   onFieldDuplicate?: (id: string) => void;
-  onToolSelect: (tool: ToolType | null) => void;
+  onToolSelect: (tool: PlacementToolType | null) => void;
   onPageScaleSet: (page: number, scale: number) => void;
   totalPages: number;
   onTotalPagesChange: (total: number) => void;
@@ -788,13 +788,6 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
           const id = createFieldId();
           const snapped = false; // No snap detection when user draws manually
 
-          const defaults = {
-            text:      { w: 200, h: 28 },
-            checkbox:  { w: 20,  h: 20 },
-            signature: { w: 220, h: 70 },
-            date:      { w: 160, h: 28 },
-          };
-
           // Use drawn dimensions, but ensure minimum sizes (in PDF points)
           const fieldW = Math.max(width, 20 / fitScale);
           const fieldH = Math.max(height, 20 / fitScale);
@@ -845,7 +838,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
             case "date":
               field = { ...base, type: "date", width: fieldW, height: fieldH, value: new Date().toLocaleDateString("en-AU"), fontSize: 14 };
               break;
-            case "comb": {
+            case "box": {
               // Try to auto-detect comb cells from the PDF
               const canvas = canvasRef.current;
               let detectedCellWidth: number | undefined;
@@ -941,7 +934,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
 
           if (activeTool === "signature") {
             onSignatureFieldPlaced?.(addedField);
-          } else if (!isMobileEditor && activeTool !== "checkbox" && activeTool !== "whiteout" && activeTool !== "comb") {
+          } else if (!isMobileEditor && activeTool !== "checkbox" && activeTool !== "whiteout" && activeTool !== "box") {
             setEditingFieldId(addedField.id);
           }
         } else if (absDx <= 10 || absDy <= 10) {
@@ -963,7 +956,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
               checkbox:  { w: 20,  h: 20 },
               signature: { w: 220, h: 70 },
               date:      { w: 160, h: 28 },
-              comb:      { w: 220, h: 30 },
+              box:       { w: 220, h: 30 },
               whiteout:  { w: 100, h: 30 },
             };
             fieldW = defaults[activeTool].w;
@@ -1090,7 +1083,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
               case "date":
                 field = { ...base, type: "date", width: fieldW, height: fieldH, value: new Date().toLocaleDateString("en-AU"), fontSize: inferredFontSize ?? 14 };
                 break;
-              case "comb": {
+              case "box": {
                 // Try to auto-detect comb cells from the PDF
                 const combCanvas = canvasRef.current;
                 let combDetectedCellWidth: number | undefined;
@@ -1181,7 +1174,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
 
             if (activeTool === "signature") {
               onSignatureFieldPlaced?.(addedField);
-            } else if (!isMobileEditor && activeTool !== "checkbox" && activeTool !== "whiteout" && activeTool !== "comb") {
+            } else if (!isMobileEditor && activeTool !== "checkbox" && activeTool !== "whiteout" && activeTool !== "box") {
               setEditingFieldId(addedField.id);
             }
 
@@ -1223,7 +1216,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
         checkbox:  { w: 20,  h: 20 },
         signature: { w: 220, h: 70 },
         date:      { w: 160, h: 28 },
-        comb:      { w: 220, h: 30 },
+        box:       { w: 220, h: 30 },
         whiteout:  { w: 100, h: 30 },
       };
       fieldW = defaults[activeTool].w;
@@ -1344,7 +1337,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
         case "date":
           field = { ...base, type: "date", width: fieldW, height: fieldH, value: new Date().toLocaleDateString("en-AU"), fontSize: inferredFontSize ?? 14 };
           break;
-        case "comb": {
+        case "box": {
           // Try to auto-detect comb cells from the PDF
           const combCanvas3 = canvasRef.current;
           let combDetectedCellWidth3: number | undefined;
@@ -1436,7 +1429,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
       // For signature fields, trigger signature placement flow
       if (activeTool === "signature") {
         onSignatureFieldPlaced?.(addedField);
-      } else if (!isMobileEditor && activeTool !== "checkbox" && activeTool !== "whiteout" && activeTool !== "comb") {
+      } else if (!isMobileEditor && activeTool !== "checkbox" && activeTool !== "whiteout" && activeTool !== "box") {
         // Immediately enter edit mode for text-like fields
         setEditingFieldId(addedField.id);
       }

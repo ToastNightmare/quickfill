@@ -29,7 +29,7 @@ import {
   loadZoomFromLocalStorage,
   cleanupOldIndexedDBSessions,
 } from "@/lib/persistence";
-import type { EditorField, ToolType } from "@/lib/types";
+import type { EditorField, PlacementToolType, ToolDefaultState, ToolType } from "@/lib/types";
 import { useAuth } from "@clerk/nextjs";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
@@ -49,6 +49,25 @@ const SNAP_MAX = 175;
 // On mobile we allow zooming below SNAP_MIN so the full page fits the screen
 const isMobileDevice = () => typeof window !== "undefined" && window.innerWidth < 640;
 type LocalSaveStatus = "idle" | "saved" | "restored";
+
+const DEFAULT_TOOL_DEFAULTS: ToolDefaultState = {
+  select: {},
+  text: { fontSize: 14 },
+  date: { fontSize: 14, format: "en-AU" },
+  checkbox: { stamp: "tick" },
+  signature: { fontSize: 16 },
+  box: { charCount: 9 },
+  whiteout: { fillColor: null },
+  line: { strokeWidth: 1 },
+  eraser: {},
+};
+
+function placementToolFor(tool: ToolType): PlacementToolType | null {
+  if (tool === "text" || tool === "date" || tool === "checkbox" || tool === "signature" || tool === "box" || tool === "whiteout") {
+    return tool;
+  }
+  return null;
+}
 
 const STARTER_TEMPLATE_SLUGS = [
   "super-choice",
@@ -177,7 +196,8 @@ function LocalSaveBadge({ status }: { status: LocalSaveStatus }) {
 function EditorPageContent() {
   const [pdfBytes, setPdfBytes] = useState<ArrayBuffer | null>(null);
   const [fileName, setFileName] = useState<string>("");
-  const [activeTool, setActiveTool] = useState<ToolType | null>(null);
+  const [activeTool, setActiveTool] = useState<ToolType>("select");
+  const [toolDefaults, setToolDefaults] = useState<ToolDefaultState>(DEFAULT_TOOL_DEFAULTS);
   const [selectedFieldId, setSelectedFieldId] = useState<string | null>(null);
   const [whiteoutColor, setWhiteoutColor] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(0);
@@ -226,6 +246,11 @@ function EditorPageContent() {
 
   const pdfViewerRef = useRef<PdfViewerHandle>(null);
   const viewerContainerRef = useRef<HTMLDivElement>(null);
+  const activePlacementTool = placementToolFor(activeTool);
+
+  const handleToolSelect = useCallback((tool: ToolType) => {
+    setActiveTool(tool);
+  }, []);
 
   const markLocalSave = useCallback((status: LocalSaveStatus) => {
     setLocalSaveStatus(status);
@@ -396,6 +421,8 @@ function EditorPageContent() {
   }, [fields]);
 
   const totalFieldCount = fields.length;
+  void toolDefaults;
+  void setToolDefaults;
 
   // Check if user is Pro, show unlock modal if not
   const checkProFeature = useCallback(async (featureName?: string): Promise<boolean> => {
@@ -452,7 +479,7 @@ function EditorPageContent() {
         // This ensures no fields from previous session bleed through
         reset([]);
         setSelectedFieldId(null);
-        setActiveTool(null);
+        setActiveTool("select");
         setCurrentPage(0);
         setHasAcroForm(false);
         pageScales.clear(); // Clear old page scales for fresh coordinate calculation
@@ -583,7 +610,7 @@ function EditorPageContent() {
       setFields((prev) => [...prev, fieldToAdd]);
       // Select the newly added field and deactivate tool
       setSelectedFieldId(fieldToAdd.id);
-      setActiveTool(null);
+      setActiveTool("select");
       return fieldToAdd;
     },
     [fields, setFields]
@@ -644,7 +671,7 @@ function EditorPageContent() {
       // Escape: deselect
       if (e.key === "Escape") {
         setSelectedFieldId(null);
-        setActiveTool(null);
+        setActiveTool("select");
       }
     };
 
@@ -681,7 +708,7 @@ function EditorPageContent() {
     setTotalPages(0);
     setHasAcroForm(false);
     setSelectedFieldId(null);
-    setActiveTool(null);
+    setActiveTool("select");
     pageScales.clear(); // Clear old page scales for fresh coordinate calculation
     reset([]);
   }, [reset, pageScales]);
@@ -1337,7 +1364,7 @@ function EditorPageContent() {
         <div className="flex-shrink-0 h-full overflow-hidden hidden sm:flex">
           <Toolbar
             activeTool={activeTool}
-            onToolSelect={setActiveTool}
+            onToolSelect={handleToolSelect}
             onUndo={undo}
             onRedo={redo}
             onClear={handleClear}
@@ -1370,12 +1397,12 @@ function EditorPageContent() {
             pdfBytes={pdfBytes}
             currentPage={currentPage}
             fields={fields}
-            activeTool={activeTool}
+            activeTool={activePlacementTool}
             selectedFieldId={selectedFieldId}
             onFieldAdd={handleFieldAdd}
             onFieldUpdate={handleFieldUpdate}
             onFieldSelect={setSelectedFieldId}
-            onToolSelect={setActiveTool}
+            onToolSelect={() => setActiveTool("select")}
             onFieldDelete={handleFieldDelete}
             onFieldDuplicate={handleFieldDuplicate}
             onPageScaleSet={handlePageScaleSet}
@@ -1403,7 +1430,7 @@ function EditorPageContent() {
         <ContextPanel
           activeTool={activeTool}
           selectedField={selectedField}
-          onToolCancel={() => setActiveTool(null)}
+          onToolCancel={() => setActiveTool("select")}
           onFieldUpdate={handleFieldUpdate}
           onFieldDelete={handleFieldDelete}
           onFieldDeselect={() => setSelectedFieldId(null)}
@@ -1450,7 +1477,7 @@ function EditorPageContent() {
       {/* Mobile bottom toolbar */}
       <Toolbar
         activeTool={activeTool}
-        onToolSelect={setActiveTool}
+        onToolSelect={handleToolSelect}
         onUndo={undo}
         onRedo={redo}
         onClear={handleClear}
