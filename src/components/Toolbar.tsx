@@ -18,6 +18,7 @@ import {
   HelpCircle,
   RotateCcw,
   SquareSplitHorizontal,
+  MousePointer2,
 } from "lucide-react";
 import type { ToolType, EditorField } from "@/lib/types";
 import { Minimap } from "@/components/Minimap";
@@ -25,8 +26,8 @@ import type { RefObject } from "react";
 import { useState, useEffect } from "react";
 
 interface ToolbarProps {
-  activeTool: ToolType | null;
-  onToolSelect: (tool: ToolType | null) => void;
+  activeTool: ToolType;
+  onToolSelect: (tool: ToolType) => void;
   onUndo: () => void;
   onRedo: () => void;
   onClear: () => void;
@@ -54,13 +55,16 @@ interface ToolbarProps {
 }
 
 const tools: { type: ToolType; icon: typeof Type; label: string; shortLabel: string; title: string }[] = [
+  { type: "select", icon: MousePointer2, label: "Select", shortLabel: "Select", title: "Select fields" },
   { type: "text", icon: Type, label: "Text Field", shortLabel: "Text", title: "Text field: tap or drag to place" },
-  { type: "comb", icon: SquareSplitHorizontal, label: "Box Field", shortLabel: "Box", title: "Box field: drag across character boxes" },
+  { type: "box", icon: SquareSplitHorizontal, label: "Box Field", shortLabel: "Box", title: "Box field: drag across character boxes" },
   { type: "checkbox", icon: CheckSquare, label: "Checkbox", shortLabel: "Tick", title: "Checkbox: tap to place a tick or cross" },
   { type: "signature", icon: PenTool, label: "Signature", shortLabel: "Sign", title: "Signature field: tap to place" },
   { type: "date", icon: Calendar, label: "Date", shortLabel: "Date", title: "Date field: tap or drag to place" },
   { type: "whiteout", icon: Eraser, label: "Whiteout", shortLabel: "Erase", title: "Whiteout: drag over text to cover it" },
 ];
+
+const isPlacementTool = (tool: ToolType) => tool !== "select" && tool !== "line" && tool !== "eraser";
 
 function isPaidUsage(data: { isPro?: boolean; tier?: string | null } | null): boolean {
   const tier = data?.tier ?? "free";
@@ -116,13 +120,13 @@ export function Toolbar({
   if (mobile) {
     return (
       <div className="sm:hidden fixed bottom-0 left-0 right-0 z-40 border-t border-border bg-surface/95 px-3 pt-2 pb-[max(env(safe-area-inset-bottom),10px)] shadow-[0_-10px_30px_rgba(15,23,42,0.12)] backdrop-blur">
-        {activeTool && (
+        {isPlacementTool(activeTool) && (
           <div className="mb-2 flex items-center justify-between gap-3 rounded-xl border border-accent/20 bg-accent/5 px-3 py-2">
             <p className="min-w-0 text-xs font-semibold text-accent">
               Tap the PDF to place {tools.find((tool) => tool.type === activeTool)?.shortLabel.toLowerCase() ?? "field"}
             </p>
             <button
-              onClick={() => onToolSelect(null)}
+              onClick={() => onToolSelect("select")}
               className="shrink-0 rounded-lg px-2 py-1 text-xs font-semibold text-text-muted hover:bg-surface hover:text-text"
             >
               Cancel
@@ -135,7 +139,7 @@ export function Toolbar({
             {tools.map(({ type, icon: Icon, shortLabel, title }) => (
               <button
                 key={type}
-                onClick={() => onToolSelect(activeTool === type ? null : type)}
+                onClick={() => onToolSelect(type)}
                 title={title}
                 className={`flex h-12 min-w-[58px] shrink-0 flex-col items-center justify-center gap-1 rounded-xl border text-[11px] font-semibold transition-colors ${
                   activeTool === type
@@ -208,7 +212,7 @@ export function Toolbar({
         {tools.map(({ type, icon: Icon, label, title }) => (
           <button
             key={type}
-            onClick={() => onToolSelect(activeTool === type ? null : type)}
+            onClick={() => onToolSelect(type)}
             title={title}
             className={`flex h-8 items-center gap-3 rounded-lg px-2 text-sm font-semibold shadow-sm transition-colors ${
               activeTool === type

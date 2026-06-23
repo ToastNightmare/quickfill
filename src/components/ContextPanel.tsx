@@ -24,16 +24,19 @@ import type { CheckboxStamp, CombField, EditorField, FieldLayerDirection, Signat
 const FONT_SIZES = [8, 10, 11, 12, 14, 16, 18, 24, 36];
 
 const TOOL_META: Record<ToolType, { icon: typeof Type; label: string; hint: string; color: string }> = {
+  select: { icon: MousePointer2, label: "Select", hint: "Select existing QuickFill fields to move, resize, duplicate, or delete them.", color: "text-text-muted" },
   text: { icon: Type, label: "Text Field", hint: "Tap or drag on the PDF to place a text field.", color: "text-blue-500" },
   checkbox: { icon: CheckSquare, label: "Checkbox", hint: "Tap a box to place a tick, then tap the field to change it.", color: "text-violet-500" },
   signature: { icon: PenTool, label: "Signature", hint: "Tap where the signature should go, then draw or reuse your saved signature.", color: "text-pink-500" },
   date: { icon: Calendar, label: "Date", hint: "Tap where the date should go. Today's date is added first.", color: "text-amber-500" },
-  comb: { icon: SquareSplitHorizontal, label: "Box Field", hint: "Drag across character boxes for TFN, ABN, Medicare, and similar forms.", color: "text-cyan-500" },
+  box: { icon: SquareSplitHorizontal, label: "Box Field", hint: "Drag across character boxes for TFN, ABN, Medicare, and similar forms.", color: "text-cyan-500" },
   whiteout: { icon: Eraser, label: "Whiteout", hint: "Drag over text you want to cover. QuickFill samples the paper color.", color: "text-gray-500" },
+  line: { icon: Pencil, label: "Line", hint: "Line defaults will appear here when the line tool is available.", color: "text-emerald-500" },
+  eraser: { icon: Eraser, label: "Eraser", hint: "Eraser defaults will appear here when the eraser tool is available.", color: "text-red-500" },
 };
 
 interface ContextPanelProps {
-  activeTool: ToolType | null;
+  activeTool: ToolType;
   selectedField: EditorField | null;
   onToolCancel: () => void;
   onFieldUpdate: (id: string, updates: Partial<EditorField>) => void;
@@ -54,16 +57,16 @@ function dispatchLayerMove(fieldId: string, direction: FieldLayerDirection) {
   window.dispatchEvent(new CustomEvent("quickfill:move-field-layer", { detail: { fieldId, direction } }));
 }
 
-function fieldIcon(type: ToolType) {
-  if (type === "checkbox") return CheckSquare;
-  if (type === "signature") return PenTool;
-  if (type === "date") return Calendar;
-  if (type === "whiteout") return Eraser;
-  if (type === "comb") return SquareSplitHorizontal;
-  return Type;
+function FieldIcon({ type, className }: { type: EditorField["type"]; className?: string }) {
+  if (type === "checkbox") return <CheckSquare className={className} />;
+  if (type === "signature") return <PenTool className={className} />;
+  if (type === "date") return <Calendar className={className} />;
+  if (type === "whiteout") return <Eraser className={className} />;
+  if (type === "comb") return <SquareSplitHorizontal className={className} />;
+  return <Type className={className} />;
 }
 
-function fieldLabel(type: ToolType) {
+function fieldLabel(type: EditorField["type"]) {
   if (type === "checkbox") return "Checkbox";
   if (type === "signature") return "Signature";
   if (type === "date") return "Date";
@@ -72,7 +75,7 @@ function fieldLabel(type: ToolType) {
   return "Text Field";
 }
 
-function fieldColor(type: ToolType) {
+function fieldColor(type: EditorField["type"]) {
   if (type === "checkbox") return "text-violet-500";
   if (type === "signature") return "text-pink-500";
   if (type === "date") return "text-amber-500";
@@ -109,7 +112,6 @@ export function ContextPanel({
 
   if (selectedField) {
     const fieldType = selectedField.type;
-    const TypeIcon = fieldIcon(fieldType);
 
     return (
       <>
@@ -128,7 +130,7 @@ export function ContextPanel({
         <Panel>
           <Section>
             <div className={`flex items-center gap-2 ${fieldColor(fieldType)}`}>
-              <TypeIcon className="h-4 w-4 shrink-0" />
+              <FieldIcon type={fieldType} className="h-4 w-4 shrink-0" />
               <p className="text-sm font-bold text-text">{fieldLabel(fieldType)} selected</p>
             </div>
             <p className="mt-2 text-xs leading-5 text-text-muted">
@@ -188,7 +190,7 @@ export function ContextPanel({
     );
   }
 
-  if (activeTool) {
+  if (activeTool !== "select") {
     const { icon: Icon, label, hint, color } = TOOL_META[activeTool];
     return (
       <Panel>
@@ -241,9 +243,9 @@ export function ContextPanel({
         <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-surface-alt text-text-muted">
           <MousePointer2 className="h-5 w-5" />
         </div>
-        <p className="mt-3 text-sm font-semibold text-text">Nothing selected</p>
+        <p className="mt-3 text-sm font-semibold text-text">Select Tool</p>
         <p className="mt-1 text-xs leading-relaxed text-text-muted">
-          Click a tool on the left to start placing fields, or click an existing field to edit it.
+          Select existing QuickFill fields to move, resize, duplicate, or delete them. The original document stays locked.
         </p>
       </Section>
     </Panel>
@@ -273,8 +275,6 @@ function MobileFieldSheet({
   charCountExpanded: boolean;
   onCharCountExpandedChange: (value: boolean) => void;
 }) {
-  const TypeIcon = fieldIcon(selectedField.type);
-
   return (
     <div
       className="fixed bottom-[8.25rem] left-3 right-3 z-30 max-h-[42svh] overflow-y-auto rounded-2xl border border-border bg-surface shadow-2xl sm:hidden"
@@ -282,7 +282,7 @@ function MobileFieldSheet({
     >
       <div className="sticky top-0 z-10 flex items-center justify-between gap-3 border-b border-border bg-surface px-4 py-3">
         <div className={`flex min-w-0 items-center gap-2 ${fieldColor(selectedField.type)}`}>
-          <TypeIcon className="h-4 w-4 shrink-0" />
+          <FieldIcon type={selectedField.type} className="h-4 w-4 shrink-0" />
           <p className="truncate text-sm font-bold text-text">{fieldLabel(selectedField.type)} selected</p>
         </div>
         <button
