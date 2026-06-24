@@ -23,6 +23,8 @@ export interface ToolDefaultState {
   };
   checkbox: {
     stamp: CheckboxStamp;
+    color: string;
+    size: number;
   };
   signature: {
     fontSize: number;
@@ -63,6 +65,7 @@ export interface CheckboxField extends FieldBase {
   type: "checkbox";
   checked: boolean;
   stamp?: CheckboxStamp; // "tick" | "cross" | "none" (default "tick")
+  color?: string; // Hex color, defaults to near-black when absent
 }
 
 export interface SignatureField extends FieldBase {

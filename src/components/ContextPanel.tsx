@@ -19,9 +19,19 @@ import {
   ChevronUp,
   SquareSplitHorizontal,
 } from "lucide-react";
-import type { CheckboxStamp, CombField, EditorField, FieldLayerDirection, SignatureField, ToolType, WhiteoutField } from "@/lib/types";
+import type { CheckboxStamp, CombField, EditorField, FieldLayerDirection, SignatureField, ToolDefaultState, ToolType, WhiteoutField } from "@/lib/types";
 
 const FONT_SIZES = [8, 10, 11, 12, 14, 16, 18, 24, 36];
+const CHECKBOX_COLORS = [
+  { label: "Black", value: "#000000" },
+  { label: "Blue", value: "#2563eb" },
+  { label: "Red", value: "#dc2626" },
+] as const;
+const CHECKBOX_SIZES = [
+  { label: "S", value: 16 },
+  { label: "M", value: 20 },
+  { label: "L", value: 28 },
+] as const;
 
 const TOOL_META: Record<ToolType, { icon: typeof Type; label: string; hint: string; color: string }> = {
   select: { icon: MousePointer2, label: "Select", hint: "Select existing QuickFill fields to move, resize, duplicate, or delete them.", color: "text-text-muted" },
@@ -49,6 +59,8 @@ interface ContextPanelProps {
   onAutoFill: () => void;
   onDetectFields: () => void;
   isDetecting: boolean;
+  toolDefaults: ToolDefaultState;
+  onToolDefaultChange: <T extends keyof ToolDefaultState>(tool: T, updates: Partial<ToolDefaultState[T]>) => void;
   whiteoutColor?: string | null;
   onWhiteoutColorChange?: (color: string) => void;
 }
@@ -98,6 +110,8 @@ export function ContextPanel({
   onAutoFill,
   onDetectFields,
   isDetecting,
+  toolDefaults,
+  onToolDefaultChange,
   whiteoutColor,
   onWhiteoutColorChange,
 }: ContextPanelProps) {
@@ -142,7 +156,7 @@ export function ContextPanel({
           <LayerControls selectedField={selectedField} />
           <Divider />
 
-          {fieldType === "checkbox" && <CheckboxControls selectedField={selectedField} onStampChange={onStampChange} />}
+          {fieldType === "checkbox" && <CheckboxControls selectedField={selectedField} onStampChange={onStampChange} onFieldUpdate={onFieldUpdate} />}
           {fieldType === "whiteout" && <WhiteoutControls selectedField={selectedField} onFieldUpdate={onFieldUpdate} />}
           {fieldType === "signature" && <SignatureControls selectedField={selectedField} onSignatureRequest={onSignatureRequest} />}
           {(fieldType === "text" || fieldType === "date") && <FontSizeControls selectedField={selectedField} onFieldUpdate={onFieldUpdate} />}
@@ -203,6 +217,16 @@ export function ContextPanel({
             <p className="mt-1.5 text-xs leading-relaxed text-text-muted">{hint}</p>
           </div>
         </Section>
+
+        {activeTool === "checkbox" && (
+          <>
+            <Divider />
+            <CheckboxDefaultControls
+              defaults={toolDefaults.checkbox}
+              onChange={(updates) => onToolDefaultChange("checkbox", updates)}
+            />
+          </>
+        )}
 
         {activeTool === "whiteout" && onWhiteoutColorChange && (
           <>
@@ -293,7 +317,7 @@ function MobileFieldSheet({
         </button>
       </div>
 
-      {selectedField.type === "checkbox" && <CheckboxControls selectedField={selectedField} onStampChange={onStampChange} />}
+      {selectedField.type === "checkbox" && <CheckboxControls selectedField={selectedField} onStampChange={onStampChange} onFieldUpdate={onFieldUpdate} />}
       {selectedField.type === "whiteout" && <WhiteoutControls selectedField={selectedField} onFieldUpdate={onFieldUpdate} />}
       {selectedField.type === "signature" && <SignatureControls selectedField={selectedField} onSignatureRequest={onSignatureRequest} />}
       {(selectedField.type === "text" || selectedField.type === "date") && <FontSizeControls selectedField={selectedField} onFieldUpdate={onFieldUpdate} />}
@@ -370,17 +394,104 @@ function LayerButton({ label, onClick }: { label: string; onClick: () => void })
   );
 }
 
-function CheckboxControls({ selectedField, onStampChange }: { selectedField: EditorField; onStampChange: (stamp: CheckboxStamp) => void }) {
+function CheckboxDefaultControls({
+  defaults,
+  onChange,
+}: {
+  defaults: ToolDefaultState["checkbox"];
+  onChange: (updates: Partial<ToolDefaultState["checkbox"]>) => void;
+}) {
+  return (
+    <>
+      <Section label="Style">
+        <div className="grid grid-cols-3 gap-2">
+          <StampCard active={defaults.stamp === "none"} onClick={() => onChange({ stamp: "none" })} char="-" label="Empty" />
+          <StampCard active={defaults.stamp === "tick"} onClick={() => onChange({ stamp: "tick" })} char="T" label="Tick" />
+          <StampCard active={defaults.stamp === "cross"} onClick={() => onChange({ stamp: "cross" })} char="X" label="Cross" />
+        </div>
+      </Section>
+      <Divider />
+      <Section label="Color">
+        <div className="grid grid-cols-3 gap-2">
+          {CHECKBOX_COLORS.map((color) => (
+            <ColorSwatch
+              key={color.value}
+              label={color.label}
+              color={color.value}
+              active={defaults.color === color.value}
+              onClick={() => onChange({ color: color.value })}
+            />
+          ))}
+        </div>
+      </Section>
+      <Divider />
+      <Section label="Size">
+        <div className="grid grid-cols-3 gap-2">
+          {CHECKBOX_SIZES.map((size) => (
+            <SizePresetButton
+              key={size.value}
+              label={size.label}
+              size={size.value}
+              active={defaults.size === size.value}
+              onClick={() => onChange({ size: size.value })}
+            />
+          ))}
+        </div>
+      </Section>
+    </>
+  );
+}
+
+function CheckboxControls({
+  selectedField,
+  onStampChange,
+  onFieldUpdate,
+}: {
+  selectedField: EditorField;
+  onStampChange: (stamp: CheckboxStamp) => void;
+  onFieldUpdate: (id: string, updates: Partial<EditorField>) => void;
+}) {
   if (selectedField.type !== "checkbox") return null;
   const stamp: CheckboxStamp = selectedField.stamp ?? (selectedField.checked ? "tick" : "none");
+  const colorValue = selectedField.color ?? "#121726";
   return (
-    <Section label="Stamp">
-      <div className="grid grid-cols-3 gap-2">
-        <StampCard active={stamp === "tick"} onClick={() => onStampChange("tick")} char="T" label="Tick" />
-        <StampCard active={stamp === "cross"} onClick={() => onStampChange("cross")} char="X" label="Cross" />
-        <StampCard active={stamp === "none"} onClick={() => onStampChange("none")} char="-" label="None" />
-      </div>
-    </Section>
+    <>
+      <Section label="Stamp">
+        <div className="grid grid-cols-3 gap-2">
+          <StampCard active={stamp === "tick"} onClick={() => onStampChange("tick")} char="T" label="Tick" />
+          <StampCard active={stamp === "cross"} onClick={() => onStampChange("cross")} char="X" label="Cross" />
+          <StampCard active={stamp === "none"} onClick={() => onStampChange("none")} char="-" label="None" />
+        </div>
+      </Section>
+      <Divider />
+      <Section label="Color">
+        <div className="grid grid-cols-3 gap-2">
+          {CHECKBOX_COLORS.map((color) => (
+            <ColorSwatch
+              key={color.value}
+              label={color.label}
+              color={color.value}
+              active={colorValue === color.value}
+              onClick={() => onFieldUpdate(selectedField.id, { color: color.value } as Partial<EditorField>)}
+            />
+          ))}
+        </div>
+      </Section>
+      <Divider />
+      <Section label="Size">
+        <div className="grid grid-cols-3 gap-2">
+          {CHECKBOX_SIZES.map((size) => (
+            <SizePresetButton
+              key={size.value}
+              label={size.label}
+              size={size.value}
+              active={Math.round(selectedField.width) === size.value && Math.round(selectedField.height) === size.value}
+              onClick={() => onFieldUpdate(selectedField.id, { width: size.value, height: size.value } as Partial<EditorField>)}
+            />
+          ))}
+        </div>
+      </Section>
+    </>
   );
 }
 
@@ -683,6 +794,48 @@ function StampCard({ active, onClick, char, label }: { active: boolean; onClick:
     >
       <span className="text-xl font-bold leading-none">{char}</span>
       <span className="text-[10px] font-medium">{label}</span>
+    </button>
+  );
+}
+
+function ColorSwatch({ active, onClick, color, label }: { active: boolean; onClick: () => void; color: string; label: string }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={`${label} checkbox color`}
+      className={`flex h-11 items-center justify-center rounded-xl border-2 transition-colors ${
+        active ? "border-accent bg-accent/5" : "border-border bg-surface hover:border-accent/40 hover:bg-surface-alt"
+      }`}
+    >
+      <span className="h-5 w-5 rounded-full border border-black/10" style={{ backgroundColor: color }} />
+    </button>
+  );
+}
+
+function SizePresetButton({
+  active,
+  onClick,
+  label,
+  size,
+}: {
+  active: boolean;
+  onClick: () => void;
+  label: string;
+  size: number;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`flex h-11 items-center justify-center gap-1 rounded-xl border-2 text-sm font-semibold transition-colors ${
+        active
+          ? "border-accent bg-accent/5 text-accent"
+          : "border-border bg-surface text-text-muted hover:border-accent/40 hover:bg-surface-alt"
+      }`}
+    >
+      <span>{label}</span>
+      <span className="text-[10px] font-medium">{size}</span>
     </button>
   );
 }
