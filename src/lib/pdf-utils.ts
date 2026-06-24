@@ -349,9 +349,11 @@ async function drawFieldOnPage(
         color: lineColor,
       });
     } else {
+      // Vertical line: draw from top to bottom of the field
+      // pdfY is the top of the field in PDF space, pdfY + pdfH is the bottom
       page.drawLine({
-        start: { x: pdfX + pdfW / 2, y: pdfY },
-        end: { x: pdfX + pdfW / 2, y: pdfY - pdfH },
+        start: { x: pdfX + pdfW / 2, y: pdfY + pdfH },
+        end: { x: pdfX + pdfW / 2, y: pdfY },
         thickness: lw,
         color: lineColor,
       });

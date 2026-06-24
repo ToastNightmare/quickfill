@@ -207,8 +207,8 @@ describe("PDF line export", () => {
     await fillPdf(new ArrayBuffer(0), [line({ orientation: "vertical", width: 4, height: 120 })], new Map(), false);
 
     expect(page.drawLine).toHaveBeenCalledWith(expect.objectContaining({
-      start: { x: 12, y: 60 },
-      end: { x: 12, y: -60 },
+      start: { x: 12, y: 180 },
+      end: { x: 12, y: 60 },
       thickness: 2,
     }));
   });

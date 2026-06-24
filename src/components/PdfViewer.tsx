@@ -3,7 +3,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, useCallback, useImperativeHandle, forwardRef } from "react";
 import { Stage, Layer, Rect, Text, Group, Transformer, Image as KonvaImage, Line } from "react-konva";
 import type Konva from "konva";
-import type { EditorField, PlacementToolType, SignatureField, CheckboxStamp, WhiteoutField, CombField, ToolDefaultState, LineField } from "@/lib/types";
+import type { EditorField, PlacementToolType, SignatureField, CheckboxStamp, WhiteoutField, CombField, ToolDefaultState, LineField, LineOrientation } from "@/lib/types";
 import { detectSnapBox, detectAllBoxes, snapCredibilityScore, floodFillCell, detectCombCells } from "@/lib/snap-detect";
 import type { SnapResult, CombDetectResult } from "@/lib/snap-detect";
 import { createEditorFieldId } from "@/lib/field-ids";
@@ -64,6 +64,8 @@ function createLineField(
   const pageW = viewportAtScale1?.width ?? fieldW;
   const pageH = viewportAtScale1?.height ?? fieldH;
 
+  // For horizontal: spans full width at click y
+  // For vertical: spans full height at click x
   return {
     ...base,
     type: "line",
@@ -174,6 +176,8 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
   const [cursorStyle, setCursorStyle] = useState("default");
   const [snapPreviewOpacity, setSnapPreviewOpacity] = useState(0);
   const [contextMenu, setContextMenu] = useState<{ x: number, y: number, fieldId: string } | null>(null);
+  // Line tool preview state
+  const [linePreview, setLinePreview] = useState<{ x: number; y: number; orientation: LineOrientation } | null>(null);
   const [isMobileEditor, setIsMobileEditor] = useState(false);
   const [whiteoutColorInternal, setWhiteoutColorInternal] = useState<string | null>(null);
   // Use controlled whiteout color if provided, otherwise use internal state
@@ -199,6 +203,13 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
   const dragCurrent = useRef<{x: number, y: number} | null>(null);
   const isDragDrawing = useRef(false);
   const [drawRect, setDrawRect] = useState<{x: number, y: number, w: number, h: number} | null>(null);
+
+  // Reset line preview when tool changes
+  useEffect(() => {
+    if (activeTool !== "line") {
+      setLinePreview(null);
+    }
+  }, [activeTool]);
 
   useImperativeHandle(ref, () => ({
     getCanvasDataURL: () => canvasRef.current?.toDataURL("image/png") ?? null,
@@ -663,8 +674,18 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
         return; // Don't do snap preview while drawing
       }
 
-      if (!activeTool || activeTool === "checkbox" || activeTool === "signature" || activeTool === "line" || !canvasRef.current) {
+      // Line tool preview: show ghost line following cursor
+      if (activeTool === "line" && !isDragDrawing.current) {
+        const lineDefaults = toolDefaults.line;
+        const orientation = lineDefaults.orientation ?? "horizontal";
+        setLinePreview({ x: pos.x, y: pos.y, orientation });
         if (snapPreview) setSnapPreview(null);
+        return;
+      }
+
+      if (!activeTool || activeTool === "checkbox" || activeTool === "signature" || !canvasRef.current) {
+        if (snapPreview) setSnapPreview(null);
+        setLinePreview(null);
         return;
       }
 
@@ -753,6 +774,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
 
   const handleStageMouseLeave = useCallback(() => {
     setSnapPreview(null);
+    setLinePreview(null);
     setCursorStyle(activeTool ? "crosshair" : "default");
     // Reset whiteout color when switching away from whiteout tool
     if (activeTool !== "whiteout") {
@@ -1252,6 +1274,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
         dragStart.current = null;
         dragCurrent.current = null;
         setDrawRect(null);
+        setLinePreview(null);
       }
     },
     [activeTool, currentPage, zoomFactor, fitScale, onFieldAdd, onFieldSelect, onToolSelect, onSignatureFieldPlaced, snapPreview, whiteoutColor, fields, snapEnabled, createFieldId, isMobileEditor, toolDefaults, viewportAtScale1]
@@ -1869,14 +1892,29 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
               enabledAnchors={["top-left", "top-center", "top-right", "middle-right", "bottom-right", "bottom-center", "bottom-left", "middle-left"]}
               keepRatio={keepRatio ?? false}
               boundBoxFunc={(oldBox, newBox) => {
+                // Lines are not resizable via canvas - only draggable
                 if (selectedField?.type === "line") {
-                  if (newBox.width < 4 || newBox.height < 4) return oldBox;
-                  return newBox;
+                  return oldBox;
                 }
                 if (newBox.width < 16 || newBox.height < 16) return oldBox;
                 return newBox;
               }}
             />
+            {/* Line tool preview - ghost line following cursor */}
+            {linePreview && activeTool === "line" && (
+              <Line
+                points={
+                  linePreview.orientation === "horizontal"
+                    ? [0, linePreview.y, dimensions.width, linePreview.y]
+                    : [linePreview.x, 0, linePreview.x, dimensions.height]
+                }
+                stroke="#3b82f6"
+                strokeWidth={1}
+                opacity={0.3}
+                dash={[4, 4]}
+                listening={false}
+              />
+            )}
           </Layer>
         </Stage>
           );
