@@ -19,7 +19,7 @@ import {
   ChevronUp,
   SquareSplitHorizontal,
 } from "lucide-react";
-import type { CheckboxStamp, CombField, EditorField, FieldLayerDirection, SignatureField, ToolDefaultState, ToolType, WhiteoutField } from "@/lib/types";
+import type { CheckboxStamp, CombField, EditorField, FieldLayerDirection, LineField, LineOrientation, SignatureField, ToolDefaultState, ToolType, WhiteoutField } from "@/lib/types";
 
 const FONT_SIZES = [8, 10, 11, 12, 14, 16, 18, 24, 36];
 const CHECKBOX_COLORS = [
@@ -32,6 +32,20 @@ const CHECKBOX_SIZES = [
   { label: "M", value: 20 },
   { label: "L", value: 28 },
 ] as const;
+const LINE_ORIENTATIONS: { label: string; value: LineOrientation }[] = [
+  { label: "Horizontal", value: "horizontal" },
+  { label: "Vertical", value: "vertical" },
+] as const;
+const LINE_COLORS = [
+  { label: "Black", value: "#000000" },
+  { label: "Blue", value: "#2563eb" },
+  { label: "Red", value: "#dc2626" },
+] as const;
+const LINE_THICKNESSES = [
+  { label: "Thin", value: 1 },
+  { label: "Medium", value: 2 },
+  { label: "Thick", value: 4 },
+] as const;
 
 const TOOL_META: Record<ToolType, { icon: typeof Type; label: string; hint: string; color: string }> = {
   select: { icon: MousePointer2, label: "Select", hint: "Select existing QuickFill fields to move, resize, duplicate, or delete them.", color: "text-text-muted" },
@@ -41,7 +55,7 @@ const TOOL_META: Record<ToolType, { icon: typeof Type; label: string; hint: stri
   date: { icon: Calendar, label: "Date", hint: "Tap where the date should go. Today's date is added first.", color: "text-amber-500" },
   box: { icon: SquareSplitHorizontal, label: "Box Field", hint: "Drag across character boxes for TFN, ABN, Medicare, and similar forms.", color: "text-cyan-500" },
   whiteout: { icon: Eraser, label: "Whiteout", hint: "Drag over text you want to cover. QuickFill samples the paper color.", color: "text-gray-500" },
-  line: { icon: Pencil, label: "Line", hint: "Line defaults will appear here when the line tool is available.", color: "text-emerald-500" },
+  line: { icon: Pencil, label: "Line", hint: "Click on the PDF to place a line. Choose orientation, colour, and thickness before placing.", color: "text-emerald-500" },
   eraser: { icon: Eraser, label: "Eraser", hint: "Eraser defaults will appear here when the eraser tool is available.", color: "text-red-500" },
 };
 
@@ -75,6 +89,7 @@ function FieldIcon({ type, className }: { type: EditorField["type"]; className?:
   if (type === "date") return <Calendar className={className} />;
   if (type === "whiteout") return <Eraser className={className} />;
   if (type === "comb") return <SquareSplitHorizontal className={className} />;
+  if (type === "line") return <Pencil className={className} />;
   return <Type className={className} />;
 }
 
@@ -84,6 +99,7 @@ function fieldLabel(type: EditorField["type"]) {
   if (type === "date") return "Date";
   if (type === "whiteout") return "Whiteout";
   if (type === "comb") return "Box Field";
+  if (type === "line") return "Line";
   return "Text Field";
 }
 
@@ -93,6 +109,7 @@ function fieldColor(type: EditorField["type"]) {
   if (type === "date") return "text-amber-500";
   if (type === "whiteout") return "text-gray-500";
   if (type === "comb") return "text-cyan-500";
+  if (type === "line") return "text-emerald-500";
   return "text-blue-500";
 }
 
@@ -157,6 +174,7 @@ export function ContextPanel({
           <Divider />
 
           {fieldType === "checkbox" && <CheckboxControls selectedField={selectedField} onStampChange={onStampChange} onFieldUpdate={onFieldUpdate} />}
+          {fieldType === "line" && <LineControls selectedField={selectedField} onFieldUpdate={onFieldUpdate} />}
           {fieldType === "whiteout" && <WhiteoutControls selectedField={selectedField} onFieldUpdate={onFieldUpdate} />}
           {fieldType === "signature" && <SignatureControls selectedField={selectedField} onSignatureRequest={onSignatureRequest} />}
           {(fieldType === "text" || fieldType === "date") && <FontSizeControls selectedField={selectedField} onFieldUpdate={onFieldUpdate} />}
@@ -224,6 +242,16 @@ export function ContextPanel({
             <CheckboxDefaultControls
               defaults={toolDefaults.checkbox}
               onChange={(updates) => onToolDefaultChange("checkbox", updates)}
+            />
+          </>
+        )}
+
+        {activeTool === "line" && (
+          <>
+            <Divider />
+            <LineDefaultControls
+              defaults={toolDefaults.line}
+              onChange={(updates) => onToolDefaultChange("line", updates)}
             />
           </>
         )}
@@ -318,6 +346,7 @@ function MobileFieldSheet({
       </div>
 
       {selectedField.type === "checkbox" && <CheckboxControls selectedField={selectedField} onStampChange={onStampChange} onFieldUpdate={onFieldUpdate} />}
+      {selectedField.type === "line" && <LineControls selectedField={selectedField} onFieldUpdate={onFieldUpdate} />}
       {selectedField.type === "whiteout" && <WhiteoutControls selectedField={selectedField} onFieldUpdate={onFieldUpdate} />}
       {selectedField.type === "signature" && <SignatureControls selectedField={selectedField} onSignatureRequest={onSignatureRequest} />}
       {(selectedField.type === "text" || selectedField.type === "date") && <FontSizeControls selectedField={selectedField} onFieldUpdate={onFieldUpdate} />}
@@ -487,6 +516,115 @@ function CheckboxControls({
               size={size.value}
               active={Math.round(selectedField.width) === size.value && Math.round(selectedField.height) === size.value}
               onClick={() => onFieldUpdate(selectedField.id, { width: size.value, height: size.value } as Partial<EditorField>)}
+            />
+          ))}
+        </div>
+      </Section>
+    </>
+  );
+}
+
+function LineDefaultControls({
+  defaults,
+  onChange,
+}: {
+  defaults: ToolDefaultState["line"];
+  onChange: (updates: Partial<ToolDefaultState["line"]>) => void;
+}) {
+  return (
+    <LinePresetControls
+      orientation={defaults.orientation ?? "horizontal"}
+      color={defaults.color ?? "#000000"}
+      strokeWidth={defaults.strokeWidth ?? 1}
+      onOrientationChange={(orientation) => onChange({ orientation })}
+      onColorChange={(color) => onChange({ color })}
+      onStrokeWidthChange={(strokeWidth) => onChange({ strokeWidth })}
+    />
+  );
+}
+
+function LineControls({
+  selectedField,
+  onFieldUpdate,
+}: {
+  selectedField: EditorField;
+  onFieldUpdate: (id: string, updates: Partial<EditorField>) => void;
+}) {
+  if (selectedField.type !== "line") return null;
+  const lineField = selectedField as LineField;
+
+  return (
+    <LinePresetControls
+      orientation={lineField.orientation ?? "horizontal"}
+      color={lineField.color ?? "#000000"}
+      strokeWidth={lineField.strokeWidth ?? 1}
+      onOrientationChange={(orientation) => onFieldUpdate(selectedField.id, { orientation } as Partial<EditorField>)}
+      onColorChange={(color) => onFieldUpdate(selectedField.id, { color } as Partial<EditorField>)}
+      onStrokeWidthChange={(strokeWidth) => {
+        const isHorizontal = lineField.orientation !== "vertical";
+        onFieldUpdate(selectedField.id, {
+          strokeWidth,
+          width: isHorizontal ? selectedField.width : strokeWidth,
+          height: isHorizontal ? strokeWidth : selectedField.height,
+        } as Partial<EditorField>);
+      }}
+    />
+  );
+}
+
+function LinePresetControls({
+  orientation,
+  color,
+  strokeWidth,
+  onOrientationChange,
+  onColorChange,
+  onStrokeWidthChange,
+}: {
+  orientation: LineOrientation;
+  color: string;
+  strokeWidth: number;
+  onOrientationChange: (orientation: LineOrientation) => void;
+  onColorChange: (color: string) => void;
+  onStrokeWidthChange: (strokeWidth: number) => void;
+}) {
+  return (
+    <>
+      <Section label="Orientation">
+        <div className="grid grid-cols-2 gap-2">
+          {LINE_ORIENTATIONS.map((item) => (
+            <PresetButton
+              key={item.value}
+              label={item.label}
+              active={orientation === item.value}
+              onClick={() => onOrientationChange(item.value)}
+            />
+          ))}
+        </div>
+      </Section>
+      <Divider />
+      <Section label="Colour">
+        <div className="grid grid-cols-3 gap-2">
+          {LINE_COLORS.map((item) => (
+            <ColorSwatch
+              key={item.value}
+              label={item.label}
+              color={item.value}
+              active={color === item.value}
+              ariaLabel={`${item.label} line colour`}
+              onClick={() => onColorChange(item.value)}
+            />
+          ))}
+        </div>
+      </Section>
+      <Divider />
+      <Section label="Thickness">
+        <div className="grid grid-cols-3 gap-2">
+          {LINE_THICKNESSES.map((item) => (
+            <PresetButton
+              key={item.value}
+              label={item.label}
+              active={strokeWidth === item.value}
+              onClick={() => onStrokeWidthChange(item.value)}
             />
           ))}
         </div>
@@ -798,12 +936,40 @@ function StampCard({ active, onClick, char, label }: { active: boolean; onClick:
   );
 }
 
-function ColorSwatch({ active, onClick, color, label }: { active: boolean; onClick: () => void; color: string; label: string }) {
+function PresetButton({ active, onClick, label }: { active: boolean; onClick: () => void; label: string }) {
   return (
     <button
       type="button"
       onClick={onClick}
-      aria-label={`${label} checkbox color`}
+      className={`flex h-11 items-center justify-center rounded-xl border-2 px-2 text-xs font-semibold transition-colors ${
+        active
+          ? "border-accent bg-accent/5 text-accent"
+          : "border-border bg-surface text-text-muted hover:border-accent/40 hover:bg-surface-alt"
+      }`}
+    >
+      {label}
+    </button>
+  );
+}
+
+function ColorSwatch({
+  active,
+  onClick,
+  color,
+  label,
+  ariaLabel = `${label} checkbox color`,
+}: {
+  active: boolean;
+  onClick: () => void;
+  color: string;
+  label: string;
+  ariaLabel?: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={ariaLabel}
       className={`flex h-11 items-center justify-center rounded-xl border-2 transition-colors ${
         active ? "border-accent bg-accent/5" : "border-border bg-surface hover:border-accent/40 hover:bg-surface-alt"
       }`}

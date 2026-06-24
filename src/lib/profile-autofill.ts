@@ -15,7 +15,7 @@ export interface ProfileAutofillField {
   name?: string;
   label?: string;
   nearbyText?: string;
-  type: AutofillFieldType | "whiteout";
+  type: AutofillFieldType | "whiteout" | "line";
   value?: string;
 }
 
@@ -72,7 +72,7 @@ export function matchLegacyProfileKey(name: string | undefined): string | null {
 }
 
 function isAutofillCandidateField(field: ProfileAutofillField) {
-  return field.type !== "whiteout";
+  return field.type !== "whiteout" && field.type !== "line";
 }
 
 function toCandidate(field: ProfileAutofillField): AutofillFieldCandidate {

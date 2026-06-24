@@ -337,6 +337,25 @@ async function drawFieldOnPage(
       page.drawLine({ start: { x: cx - r * 0.6, y: cy - r * 0.6 }, end: { x: cx + r * 0.6, y: cy + r * 0.6 }, thickness: lw, color: strokeColor });
       page.drawLine({ start: { x: cx + r * 0.6, y: cy - r * 0.6 }, end: { x: cx - r * 0.6, y: cy + r * 0.6 }, thickness: lw, color: strokeColor });
     }
+  } else if (field.type === "line") {
+    const lineField = field as import("./types").LineField;
+    const lineColor = hexToRgbPdf(lineField.color ?? "#000000");
+    const lw = lineField.strokeWidth ?? 1;
+    if (lineField.orientation === "horizontal") {
+      page.drawLine({
+        start: { x: pdfX, y: pdfY + pdfH / 2 },
+        end: { x: pdfX + pdfW, y: pdfY + pdfH / 2 },
+        thickness: lw,
+        color: lineColor,
+      });
+    } else {
+      page.drawLine({
+        start: { x: pdfX + pdfW / 2, y: pdfY },
+        end: { x: pdfX + pdfW / 2, y: pdfY - pdfH },
+        thickness: lw,
+        color: lineColor,
+      });
+    }
   } else if (field.type === "comb") {
     // Box Field (comb): render each character in its own cell
     const combField = field as import("./types").CombField;

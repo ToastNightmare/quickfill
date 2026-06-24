@@ -29,7 +29,7 @@ import {
   loadZoomFromLocalStorage,
   cleanupOldIndexedDBSessions,
 } from "@/lib/persistence";
-import type { EditorField, PlacementToolType, ToolDefaultState, ToolType } from "@/lib/types";
+import type { EditorField, LineOrientation, PlacementToolType, ToolDefaultState, ToolType } from "@/lib/types";
 import { useAuth } from "@clerk/nextjs";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
@@ -58,12 +58,12 @@ const DEFAULT_TOOL_DEFAULTS: ToolDefaultState = {
   signature: { fontSize: 16 },
   box: { charCount: 9 },
   whiteout: { fillColor: null },
-  line: { strokeWidth: 1 },
+  line: { strokeWidth: 1, color: "#000000", orientation: "horizontal" as LineOrientation },
   eraser: {},
 };
 
 function placementToolFor(tool: ToolType): PlacementToolType | null {
-  if (tool === "text" || tool === "date" || tool === "checkbox" || tool === "signature" || tool === "box" || tool === "whiteout") {
+  if (tool === "text" || tool === "date" || tool === "checkbox" || tool === "signature" || tool === "box" || tool === "whiteout" || tool === "line") {
     return tool;
   }
   return null;
@@ -416,7 +416,7 @@ function EditorPageContent() {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && activeTool === "checkbox") {
+      if (e.key === "Escape" && (activeTool === "checkbox" || activeTool === "line")) {
         setActiveTool("select");
       }
     };
@@ -626,9 +626,9 @@ function EditorPageContent() {
       const fieldToAdd = withUniqueEditorFieldId(field, fields);
       trackEvent("field_added", { source: "manual", type: fieldToAdd.type, snapped: Boolean(fieldToAdd.snapped) });
       setFields((prev) => [...prev, fieldToAdd]);
-      // Select the newly added field and deactivate tool
+      // Select the newly added field and keep stamp-style tools active
       setSelectedFieldId(fieldToAdd.id);
-      setActiveTool("select");
+      setActiveTool((prev) => (fieldToAdd.type === "checkbox" || fieldToAdd.type === "line" ? prev : "select"));
       return fieldToAdd;
     },
     [fields, setFields]
