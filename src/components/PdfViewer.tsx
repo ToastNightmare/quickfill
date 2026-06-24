@@ -2168,28 +2168,12 @@ function FieldShape({
         onClick={(e) => {
           e.cancelBubble = true;
           if (wasRecentTap()) return;
-          // Single click cycles: none to tick to cross to delete
-          const current: CheckboxStamp = (field as { stamp?: CheckboxStamp }).stamp ?? (field.checked ? "tick" : "none");
-          if (current === "cross") {
-            // Third click = delete the field entirely
-            onDelete();
-            return;
-          }
-          const next: CheckboxStamp = current === "none" ? "tick" : "cross";
-          onValueChange(next);
-          if (!isSelected) onSelect();
+          onSelect();
         }}
         onTap={(e) => {
           e.cancelBubble = true;
           markTapHandled();
-          const current: CheckboxStamp = (field as { stamp?: CheckboxStamp }).stamp ?? (field.checked ? "tick" : "none");
-          if (current === "cross") {
-            onDelete();
-            return;
-          }
-          const next: CheckboxStamp = current === "none" ? "tick" : "cross";
-          onValueChange(next);
-          if (!isSelected) onSelect();
+          onSelect();
         }}
         onDragStart={() => {
           setDragOpacity(0.85);
