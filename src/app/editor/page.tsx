@@ -54,7 +54,7 @@ const DEFAULT_TOOL_DEFAULTS: ToolDefaultState = {
   select: {},
   text: { fontSize: 14 },
   date: { fontSize: 14, format: "en-AU" },
-  checkbox: { stamp: "tick" },
+  checkbox: { stamp: "tick", color: "#000000", size: 20 },
   signature: { fontSize: 16 },
   box: { charCount: 9 },
   whiteout: { fillColor: null },
@@ -252,6 +252,16 @@ function EditorPageContent() {
     setActiveTool(tool);
   }, []);
 
+  const handleToolDefaultChange = useCallback(
+    <T extends keyof ToolDefaultState>(tool: T, updates: Partial<ToolDefaultState[T]>) => {
+      setToolDefaults(prev => ({
+        ...prev,
+        [tool]: { ...prev[tool], ...updates },
+      }));
+    },
+    []
+  );
+
   const markLocalSave = useCallback((status: LocalSaveStatus) => {
     setLocalSaveStatus(status);
   }, []);
@@ -404,6 +414,16 @@ function EditorPageContent() {
     }
   }, [snapEnabled]);
 
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && activeTool === "checkbox") {
+        setActiveTool("select");
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [activeTool]);
+
 
   const selectedField = useMemo(() => {
     if (!selectedFieldId) return null;
@@ -421,8 +441,6 @@ function EditorPageContent() {
   }, [fields]);
 
   const totalFieldCount = fields.length;
-  void toolDefaults;
-  void setToolDefaults;
 
   // Check if user is Pro, show unlock modal if not
   const checkProFeature = useCallback(async (featureName?: string): Promise<boolean> => {
@@ -1423,6 +1441,7 @@ function EditorPageContent() {
             keepRatio={selectedField?.type === "signature"}
             whiteoutColor={whiteoutColor}
             onWhiteoutColorChange={setWhiteoutColor}
+            toolDefaults={toolDefaults}
           />
         </div>
 
@@ -1447,6 +1466,8 @@ function EditorPageContent() {
           onAutoFill={handleAutoFillFromProfile}
           onDetectFields={handleDetectFields}
           isDetecting={isDetecting}
+          toolDefaults={toolDefaults}
+          onToolDefaultChange={handleToolDefaultChange}
           onSignatureRequest={(fieldId) => {
             const field = fields.find((f) => f.id === fieldId);
             if (field) {

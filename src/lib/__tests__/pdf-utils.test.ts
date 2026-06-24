@@ -1,5 +1,23 @@
-import { orderFieldsForPdfDraw } from "../pdf-utils";
+import { fillPdf, orderFieldsForPdfDraw } from "../pdf-utils";
 import type { EditorField } from "../types";
+
+jest.mock("pdf-lib", () => ({
+  PDFDocument: {
+    load: jest.fn(),
+  },
+  rgb: jest.fn((red: number, green: number, blue: number) => ({ red, green, blue })),
+  StandardFonts: {
+    Helvetica: "Helvetica",
+    HelveticaOblique: "HelveticaOblique",
+  },
+  PDFName: {
+    of: jest.fn((name: string) => name),
+  },
+}));
+
+const { PDFDocument } = jest.requireMock("pdf-lib") as {
+  PDFDocument: { load: jest.Mock };
+};
 
 const whiteout = (id: string): EditorField => ({
   id,
@@ -36,6 +54,36 @@ const signature = (id: string): EditorField => ({
   fontSize: 16,
 });
 
+const checkbox = (overrides: Partial<EditorField> = {}): EditorField => ({
+  id: "checkbox-1",
+  type: "checkbox",
+  x: 20,
+  y: 30,
+  width: 20,
+  height: 20,
+  page: 0,
+  checked: true,
+  stamp: "tick",
+  ...overrides,
+} as EditorField);
+
+function mockPdfDoc() {
+  const page = {
+    getHeight: jest.fn(() => 200),
+    drawLine: jest.fn(),
+    drawRectangle: jest.fn(),
+    drawText: jest.fn(),
+  };
+  const pdfDoc = {
+    embedFont: jest.fn(async (font: string) => ({ font })),
+    getPages: jest.fn(() => [page]),
+    getForm: jest.fn(),
+    save: jest.fn(async () => new Uint8Array([37, 80, 68, 70])),
+  };
+  PDFDocument.load.mockResolvedValue(pdfDoc);
+  return { page, pdfDoc };
+}
+
 describe("PDF export field ordering", () => {
   it("draws whiteout fields before visible replacement fields", () => {
     const fields = [text("text-1"), whiteout("whiteout-1"), signature("signature-1")];
@@ -63,5 +111,61 @@ describe("PDF export field ordering", () => {
       "signature-1",
       "text-2",
     ]);
+  });
+});
+
+describe("PDF checkbox export", () => {
+  beforeEach(() => {
+    PDFDocument.load.mockReset();
+  });
+
+  it("exports blue tick checkbox lines", async () => {
+    const { page } = mockPdfDoc();
+
+    await fillPdf(new ArrayBuffer(0), [checkbox({ color: "#2563eb" })], new Map(), false);
+
+    expect(page.drawLine).toHaveBeenCalledTimes(2);
+    expect(page.drawLine.mock.calls[0][0].color).toEqual({
+      red: 37 / 255,
+      green: 99 / 255,
+      blue: 235 / 255,
+    });
+  });
+
+  it("exports red cross checkbox lines", async () => {
+    const { page } = mockPdfDoc();
+
+    await fillPdf(new ArrayBuffer(0), [checkbox({ stamp: "cross", color: "#dc2626" })], new Map(), false);
+
+    expect(page.drawLine).toHaveBeenCalledTimes(2);
+    expect(page.drawLine.mock.calls[0][0].color).toEqual({
+      red: 220 / 255,
+      green: 38 / 255,
+      blue: 38 / 255,
+    });
+  });
+
+  it("exports an outline for empty checkbox stamps", async () => {
+    const { page } = mockPdfDoc();
+
+    await fillPdf(new ArrayBuffer(0), [checkbox({ checked: false, stamp: "none", color: "#000000" })], new Map(), false);
+
+    expect(page.drawLine).not.toHaveBeenCalled();
+    expect(page.drawRectangle).toHaveBeenCalledWith(expect.objectContaining({
+      borderColor: { red: 0, green: 0, blue: 0 },
+      borderWidth: expect.any(Number),
+    }));
+  });
+
+  it("exports legacy checkboxes in near-black when color is absent", async () => {
+    const { page } = mockPdfDoc();
+
+    await fillPdf(new ArrayBuffer(0), [checkbox({ color: undefined })], new Map(), false);
+
+    expect(page.drawLine.mock.calls[0][0].color).toEqual({
+      red: 18 / 255,
+      green: 23 / 255,
+      blue: 38 / 255,
+    });
   });
 });

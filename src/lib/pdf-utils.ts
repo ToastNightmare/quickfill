@@ -45,6 +45,12 @@ function parsePdfColor(color?: string | null): RGB {
   return rgb(1, 1, 1);
 }
 
+function hexToRgbPdf(hex: string): RGB {
+  const clean = hex.replace("#", "");
+  const n = parseInt(clean, 16);
+  return rgb(((n >> 16) & 255) / 255, ((n >> 8) & 255) / 255, (n & 255) / 255);
+}
+
 /**
  * Load a PDF and detect AcroForm fields with their positions.
  */
@@ -307,20 +313,29 @@ async function drawFieldOnPage(
         color: rgb(0, 0, 0),
       });
     }
-  } else if (field.type === "checkbox" && field.checked) {
-    const stamp = (field as { stamp?: string }).stamp ?? "tick";
+  } else if (field.type === "checkbox") {
+    const stamp = field.stamp ?? (field.checked ? "tick" : "none");
     const cx = pdfX + pdfW / 2;
     const cy = pdfY + pdfH / 2;
     const r = Math.min(pdfW, pdfH) * 0.35;
     const lw = Math.max(1, r * 0.18);
-    const dark = rgb(0.07, 0.09, 0.15);
+    const strokeColor = hexToRgbPdf(field.color ?? "#121726");
 
-    if (stamp === "tick") {
-      page.drawLine({ start: { x: cx - r * 0.55, y: cy - r * 0.05 }, end: { x: cx - r * 0.1, y: cy - r * 0.5 }, thickness: lw, color: dark });
-      page.drawLine({ start: { x: cx - r * 0.1, y: cy - r * 0.5 }, end: { x: cx + r * 0.6, y: cy + r * 0.5 }, thickness: lw, color: dark });
-    } else if (stamp === "cross") {
-      page.drawLine({ start: { x: cx - r * 0.6, y: cy - r * 0.6 }, end: { x: cx + r * 0.6, y: cy + r * 0.6 }, thickness: lw, color: dark });
-      page.drawLine({ start: { x: cx + r * 0.6, y: cy - r * 0.6 }, end: { x: cx - r * 0.6, y: cy + r * 0.6 }, thickness: lw, color: dark });
+    if (stamp === "none") {
+      page.drawRectangle({
+        x: pdfX,
+        y: pdfY,
+        width: pdfW,
+        height: pdfH,
+        borderColor: strokeColor,
+        borderWidth: lw,
+      });
+    } else if (field.checked && stamp === "tick") {
+      page.drawLine({ start: { x: cx - r * 0.55, y: cy - r * 0.05 }, end: { x: cx - r * 0.1, y: cy - r * 0.5 }, thickness: lw, color: strokeColor });
+      page.drawLine({ start: { x: cx - r * 0.1, y: cy - r * 0.5 }, end: { x: cx + r * 0.6, y: cy + r * 0.5 }, thickness: lw, color: strokeColor });
+    } else if (field.checked && stamp === "cross") {
+      page.drawLine({ start: { x: cx - r * 0.6, y: cy - r * 0.6 }, end: { x: cx + r * 0.6, y: cy + r * 0.6 }, thickness: lw, color: strokeColor });
+      page.drawLine({ start: { x: cx + r * 0.6, y: cy - r * 0.6 }, end: { x: cx - r * 0.6, y: cy + r * 0.6 }, thickness: lw, color: strokeColor });
     }
   } else if (field.type === "comb") {
     // Box Field (comb): render each character in its own cell

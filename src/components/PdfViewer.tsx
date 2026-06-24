@@ -3,7 +3,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, useCallback, useImperativeHandle, forwardRef } from "react";
 import { Stage, Layer, Rect, Text, Group, Transformer, Image as KonvaImage, Line } from "react-konva";
 import type Konva from "konva";
-import type { EditorField, PlacementToolType, SignatureField, CheckboxStamp, WhiteoutField, CombField } from "@/lib/types";
+import type { EditorField, PlacementToolType, SignatureField, CheckboxStamp, WhiteoutField, CombField, ToolDefaultState } from "@/lib/types";
 import { detectSnapBox, detectAllBoxes, snapCredibilityScore, floodFillCell, detectCombCells } from "@/lib/snap-detect";
 import type { SnapResult, CombDetectResult } from "@/lib/snap-detect";
 import { createEditorFieldId } from "@/lib/field-ids";
@@ -41,6 +41,7 @@ interface PdfViewerProps {
   keepRatio?: boolean;
   whiteoutColor?: string | null;
   onWhiteoutColorChange?: (color: string | null) => void;
+  toolDefaults: ToolDefaultState;
 }
 
 interface SnapPreview {
@@ -126,6 +127,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
   keepRatio,
   whiteoutColor: whiteoutColorProp,
   onWhiteoutColorChange,
+  toolDefaults,
 }, ref) {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -830,7 +832,19 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
               field = { ...base, type: "text", width: fieldW, height: fieldH, value: "", fontSize: 14 };
               break;
             case "checkbox":
-              field = { ...base, type: "checkbox", width: fieldW, height: fieldH, checked: true, stamp: "tick" };
+              {
+                const cbDefaults = toolDefaults.checkbox;
+                const cbSize = cbDefaults.size ?? 20;
+                field = {
+                  ...base,
+                  type: "checkbox",
+                  width: cbSize,
+                  height: cbSize,
+                  checked: cbDefaults.stamp !== "none",
+                  stamp: cbDefaults.stamp ?? "tick",
+                  color: cbDefaults.color ?? "#000000",
+                };
+              }
               break;
             case "signature":
               field = { ...base, type: "signature", width: fieldW, height: fieldH, value: "", fontSize: 16 };
@@ -922,13 +936,12 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
           }
 
           const addedField = onFieldAdd(field);
-          // Keep whiteout tool active for multiple placements
-          if (activeTool !== "whiteout") {
+          // Keep stamp-style tools active for multiple placements
+          if (activeTool !== "whiteout" && activeTool !== "checkbox") {
             onToolSelect(null);
           }
-          setCursorStyle(activeTool === "whiteout" ? "crosshair" : "default");
-          // Don't select whiteout fields - they're non-interactive overlays
-          if (activeTool !== "whiteout") {
+          setCursorStyle(activeTool === "whiteout" ? "crosshair" : activeTool === "checkbox" ? "cell" : "default");
+          if (activeTool !== "whiteout" && activeTool !== "checkbox") {
             onFieldSelect(addedField.id);
           }
 
@@ -1075,7 +1088,19 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
                 field = { ...base, type: "text", width: fieldW, height: fieldH, value: "", fontSize: inferredFontSize ?? 14 };
                 break;
               case "checkbox":
-                field = { ...base, type: "checkbox", width: fieldW, height: fieldH, checked: true, stamp: "tick" };
+                {
+                  const cbDefaults = toolDefaults.checkbox;
+                  const cbSize = cbDefaults.size ?? 20;
+                  field = {
+                    ...base,
+                    type: "checkbox",
+                    width: cbSize,
+                    height: cbSize,
+                    checked: cbDefaults.stamp !== "none",
+                    stamp: cbDefaults.stamp ?? "tick",
+                    color: cbDefaults.color ?? "#000000",
+                  };
+                }
                 break;
               case "signature":
                 field = { ...base, type: "signature", width: fieldW, height: fieldH, value: "", fontSize: inferredFontSize ?? 16 };
@@ -1162,13 +1187,12 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
             }
 
             const addedField = onFieldAdd(field);
-            // Keep whiteout tool active
-            if (activeTool !== "whiteout") {
+            // Keep stamp-style tools active
+            if (activeTool !== "whiteout" && activeTool !== "checkbox") {
               onToolSelect(null);
             }
-            setCursorStyle(activeTool === "whiteout" ? "crosshair" : "default");
-            // Don't select whiteout fields - they're non-interactive overlays
-            if (activeTool !== "whiteout") {
+            setCursorStyle(activeTool === "whiteout" ? "crosshair" : activeTool === "checkbox" ? "cell" : "default");
+            if (activeTool !== "whiteout" && activeTool !== "checkbox") {
               onFieldSelect(addedField.id);
             }
 
@@ -1192,7 +1216,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
         setDrawRect(null);
       }
     },
-    [activeTool, currentPage, zoomFactor, fitScale, onFieldAdd, onFieldSelect, onToolSelect, onSignatureFieldPlaced, snapPreview, whiteoutColor, fields, snapEnabled, createFieldId, isMobileEditor]
+    [activeTool, currentPage, zoomFactor, fitScale, onFieldAdd, onFieldSelect, onToolSelect, onSignatureFieldPlaced, snapPreview, whiteoutColor, fields, snapEnabled, createFieldId, isMobileEditor, toolDefaults]
   );
 
   // Core field creation logic - shared by click and touch
@@ -1329,7 +1353,19 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
           field = { ...base, type: "text", width: fieldW, height: fieldH, value: "", fontSize: inferredFontSize ?? 14 };
           break;
         case "checkbox":
-          field = { ...base, type: "checkbox", width: fieldW, height: fieldH, checked: true, stamp: "tick" };
+          {
+            const cbDefaults = toolDefaults.checkbox;
+            const cbSize = cbDefaults.size ?? 20;
+            field = {
+              ...base,
+              type: "checkbox",
+              width: cbSize,
+              height: cbSize,
+              checked: cbDefaults.stamp !== "none",
+              stamp: cbDefaults.stamp ?? "tick",
+              color: cbDefaults.color ?? "#000000",
+            };
+          }
           break;
         case "signature":
           field = { ...base, type: "signature", width: fieldW, height: fieldH, value: "", fontSize: inferredFontSize ?? 16 };
@@ -1416,13 +1452,12 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
       }
 
       const addedField = onFieldAdd(field);
-      // Keep whiteout tool active
-      if (activeTool !== "whiteout") {
+      // Keep stamp-style tools active
+      if (activeTool !== "whiteout" && activeTool !== "checkbox") {
         onToolSelect(null);
       }
-      setCursorStyle(activeTool === "whiteout" ? "crosshair" : "default");
-      // Don't select whiteout fields - they're non-interactive overlays
-      if (activeTool !== "whiteout") {
+      setCursorStyle(activeTool === "whiteout" ? "crosshair" : activeTool === "checkbox" ? "cell" : "default");
+      if (activeTool !== "whiteout" && activeTool !== "checkbox") {
         onFieldSelect(addedField.id);
       }
 
@@ -1442,7 +1477,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
 
       return true;
     },
-    [activeTool, currentPage, onFieldAdd, onFieldSelect, onToolSelect, zoomFactor, fitScale, snapPreview, onSignatureFieldPlaced, snapEnabled, whiteoutColor, fields, createFieldId, isMobileEditor]
+    [activeTool, currentPage, onFieldAdd, onFieldSelect, onToolSelect, zoomFactor, fitScale, snapPreview, onSignatureFieldPlaced, snapEnabled, whiteoutColor, fields, createFieldId, isMobileEditor, toolDefaults]
   );
 
   const handleStageClick = useCallback(
@@ -2133,28 +2168,12 @@ function FieldShape({
         onClick={(e) => {
           e.cancelBubble = true;
           if (wasRecentTap()) return;
-          // Single click cycles: none to tick to cross to delete
-          const current: CheckboxStamp = (field as { stamp?: CheckboxStamp }).stamp ?? (field.checked ? "tick" : "none");
-          if (current === "cross") {
-            // Third click = delete the field entirely
-            onDelete();
-            return;
-          }
-          const next: CheckboxStamp = current === "none" ? "tick" : "cross";
-          onValueChange(next);
-          if (!isSelected) onSelect();
+          onSelect();
         }}
         onTap={(e) => {
           e.cancelBubble = true;
           markTapHandled();
-          const current: CheckboxStamp = (field as { stamp?: CheckboxStamp }).stamp ?? (field.checked ? "tick" : "none");
-          if (current === "cross") {
-            onDelete();
-            return;
-          }
-          const next: CheckboxStamp = current === "none" ? "tick" : "cross";
-          onValueChange(next);
-          if (!isSelected) onSelect();
+          onSelect();
         }}
         onDragStart={() => {
           setDragOpacity(0.85);
@@ -2213,10 +2232,23 @@ function FieldShape({
             dash={isSelected ? undefined : [3, 2]}
           />
         )}
-        {/* Stamp, bold black tick or cross, like pen on paper */}
+        {/* Stamp, bold tick or cross, like pen on paper */}
         {(() => {
           const stamp: CheckboxStamp = (field as { stamp?: CheckboxStamp }).stamp ?? (field.checked ? "tick" : "none");
-          if (stamp === "none") return null;
+          const stampColor = (field as { color?: string }).color ?? "#121726";
+          if (stamp === "none") {
+            return (
+              <Rect
+                width={stageW}
+                height={stageH}
+                stroke={stampColor}
+                strokeWidth={1}
+                dash={[3, 2]}
+                fill="transparent"
+                hitStrokeWidth={0}
+              />
+            );
+          }
           const size = Math.min(stageW, stageH) * 0.88;
           const strokeWidth = Math.max(1.6, size * 0.12);
           if (stamp === "tick") {
@@ -2230,7 +2262,7 @@ function FieldShape({
                   stageW * 0.82,
                   stageH * 0.24,
                 ]}
-                stroke="#111827"
+                stroke={stampColor}
                 strokeWidth={strokeWidth}
                 lineCap="round"
                 lineJoin="round"
@@ -2240,8 +2272,8 @@ function FieldShape({
 
           return (
             <>
-              <Line points={[stageW * 0.24, stageH * 0.24, stageW * 0.76, stageH * 0.76]} stroke="#111827" strokeWidth={strokeWidth} lineCap="round" />
-              <Line points={[stageW * 0.76, stageH * 0.24, stageW * 0.24, stageH * 0.76]} stroke="#111827" strokeWidth={strokeWidth} lineCap="round" />
+              <Line points={[stageW * 0.24, stageH * 0.24, stageW * 0.76, stageH * 0.76]} stroke={stampColor} strokeWidth={strokeWidth} lineCap="round" />
+              <Line points={[stageW * 0.76, stageH * 0.24, stageW * 0.24, stageH * 0.76]} stroke={stampColor} strokeWidth={strokeWidth} lineCap="round" />
             </>
           );
         })()}
