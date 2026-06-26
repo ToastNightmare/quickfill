@@ -19,6 +19,7 @@ import {
   RotateCcw,
   SquareSplitHorizontal,
   MousePointer2,
+  Pencil,
 } from "lucide-react";
 import type { ToolType, EditorField } from "@/lib/types";
 import { Minimap } from "@/components/Minimap";
@@ -59,12 +60,13 @@ const tools: { type: ToolType; icon: typeof Type; label: string; shortLabel: str
   { type: "text", icon: Type, label: "Text Field", shortLabel: "Text", title: "Text field: tap or drag to place" },
   { type: "box", icon: SquareSplitHorizontal, label: "Box Field", shortLabel: "Box", title: "Box field: drag across character boxes" },
   { type: "checkbox", icon: CheckSquare, label: "Checkbox", shortLabel: "Tick", title: "Checkbox: tap to place a tick or cross" },
+  { type: "line", icon: Pencil, label: "Line", shortLabel: "Line", title: "Line: click to place a horizontal or vertical line" },
   { type: "signature", icon: PenTool, label: "Signature", shortLabel: "Sign", title: "Signature field: tap to place" },
   { type: "date", icon: Calendar, label: "Date", shortLabel: "Date", title: "Date field: tap or drag to place" },
   { type: "whiteout", icon: Eraser, label: "Whiteout", shortLabel: "Erase", title: "Whiteout: drag over text to cover it" },
 ];
 
-const isPlacementTool = (tool: ToolType) => tool !== "select" && tool !== "line" && tool !== "eraser";
+const isPlacementTool = (tool: ToolType) => tool !== "select" && tool !== "eraser";
 
 function isPaidUsage(data: { isPro?: boolean; tier?: string | null } | null): boolean {
   const tier = data?.tier ?? "free";

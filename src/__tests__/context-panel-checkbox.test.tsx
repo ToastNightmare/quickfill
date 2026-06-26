@@ -12,7 +12,7 @@ const toolDefaults: ToolDefaultState = {
   signature: { fontSize: 16 },
   box: { charCount: 9 },
   whiteout: { fillColor: null },
-  line: { strokeWidth: 1 },
+  line: { strokeWidth: 1, color: "#000000", orientation: "horizontal" },
   eraser: {},
 };
 

@@ -67,6 +67,20 @@ const checkbox = (overrides: Partial<EditorField> = {}): EditorField => ({
   ...overrides,
 } as EditorField);
 
+const line = (overrides: Partial<EditorField> = {}): EditorField => ({
+  id: "line-1",
+  type: "line",
+  x: 10,
+  y: 20,
+  width: 120,
+  height: 4,
+  page: 0,
+  orientation: "horizontal",
+  color: "#000000",
+  strokeWidth: 2,
+  ...overrides,
+} as EditorField);
+
 function mockPdfDoc() {
   const page = {
     getHeight: jest.fn(() => 200),
@@ -166,6 +180,60 @@ describe("PDF checkbox export", () => {
       red: 18 / 255,
       green: 23 / 255,
       blue: 38 / 255,
+    });
+  });
+});
+
+describe("PDF line export", () => {
+  beforeEach(() => {
+    PDFDocument.load.mockReset();
+  });
+
+  it("exports horizontal lines with full width and y midpoint", async () => {
+    const { page } = mockPdfDoc();
+
+    await fillPdf(new ArrayBuffer(0), [line()], new Map(), false);
+
+    expect(page.drawLine).toHaveBeenCalledWith(expect.objectContaining({
+      start: { x: 10, y: 178 },
+      end: { x: 130, y: 178 },
+      thickness: 2,
+    }));
+  });
+
+  it("exports vertical lines with full height and x midpoint", async () => {
+    const { page } = mockPdfDoc();
+
+    await fillPdf(new ArrayBuffer(0), [line({ orientation: "vertical", width: 4, height: 120 })], new Map(), false);
+
+    expect(page.drawLine).toHaveBeenCalledWith(expect.objectContaining({
+      start: { x: 12, y: 180 },
+      end: { x: 12, y: 60 },
+      thickness: 2,
+    }));
+  });
+
+  it("exports blue lines with blue RGB color", async () => {
+    const { page } = mockPdfDoc();
+
+    await fillPdf(new ArrayBuffer(0), [line({ color: "#2563eb" })], new Map(), false);
+
+    expect(page.drawLine.mock.calls[0][0].color).toEqual({
+      red: 37 / 255,
+      green: 99 / 255,
+      blue: 235 / 255,
+    });
+  });
+
+  it("defaults no-color lines to black", async () => {
+    const { page } = mockPdfDoc();
+
+    await fillPdf(new ArrayBuffer(0), [line({ color: undefined })], new Map(), false);
+
+    expect(page.drawLine.mock.calls[0][0].color).toEqual({
+      red: 0,
+      green: 0,
+      blue: 0,
     });
   });
 });

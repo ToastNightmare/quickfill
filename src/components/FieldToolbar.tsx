@@ -37,7 +37,7 @@ export function FieldToolbar({
   const fieldW    = field.width * zoomFactor;
 
   // Estimate bar width per type
-  const barW = field.type === "checkbox" ? 192 : 160;
+  const barW = field.type === "checkbox" ? 192 : field.type === "line" ? 44 : 160;
 
   // Centre bar over field, clamp to viewport
   let left = fieldLeft + fieldW / 2 - barW / 2;
@@ -53,7 +53,7 @@ export function FieldToolbar({
       : "none";
 
   const currentFontSize =
-    field.type !== "checkbox"
+    field.type !== "checkbox" && field.type !== "line"
       ? ((field as { fontSize?: number }).fontSize ?? 14)
       : null;
 
@@ -71,7 +71,11 @@ export function FieldToolbar({
         className="fixed z-50 flex items-center gap-0.5 rounded-lg border border-border bg-surface shadow-lg px-1"
         style={{ top, left, height: BAR_H }}
       >
-        {field.type === "checkbox" ? (
+        {field.type === "line" ? (
+          <BarBtn onClick={() => { onDelete(field.id); onDeselect(); }} title="Delete" danger>
+            <Trash2 className="h-3.5 w-3.5" />
+          </BarBtn>
+        ) : field.type === "checkbox" ? (
           <>
             {/* Stamp options */}
             <BarBtn

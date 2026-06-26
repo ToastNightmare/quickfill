@@ -8,6 +8,7 @@ const TYPE_LABELS: Record<string, string> = {
   checkbox: "Checkbox",
   signature: "Signature",
   date: "Date",
+  line: "Line",
 };
 
 interface FieldInspectorProps {
@@ -19,7 +20,7 @@ interface FieldInspectorProps {
 }
 
 export function FieldInspector({ field, onUpdate, onDelete, onDeselect, position }: FieldInspectorProps) {
-  const showFontSize = field.type !== "checkbox";
+  const showFontSize = field.type !== "checkbox" && field.type !== "line";
   const fontSize = showFontSize ? (field as { fontSize?: number }).fontSize ?? 14 : null;
   const isSnapped = field.snapped ?? false;
 

@@ -8,9 +8,10 @@ export type ToolType =
   | "whiteout"
   | "line"
   | "eraser";
-export type PlacementToolType = Extract<ToolType, "text" | "date" | "checkbox" | "signature" | "box" | "whiteout">;
+export type PlacementToolType = Extract<ToolType, "text" | "date" | "checkbox" | "signature" | "box" | "whiteout" | "line">;
 export type FieldType = Exclude<PlacementToolType, "box"> | "comb";
 export type FieldLayerDirection = "back" | "backward" | "forward" | "front";
+export type LineOrientation = "horizontal" | "vertical";
 
 export interface ToolDefaultState {
   select: Record<string, never>;
@@ -37,6 +38,8 @@ export interface ToolDefaultState {
   };
   line: {
     strokeWidth: number;
+    color: string;
+    orientation: LineOrientation;
   };
   eraser: Record<string, never>;
 }
@@ -66,6 +69,13 @@ export interface CheckboxField extends FieldBase {
   checked: boolean;
   stamp?: CheckboxStamp; // "tick" | "cross" | "none" (default "tick")
   color?: string; // Hex color, defaults to near-black when absent
+}
+
+export interface LineField extends FieldBase {
+  type: "line";
+  orientation: LineOrientation;
+  color: string;
+  strokeWidth: number;
 }
 
 export interface SignatureField extends FieldBase {
@@ -107,7 +117,7 @@ export interface CombField extends FieldBase {
   groups?: CombGroup[]; // Cell groups with gaps between them (for date fields like DD MM YYYY)
 }
 
-export type EditorField = TextField | CheckboxField | SignatureField | DateField | WhiteoutField | CombField;
+export type EditorField = TextField | CheckboxField | SignatureField | DateField | WhiteoutField | CombField | LineField;
 
 export interface AcroFormField {
   name: string;

@@ -447,6 +447,12 @@ function drawCheckmark(page: PDFPage, pdfX: number, pdfY: number, pdfW: number, 
   }
 }
 
+function hexToRgbPdf(hex: string) {
+  const clean = hex.replace("#", "");
+  const n = parseInt(clean, 16);
+  return rgb(((n >> 16) & 255) / 255, ((n >> 8) & 255) / 255, (n & 255) / 255);
+}
+
 // Isolate existing page content so new drawings use clean page coordinates.
 // Some source PDFs leave transforms or q states open at the end of a content stream.
 // Wrapping the original streams and closing any leaked states prevents those
@@ -564,6 +570,25 @@ async function drawFieldOnPage(pdfDoc: PDFDocument, field: EditorField, _pageSca
   } else if (field.type === "checkbox" && field.checked) {
     const stamp = (field as { stamp?: string }).stamp ?? "tick";
     drawCheckmark(page, pdfX, finalPdfY, pdfW, pdfH, stamp);
+  } else if (field.type === "line") {
+    const lineField = field as import("@/lib/types").LineField;
+    const lineColor = hexToRgbPdf(lineField.color ?? "#000000");
+    const lw = lineField.strokeWidth ?? 1;
+    if (lineField.orientation === "horizontal") {
+      page.drawLine({
+        start: { x: pdfX, y: finalPdfY + pdfH / 2 },
+        end: { x: pdfX + pdfW, y: finalPdfY + pdfH / 2 },
+        thickness: lw,
+        color: lineColor,
+      });
+    } else {
+      page.drawLine({
+        start: { x: pdfX + pdfW / 2, y: finalPdfY },
+        end: { x: pdfX + pdfW / 2, y: finalPdfY - pdfH },
+        thickness: lw,
+        color: lineColor,
+      });
+    }
   } else if (field.type === "comb") {
     const combField = field as import("@/lib/types").CombField;
     const value = combField.value ?? "";

@@ -3,7 +3,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, useCallback, useImperativeHandle, forwardRef } from "react";
 import { Stage, Layer, Rect, Text, Group, Transformer, Image as KonvaImage, Line } from "react-konva";
 import type Konva from "konva";
-import type { EditorField, PlacementToolType, SignatureField, CheckboxStamp, WhiteoutField, CombField, ToolDefaultState } from "@/lib/types";
+import type { EditorField, PlacementToolType, SignatureField, CheckboxStamp, WhiteoutField, CombField, ToolDefaultState, LineField, LineOrientation } from "@/lib/types";
 import { detectSnapBox, detectAllBoxes, snapCredibilityScore, floodFillCell, detectCombCells } from "@/lib/snap-detect";
 import type { SnapResult, CombDetectResult } from "@/lib/snap-detect";
 import { createEditorFieldId } from "@/lib/field-ids";
@@ -49,6 +49,34 @@ interface SnapPreview {
   y: number;
   width: number;
   height: number;
+}
+
+function createLineField(
+  base: Pick<EditorField, "id" | "x" | "y" | "page" | "snapped" | "snapBounds">,
+  lineDefaults: ToolDefaultState["line"],
+  viewportAtScale1: { width: number; height: number } | null,
+  fieldW: number,
+  fieldH: number
+): LineField {
+  const orientation = lineDefaults.orientation ?? "horizontal";
+  const strokeWidth = lineDefaults.strokeWidth ?? 1;
+  const isHorizontal = orientation !== "vertical";
+  const pageW = viewportAtScale1?.width ?? fieldW;
+  const pageH = viewportAtScale1?.height ?? Math.max(fieldH, 792);
+
+  // For horizontal: spans full width at click y
+  // For vertical: spans full height at click x
+  return {
+    ...base,
+    type: "line",
+    orientation,
+    color: lineDefaults.color ?? "#000000",
+    strokeWidth,
+    width: isHorizontal ? pageW : strokeWidth,
+    height: isHorizontal ? strokeWidth : pageH,
+    x: isHorizontal ? 0 : base.x,
+    y: isHorizontal ? base.y : 0,
+  };
 }
 
 function isMobileEditorViewport(): boolean {
@@ -148,6 +176,8 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
   const [cursorStyle, setCursorStyle] = useState("default");
   const [snapPreviewOpacity, setSnapPreviewOpacity] = useState(0);
   const [contextMenu, setContextMenu] = useState<{ x: number, y: number, fieldId: string } | null>(null);
+  // Line tool preview state
+  const [linePreview, setLinePreview] = useState<{ x: number; y: number; orientation: LineOrientation } | null>(null);
   const [isMobileEditor, setIsMobileEditor] = useState(false);
   const [whiteoutColorInternal, setWhiteoutColorInternal] = useState<string | null>(null);
   // Use controlled whiteout color if provided, otherwise use internal state
@@ -174,6 +204,13 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
   const isDragDrawing = useRef(false);
   const [drawRect, setDrawRect] = useState<{x: number, y: number, w: number, h: number} | null>(null);
 
+  // Reset line preview when tool changes
+  useEffect(() => {
+    if (activeTool !== "line") {
+      setLinePreview(null);
+    }
+  }, [activeTool]);
+
   useImperativeHandle(ref, () => ({
     getCanvasDataURL: () => canvasRef.current?.toDataURL("image/png") ?? null,
     getCanvasDimensions: () => dimensions,
@@ -181,7 +218,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
     getViewportDims: () => viewportAtScale1,
     editField: (fieldId: string) => {
       const field = fields.find((candidate) => candidate.id === fieldId);
-      if (!field || field.type === "checkbox" || field.type === "signature" || field.type === "whiteout" || field.type === "comb") {
+      if (!field || field.type === "checkbox" || field.type === "signature" || field.type === "whiteout" || field.type === "comb" || field.type === "line") {
         return;
       }
       onToolSelect(null);
@@ -478,7 +515,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
     }
     // Never attach Transformer to whiteout fields
     const selectedField = fields.find(f => f.id === selectedFieldId);
-    if (selectedField?.type === 'whiteout') {
+    if (selectedField?.type === 'whiteout' || selectedField?.type === 'line') {
       tr.nodes([]);
       tr.getLayer()?.batchDraw();
       return;
@@ -558,7 +595,8 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
         field.type === "checkbox" ||
         field.type === "signature" ||
         field.type === "whiteout" ||
-        field.type === "comb"
+        field.type === "comb" ||
+        field.type === "line"
       ) {
         setEditingFieldId(null);
         return;
@@ -579,6 +617,10 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
     }
     if (activeTool === "checkbox") {
       setCursorStyle("cell");
+      return;
+    }
+    if (activeTool === "line") {
+      setCursorStyle("crosshair");
       return;
     }
     if (activeTool === "signature") {
@@ -632,8 +674,18 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
         return; // Don't do snap preview while drawing
       }
 
+      // Line tool preview: show ghost line following cursor
+      if (activeTool === "line" && !isDragDrawing.current) {
+        const lineDefaults = toolDefaults.line;
+        const orientation = lineDefaults.orientation ?? "horizontal";
+        setLinePreview({ x: pos.x, y: pos.y, orientation });
+        if (snapPreview) setSnapPreview(null);
+        return;
+      }
+
       if (!activeTool || activeTool === "checkbox" || activeTool === "signature" || !canvasRef.current) {
         if (snapPreview) setSnapPreview(null);
+        setLinePreview(null);
         return;
       }
 
@@ -722,6 +774,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
 
   const handleStageMouseLeave = useCallback(() => {
     setSnapPreview(null);
+    setLinePreview(null);
     setCursorStyle(activeTool ? "crosshair" : "default");
     // Reset whiteout color when switching away from whiteout tool
     if (activeTool !== "whiteout") {
@@ -846,6 +899,9 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
                 };
               }
               break;
+            case "line":
+              field = createLineField(base, toolDefaults.line, viewportAtScale1, fieldW, fieldH);
+              break;
             case "signature":
               field = { ...base, type: "signature", width: fieldW, height: fieldH, value: "", fontSize: 16 };
               break;
@@ -937,17 +993,17 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
 
           const addedField = onFieldAdd(field);
           // Keep stamp-style tools active for multiple placements
-          if (activeTool !== "whiteout" && activeTool !== "checkbox") {
+          if (activeTool !== "whiteout" && activeTool !== "checkbox" && activeTool !== "line") {
             onToolSelect(null);
           }
-          setCursorStyle(activeTool === "whiteout" ? "crosshair" : activeTool === "checkbox" ? "cell" : "default");
-          if (activeTool !== "whiteout" && activeTool !== "checkbox") {
+          setCursorStyle(activeTool === "whiteout" || activeTool === "line" ? "crosshair" : activeTool === "checkbox" ? "cell" : "default");
+          if (activeTool !== "whiteout" && activeTool !== "checkbox" && activeTool !== "line") {
             onFieldSelect(addedField.id);
           }
 
           if (activeTool === "signature") {
             onSignatureFieldPlaced?.(addedField);
-          } else if (!isMobileEditor && activeTool !== "checkbox" && activeTool !== "whiteout" && activeTool !== "box") {
+          } else if (!isMobileEditor && activeTool !== "checkbox" && activeTool !== "whiteout" && activeTool !== "box" && activeTool !== "line") {
             setEditingFieldId(addedField.id);
           }
         } else if (absDx <= 10 || absDy <= 10) {
@@ -971,13 +1027,14 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
               date:      { w: 160, h: 28 },
               box:       { w: 220, h: 30 },
               whiteout:  { w: 100, h: 30 },
+              line:      { w: 200, h: 1 },
             };
             fieldW = defaults[activeTool].w;
             fieldH = defaults[activeTool].h;
 
             // Checkboxes and signatures never snap, place at click point
             // Also skip snap detection if snapEnabled is false
-            if (activeTool !== "checkbox" && activeTool !== "signature" && snapEnabled) {
+            if (activeTool !== "checkbox" && activeTool !== "signature" && activeTool !== "line" && snapEnabled) {
               if (snapPreview) {
                 // snapPreview is now in PDF point space
                 fieldX = snapPreview.x;
@@ -1102,6 +1159,9 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
                   };
                 }
                 break;
+              case "line":
+                field = createLineField(base, toolDefaults.line, viewportAtScale1, fieldW, fieldH);
+                break;
               case "signature":
                 field = { ...base, type: "signature", width: fieldW, height: fieldH, value: "", fontSize: inferredFontSize ?? 16 };
                 break;
@@ -1188,17 +1248,17 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
 
             const addedField = onFieldAdd(field);
             // Keep stamp-style tools active
-            if (activeTool !== "whiteout" && activeTool !== "checkbox") {
+            if (activeTool !== "whiteout" && activeTool !== "checkbox" && activeTool !== "line") {
               onToolSelect(null);
             }
-            setCursorStyle(activeTool === "whiteout" ? "crosshair" : activeTool === "checkbox" ? "cell" : "default");
-            if (activeTool !== "whiteout" && activeTool !== "checkbox") {
+            setCursorStyle(activeTool === "whiteout" || activeTool === "line" ? "crosshair" : activeTool === "checkbox" ? "cell" : "default");
+            if (activeTool !== "whiteout" && activeTool !== "checkbox" && activeTool !== "line") {
               onFieldSelect(addedField.id);
             }
 
             if (activeTool === "signature") {
               onSignatureFieldPlaced?.(addedField);
-            } else if (!isMobileEditor && activeTool !== "checkbox" && activeTool !== "whiteout" && activeTool !== "box") {
+            } else if (!isMobileEditor && activeTool !== "checkbox" && activeTool !== "whiteout" && activeTool !== "box" && activeTool !== "line") {
               setEditingFieldId(addedField.id);
             }
 
@@ -1214,9 +1274,10 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
         dragStart.current = null;
         dragCurrent.current = null;
         setDrawRect(null);
+        setLinePreview(null);
       }
     },
-    [activeTool, currentPage, zoomFactor, fitScale, onFieldAdd, onFieldSelect, onToolSelect, onSignatureFieldPlaced, snapPreview, whiteoutColor, fields, snapEnabled, createFieldId, isMobileEditor, toolDefaults]
+    [activeTool, currentPage, zoomFactor, fitScale, onFieldAdd, onFieldSelect, onToolSelect, onSignatureFieldPlaced, snapPreview, whiteoutColor, fields, snapEnabled, createFieldId, isMobileEditor, toolDefaults, viewportAtScale1]
   );
 
   // Core field creation logic - shared by click and touch
@@ -1242,13 +1303,14 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
         date:      { w: 160, h: 28 },
         box:       { w: 220, h: 30 },
         whiteout:  { w: 100, h: 30 },
+        line:      { w: 200, h: 1 },
       };
       fieldW = defaults[activeTool].w;
       fieldH = defaults[activeTool].h;
 
       // Checkboxes and signatures never snap, place at click point
       // Also skip snap detection if snapEnabled is false
-      if (activeTool !== "checkbox" && activeTool !== "signature" && snapEnabled) {
+      if (activeTool !== "checkbox" && activeTool !== "signature" && activeTool !== "line" && snapEnabled) {
         // Snap-first: always try snap detection first
         if (snapPreview) {
           // snapPreview is now in PDF point space
@@ -1367,6 +1429,9 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
             };
           }
           break;
+        case "line":
+          field = createLineField(base, toolDefaults.line, viewportAtScale1, fieldW, fieldH);
+          break;
         case "signature":
           field = { ...base, type: "signature", width: fieldW, height: fieldH, value: "", fontSize: inferredFontSize ?? 16 };
           break;
@@ -1453,18 +1518,18 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
 
       const addedField = onFieldAdd(field);
       // Keep stamp-style tools active
-      if (activeTool !== "whiteout" && activeTool !== "checkbox") {
+      if (activeTool !== "whiteout" && activeTool !== "checkbox" && activeTool !== "line") {
         onToolSelect(null);
       }
-      setCursorStyle(activeTool === "whiteout" ? "crosshair" : activeTool === "checkbox" ? "cell" : "default");
-      if (activeTool !== "whiteout" && activeTool !== "checkbox") {
+      setCursorStyle(activeTool === "whiteout" || activeTool === "line" ? "crosshair" : activeTool === "checkbox" ? "cell" : "default");
+      if (activeTool !== "whiteout" && activeTool !== "checkbox" && activeTool !== "line") {
         onFieldSelect(addedField.id);
       }
 
       // For signature fields, trigger signature placement flow
       if (activeTool === "signature") {
         onSignatureFieldPlaced?.(addedField);
-      } else if (!isMobileEditor && activeTool !== "checkbox" && activeTool !== "whiteout" && activeTool !== "box") {
+      } else if (!isMobileEditor && activeTool !== "checkbox" && activeTool !== "whiteout" && activeTool !== "box" && activeTool !== "line") {
         // Immediately enter edit mode for text-like fields
         setEditingFieldId(addedField.id);
       }
@@ -1477,7 +1542,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
 
       return true;
     },
-    [activeTool, currentPage, onFieldAdd, onFieldSelect, onToolSelect, zoomFactor, fitScale, snapPreview, onSignatureFieldPlaced, snapEnabled, whiteoutColor, fields, createFieldId, isMobileEditor, toolDefaults]
+    [activeTool, currentPage, onFieldAdd, onFieldSelect, onToolSelect, zoomFactor, fitScale, snapPreview, onSignatureFieldPlaced, snapEnabled, whiteoutColor, fields, createFieldId, isMobileEditor, toolDefaults, viewportAtScale1]
   );
 
   const handleStageClick = useCallback(
@@ -1827,10 +1892,29 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
               enabledAnchors={["top-left", "top-center", "top-right", "middle-right", "bottom-right", "bottom-center", "bottom-left", "middle-left"]}
               keepRatio={keepRatio ?? false}
               boundBoxFunc={(oldBox, newBox) => {
+                // Lines are not resizable via canvas - only draggable
+                if (selectedField?.type === "line") {
+                  return oldBox;
+                }
                 if (newBox.width < 16 || newBox.height < 16) return oldBox;
                 return newBox;
               }}
             />
+            {/* Line tool preview - ghost line following cursor */}
+            {linePreview && activeTool === "line" && (
+              <Line
+                points={
+                  (toolDefaults.line.orientation ?? "horizontal") === "horizontal"
+                    ? [0, linePreview.y, dimensions.width, linePreview.y]
+                    : [linePreview.x, 0, linePreview.x, dimensions.height]
+                }
+                stroke={toolDefaults.line.color ?? "#3b82f6"}
+                strokeWidth={Math.max(1, (toolDefaults.line.strokeWidth ?? 1) * fitScale)}
+                opacity={0.4}
+                dash={[4, 4]}
+                listening={false}
+              />
+            )}
           </Layer>
         </Stage>
           );
@@ -1927,6 +2011,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
             // Grid and Comb fields use their own per-cell input handling
             // Comb (Box Field) uses its own per-cell input handling
             if (editField.type === "comb") return null;
+            if (editField.type === "line") return null;
             const isEditSnapped = editField.snapped ?? false;
             // Convert from PDF point space to canvas pixels
             const effectiveScale = fitScale * zoomFactor;
@@ -2086,7 +2171,7 @@ function FieldShape({
   // Register/unregister this field's node with the global transformer (skip for whiteout - static)
   // BUG 3 FIX: Signature fields MUST register with Transformer for resize to work
   useEffect(() => {
-    if (field.type === "whiteout") return; // Whiteout is static, no transformer
+    if (field.type === "whiteout" || field.type === "line") return;
     const node = groupRef.current;
     if (!node) return;
     registerNode(field.id, node);
@@ -2277,6 +2362,86 @@ function FieldShape({
             </>
           );
         })()}
+        </Group>
+      </>
+    );
+  }
+
+  if (field.type === "line") {
+    const lineField = field as LineField;
+    const isHorizontal = lineField.orientation !== "vertical";
+    const visibleStrokeWidth = Math.max(1, lineField.strokeWidth * fitScale);
+    const hitWidth = isHorizontal ? stageW : Math.max(stageW, 12);
+    const hitHeight = isHorizontal ? Math.max(stageH, 12) : stageH;
+
+    return (
+      <>
+        <Group
+          id={field.id}
+          ref={groupRef}
+          x={stageX}
+          y={stageY}
+          width={stageW}
+          height={stageH}
+          opacity={dragOpacity}
+          draggable={canDragField}
+          onMouseEnter={() => onMouseEnter?.()}
+          onMouseLeave={() => onMouseLeave?.()}
+          onClick={handleSelectClick}
+          onTap={handleSelectTap}
+          onDragStart={() => {
+            setDragOpacity(0.85);
+            onDragStart?.();
+          }}
+          onDragEnd={(e) => {
+            setDragOpacity(1);
+            onDragEnd(e.target.x(), e.target.y());
+          }}
+          onTransformEnd={(e) => {
+            const node = e.target;
+            const scaleX = node.scaleX();
+            const scaleY = node.scaleY();
+            node.scaleX(1);
+            node.scaleY(1);
+            onTransformEnd(
+              Math.max(4, node.width() * scaleX),
+              Math.max(4, node.height() * scaleY),
+              node.x(),
+              node.y()
+            );
+          }}
+          onContextMenu={(e) => {
+            e.evt.preventDefault();
+            onContextMenu?.(e, field.id);
+          }}
+        >
+          <Rect
+            x={isHorizontal ? 0 : (stageW - hitWidth) / 2}
+            y={isHorizontal ? (stageH - hitHeight) / 2 : 0}
+            width={hitWidth}
+            height={hitHeight}
+            fill="rgba(0,0,0,0)"
+          />
+          <Line
+            points={
+              isHorizontal
+                ? [0, stageH / 2, stageW, stageH / 2]
+                : [stageW / 2, 0, stageW / 2, stageH]
+            }
+            stroke={lineField.color ?? "#000000"}
+            strokeWidth={visibleStrokeWidth}
+            lineCap="round"
+          />
+          {(isSelected || isHovered || isHighlighted) && (
+            <Rect
+              width={stageW}
+              height={stageH}
+              fill="transparent"
+              stroke={isHighlighted ? "#2563eb" : isSelected ? "#3b82f6" : "rgba(59,130,246,0.4)"}
+              strokeWidth={isHighlighted ? 2 : 1.5}
+              dash={isSelected ? undefined : [3, 2]}
+            />
+          )}
         </Group>
       </>
     );
