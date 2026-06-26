@@ -1936,8 +1936,8 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
               const cbSize = (cbDefaults.size ?? 20) * fitScale;
               const stamp = cbDefaults.stamp ?? "tick";
               const color = cbDefaults.color ?? "#000000";
-              const px = checkboxPreview.x - cbSize / 2;
-              const py = checkboxPreview.y - cbSize / 2;
+              const px = checkboxPreview.x;
+              const py = checkboxPreview.y;
               const innerSize = cbSize * 0.88;
               const sw = Math.max(1.6, innerSize * 0.12);
               return (
