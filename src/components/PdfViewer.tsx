@@ -62,7 +62,7 @@ function createLineField(
   const strokeWidth = lineDefaults.strokeWidth ?? 1;
   const isHorizontal = orientation !== "vertical";
   const pageW = viewportAtScale1?.width ?? fieldW;
-  const pageH = viewportAtScale1?.height ?? fieldH;
+  const pageH = viewportAtScale1?.height ?? Math.max(fieldH, 792);
 
   // For horizontal: spans full width at click y
   // For vertical: spans full height at click x
@@ -515,7 +515,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
     }
     // Never attach Transformer to whiteout fields
     const selectedField = fields.find(f => f.id === selectedFieldId);
-    if (selectedField?.type === 'whiteout') {
+    if (selectedField?.type === 'whiteout' || selectedField?.type === 'line') {
       tr.nodes([]);
       tr.getLayer()?.batchDraw();
       return;
@@ -1904,13 +1904,13 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
             {linePreview && activeTool === "line" && (
               <Line
                 points={
-                  linePreview.orientation === "horizontal"
+                  (toolDefaults.line.orientation ?? "horizontal") === "horizontal"
                     ? [0, linePreview.y, dimensions.width, linePreview.y]
                     : [linePreview.x, 0, linePreview.x, dimensions.height]
                 }
-                stroke="#3b82f6"
-                strokeWidth={1}
-                opacity={0.3}
+                stroke={toolDefaults.line.color ?? "#3b82f6"}
+                strokeWidth={Math.max(1, (toolDefaults.line.strokeWidth ?? 1) * fitScale)}
+                opacity={0.4}
                 dash={[4, 4]}
                 listening={false}
               />
@@ -2171,7 +2171,7 @@ function FieldShape({
   // Register/unregister this field's node with the global transformer (skip for whiteout - static)
   // BUG 3 FIX: Signature fields MUST register with Transformer for resize to work
   useEffect(() => {
-    if (field.type === "whiteout") return; // Whiteout is static, no transformer
+    if (field.type === "whiteout" || field.type === "line") return;
     const node = groupRef.current;
     if (!node) return;
     registerNode(field.id, node);

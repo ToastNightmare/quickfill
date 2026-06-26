@@ -627,7 +627,7 @@ function EditorPageContent() {
       trackEvent("field_added", { source: "manual", type: fieldToAdd.type, snapped: Boolean(fieldToAdd.snapped) });
       setFields((prev) => [...prev, fieldToAdd]);
       // Select the newly added field and keep stamp-style tools active
-      setSelectedFieldId(fieldToAdd.id);
+      setSelectedFieldId(fieldToAdd.type === "line" ? null : fieldToAdd.id);
       setActiveTool((prev) => (fieldToAdd.type === "checkbox" || fieldToAdd.type === "line" ? prev : "select"));
       return fieldToAdd;
     },
