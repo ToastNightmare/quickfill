@@ -178,6 +178,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
   const [contextMenu, setContextMenu] = useState<{ x: number, y: number, fieldId: string } | null>(null);
   // Line tool preview state
   const [linePreview, setLinePreview] = useState<{ x: number; y: number; orientation: LineOrientation } | null>(null);
+  const [checkboxPreview, setCheckboxPreview] = useState<{ x: number; y: number } | null>(null);
   const [isMobileEditor, setIsMobileEditor] = useState(false);
   const [whiteoutColorInternal, setWhiteoutColorInternal] = useState<string | null>(null);
   // Use controlled whiteout color if provided, otherwise use internal state
@@ -208,6 +209,9 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
   useEffect(() => {
     if (activeTool !== "line") {
       setLinePreview(null);
+    }
+    if (activeTool !== "checkbox") {
+      setCheckboxPreview(null);
     }
   }, [activeTool]);
 
@@ -515,7 +519,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
     }
     // Never attach Transformer to whiteout fields
     const selectedField = fields.find(f => f.id === selectedFieldId);
-    if (selectedField?.type === 'whiteout' || selectedField?.type === 'line') {
+    if (selectedField?.type === 'whiteout' || selectedField?.type === 'line' || selectedField?.type === 'checkbox') {
       tr.nodes([]);
       tr.getLayer()?.batchDraw();
       return;
@@ -683,9 +687,17 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
         return;
       }
 
-      if (!activeTool || activeTool === "checkbox" || activeTool === "signature" || !canvasRef.current) {
+      // Checkbox tool preview: track cursor for ghost preview
+      if (activeTool === "checkbox" && !isDragDrawing.current) {
+        setCheckboxPreview({ x: pos.x, y: pos.y });
+        if (snapPreview) setSnapPreview(null);
+        return;
+      }
+
+      if (!activeTool || activeTool === "signature" || !canvasRef.current) {
         if (snapPreview) setSnapPreview(null);
         setLinePreview(null);
+        setCheckboxPreview(null);
         return;
       }
 
@@ -775,6 +787,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
   const handleStageMouseLeave = useCallback(() => {
     setSnapPreview(null);
     setLinePreview(null);
+    setCheckboxPreview(null);
     setCursorStyle(activeTool ? "crosshair" : "default");
     // Reset whiteout color when switching away from whiteout tool
     if (activeTool !== "whiteout") {
@@ -1008,7 +1021,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
           }
         } else if (absDx <= 10 || absDy <= 10) {
           // Fall back to click-to-place behavior - inline the logic here to avoid circular dependency
-          const clickedOnEmpty = e.target === stage;
+          const clickedOnEmpty = e.target === stage || activeTool === "checkbox";
           if (activeTool && clickedOnEmpty && pos) {
             const id = createFieldId();
             // Convert canvas pixels to PDF point space
@@ -1275,6 +1288,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
         dragCurrent.current = null;
         setDrawRect(null);
         setLinePreview(null);
+        setCheckboxPreview(null);
       }
     },
     [activeTool, currentPage, zoomFactor, fitScale, onFieldAdd, onFieldSelect, onToolSelect, onSignatureFieldPlaced, snapPreview, whiteoutColor, fields, snapEnabled, createFieldId, isMobileEditor, toolDefaults, viewportAtScale1]
@@ -1578,7 +1592,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
         return;
       }
 
-      const clickedOnEmpty = e.target === stage;
+      const clickedOnEmpty = e.target === stage || activeTool === "checkbox";
 
       if (!clickedOnEmpty) {
         if (!activeTool) {
@@ -1792,6 +1806,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
                 isHighlighted={field.id === snappedFieldId || (highlightFieldIds?.has(field.id) ?? false)}
                 isHovered={field.id === hoveredFieldId}
                 isMobileEditor={isMobileEditor}
+                activeTool={activeTool}
                 onSelect={() => {
                   selectFieldForInteraction(field);
                   // Reset cursor for whiteout fields
@@ -1915,6 +1930,46 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
                 listening={false}
               />
             )}
+            {/* Checkbox tool preview - ghost checkbox following cursor */}
+            {checkboxPreview && activeTool === "checkbox" && (() => {
+              const cbDefaults = toolDefaults.checkbox;
+              const cbSize = (cbDefaults.size ?? 20) * fitScale;
+              const stamp = cbDefaults.stamp ?? "tick";
+              const color = cbDefaults.color ?? "#000000";
+              const px = checkboxPreview.x;
+              const py = checkboxPreview.y;
+              const innerSize = cbSize * 0.88;
+              const sw = Math.max(1.6, innerSize * 0.12);
+              return (
+                <Group x={px} y={py} opacity={0.4} listening={false}>
+                  <Rect width={cbSize} height={cbSize} fill="rgba(0,0,0,0)" />
+                  {stamp === "none" && (
+                    <Rect
+                      width={cbSize}
+                      height={cbSize}
+                      stroke={color}
+                      strokeWidth={1.5}
+                      fill="transparent"
+                    />
+                  )}
+                  {stamp === "tick" && (
+                    <Line
+                      points={[cbSize * 0.2, cbSize * 0.55, cbSize * 0.42, cbSize * 0.78, cbSize * 0.82, cbSize * 0.24]}
+                      stroke={color}
+                      strokeWidth={sw}
+                      lineCap="round"
+                      lineJoin="round"
+                    />
+                  )}
+                  {stamp === "cross" && (
+                    <>
+                      <Line points={[cbSize * 0.24, cbSize * 0.24, cbSize * 0.76, cbSize * 0.76]} stroke={color} strokeWidth={sw} lineCap="round" />
+                      <Line points={[cbSize * 0.76, cbSize * 0.24, cbSize * 0.24, cbSize * 0.76]} stroke={color} strokeWidth={sw} lineCap="round" />
+                    </>
+                  )}
+                </Group>
+              );
+            })()}
           </Layer>
         </Stage>
           );
@@ -2129,6 +2184,7 @@ function FieldShape({
   isHighlighted,
   isHovered,
   isMobileEditor,
+  activeTool,
   onSelect,
   onMouseEnter,
   onMouseLeave,
@@ -2151,6 +2207,7 @@ function FieldShape({
   isHighlighted: boolean;
   isHovered: boolean;
   isMobileEditor: boolean;
+  activeTool?: PlacementToolType | null;
   onSelect: () => void;
   onMouseEnter?: () => void;
   onMouseLeave?: () => void;
@@ -2171,7 +2228,7 @@ function FieldShape({
   // Register/unregister this field's node with the global transformer (skip for whiteout - static)
   // BUG 3 FIX: Signature fields MUST register with Transformer for resize to work
   useEffect(() => {
-    if (field.type === "whiteout" || field.type === "line") return;
+    if (field.type === "whiteout" || field.type === "line" || field.type === "checkbox") return;
     const node = groupRef.current;
     if (!node) return;
     registerNode(field.id, node);
@@ -2251,11 +2308,13 @@ function FieldShape({
         onMouseEnter={() => onMouseEnter?.()}
         onMouseLeave={() => onMouseLeave?.()}
         onClick={(e) => {
+          if (activeTool === "checkbox") return;
           e.cancelBubble = true;
           if (wasRecentTap()) return;
           onSelect();
         }}
         onTap={(e) => {
+          if (activeTool === "checkbox") return;
           e.cancelBubble = true;
           markTapHandled();
           onSelect();
@@ -2327,8 +2386,7 @@ function FieldShape({
                 width={stageW}
                 height={stageH}
                 stroke={stampColor}
-                strokeWidth={1}
-                dash={[3, 2]}
+                strokeWidth={1.5}
                 fill="transparent"
                 hitStrokeWidth={0}
               />
