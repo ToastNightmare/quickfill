@@ -270,10 +270,14 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
 
   // Reset cursor when tool is deactivated
   useEffect(() => {
+    if (eraserActive) {
+      setCursorStyle("none");
+      return;
+    }
     if (!activeTool) {
       setCursorStyle("default");
     }
-  }, [activeTool]);
+  }, [activeTool, eraserActive]);
 
   useEffect(() => {
     if (!eraserActive) {
@@ -640,7 +644,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
       return;
     }
     if (eraserActive) {
-      setCursorStyle("crosshair");
+      setCursorStyle("none");
       return;
     }
     if (activeTool === "checkbox") {
@@ -832,12 +836,16 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
     setCheckboxPreview(null);
     setEraserPreview(null);
     eraserPos.current = null;
+    if (eraserActive) {
+      setCursorStyle("default");
+      return;
+    }
     setCursorStyle(activeTool ? "crosshair" : "default");
     // Reset whiteout color when switching away from whiteout tool
     if (activeTool !== "whiteout") {
       setWhiteoutColor(null);
     }
-  }, [activeTool]);
+  }, [activeTool, eraserActive]);
 
   const handleStageMouseDown = useCallback(
     (e: Konva.KonvaEventObject<MouseEvent>) => {
@@ -1634,9 +1642,13 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
       if (!pos) return;
 
       if (eraserActive) {
-        const hitField = fieldFromStagePoint(stage, pos);
-        if (hitField && hitField.type !== "whiteout") {
-          onFieldsDeleteBatch?.([hitField.id]);
+        const effectiveScale = fitScale * zoomFactor;
+        const brushCenterX = pos.x / effectiveScale;
+        const brushCenterY = pos.y / effectiveScale;
+        const brushHalfSize = eraserSize / 2 / effectiveScale;
+        const ids = collectEraserFieldIds(pageFields, brushCenterX, brushCenterY, brushHalfSize);
+        if (ids.length > 0) {
+          onFieldsDeleteBatch?.(ids);
         }
         return;
       }
@@ -1690,7 +1702,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
         }
       }
     },
-    [activeTool, createFieldAtPoint, eraserActive, fieldFromNode, fieldFromStagePoint, onFieldSelect, onFieldsDeleteBatch, selectFieldForInteraction]
+    [activeTool, createFieldAtPoint, eraserActive, eraserSize, fieldFromNode, fieldFromStagePoint, fitScale, onFieldSelect, onFieldsDeleteBatch, pageFields, selectFieldForInteraction, zoomFactor]
   );
 
   const handleStageTap = useCallback(
