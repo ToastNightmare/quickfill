@@ -12,7 +12,6 @@ import {
   MousePointer2,
   Sparkles,
   UserCheck,
-  Eraser,
   PaintBucket,
   Copy,
   Pencil,
@@ -62,7 +61,7 @@ const TOOL_META: Record<ToolType, { icon: typeof Type; label: string; hint: stri
   box: { icon: SquareSplitHorizontal, label: "Box Field", hint: "Drag across character boxes for TFN, ABN, Medicare, and similar forms.", color: "text-cyan-500" },
   whiteout: { icon: PaintBucket, label: "Whiteout", hint: "Drag over text you want to cover. QuickFill samples the paper color.", color: "text-gray-500" },
   line: { icon: Pencil, label: "Line", hint: "Click on the PDF to place a line. Choose orientation, colour, and thickness before placing.", color: "text-emerald-500" },
-  eraser: { icon: Eraser, label: "Eraser", hint: "Click or drag across placed fields to remove them.", color: "text-red-500" },
+  eraser: { icon: Trash2, label: "Delete", hint: "Click or drag to delete placed fields touched by the square. Does not erase the original document or whiteout.", color: "text-red-500" },
 };
 
 interface ContextPanelProps {
@@ -93,7 +92,7 @@ function FieldIcon({ type, className }: { type: EditorField["type"]; className?:
   if (type === "checkbox") return <CheckSquare className={className} />;
   if (type === "signature") return <PenTool className={className} />;
   if (type === "date") return <Calendar className={className} />;
-  if (type === "whiteout") return <Eraser className={className} />;
+  if (type === "whiteout") return <PaintBucket className={className} />;
   if (type === "comb") return <SquareSplitHorizontal className={className} />;
   if (type === "line") return <Pencil className={className} />;
   return <Type className={className} />;
@@ -579,7 +578,7 @@ function EraserDefaultControls({
         ))}
       </div>
       <p className="mt-3 text-xs leading-5 text-text-muted">
-        Removes placed fields only. Does not erase the original document or whiteout.
+        Deletes placed fields touched by the square. Does not erase the original document or whiteout.
       </p>
     </Section>
   );

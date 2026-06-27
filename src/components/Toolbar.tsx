@@ -13,7 +13,6 @@ import {
   UserCheck,
   Map,
   Save,
-  Eraser,
   PaintBucket,
   Magnet,
   HelpCircle,
@@ -65,7 +64,7 @@ const tools: { type: ToolType; icon: typeof Type; label: string; shortLabel: str
   { type: "signature", icon: PenTool, label: "Signature", shortLabel: "Sign", title: "Signature field: tap to place" },
   { type: "date", icon: Calendar, label: "Date", shortLabel: "Date", title: "Date field: tap or drag to place" },
   { type: "whiteout", icon: PaintBucket, label: "Whiteout", shortLabel: "Erase", title: "Whiteout: drag over text to cover it" },
-  { type: "eraser", icon: Eraser, label: "Eraser", shortLabel: "Erase", title: "Eraser: click or drag to remove placed fields" },
+  { type: "eraser", icon: Trash2, label: "Delete", shortLabel: "Del", title: "Delete: click or drag to remove placed fields. Does not affect original document or whiteout." },
 ];
 
 const isPlacementTool = (tool: ToolType) => tool !== "select" && tool !== "eraser";
