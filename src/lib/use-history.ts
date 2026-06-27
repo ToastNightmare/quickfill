@@ -56,6 +56,8 @@ function reducer(state: HistoryState, action: HistoryAction): HistoryState {
   }
 }
 
+export const __historyTestUtils = { reducer };
+
 type LayerMoveEvent = CustomEvent<{ fieldId: string; direction: FieldLayerDirection }>;
 
 export function useHistory(initial: EditorField[] = []) {

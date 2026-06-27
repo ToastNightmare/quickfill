@@ -41,7 +41,9 @@ export interface ToolDefaultState {
     color: string;
     orientation: LineOrientation;
   };
-  eraser: Record<string, never>;
+  eraser: {
+    size: number; // eraser brush size in screen pixels: 24 (small), 48 (medium), 96 (large)
+  };
 }
 
 export interface FieldBase {

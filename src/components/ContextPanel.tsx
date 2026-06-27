@@ -13,6 +13,7 @@ import {
   Sparkles,
   UserCheck,
   Eraser,
+  PaintBucket,
   Copy,
   Pencil,
   ChevronDown,
@@ -46,6 +47,11 @@ const LINE_THICKNESSES = [
   { label: "Medium", value: 2 },
   { label: "Thick", value: 4 },
 ] as const;
+const ERASER_SIZES = [
+  { label: "Small", value: 24 },
+  { label: "Medium", value: 48 },
+  { label: "Large", value: 96 },
+] as const;
 
 const TOOL_META: Record<ToolType, { icon: typeof Type; label: string; hint: string; color: string }> = {
   select: { icon: MousePointer2, label: "Select", hint: "Select existing QuickFill fields to move, resize, duplicate, or delete them.", color: "text-text-muted" },
@@ -54,9 +60,9 @@ const TOOL_META: Record<ToolType, { icon: typeof Type; label: string; hint: stri
   signature: { icon: PenTool, label: "Signature", hint: "Tap where the signature should go, then draw or reuse your saved signature.", color: "text-pink-500" },
   date: { icon: Calendar, label: "Date", hint: "Tap where the date should go. Today's date is added first.", color: "text-amber-500" },
   box: { icon: SquareSplitHorizontal, label: "Box Field", hint: "Drag across character boxes for TFN, ABN, Medicare, and similar forms.", color: "text-cyan-500" },
-  whiteout: { icon: Eraser, label: "Whiteout", hint: "Drag over text you want to cover. QuickFill samples the paper color.", color: "text-gray-500" },
+  whiteout: { icon: PaintBucket, label: "Whiteout", hint: "Drag over text you want to cover. QuickFill samples the paper color.", color: "text-gray-500" },
   line: { icon: Pencil, label: "Line", hint: "Click on the PDF to place a line. Choose orientation, colour, and thickness before placing.", color: "text-emerald-500" },
-  eraser: { icon: Eraser, label: "Eraser", hint: "Eraser defaults will appear here when the eraser tool is available.", color: "text-red-500" },
+  eraser: { icon: Eraser, label: "Eraser", hint: "Click or drag across placed fields to remove them.", color: "text-red-500" },
 };
 
 interface ContextPanelProps {
@@ -252,6 +258,16 @@ export function ContextPanel({
             <LineDefaultControls
               defaults={toolDefaults.line}
               onChange={(updates) => onToolDefaultChange("line", updates)}
+            />
+          </>
+        )}
+
+        {activeTool === "eraser" && (
+          <>
+            <Divider />
+            <EraserDefaultControls
+              defaults={toolDefaults.eraser}
+              onChange={(updates) => onToolDefaultChange("eraser", updates)}
             />
           </>
         )}
@@ -540,6 +556,32 @@ function LineDefaultControls({
       onColorChange={(color) => onChange({ color })}
       onStrokeWidthChange={(strokeWidth) => onChange({ strokeWidth })}
     />
+  );
+}
+
+function EraserDefaultControls({
+  defaults,
+  onChange,
+}: {
+  defaults: ToolDefaultState["eraser"];
+  onChange: (updates: Partial<ToolDefaultState["eraser"]>) => void;
+}) {
+  return (
+    <Section label="Size">
+      <div className="grid grid-cols-3 gap-2">
+        {ERASER_SIZES.map((size) => (
+          <PresetButton
+            key={size.value}
+            label={size.label}
+            active={defaults.size === size.value}
+            onClick={() => onChange({ size: size.value })}
+          />
+        ))}
+      </div>
+      <p className="mt-3 text-xs leading-5 text-text-muted">
+        Removes placed fields only. Does not erase the original document or whiteout.
+      </p>
+    </Section>
   );
 }
 
