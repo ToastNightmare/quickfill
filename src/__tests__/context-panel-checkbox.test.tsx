@@ -13,7 +13,7 @@ const toolDefaults: ToolDefaultState = {
   box: { charCount: 9 },
   whiteout: { fillColor: null },
   line: { strokeWidth: 1, color: "#000000", orientation: "horizontal" },
-  eraser: {},
+  eraser: { size: 48 },
 };
 
 function renderPanel(overrides: Partial<ComponentProps<typeof ContextPanel>> = {}) {
