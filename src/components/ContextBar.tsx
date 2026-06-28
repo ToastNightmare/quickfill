@@ -6,7 +6,7 @@ import type { CheckboxStamp } from "@/lib/types";
 
 const FONT_SIZES = [8, 10, 11, 12, 14, 16, 18, 24, 36];
 
-const TOOL_META: Record<ToolType, { icon: typeof Type; label: string; hint: string }> = {
+const TOOL_META: Record<Exclude<ToolType, "eraser">, { icon: typeof Type; label: string; hint: string }> = {
   select:    { icon: MousePointer2, label: "Select",      hint: "Select an existing QuickFill field" },
   text:      { icon: Type,        label: "Text Field",  hint: "Click the PDF to place a text field" },
   checkbox:  { icon: CheckSquare, label: "Checkbox",    hint: "Click to stamp a tick or cross" },
@@ -16,7 +16,6 @@ const TOOL_META: Record<ToolType, { icon: typeof Type; label: string; hint: stri
   whiteout:  { icon: Eraser,      label: "Whiteout",    hint: "Drag to draw a rectangle to cover text" },
   line:      { icon: Type,        label: "Line",        hint: "Line defaults will appear here when available" },
   "mask-eraser": { icon: Eraser,  label: "Eraser",      hint: "Drag across placed fields to erase only the touched area" },
-  eraser:    { icon: Trash2,      label: "Delete",      hint: "Click or drag to delete placed fields" },
 };
 
 interface ContextBarProps {
@@ -43,7 +42,7 @@ export function ContextBar({
   if (!activeTool && !selectedField) return null;
 
   // ── Tool active ──────────────────────────────────────────────────────────
-  if (activeTool && !selectedField) {
+  if (activeTool && activeTool !== "eraser" && !selectedField) {
     const { icon: Icon, label, hint } = TOOL_META[activeTool];
     return (
       <Bar>

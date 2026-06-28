@@ -8,10 +8,8 @@ import { detectSnapBox, detectAllBoxes, snapCredibilityScore, floodFillCell, det
 import type { SnapResult, CombDetectResult } from "@/lib/snap-detect";
 import { createEditorFieldId } from "@/lib/field-ids";
 import { loadPdfjsClient } from "@/lib/pdfjs-client";
-import { collectEraserFieldIds } from "@/lib/eraser-tool";
 import { addEraserMask, brushIntersectField, isMaskErasable } from "@/lib/eraser-mask";
 
-const MASK_ERASER_SIZE = 48;
 type PdfActiveTool = PlacementToolType | "mask-eraser";
 
 export interface PdfViewerHandle {
@@ -27,15 +25,12 @@ interface PdfViewerProps {
   currentPage: number;
   fields: EditorField[];
   activeTool: PdfActiveTool | null;
-  eraserActive?: boolean;
-  eraserSize?: number;
   selectedFieldId: string | null;
   onFieldAdd: (field: EditorField) => EditorField;
   onFieldUpdate: (id: string, updates: Partial<EditorField>) => void;
   onFieldsSet: (fields: EditorField[]) => void;
   onFieldSelect: (id: string | null) => void;
   onFieldDelete: (id: string) => void;
-  onFieldsDeleteBatch?: (ids: string[]) => void;
   onFieldDuplicate?: (id: string) => void;
   onToolSelect: (tool: PdfActiveTool | null) => void;
   onPageScaleSet: (page: number, scale: number) => void;
@@ -149,15 +144,12 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
   currentPage,
   fields,
   activeTool,
-  eraserActive = false,
-  eraserSize = 48,
   selectedFieldId,
   onFieldAdd,
   onFieldUpdate,
   onFieldsSet,
   onFieldSelect,
   onFieldDelete,
-  onFieldsDeleteBatch,
   onFieldDuplicate,
   onToolSelect,
   onPageScaleSet,
@@ -196,10 +188,6 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
   // Line tool preview state
   const [linePreview, setLinePreview] = useState<{ x: number; y: number; orientation: LineOrientation } | null>(null);
   const [checkboxPreview, setCheckboxPreview] = useState<{ x: number; y: number } | null>(null);
-  const eraserPos = useRef<{ x: number; y: number } | null>(null);
-  const pendingEraseIds = useRef<Set<string>>(new Set());
-  const isDragErasing = useRef(false);
-  const [eraserPreview, setEraserPreview] = useState<{ x: number; y: number } | null>(null);
   const [isMobileEditor, setIsMobileEditor] = useState(false);
   const [whiteoutColorInternal, setWhiteoutColorInternal] = useState<string | null>(null);
   const [maskCursor, setMaskCursor] = useState<{ x: number; y: number } | null>(null);
@@ -288,6 +276,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
     (prefix = "field") => createEditorFieldId(fields, prefix),
     [fields],
   );
+  const maskEraserSize = toolDefaults["mask-eraser"].size ?? 48;
   const renderFields = maskPreviewFields ?? fields;
   const pageFields = renderFields.filter((f) => f.page === currentPage);
   const stagePointToPagePoint = useCallback(
@@ -304,7 +293,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
       if (!draft) return;
 
       const brushCenter = stagePointToPagePoint(pos);
-      const brushHalfSize = MASK_ERASER_SIZE / 2 / (fitScale * zoomFactor);
+      const brushHalfSize = maskEraserSize / 2 / (fitScale * zoomFactor);
       let changed = false;
 
       const next = draft.map((field) => {
@@ -323,7 +312,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
         setMaskPreviewFields(next);
       }
     },
-    [currentPage, fitScale, stagePointToPagePoint, zoomFactor],
+    [currentPage, fitScale, maskEraserSize, stagePointToPagePoint, zoomFactor],
   );
 
   const stopMaskDrag = useCallback(() => {
@@ -348,23 +337,10 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
 
   // Reset cursor when tool is deactivated
   useEffect(() => {
-    if (eraserActive) {
-      setCursorStyle("none");
-      return;
-    }
     if (!activeTool) {
       setCursorStyle("default");
     }
-  }, [activeTool, eraserActive]);
-
-  useEffect(() => {
-    if (!eraserActive) {
-      eraserPos.current = null;
-      pendingEraseIds.current.clear();
-      isDragErasing.current = false;
-      setEraserPreview(null);
-    }
-  }, [eraserActive]);
+  }, [activeTool]);
 
   // Reset drag drawing state when tool changes or is reselected
   useEffect(() => {
@@ -614,7 +590,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
   useLayoutEffect(() => {
     const tr = trRef.current;
     if (!tr) return;
-    if (!selectedFieldId) {
+    if (!selectedFieldId || activeTool === "mask-eraser") {
       tr.nodes([]);
       tr.getLayer()?.batchDraw();
       return;
@@ -634,7 +610,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
       tr.getLayer()?.batchDraw();
     }
     // If node not found yet, do nothing  -  registerNode will attach when it mounts
-  }, [selectedFieldId, fields]);
+  }, [selectedFieldId, fields, activeTool]);
 
   // Animate snap preview opacity
   useEffect(() => {
@@ -721,10 +697,6 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
       setCursorStyle("grabbing");
       return;
     }
-    if (eraserActive) {
-      setCursorStyle("none");
-      return;
-    }
     if (activeTool === "checkbox") {
       setCursorStyle("cell");
       return;
@@ -762,7 +734,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
     }
 
     setCursorStyle("default");
-  }, [activeTool, eraserActive, isDragging, fields, currentPage]);
+  }, [activeTool, isDragging, fields, currentPage]);
 
   // Hover snap preview on mouse move (throttled)
   const handleStageMouseMove = useCallback(
@@ -776,24 +748,6 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
       const pos = { x: nativeEvt.clientX - rect.left, y: nativeEvt.clientY - rect.top };
 
       updateCursor(stage, pos);
-
-      if (eraserActive) {
-        eraserPos.current = pos;
-        setEraserPreview(pos);
-        if (isDragErasing.current) {
-          const effectiveScale = fitScale * zoomFactor;
-          const brushCenterX = pos.x / effectiveScale;
-          const brushCenterY = pos.y / effectiveScale;
-          const brushHalfSize = eraserSize / 2 / effectiveScale;
-          for (const id of collectEraserFieldIds(pageFields, brushCenterX, brushCenterY, brushHalfSize)) {
-            pendingEraseIds.current.add(id);
-          }
-        }
-        if (snapPreview) setSnapPreview(null);
-        setLinePreview(null);
-        setCheckboxPreview(null);
-        return;
-      }
 
       if (activeTool === "mask-eraser") {
         setMaskCursor(pos);
@@ -920,26 +874,20 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
         setSnapPreview(null);
       }
     },
-    [activeTool, applyMaskAtStagePoint, eraserActive, eraserSize, fitScale, pageFields, snapPreview, snapEnabled, toolDefaults, updateCursor, zoomFactor]
+    [activeTool, applyMaskAtStagePoint, fitScale, snapPreview, snapEnabled, toolDefaults, updateCursor, zoomFactor]
   );
 
   const handleStageMouseLeave = useCallback(() => {
     setSnapPreview(null);
     setLinePreview(null);
     setCheckboxPreview(null);
-    setEraserPreview(null);
     setMaskCursor(null);
-    eraserPos.current = null;
-    if (eraserActive) {
-      setCursorStyle("default");
-      return;
-    }
     setCursorStyle(activeTool ? "crosshair" : "default");
     // Reset whiteout color when switching away from whiteout tool
     if (activeTool !== "whiteout") {
       setWhiteoutColor(null);
     }
-  }, [activeTool, eraserActive]);
+  }, [activeTool]);
 
   const handleStageMouseDown = useCallback(
     (e: Konva.KonvaEventObject<MouseEvent>) => {
@@ -952,15 +900,6 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
       const rect = container.getBoundingClientRect();
       const pos = { x: nativeEvt.clientX - rect.left, y: nativeEvt.clientY - rect.top };
       mouseDownPos.current = { x: pos.x, y: pos.y };
-      if (eraserActive) {
-        eraserPos.current = pos;
-        setEraserPreview(pos);
-        pendingEraseIds.current.clear();
-        isDragErasing.current = true;
-        isDragMove.current = false;
-        return;
-      }
-
       if (activeTool === "mask-eraser") {
         setMaskCursor(pos);
         preDragFieldsRef.current = fields;
@@ -981,7 +920,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
       }
       isDragMove.current = false;
     },
-    [activeTool, applyMaskAtStagePoint, eraserActive, fields, onFieldSelect]
+    [activeTool, applyMaskAtStagePoint, fields, onFieldSelect]
   );
 
   const handleStageMouseUp = useCallback(
@@ -1001,15 +940,6 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
         if (dist > 5) {
           isDragMove.current = true;
         }
-      }
-
-      if (eraserActive && isDragErasing.current) {
-        if (pendingEraseIds.current.size > 0) {
-          onFieldsDeleteBatch?.([...pendingEraseIds.current]);
-        }
-        isDragErasing.current = false;
-        pendingEraseIds.current.clear();
-        return;
       }
 
       if (activeTool === "mask-eraser") {
@@ -1755,18 +1685,6 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
       const pos = stage.getPointerPosition();
       if (!pos) return;
 
-      if (eraserActive) {
-        const effectiveScale = fitScale * zoomFactor;
-        const brushCenterX = pos.x / effectiveScale;
-        const brushCenterY = pos.y / effectiveScale;
-        const brushHalfSize = eraserSize / 2 / effectiveScale;
-        const ids = collectEraserFieldIds(pageFields, brushCenterX, brushCenterY, brushHalfSize);
-        if (ids.length > 0) {
-          onFieldsDeleteBatch?.(ids);
-        }
-        return;
-      }
-
       if (activeTool === "mask-eraser") {
         return;
       }
@@ -1820,7 +1738,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
         }
       }
     },
-    [activeTool, createFieldAtPoint, eraserActive, eraserSize, fieldFromNode, fieldFromStagePoint, fitScale, onFieldSelect, onFieldsDeleteBatch, pageFields, selectFieldForInteraction, zoomFactor]
+    [activeTool, createFieldAtPoint, fieldFromNode, fieldFromStagePoint, onFieldSelect, selectFieldForInteraction]
   );
 
   const handleStageTap = useCallback(
@@ -1835,6 +1753,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
   const handleTouchEnd = useCallback(
     (e: React.TouchEvent<HTMLDivElement>) => {
       if (!activeTool || !canvasRef.current) return;
+      if (activeTool === "mask-eraser") return;
       if (e.changedTouches.length !== 1) return;
 
       const touch = e.changedTouches[0];
@@ -1872,7 +1791,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
       className="relative w-max min-w-full min-h-full bg-[#f0f0f0] p-4"
       data-testid="pdf-viewer"
       onTouchEnd={handleTouchEnd}
-      style={{ touchAction: activeTool || eraserActive || isDragging ? "none" : "pan-x pan-y" }}
+      style={{ touchAction: activeTool || isDragging ? "none" : "pan-x pan-y" }}
     >
       {loading && (
         <div className="absolute inset-0 z-10 flex items-center justify-center bg-surface/80">
@@ -1970,22 +1889,6 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
           />
         )}
 
-        {eraserActive && eraserPreview && (
-          <div
-            style={{
-              position: "absolute",
-              left: eraserPreview.x - eraserSize / 2,
-              top: eraserPreview.y - eraserSize / 2,
-              width: eraserSize,
-              height: eraserSize,
-              border: "2px dashed #dc2626",
-              backgroundColor: "rgba(220,38,38,0.08)",
-              pointerEvents: "none",
-              zIndex: 20,
-            }}
-          />
-        )}
-
         {(() => {
           const selectedField = selectedFieldId ? pageFields.find(f => f.id === selectedFieldId) : null;
           const selectedFieldIsSnapped = selectedField?.snapped ?? false;
@@ -2006,8 +1909,8 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
             position: "absolute",
             top: 0,
             left: 0,
-            cursor: activeTool || eraserActive ? cursorStyle : editingFieldId ? "text" : cursorStyle,
-            touchAction: activeTool || eraserActive || isDragging ? "none" : "pan-x pan-y",
+            cursor: activeTool ? cursorStyle : editingFieldId ? "text" : cursorStyle,
+            touchAction: activeTool || isDragging ? "none" : "pan-x pan-y",
           }}
         >
           <Layer>
@@ -2016,12 +1919,13 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
                 key={field.id}
                 field={field}
                 fitScale={fitScale}
-                isSelected={field.id === selectedFieldId && field.type !== "whiteout"}
-                isEditing={field.id === editingFieldId}
+                isSelected={activeTool !== "mask-eraser" && field.id === selectedFieldId && field.type !== "whiteout"}
+                isEditing={activeTool !== "mask-eraser" && field.id === editingFieldId}
                 isHighlighted={field.id === snappedFieldId || (highlightFieldIds?.has(field.id) ?? false)}
                 isHovered={field.id === hoveredFieldId}
                 isMobileEditor={isMobileEditor}
                 activeTool={isPlacementTool(activeTool) ? activeTool : null}
+                disableInteraction={activeTool === "mask-eraser"}
                 onSelect={() => {
                   selectFieldForInteraction(field);
                   // Reset cursor for whiteout fields
@@ -2186,7 +2090,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
               );
             })()}
             {maskCursor && activeTool === "mask-eraser" && (() => {
-              const brushSize = MASK_ERASER_SIZE / zoomFactor;
+              const brushSize = maskEraserSize / zoomFactor;
               return (
                 <Rect
                   x={maskCursor.x / zoomFactor - brushSize / 2}
@@ -2416,6 +2320,7 @@ function FieldShape({
   isHovered,
   isMobileEditor,
   activeTool,
+  disableInteraction,
   onSelect,
   onMouseEnter,
   onMouseLeave,
@@ -2439,6 +2344,7 @@ function FieldShape({
   isHovered: boolean;
   isMobileEditor: boolean;
   activeTool?: PlacementToolType | null;
+  disableInteraction?: boolean;
   onSelect: () => void;
   onMouseEnter?: () => void;
   onMouseLeave?: () => void;
@@ -2568,7 +2474,8 @@ function FieldShape({
           width={stageW}
           height={stageH}
           opacity={dragOpacity}
-          draggable={canDragField}
+          listening={!disableInteraction}
+          draggable={!disableInteraction && canDragField}
         onMouseEnter={() => onMouseEnter?.()}
         onMouseLeave={() => onMouseLeave?.()}
         onClick={(e) => {
@@ -2707,7 +2614,8 @@ function FieldShape({
           width={stageW}
           height={stageH}
           opacity={dragOpacity}
-          draggable={canDragField}
+          listening={!disableInteraction}
+          draggable={!disableInteraction && canDragField}
           onMouseEnter={() => onMouseEnter?.()}
           onMouseLeave={() => onMouseLeave?.()}
           onClick={handleSelectClick}
@@ -2834,7 +2742,8 @@ function FieldShape({
           width={stageW}
           height={stageH}
           opacity={dragOpacity}
-          draggable={canDragField}
+          listening={!disableInteraction}
+          draggable={!disableInteraction && canDragField}
           onMouseEnter={() => onMouseEnter?.()}
           onMouseLeave={() => onMouseLeave?.()}
           onClick={handleSelectClick}
@@ -2991,7 +2900,8 @@ function FieldShape({
         height={stageH}
         opacity={dragOpacity}
         // BUG 3 FIX: Signature fields are always draggable (never snapped)
-        draggable={canDragField}
+        listening={!disableInteraction}
+        draggable={!disableInteraction && canDragField}
         onMouseEnter={() => onMouseEnter?.()}
         onMouseLeave={() => onMouseLeave?.()}
         onClick={handleSelectClick}

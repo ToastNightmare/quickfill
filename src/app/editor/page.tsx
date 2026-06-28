@@ -60,7 +60,7 @@ const DEFAULT_TOOL_DEFAULTS: ToolDefaultState = {
   whiteout: { fillColor: null },
   line: { strokeWidth: 1, color: "#000000", orientation: "horizontal" as LineOrientation },
   eraser: { size: 48 },
-  "mask-eraser": {},
+  "mask-eraser": { size: 48 },
 };
 
 function placementToolFor(tool: ToolType): PlacementToolType | null {
@@ -250,6 +250,9 @@ function EditorPageContent() {
   const activePdfTool = activeTool === "mask-eraser" ? activeTool : placementToolFor(activeTool);
 
   const handleToolSelect = useCallback((tool: ToolType) => {
+    if (tool === "mask-eraser") {
+      setSelectedFieldId(null);
+    }
     setActiveTool(tool);
   }, []);
 
@@ -650,15 +653,6 @@ function EditorPageContent() {
       if (selectedFieldId === id) setSelectedFieldId(null);
     },
     [setFields, selectedFieldId]
-  );
-
-  const handleFieldsDeleteBatch = useCallback(
-    (ids: string[]) => {
-      const idSet = new Set(ids);
-      setFields((prev) => prev.filter((f) => !idSet.has(f.id)));
-      setSelectedFieldId((prev) => (prev && idSet.has(prev) ? null : prev));
-    },
-    [setFields]
   );
 
   const handleFieldDuplicate = useCallback(
@@ -1426,8 +1420,6 @@ function EditorPageContent() {
             currentPage={currentPage}
             fields={fields}
             activeTool={activePdfTool}
-            eraserActive={activeTool === "eraser"}
-            eraserSize={toolDefaults.eraser.size}
             selectedFieldId={selectedFieldId}
             onFieldAdd={handleFieldAdd}
             onFieldUpdate={handleFieldUpdate}
@@ -1435,7 +1427,6 @@ function EditorPageContent() {
             onFieldSelect={setSelectedFieldId}
             onToolSelect={() => setActiveTool("select")}
             onFieldDelete={handleFieldDelete}
-            onFieldsDeleteBatch={handleFieldsDeleteBatch}
             onFieldDuplicate={handleFieldDuplicate}
             onPageScaleSet={handlePageScaleSet}
             totalPages={totalPages}

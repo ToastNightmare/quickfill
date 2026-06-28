@@ -45,7 +45,9 @@ export interface ToolDefaultState {
   eraser: {
     size: number; // eraser brush size in screen pixels: 24 (small), 48 (medium), 96 (large)
   };
-  "mask-eraser": Record<string, never>;
+  "mask-eraser": {
+    size: number;
+  };
 }
 
 export interface MaskRect {

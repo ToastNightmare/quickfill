@@ -53,7 +53,7 @@ const ERASER_SIZES = [
   { label: "Large", value: 96 },
 ] as const;
 
-const TOOL_META: Record<ToolType, { icon: typeof Type; label: string; hint: string; color: string }> = {
+const TOOL_META: Record<Exclude<ToolType, "eraser">, { icon: typeof Type; label: string; hint: string; color: string }> = {
   select: { icon: MousePointer2, label: "Select", hint: "Select existing QuickFill fields to move, resize, duplicate, or delete them.", color: "text-text-muted" },
   text: { icon: Type, label: "Text Field", hint: "Tap or drag on the PDF to place a text field.", color: "text-blue-500" },
   checkbox: { icon: CheckSquare, label: "Checkbox", hint: "Tap a box to place a tick, then tap the field to change it.", color: "text-violet-500" },
@@ -62,7 +62,6 @@ const TOOL_META: Record<ToolType, { icon: typeof Type; label: string; hint: stri
   box: { icon: SquareSplitHorizontal, label: "Box Field", hint: "Drag across character boxes for TFN, ABN, Medicare, and similar forms.", color: "text-cyan-500" },
   whiteout: { icon: PaintBucket, label: "Whiteout", hint: "Drag over text you want to cover. QuickFill samples the paper color.", color: "text-gray-500" },
   line: { icon: Pencil, label: "Line", hint: "Click on the PDF to place a line. Choose orientation, colour, and thickness before placing.", color: "text-emerald-500" },
-  eraser: { icon: Trash2, label: "Delete", hint: "Click or drag to delete placed fields touched by the square. Does not erase the original document or whiteout.", color: "text-red-500" },
   "mask-eraser": { icon: Eraser, label: "Eraser", hint: "Drag across placed fields to erase only the touched area.", color: "text-red-500" },
 };
 
@@ -148,7 +147,7 @@ export function ContextPanel({
   void Sparkles;
   void UserCheck;
 
-  if (selectedField) {
+  if (selectedField && activeTool !== "mask-eraser") {
     const fieldType = selectedField.type;
 
     return (
@@ -229,7 +228,7 @@ export function ContextPanel({
     );
   }
 
-  if (activeTool !== "select") {
+  if (activeTool !== "select" && activeTool !== "eraser") {
     const { icon: Icon, label, hint, color } = TOOL_META[activeTool];
     return (
       <Panel>
@@ -263,12 +262,12 @@ export function ContextPanel({
           </>
         )}
 
-        {activeTool === "eraser" && (
+        {activeTool === "mask-eraser" && (
           <>
             <Divider />
-            <EraserDefaultControls
-              defaults={toolDefaults.eraser}
-              onChange={(updates) => onToolDefaultChange("eraser", updates)}
+            <MaskEraserDefaultControls
+              defaults={toolDefaults["mask-eraser"]}
+              onChange={(updates) => onToolDefaultChange("mask-eraser", updates)}
             />
           </>
         )}
@@ -560,12 +559,12 @@ function LineDefaultControls({
   );
 }
 
-function EraserDefaultControls({
+function MaskEraserDefaultControls({
   defaults,
   onChange,
 }: {
-  defaults: ToolDefaultState["eraser"];
-  onChange: (updates: Partial<ToolDefaultState["eraser"]>) => void;
+  defaults: ToolDefaultState["mask-eraser"];
+  onChange: (updates: Partial<ToolDefaultState["mask-eraser"]>) => void;
 }) {
   return (
     <Section label="Size">
@@ -579,9 +578,6 @@ function EraserDefaultControls({
           />
         ))}
       </div>
-      <p className="mt-3 text-xs leading-5 text-text-muted">
-        Deletes placed fields touched by the square. Does not erase the original document or whiteout.
-      </p>
     </Section>
   );
 }
