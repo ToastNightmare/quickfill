@@ -60,6 +60,7 @@ const DEFAULT_TOOL_DEFAULTS: ToolDefaultState = {
   whiteout: { fillColor: null },
   line: { strokeWidth: 1, color: "#000000", orientation: "horizontal" as LineOrientation },
   eraser: { size: 48 },
+  "mask-eraser": {},
 };
 
 function placementToolFor(tool: ToolType): PlacementToolType | null {
@@ -246,7 +247,7 @@ function EditorPageContent() {
 
   const pdfViewerRef = useRef<PdfViewerHandle>(null);
   const viewerContainerRef = useRef<HTMLDivElement>(null);
-  const activePlacementTool = placementToolFor(activeTool);
+  const activePdfTool = activeTool === "mask-eraser" ? activeTool : placementToolFor(activeTool);
 
   const handleToolSelect = useCallback((tool: ToolType) => {
     setActiveTool(tool);
@@ -1424,12 +1425,13 @@ function EditorPageContent() {
             pdfBytes={pdfBytes}
             currentPage={currentPage}
             fields={fields}
-            activeTool={activePlacementTool}
+            activeTool={activePdfTool}
             eraserActive={activeTool === "eraser"}
             eraserSize={toolDefaults.eraser.size}
             selectedFieldId={selectedFieldId}
             onFieldAdd={handleFieldAdd}
             onFieldUpdate={handleFieldUpdate}
+            onFieldsSet={setFields}
             onFieldSelect={setSelectedFieldId}
             onToolSelect={() => setActiveTool("select")}
             onFieldDelete={handleFieldDelete}

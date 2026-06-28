@@ -8,6 +8,7 @@ import { PDFDocument } from "pdf-lib";
 import { POST } from "../route";
 import { recordDownloadLog } from "@/lib/admin-logs";
 import { PDF_UPLOAD_MAX_BYTES, PDF_UPLOAD_MAX_LABEL } from "@/lib/upload-limits";
+import { maskToPdfRect } from "@/lib/pdf-mask-transform";
 
 jest.mock("@/lib/admin-logs", () => ({
   recordDownloadLog: jest.fn().mockResolvedValue(undefined),
@@ -128,5 +129,16 @@ describe("fill-pdf route", () => {
       reason: "file_too_large",
       status: "blocked",
     }));
+  });
+});
+
+describe("maskToPdfRect", () => {
+  it("uses the same PDF point coordinate system and Y flip as fields", () => {
+    expect(maskToPdfRect({ x: 100, y: 120, width: 40, height: 30 }, 800)).toEqual({
+      x: 100,
+      y: 650,
+      width: 40,
+      height: 30,
+    });
   });
 });

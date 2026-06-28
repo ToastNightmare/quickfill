@@ -20,6 +20,7 @@ import {
   SquareSplitHorizontal,
   MousePointer2,
   Pencil,
+  Eraser,
 } from "lucide-react";
 import type { ToolType, EditorField } from "@/lib/types";
 import { Minimap } from "@/components/Minimap";
@@ -61,13 +62,14 @@ const tools: { type: ToolType; icon: typeof Type; label: string; shortLabel: str
   { type: "box", icon: SquareSplitHorizontal, label: "Box Field", shortLabel: "Box", title: "Box field: drag across character boxes" },
   { type: "checkbox", icon: CheckSquare, label: "Checkbox", shortLabel: "Tick", title: "Checkbox: tap to place a tick or cross" },
   { type: "line", icon: Pencil, label: "Line", shortLabel: "Line", title: "Line: click to place a horizontal or vertical line" },
+  { type: "mask-eraser", icon: Eraser, label: "Eraser", shortLabel: "Eraser", title: "Eraser: drag to erase parts of placed fields" },
   { type: "signature", icon: PenTool, label: "Signature", shortLabel: "Sign", title: "Signature field: tap to place" },
   { type: "date", icon: Calendar, label: "Date", shortLabel: "Date", title: "Date field: tap or drag to place" },
   { type: "whiteout", icon: PaintBucket, label: "Whiteout", shortLabel: "Erase", title: "Whiteout: drag over text to cover it" },
   { type: "eraser", icon: Trash2, label: "Delete", shortLabel: "Del", title: "Delete: click or drag to remove placed fields. Does not affect original document or whiteout." },
 ];
 
-const isPlacementTool = (tool: ToolType) => tool !== "select" && tool !== "eraser";
+const isPlacementTool = (tool: ToolType) => tool !== "select" && tool !== "eraser" && tool !== "mask-eraser";
 
 function isPaidUsage(data: { isPro?: boolean; tier?: string | null } | null): boolean {
   const tier = data?.tier ?? "free";

@@ -15,7 +15,8 @@ const TOOL_META: Record<ToolType, { icon: typeof Type; label: string; hint: stri
   box:       { icon: SquareSplitHorizontal, label: "Box Field", hint: "Drag across character boxes for TFN, ABN, etc." },
   whiteout:  { icon: Eraser,      label: "Whiteout",    hint: "Drag to draw a rectangle to cover text" },
   line:      { icon: Type,        label: "Line",        hint: "Line defaults will appear here when available" },
-  eraser:    { icon: Eraser,      label: "Eraser",      hint: "Eraser defaults will appear here when available" },
+  "mask-eraser": { icon: Eraser,  label: "Eraser",      hint: "Drag across placed fields to erase only the touched area" },
+  eraser:    { icon: Trash2,      label: "Delete",      hint: "Click or drag to delete placed fields" },
 };
 
 interface ContextBarProps {

@@ -15,6 +15,7 @@ import {
   PaintBucket,
   Copy,
   Pencil,
+  Eraser,
   ChevronDown,
   ChevronUp,
   SquareSplitHorizontal,
@@ -62,6 +63,7 @@ const TOOL_META: Record<ToolType, { icon: typeof Type; label: string; hint: stri
   whiteout: { icon: PaintBucket, label: "Whiteout", hint: "Drag over text you want to cover. QuickFill samples the paper color.", color: "text-gray-500" },
   line: { icon: Pencil, label: "Line", hint: "Click on the PDF to place a line. Choose orientation, colour, and thickness before placing.", color: "text-emerald-500" },
   eraser: { icon: Trash2, label: "Delete", hint: "Click or drag to delete placed fields touched by the square. Does not erase the original document or whiteout.", color: "text-red-500" },
+  "mask-eraser": { icon: Eraser, label: "Eraser", hint: "Drag across placed fields to erase only the touched area.", color: "text-red-500" },
 };
 
 interface ContextPanelProps {

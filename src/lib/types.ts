@@ -7,6 +7,7 @@ export type ToolType =
   | "box"
   | "whiteout"
   | "line"
+  | "mask-eraser"
   | "eraser";
 export type PlacementToolType = Extract<ToolType, "text" | "date" | "checkbox" | "signature" | "box" | "whiteout" | "line">;
 export type FieldType = Exclude<PlacementToolType, "box"> | "comb";
@@ -44,6 +45,14 @@ export interface ToolDefaultState {
   eraser: {
     size: number; // eraser brush size in screen pixels: 24 (small), 48 (medium), 96 (large)
   };
+  "mask-eraser": Record<string, never>;
+}
+
+export interface MaskRect {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
 }
 
 export interface FieldBase {
@@ -56,6 +65,7 @@ export interface FieldBase {
   page: number;
   snapped?: boolean;
   snapBounds?: { x: number; y: number; width: number; height: number };
+  eraseMasks?: MaskRect[];
 }
 
 export interface TextField extends FieldBase {

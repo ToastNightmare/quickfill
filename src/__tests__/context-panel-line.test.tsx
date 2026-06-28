@@ -14,6 +14,7 @@ const toolDefaults: ToolDefaultState = {
   whiteout: { fillColor: null },
   line: { strokeWidth: 1, color: "#000000", orientation: "horizontal" },
   eraser: { size: 48 },
+  "mask-eraser": {},
 };
 
 function renderPanel(overrides: Partial<ComponentProps<typeof ContextPanel>> = {}) {
