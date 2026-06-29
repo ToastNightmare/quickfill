@@ -4,7 +4,21 @@ export const runtime = "nodejs";
 
 import { NextRequest, NextResponse } from "next/server";
 import crypto from "crypto";
-import { PDFDocument, rgb, StandardFonts, PDFName, PDFArray, PDFDict } from "pdf-lib";
+import {
+  PDFDocument,
+  rgb,
+  StandardFonts,
+  PDFName,
+  PDFArray,
+  PDFDict,
+  pushGraphicsState,
+  popGraphicsState,
+  moveTo,
+  lineTo,
+  closePath,
+  clipEvenOdd,
+  endPath,
+} from "pdf-lib";
 import type { EditorField } from "@/lib/types";
 import { APP_CONFIG } from "@/lib/config";
 import { checkRateLimit } from "@/lib/rate-limit";
@@ -15,6 +29,8 @@ import { orderFieldsForPdfDraw } from "@/lib/pdf-utils";
 import { buildPdfDownloadHeaders, filledPdfFilename } from "@/lib/pdf-download-response";
 import { finalizePdfForDownload } from "@/lib/pdf-finalize";
 import { PDF_UPLOAD_MAX_BYTES, PDF_UPLOAD_MAX_LABEL } from "@/lib/upload-limits";
+import { lineMaskSegments } from "@/lib/eraser-mask";
+import { maskToPdfRect } from "@/lib/pdf-mask-transform";
 
 /** Replace control characters (including newlines) with a space */
 function sanitize(text: string): string {
@@ -453,6 +469,20 @@ function hexToRgbPdf(hex: string) {
   return rgb(((n >> 16) & 255) / 255, ((n >> 8) & 255) / 255, (n & 255) / 255);
 }
 
+function pdfRectOps(x: number, y: number, w: number, h: number) {
+  return [
+    moveTo(x, y),
+    lineTo(x + w, y),
+    lineTo(x + w, y + h),
+    lineTo(x, y + h),
+    closePath(),
+  ];
+}
+
+function fieldSupportsMaskClip(field: EditorField): boolean {
+  return field.type === "text" || field.type === "date" || field.type === "signature" || field.type === "checkbox";
+}
+
 // Isolate existing page content so new drawings use clean page coordinates.
 // Some source PDFs leave transforms or q states open at the end of a content stream.
 // Wrapping the original streams and closing any leaked states prevents those
@@ -533,6 +563,51 @@ async function drawFieldOnPage(pdfDoc: PDFDocument, field: EditorField, _pageSca
   // Flip Y axis (PDF origin is bottom-left, viewport origin is top-left)
   const finalPdfY = page.getHeight() - pdfY - pdfH;
 
+  if (field.type === "line" && field.eraseMasks?.length) {
+    const lineField = field as import("@/lib/types").LineField;
+    const lineColor = hexToRgbPdf(lineField.color ?? "#000000");
+    const lw = lineField.strokeWidth ?? 1;
+    const segments = lineMaskSegments(lineField, field.eraseMasks);
+
+    for (const [segStart, segEnd] of segments) {
+      if (lineField.orientation === "horizontal") {
+        page.drawLine({
+          start: { x: segStart, y: finalPdfY + pdfH / 2 },
+          end: { x: segEnd, y: finalPdfY + pdfH / 2 },
+          thickness: lw,
+          color: lineColor,
+        });
+      } else {
+        const lineX = pdfX + pdfW / 2;
+        page.drawLine({
+          start: { x: lineX, y: page.getHeight() - segStart },
+          end: { x: lineX, y: page.getHeight() - segEnd },
+          thickness: lw,
+          color: lineColor,
+        });
+      }
+    }
+    return;
+  }
+
+  if (field.type === "comb" && field.eraseMasks?.length) {
+    console.warn("Ignoring eraseMasks on comb field:", field.id);
+  }
+
+  const shouldClipMasks = Boolean(field.eraseMasks?.length && fieldSupportsMaskClip(field));
+
+  if (shouldClipMasks) {
+    const pdfMasks = field.eraseMasks!.map((mask) => maskToPdfRect(mask, page.getHeight()));
+    page.pushOperators(
+      pushGraphicsState(),
+      ...pdfRectOps(pdfX, finalPdfY, pdfW, pdfH),
+      ...pdfMasks.flatMap((mask) => pdfRectOps(mask.x, mask.y, mask.width, mask.height)),
+      clipEvenOdd(),
+      endPath(),
+    );
+  }
+
+  try {
   if (field.type === "whiteout") {
     // Draw a filled rectangle with the sampled background color
     const whiteoutField = field as import("@/lib/types").WhiteoutField;
@@ -638,6 +713,11 @@ async function drawFieldOnPage(pdfDoc: PDFDocument, field: EditorField, _pageSca
         font: font,
         color: rgb(0, 0, 0),
       });
+    }
+  }
+  } finally {
+    if (shouldClipMasks) {
+      page.pushOperators(popGraphicsState());
     }
   }
 }

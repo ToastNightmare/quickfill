@@ -14,6 +14,7 @@ const toolDefaults: ToolDefaultState = {
   whiteout: { fillColor: null },
   line: { strokeWidth: 1, color: "#000000", orientation: "horizontal" },
   eraser: { size: 48 },
+  "mask-eraser": { size: 48 },
 };
 
 function renderPanel(overrides: Partial<ComponentProps<typeof ContextPanel>> = {}) {
@@ -71,5 +72,23 @@ describe("ContextPanel line controls", () => {
     fireEvent.click(screen.getByRole("button", { name: /thick/i }));
 
     expect(props.onToolDefaultChange).toHaveBeenCalledWith("line", { strokeWidth: 4 });
+  });
+});
+
+describe("ContextPanel mask eraser controls", () => {
+  it("renders size options for the mask eraser tool", () => {
+    renderPanel({ activeTool: "mask-eraser" });
+
+    expect(screen.getByRole("button", { name: /small/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /medium/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /large/i })).toBeInTheDocument();
+  });
+
+  it("calls onToolDefaultChange when a mask eraser size is clicked", () => {
+    const props = renderPanel({ activeTool: "mask-eraser" });
+
+    fireEvent.click(screen.getByRole("button", { name: /large/i }));
+
+    expect(props.onToolDefaultChange).toHaveBeenCalledWith("mask-eraser", { size: 96 });
   });
 });
