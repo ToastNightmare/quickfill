@@ -100,7 +100,9 @@ describe("Stripe checkout UTM attribution", () => {
   beforeEach(() => {
     jest.clearAllMocks();
 
-    process.env.STRIPE_PRO_PRICE_ID = "price_pro_monthly";
+    process.env.STRIPE_PRO_MONTHLY_PRICE_ID = "price_pro_monthly";
+    process.env.STRIPE_PRO_MONTHLY_INTRO_PRICE_ID = "price_pro_monthly_intro";
+    process.env.STRIPE_PRO_PRICE_ID = "price_pro_monthly_rollback";
     process.env.STRIPE_PRO_ANNUAL_PRICE_ID = "price_pro_annual";
     process.env.STRIPE_BUSINESS_PRICE_ID = "price_business_monthly";
     process.env.STRIPE_BUSINESS_ANNUAL_PRICE_ID = "price_business_annual";
@@ -330,13 +332,15 @@ describe("Stripe checkout UTM attribution", () => {
   });
 });
 
-describe("Stripe checkout intro coupon (Pro monthly)", () => {
+describe("Stripe checkout Pro offer", () => {
   let stripe: StripeMock;
 
   beforeEach(() => {
     jest.clearAllMocks();
 
-    process.env.STRIPE_PRO_PRICE_ID = "price_pro_monthly";
+    process.env.STRIPE_PRO_MONTHLY_PRICE_ID = "price_pro_monthly";
+    process.env.STRIPE_PRO_MONTHLY_INTRO_PRICE_ID = "price_pro_monthly_intro";
+    process.env.STRIPE_PRO_PRICE_ID = "price_pro_monthly_rollback";
     process.env.STRIPE_PRO_ANNUAL_PRICE_ID = "price_pro_annual";
     process.env.STRIPE_BUSINESS_PRICE_ID = "price_business_monthly";
     process.env.STRIPE_BUSINESS_ANNUAL_PRICE_ID = "price_business_annual";
@@ -367,24 +371,42 @@ describe("Stripe checkout intro coupon (Pro monthly)", () => {
     stripe.checkout.sessions.create.mockResolvedValue({ url: "https://checkout.stripe.com/test" });
   });
 
-  it("Pro monthly with coupon env set -> applies discount and omits allow_promotion_codes", async () => {
+  it("Pro monthly uses intro price, recurring monthly price, and a 7 day trial", async () => {
     const response = await POST(makeRequest({ plan: "pro", annual: false }));
     expect(response.status).toBe(200);
 
     const callArgs = (stripe.checkout.sessions.create as jest.Mock).mock.calls[0][0];
-    expect(callArgs.discounts).toEqual([{ coupon: "coupon_intro_1250" }]);
-    expect(callArgs.allow_promotion_codes).toBeUndefined();
-    expect(callArgs.line_items).toEqual([{ price: "price_pro_monthly", quantity: 1 }]);
+    expect(callArgs.line_items).toEqual([
+      { price: "price_pro_monthly_intro", quantity: 1 },
+      { price: "price_pro_monthly", quantity: 1 },
+    ]);
+    expect(callArgs.subscription_data).toEqual(expect.objectContaining({
+      trial_period_days: 7,
+      metadata: expect.objectContaining({
+        userId: "user_test",
+        plan: "pro",
+        billing: "monthly",
+      }),
+    }));
   });
 
-  it("Pro annual -> uses allow_promotion_codes and no discount", async () => {
+  it("Pro monthly new offer does not send discounts or allow promotion codes", async () => {
+    const response = await POST(makeRequest({ plan: "pro", annual: false }));
+    expect(response.status).toBe(200);
+
+    const callArgs = (stripe.checkout.sessions.create as jest.Mock).mock.calls[0][0];
+    expect(callArgs.discounts).toBeUndefined();
+    expect(callArgs.allow_promotion_codes).toBeUndefined();
+  });
+
+  it("Pro annual uses annual price only and no trial", async () => {
     const response = await POST(makeRequest({ plan: "pro", annual: true }));
     expect(response.status).toBe(200);
 
     const callArgs = (stripe.checkout.sessions.create as jest.Mock).mock.calls[0][0];
-    expect(callArgs.allow_promotion_codes).toBe(true);
-    expect(callArgs.discounts).toBeUndefined();
     expect(callArgs.line_items).toEqual([{ price: "price_pro_annual", quantity: 1 }]);
+    expect(callArgs.subscription_data.trial_period_days).toBeUndefined();
+    expect(callArgs.discounts).toBeUndefined();
   });
 
   it("Business -> uses allow_promotion_codes and no discount", async () => {
@@ -396,15 +418,16 @@ describe("Stripe checkout intro coupon (Pro monthly)", () => {
     expect(callArgs.discounts).toBeUndefined();
   });
 
-  it("Pro monthly fallback when coupon env missing -> creates checkout safely with promo codes", async () => {
-    delete process.env.STRIPE_PRO_INTRO_COUPON_ID;
+  it("Pro monthly rollback path uses old coupon only when intro price env is absent", async () => {
+    delete process.env.STRIPE_PRO_MONTHLY_INTRO_PRICE_ID;
 
     const response = await POST(makeRequest({ plan: "pro", annual: false }));
     expect(response.status).toBe(200);
 
     const callArgs = (stripe.checkout.sessions.create as jest.Mock).mock.calls[0][0];
-    expect(callArgs.allow_promotion_codes).toBe(true);
-    expect(callArgs.discounts).toBeUndefined();
-    expect(callArgs.line_items).toEqual([{ price: "price_pro_monthly", quantity: 1 }]);
+    expect(callArgs.discounts).toEqual([{ coupon: "coupon_intro_1250" }]);
+    expect(callArgs.allow_promotion_codes).toBeUndefined();
+    expect(callArgs.line_items).toEqual([{ price: "price_pro_monthly_rollback", quantity: 1 }]);
+    expect(callArgs.subscription_data.trial_period_days).toBeUndefined();
   });
 });

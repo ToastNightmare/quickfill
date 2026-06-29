@@ -36,6 +36,79 @@ function priceForPlan(plan: "pro" | "business", annual: boolean) {
   return annual ? process.env.STRIPE_PRO_ANNUAL_PRICE_ID : process.env.STRIPE_PRO_PRICE_ID;
 }
 
+function envValue(name: string) {
+  return process.env[name]?.trim() || undefined;
+}
+
+function proMonthlyCheckoutOffer(): {
+  lineItems: Stripe.Checkout.SessionCreateParams.LineItem[];
+  promotionConfig: Pick<Stripe.Checkout.SessionCreateParams, "allow_promotion_codes" | "discounts">;
+  subscriptionConfig: Omit<Stripe.Checkout.SessionCreateParams.SubscriptionData, "metadata">;
+  missingEnv?: string;
+} {
+  const introPriceId = envValue("STRIPE_PRO_MONTHLY_INTRO_PRICE_ID");
+
+  if (introPriceId) {
+    const monthlyPriceId = envValue("STRIPE_PRO_MONTHLY_PRICE_ID");
+    if (!monthlyPriceId) {
+      return {
+        lineItems: [],
+        promotionConfig: {},
+        subscriptionConfig: {},
+        missingEnv: "STRIPE_PRO_MONTHLY_PRICE_ID",
+      };
+    }
+
+    return {
+      lineItems: [
+        { price: introPriceId, quantity: 1 },
+        { price: monthlyPriceId, quantity: 1 },
+      ],
+      promotionConfig: {},
+      subscriptionConfig: { trial_period_days: 7 },
+    };
+  }
+
+  const rollbackPriceId = envValue("STRIPE_PRO_PRICE_ID");
+  if (!rollbackPriceId) {
+    return {
+      lineItems: [],
+      promotionConfig: {},
+      subscriptionConfig: {},
+      missingEnv: "STRIPE_PRO_MONTHLY_INTRO_PRICE_ID",
+    };
+  }
+
+  const introCouponId = envValue("STRIPE_PRO_INTRO_COUPON_ID");
+  return {
+    lineItems: [{ price: rollbackPriceId, quantity: 1 }],
+    promotionConfig: introCouponId
+      ? { discounts: [{ coupon: introCouponId }] }
+      : { allow_promotion_codes: true },
+    subscriptionConfig: {},
+  };
+}
+
+function checkoutOfferForPlan(plan: "pro" | "business", annual: boolean) {
+  if (plan === "pro" && !annual) return proMonthlyCheckoutOffer();
+
+  const priceId = priceForPlan(plan, annual)?.trim();
+  if (!priceId) {
+    return {
+      lineItems: [],
+      promotionConfig: {},
+      subscriptionConfig: {},
+      missingEnv: plan === "pro" ? "STRIPE_PRO_ANNUAL_PRICE_ID" : annual ? "STRIPE_BUSINESS_ANNUAL_PRICE_ID" : "STRIPE_BUSINESS_PRICE_ID",
+    };
+  }
+
+  return {
+    lineItems: [{ price: priceId, quantity: 1 }],
+    promotionConfig: { allow_promotion_codes: true },
+    subscriptionConfig: {},
+  };
+}
+
 function shouldUseBillingPortal(snapshot: StoredSubscriptionSnapshot | null) {
   if (!snapshot?.stripeCustomerId) return false;
   if (snapshot.entitled) return true;
@@ -317,43 +390,25 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const priceId = priceForPlan(plan, annual);
-    if (!priceId) {
-      log.error("stripe_checkout_missing_price", { plan, billing });
+    const checkoutOffer = checkoutOfferForPlan(plan, annual);
+    if (checkoutOffer.missingEnv) {
+      log.error("stripe_checkout_missing_price", { plan, billing, missingEnv: checkoutOffer.missingEnv });
       await safeAlertAdmins({
         subject: "Checkout price is missing",
         title: "Stripe checkout price is not configured",
         message: "A user tried to start checkout, but the required Stripe price ID is missing from production environment variables.",
-        fields: { plan, billing, userId, email: email ?? "unknown" },
+        fields: { plan, billing, missingEnv: checkoutOffer.missingEnv, userId, email: email ?? "unknown" },
       });
       return checkoutErrorResponse(`${plan} ${billing} billing is not configured yet.`, 500, "checkout_price_missing");
     }
 
     const cancelParams = new URLSearchParams({ checkout: "cancelled", plan, billing });
-
-    // Intro pricing: apply the once-off Stripe coupon (e.g. A$12.50 off the
-    // first invoice) ONLY for Pro monthly, and ONLY when the coupon env is set.
-    // Stripe rejects a session that has both `discounts` and
-    // `allow_promotion_codes`, so when the intro coupon applies we omit the
-    // promo-code box; every other flow keeps manual promo codes enabled.
-    const introCouponId =
-      plan === "pro" && !annual ? process.env.STRIPE_PRO_INTRO_COUPON_ID?.trim() : undefined;
-
-    if (plan === "pro" && !annual && !introCouponId) {
-      log.warn("stripe_checkout_intro_coupon_missing", {
-        userId,
-        message: "STRIPE_PRO_INTRO_COUPON_ID is not set; Pro monthly checkout will start at full price with promo codes enabled.",
-      });
-    }
-
-    const discountConfig = introCouponId
-      ? { discounts: [{ coupon: introCouponId }] }
-      : { allow_promotion_codes: true };
+    const subscriptionData = { metadata, ...checkoutOffer.subscriptionConfig };
 
     const session = await getStripe().checkout.sessions.create({
       mode: "subscription",
       payment_method_types: ["card"],
-      line_items: [{ price: priceId, quantity: 1 }],
+      line_items: checkoutOffer.lineItems,
       ...(existingCustomerId ? { customer: existingCustomerId } : email ? { customer_email: email } : {}),
       success_url: checkoutSuccessUrl(origin, {
         session_id: "{CHECKOUT_SESSION_ID}",
@@ -361,9 +416,9 @@ export async function POST(req: NextRequest) {
         billing,
       }),
       cancel_url: `${origin}/pricing?${cancelParams.toString()}`,
-      ...discountConfig,
+      ...checkoutOffer.promotionConfig,
       metadata,
-      subscription_data: { metadata },
+      subscription_data: subscriptionData,
     });
 
     await trackServerEvent("checkout_start", { source: "server", plan, billing });
