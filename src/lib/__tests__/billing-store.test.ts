@@ -6,6 +6,7 @@ import {
   isSubscriptionEntitled,
   saveSubscriptionSnapshot,
   stripeSubscriptionPeriodEnd,
+  tierFromPriceId,
 } from "../billing-store";
 
 jest.mock("../redis", () => ({
@@ -67,6 +68,16 @@ describe("billing entitlements", () => {
     };
 
     expect(stripeSubscriptionPeriodEnd(subscription as never)).toBe(periodEnd);
+  });
+
+  it("recognizes new and rollback Pro price IDs", () => {
+    process.env.STRIPE_PRO_MONTHLY_PRICE_ID = "price_pro_monthly";
+    process.env.STRIPE_PRO_PRICE_ID = "price_pro_monthly_rollback";
+    process.env.STRIPE_PRO_ANNUAL_PRICE_ID = "price_pro_annual";
+
+    expect(tierFromPriceId("price_pro_monthly")).toBe("pro");
+    expect(tierFromPriceId("price_pro_monthly_rollback")).toBe("pro");
+    expect(tierFromPriceId("price_pro_annual")).toBe("pro");
   });
 
   it("returns free for stale database subscriptions without falling back to old Redis Pro cache", async () => {
