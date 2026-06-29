@@ -8,7 +8,7 @@ import { detectSnapBox, detectAllBoxes, snapCredibilityScore, floodFillCell, det
 import type { SnapResult, CombDetectResult } from "@/lib/snap-detect";
 import { createEditorFieldId } from "@/lib/field-ids";
 import { loadPdfjsClient } from "@/lib/pdfjs-client";
-import { MASK_ERASE_FILL, addEraserMask, brushIntersectField, isMaskErasable, maskCacheConfig } from "@/lib/eraser-mask";
+import { MASK_ERASE_FILL, addEraserMask, brushIntersectField, interpolateMaskPath, isMaskErasable, maskCacheConfig } from "@/lib/eraser-mask";
 
 type PdfActiveTool = PlacementToolType | "mask-eraser";
 
@@ -209,6 +209,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
   const preDragFieldsRef = useRef<EditorField[] | null>(null);
   const draftFieldsRef = useRef<EditorField[] | null>(null);
   const maskAddedRef = useRef(false);
+  const lastMaskPointRef = useRef<{ x: number; y: number } | null>(null);
   const lastTouchEndAtRef = useRef(0);
   const snapPreviewTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const trRef = useRef<Konva.Transformer | null>(null);
@@ -227,17 +228,6 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
     }
     if (activeTool !== "checkbox") {
       setCheckboxPreview(null);
-    }
-  }, [activeTool]);
-
-  useEffect(() => {
-    if (activeTool !== "mask-eraser") {
-      isMaskDragging.current = false;
-      preDragFieldsRef.current = null;
-      draftFieldsRef.current = null;
-      maskAddedRef.current = false;
-      setMaskPreviewFields(null);
-      setMaskCursor(null);
     }
   }, [activeTool]);
 
@@ -338,8 +328,53 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
     preDragFieldsRef.current = null;
     draftFieldsRef.current = null;
     maskAddedRef.current = false;
+    lastMaskPointRef.current = null;
     setMaskPreviewFields(null);
   }, [onFieldsSet]);
+
+  const applyMaskAlongStagePath = useCallback(
+    (pos: { x: number; y: number }) => {
+      const last = lastMaskPointRef.current;
+      if (!last) {
+        applyMaskAtStagePoint(pos);
+        lastMaskPointRef.current = { x: pos.x, y: pos.y };
+        return;
+      }
+
+      const stepSize = Math.max(1, maskEraserSize * 0.4);
+
+      for (const point of interpolateMaskPath(last, pos, stepSize)) {
+        applyMaskAtStagePoint(point);
+      }
+
+      lastMaskPointRef.current = { x: pos.x, y: pos.y };
+    },
+    [applyMaskAtStagePoint, maskEraserSize],
+  );
+
+  useEffect(() => {
+    const handleStopMaskDrag = () => stopMaskDrag();
+
+    window.addEventListener("mouseup", handleStopMaskDrag);
+    window.addEventListener("blur", handleStopMaskDrag);
+    return () => {
+      window.removeEventListener("mouseup", handleStopMaskDrag);
+      window.removeEventListener("blur", handleStopMaskDrag);
+    };
+  }, [stopMaskDrag]);
+
+  useEffect(() => {
+    if (activeTool === "mask-eraser") return;
+
+    stopMaskDrag();
+    isMaskDragging.current = false;
+    preDragFieldsRef.current = null;
+    draftFieldsRef.current = null;
+    maskAddedRef.current = false;
+    lastMaskPointRef.current = null;
+    setMaskPreviewFields(null);
+    setMaskCursor(null);
+  }, [activeTool, stopMaskDrag]);
 
   // Clear editing when field is deselected
   useEffect(() => {
@@ -563,6 +598,9 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
       // Escape - deactivate tool and deselect
       if (e.key === "Escape") {
         e.preventDefault();
+        if (activeTool === "mask-eraser") {
+          stopMaskDrag();
+        }
         onToolSelect(null);
         onFieldSelect(null);
         // Cancel any ongoing drag draw
@@ -596,7 +634,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
     return () => {
       document.removeEventListener("keydown", handleKeyDown);
     };
-  }, [editingFieldId, selectedFieldId, fields, currentPage, onFieldDelete, onFieldSelect, onToolSelect, onFieldUpdate, createFieldId]);
+  }, [activeTool, editingFieldId, selectedFieldId, fields, currentPage, onFieldDelete, onFieldSelect, onToolSelect, onFieldUpdate, createFieldId, stopMaskDrag]);
 
   // Drive the single global Transformer based on selectedFieldId
   useLayoutEffect(() => {
@@ -764,7 +802,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
       if (activeTool === "mask-eraser") {
         setMaskCursor(pos);
         if (isMaskDragging.current) {
-          applyMaskAtStagePoint(pos);
+          applyMaskAlongStagePath(pos);
         }
         if (snapPreview) setSnapPreview(null);
         setLinePreview(null);
@@ -886,10 +924,11 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
         setSnapPreview(null);
       }
     },
-    [activeTool, applyMaskAtStagePoint, fitScale, snapPreview, snapEnabled, toolDefaults, updateCursor, zoomFactor]
+    [activeTool, applyMaskAlongStagePath, fitScale, snapPreview, snapEnabled, toolDefaults, updateCursor, zoomFactor]
   );
 
   const handleStageMouseLeave = useCallback(() => {
+    stopMaskDrag();
     setSnapPreview(null);
     setLinePreview(null);
     setCheckboxPreview(null);
@@ -899,7 +938,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
     if (activeTool !== "whiteout") {
       setWhiteoutColor(null);
     }
-  }, [activeTool]);
+  }, [activeTool, stopMaskDrag]);
 
   const handleStageMouseDown = useCallback(
     (e: Konva.KonvaEventObject<MouseEvent>) => {
@@ -918,6 +957,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
         draftFieldsRef.current = fields;
         maskAddedRef.current = false;
         isMaskDragging.current = true;
+        lastMaskPointRef.current = { x: pos.x, y: pos.y };
         onFieldSelect(null);
         applyMaskAtStagePoint(pos);
         isDragMove.current = false;
@@ -956,7 +996,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
 
       if (activeTool === "mask-eraser") {
         if (isMaskDragging.current) {
-          applyMaskAtStagePoint(pos);
+          applyMaskAlongStagePath(pos);
         }
         stopMaskDrag();
         return;
@@ -1416,7 +1456,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
         setCheckboxPreview(null);
       }
     },
-    [activeTool, currentPage, zoomFactor, fitScale, onFieldAdd, onFieldSelect, onToolSelect, onSignatureFieldPlaced, snapPreview, whiteoutColor, fields, snapEnabled, createFieldId, isMobileEditor, toolDefaults, viewportAtScale1, applyMaskAtStagePoint, stopMaskDrag]
+    [activeTool, currentPage, zoomFactor, fitScale, onFieldAdd, onFieldSelect, onToolSelect, onSignatureFieldPlaced, snapPreview, whiteoutColor, fields, snapEnabled, createFieldId, isMobileEditor, toolDefaults, viewportAtScale1, applyMaskAlongStagePath, stopMaskDrag]
   );
 
   // Core field creation logic - shared by click and touch

@@ -3,6 +3,7 @@ import {
   MASK_ERASE_FILL,
   addEraserMask,
   brushIntersectField,
+  interpolateMaskPath,
   isMaskErasable,
   lineMaskSegments,
   maskCacheConfig,
@@ -91,6 +92,27 @@ describe("mask rendering constants", () => {
 
   it("falls back to a valid cache pixel ratio", () => {
     expect(maskCacheConfig(baseField(), 1, 0).pixelRatio).toBe(1);
+  });
+});
+
+describe("interpolateMaskPath", () => {
+  it("returns the end point for a short segment", () => {
+    expect(interpolateMaskPath({ x: 0, y: 0 }, { x: 10, y: 0 }, 20)).toEqual([{ x: 10, y: 0 }]);
+  });
+
+  it("fills long drag gaps with overlapping steps", () => {
+    expect(interpolateMaskPath({ x: 0, y: 0 }, { x: 48, y: 0 }, 19.2)).toEqual([
+      { x: 16, y: 0 },
+      { x: 32, y: 0 },
+      { x: 48, y: 0 },
+    ]);
+  });
+
+  it("falls back to a positive step size", () => {
+    expect(interpolateMaskPath({ x: 0, y: 0 }, { x: 2, y: 0 }, 0)).toEqual([
+      { x: 1, y: 0 },
+      { x: 2, y: 0 },
+    ]);
   });
 });
 

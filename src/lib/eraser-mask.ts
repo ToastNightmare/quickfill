@@ -49,6 +49,26 @@ export function maskCacheConfig(
   };
 }
 
+export function interpolateMaskPath(
+  start: { x: number; y: number },
+  end: { x: number; y: number },
+  stepSize: number,
+): Array<{ x: number; y: number }> {
+  const safeStepSize = Number.isFinite(stepSize) && stepSize > 0 ? stepSize : 1;
+  const dx = end.x - start.x;
+  const dy = end.y - start.y;
+  const distance = Math.sqrt(dx * dx + dy * dy);
+  const steps = Math.max(1, Math.ceil(distance / safeStepSize));
+
+  return Array.from({ length: steps }, (_, index) => {
+    const t = (index + 1) / steps;
+    return {
+      x: start.x + dx * t,
+      y: start.y + dy * t,
+    };
+  });
+}
+
 /**
  * For a horizontal or vertical line field, compute the surviving segments
  * after subtracting all eraser masks.
