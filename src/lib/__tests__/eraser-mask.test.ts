@@ -1,4 +1,12 @@
-import { addEraserMask, brushIntersectField, isMaskErasable, lineMaskSegments } from "../eraser-mask";
+import {
+  MASK_CACHE_PADDING_PX,
+  MASK_ERASE_FILL,
+  addEraserMask,
+  brushIntersectField,
+  isMaskErasable,
+  lineMaskSegments,
+  maskCacheConfig,
+} from "../eraser-mask";
 import type { EditorField, LineField, MaskRect } from "../types";
 
 const baseField = (overrides: Partial<EditorField> = {}): EditorField => ({
@@ -63,6 +71,26 @@ describe("addEraserMask", () => {
     const updated = addEraserMask(baseField({ eraseMasks: [first] }), second);
 
     expect(updated.eraseMasks).toEqual([first, second]);
+  });
+});
+
+describe("mask rendering constants", () => {
+  it("uses a fully opaque erase fill", () => {
+    expect(MASK_ERASE_FILL).toBe("rgba(0,0,0,1)");
+  });
+
+  it("pads cache bounds and keeps the requested pixel ratio", () => {
+    expect(maskCacheConfig(baseField({ width: 20, height: 10 }), 2, 3)).toEqual({
+      x: -MASK_CACHE_PADDING_PX,
+      y: -MASK_CACHE_PADDING_PX,
+      width: 20 * 2 + MASK_CACHE_PADDING_PX * 2,
+      height: 10 * 2 + MASK_CACHE_PADDING_PX * 2,
+      pixelRatio: 3,
+    });
+  });
+
+  it("falls back to a valid cache pixel ratio", () => {
+    expect(maskCacheConfig(baseField(), 1, 0).pixelRatio).toBe(1);
   });
 });
 

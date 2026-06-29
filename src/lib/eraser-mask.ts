@@ -1,5 +1,8 @@
 import type { EditorField, LineField, MaskRect } from "./types";
 
+export const MASK_ERASE_FILL = "rgba(0,0,0,1)";
+export const MASK_CACHE_PADDING_PX = 4;
+
 /**
  * Compute intersection of a square brush with a field rect.
  * All coordinates in page display space.
@@ -27,6 +30,22 @@ export function addEraserMask(field: EditorField, mask: MaskRect): EditorField {
   return {
     ...field,
     eraseMasks: [...(field.eraseMasks ?? []), mask],
+  };
+}
+
+export function maskCacheConfig(
+  field: Pick<EditorField, "width" | "height">,
+  fitScale: number,
+  pixelRatio = 1,
+) {
+  const cachePixelRatio = Number.isFinite(pixelRatio) && pixelRatio > 0 ? pixelRatio : 1;
+
+  return {
+    x: -MASK_CACHE_PADDING_PX,
+    y: -MASK_CACHE_PADDING_PX,
+    width: field.width * fitScale + MASK_CACHE_PADDING_PX * 2,
+    height: field.height * fitScale + MASK_CACHE_PADDING_PX * 2,
+    pixelRatio: cachePixelRatio,
   };
 }
 

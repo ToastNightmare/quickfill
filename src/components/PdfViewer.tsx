@@ -8,7 +8,7 @@ import { detectSnapBox, detectAllBoxes, snapCredibilityScore, floodFillCell, det
 import type { SnapResult, CombDetectResult } from "@/lib/snap-detect";
 import { createEditorFieldId } from "@/lib/field-ids";
 import { loadPdfjsClient } from "@/lib/pdfjs-client";
-import { addEraserMask, brushIntersectField, isMaskErasable } from "@/lib/eraser-mask";
+import { MASK_ERASE_FILL, addEraserMask, brushIntersectField, isMaskErasable, maskCacheConfig } from "@/lib/eraser-mask";
 
 type PdfActiveTool = PlacementToolType | "mask-eraser";
 
@@ -241,6 +241,17 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
     }
   }, [activeTool]);
 
+  useEffect(() => {
+    if (activeTool !== "mask-eraser") return;
+
+    onFieldSelect(null);
+    setEditingFieldId(null);
+    setHoveredFieldId(null);
+    setContextMenu(null);
+    trRef.current?.nodes([]);
+    trRef.current?.getLayer()?.batchDraw();
+  }, [activeTool, onFieldSelect]);
+
   useImperativeHandle(ref, () => ({
     getCanvasDataURL: () => canvasRef.current?.toDataURL("image/png") ?? null,
     getCanvasDimensions: () => dimensions,
@@ -460,14 +471,15 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
   // Register/unregister node callbacks for FieldShape
   const registerNode = useCallback((id: string, node: Konva.Group) => {
     nodeMapRef.current.set(id, node);
-    // If this newly mounted field is the selected one, attach Transformer immediately
+    // If this newly mounted field is the selected one, attach Transformer immediately.
+    if (activeTool === "mask-eraser") return;
     const tr = trRef.current;
     if (tr && id === selectedFieldId) {
       tr.nodes([]);
       tr.nodes([node]);
       tr.getLayer()?.batchDraw();
     }
-  }, [selectedFieldId]);
+  }, [activeTool, selectedFieldId]);
 
   const unregisterNode = useCallback((id: string) => {
     nodeMapRef.current.delete(id);
@@ -1919,6 +1931,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
                 key={field.id}
                 field={field}
                 fitScale={fitScale}
+                zoomFactor={zoomFactor}
                 isSelected={activeTool !== "mask-eraser" && field.id === selectedFieldId && field.type !== "whiteout"}
                 isEditing={activeTool !== "mask-eraser" && field.id === editingFieldId}
                 isHighlighted={field.id === snappedFieldId || (highlightFieldIds?.has(field.id) ?? false)}
@@ -2314,6 +2327,7 @@ function useLoadedImage(src: string | undefined): HTMLImageElement | null {
 function FieldShape({
   field,
   fitScale,
+  zoomFactor,
   isSelected,
   isEditing,
   isHighlighted,
@@ -2338,6 +2352,7 @@ function FieldShape({
 }: {
   field: EditorField;
   fitScale: number;
+  zoomFactor: number;
   isSelected: boolean;
   isEditing: boolean;
   isHighlighted: boolean;
@@ -2366,19 +2381,20 @@ function FieldShape({
     ?.map((mask) => `${mask.x}:${mask.y}:${mask.width}:${mask.height}`)
     .join("|") ?? "";
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const node = groupRef.current;
     if (!node) return;
 
     if (field.eraseMasks?.length && field.type !== "comb" && field.type !== "whiteout") {
-      node.cache({ x: 0, y: 0, width: field.width * fitScale, height: field.height * fitScale });
+      const effectivePixelRatio = Math.min((window.devicePixelRatio || 1) * zoomFactor, 4);
+      node.cache(maskCacheConfig(field, fitScale, effectivePixelRatio));
       node.getLayer()?.batchDraw();
       return;
     }
 
     node.clearCache();
     node.getLayer()?.batchDraw();
-  }, [field.type, field.width, field.height, fitScale, maskDependency]);
+  }, [field.type, field.width, field.height, fitScale, maskDependency, zoomFactor]);
 
   // Register/unregister this field's node with the global transformer (skip for whiteout - static)
   // BUG 3 FIX: Signature fields MUST register with Transformer for resize to work
@@ -2454,14 +2470,15 @@ function FieldShape({
       y={(mask.y - field.y) * fitScale}
       width={mask.width * fitScale}
       height={mask.height * fitScale}
-      fill="#000000"
+      fill={MASK_ERASE_FILL}
     />
   ));
   const eraseMaskLayer = eraseMaskRects?.length ? (
-    <Group globalCompositeOperation="destination-out" listening={false}>
+    <Group globalCompositeOperation="destination-out" listening={false} opacity={1}>
       {eraseMaskRects}
     </Group>
   ) : null;
+  const groupOpacity = eraseMaskRects?.length ? 1 : dragOpacity;
 
   if (field.type === "checkbox") {
     return (
@@ -2473,7 +2490,7 @@ function FieldShape({
           y={stageY}
           width={stageW}
           height={stageH}
-          opacity={dragOpacity}
+          opacity={groupOpacity}
           listening={!disableInteraction}
           draggable={!disableInteraction && canDragField}
         onMouseEnter={() => onMouseEnter?.()}
@@ -2523,7 +2540,7 @@ function FieldShape({
           hitStrokeWidth={mobileHitStrokeWidth}
         />
         {/* Drag shadow, "lifted" feel without hiding the stamp */}
-        {dragOpacity < 1 && (
+        {groupOpacity < 1 && (
           <Rect
             width={stageW}
             height={stageH}
@@ -2613,7 +2630,7 @@ function FieldShape({
           y={stageY}
           width={stageW}
           height={stageH}
-          opacity={dragOpacity}
+          opacity={groupOpacity}
           listening={!disableInteraction}
           draggable={!disableInteraction && canDragField}
           onMouseEnter={() => onMouseEnter?.()}
@@ -2741,7 +2758,7 @@ function FieldShape({
           y={stageY}
           width={stageW}
           height={stageH}
-          opacity={dragOpacity}
+          opacity={groupOpacity}
           listening={!disableInteraction}
           draggable={!disableInteraction && canDragField}
           onMouseEnter={() => onMouseEnter?.()}
@@ -2898,7 +2915,7 @@ function FieldShape({
         y={stageY}
         width={stageW}
         height={stageH}
-        opacity={dragOpacity}
+        opacity={groupOpacity}
         // BUG 3 FIX: Signature fields are always draggable (never snapped)
         listening={!disableInteraction}
         draggable={!disableInteraction && canDragField}
