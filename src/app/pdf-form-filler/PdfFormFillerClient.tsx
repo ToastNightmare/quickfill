@@ -9,13 +9,11 @@ import {
   ChevronDown,
   LockKeyhole,
   ShieldCheck,
-  Sparkles,
 } from "lucide-react";
 import { trackEvent } from "@/lib/analytics";
 import { trackMetaEvent } from "@/lib/meta-pixel";
 import { captureAndStoreUtm } from "@/lib/utm";
 import { LandingUploadBox } from "@/components/LandingUploadBox";
-import { PRICING } from "@/lib/pricing";
 
 const FAQS = [
   {
@@ -95,7 +93,7 @@ export default function PdfFormFillerClient() {
           <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
             {[
               "Type on any PDF in your browser",
-              "3 free fills every month, no card needed",
+              "Start editing before any payment decision",
               "Works on phone, tablet, and desktop",
             ].map((text) => (
               <span
@@ -109,7 +107,7 @@ export default function PdfFormFillerClient() {
           </div>
 
           <p className="mt-4 text-center text-xs text-gray-400">
-            Your PDF is not saved to our servers. 3 free fills every month.
+            Your PDF is not saved to our servers. Start editing first.
           </p>
         </div>
       </section>
@@ -119,7 +117,7 @@ export default function PdfFormFillerClient() {
         <div className="mx-auto grid max-w-5xl gap-4 sm:grid-cols-4">
           {[
             { value: "Any", label: "PDF supported" },
-            { value: "3", label: "free fills/month" },
+            { value: "0", label: "payment needed to start" },
             { value: "0", label: "software to install" },
             { value: "60 sec", label: "average fill time" },
           ].map((stat) => (
@@ -291,106 +289,27 @@ export default function PdfFormFillerClient() {
         </div>
       </section>
 
-      {/* Section 6: Pricing clarity */}
+      {/* Section 6: Upload-first reminder */}
       <section className="bg-surface-alt px-4 py-20 sm:px-6 lg:px-8">
         <div className="mx-auto max-w-3xl">
           <h2 className="text-center text-3xl font-bold tracking-tight sm:text-4xl">
-            Start free. Upgrade when you are ready.
+            Start with the document.
           </h2>
+          <p className="mx-auto mt-4 max-w-xl text-center text-text-muted">
+            Upload your file, finish the fields, and choose the right download option when the document is ready.
+          </p>
 
-          <div className="grid md:grid-cols-2 gap-6 mt-12">
-            {/* Free card */}
-            <div className="rounded-xl border border-border bg-surface p-8">
-              <span className="inline-flex rounded-full bg-surface-alt px-3 py-1 text-xs font-bold uppercase tracking-wide text-text-muted">
-                FREE
-              </span>
-              <p className="text-4xl font-extrabold mt-4">A$0</p>
-              <p className="text-sm text-text-muted">Free to start, 3 fills every month</p>
-
-              <ul className="mt-6 space-y-3">
-                {["3 fills per month", "All field types", "Works on any device", "No account to start"].map(
-                  (feature) => (
-                    <li key={feature} className="flex items-center gap-2 text-sm">
-                      <Check className="h-4 w-4 text-accent" />
-                      <span>{feature}</span>
-                    </li>
-                  )
-                )}
-              </ul>
-
-              <Link
-                href="/editor"
-                onClick={() => trackEvent("home_cta_click", { cta: "ad_pricing_free" })}
-                className="mt-8 flex h-11 w-full items-center justify-center rounded-lg border border-border text-sm font-semibold text-text hover:bg-surface-alt transition-colors"
-              >
-                Fill a PDF Free
-              </Link>
-            </div>
-
-            {/* Pro card */}
-            <div className="rounded-xl border-2 border-accent bg-surface p-8 relative">
-              <span className="inline-flex rounded-full bg-accent/10 px-3 py-1 text-xs font-bold uppercase tracking-wide text-accent">
-                MOST POPULAR
-              </span>
-              <span className="mt-4 inline-flex rounded-full bg-emerald-500/10 px-3 py-1 text-xs font-bold uppercase tracking-wide text-emerald-600">
-                {PRICING.pro.monthly.introBadge}
-              </span>
-              <p className="text-4xl font-extrabold mt-2">
-                {PRICING.pro.monthly.introTodayLabel}
-              </p>
-              <p className="text-sm font-medium text-text-muted">{PRICING.pro.monthly.thenLabel}. Cancel anytime.</p>
-              <p className="mt-1 text-sm text-text-muted">{PRICING.pro.annual.orLabel} ({PRICING.pro.annual.savingsLabel})</p>
-
-              <ul className="mt-6 space-y-3">
-                {[
-                  "Unlimited fills",
-                  "No watermarks",
-                  "Save and resume progress",
-                  "Fill history",
-                  "Priority support",
-                ].map((feature) => (
-                  <li key={feature} className="flex items-center gap-2 text-sm">
-                    <Check className="h-4 w-4 text-accent" />
-                    <span>{feature}</span>
-                  </li>
-                ))}
-              </ul>
-
-              <Link
-                href="/checkout?plan=pro&billing=monthly&source=ad_landing"
-                onClick={() => {
-                  trackEvent("checkout_start", {
-                    source: "ad_landing_pricing",
-                    plan: "pro",
-                    billing: "monthly",
-                  });
-                  trackMetaEvent("InitiateCheckout", { content_name: "pro", content_type: "monthly" });
-                }}
-                className="mt-8 flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-accent text-sm font-semibold text-white hover:bg-accent-hover transition-colors shadow-lg shadow-accent/20"
-              >
-                <Sparkles className="h-4 w-4" /> {PRICING.pro.monthly.ctaLabel}
-              </Link>
-              <p className="text-xs font-medium text-text text-center mt-2">
-                {PRICING.pro.monthly.finePrint}
-              </p>
-              <Link
-                href="/checkout?plan=pro&billing=annual&source=ad_landing"
-                onClick={() => {
-                  trackEvent("checkout_start", {
-                    source: "ad_landing_pricing",
-                    plan: "pro",
-                    billing: "annual",
-                  });
-                  trackMetaEvent("InitiateCheckout", { content_name: "pro", content_type: "annual" });
-                }}
-                className="mt-3 flex h-10 w-full items-center justify-center rounded-lg border border-border text-sm font-semibold text-text hover:bg-surface-alt transition-colors"
-              >
-                {PRICING.pro.annual.ctaLabel}
-              </Link>
-              <p className="text-xs text-text-muted text-center mt-2">
-                Annual: {PRICING.pro.annual.disclosure} Secure checkout by Stripe.
-              </p>
-            </div>
+          <div className="mt-10 grid gap-4 sm:grid-cols-3">
+            {[
+              "Upload your PDF, scan, image, or screenshot",
+              "Add text, dates, checkboxes, marks, and signatures",
+              "Download the finished document when you are done",
+            ].map((item) => (
+              <div key={item} className="rounded-xl border border-border bg-surface p-6">
+                <Check className="h-5 w-5 text-accent" />
+                <p className="mt-3 text-sm font-semibold leading-relaxed">{item}</p>
+              </div>
+            ))}
           </div>
         </div>
       </section>
@@ -442,7 +361,7 @@ export default function PdfFormFillerClient() {
             }}
             className="mt-8 flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-accent px-6 text-base font-semibold text-white shadow-lg shadow-accent/25 hover:bg-accent-hover transition-colors sm:w-auto mx-auto"
           >
-            Fill a PDF Free
+            Start editing
             <ArrowRight className="h-4 w-4" />
           </Link>
         </div>

@@ -55,17 +55,11 @@ test('Editor loads', async ({ page }) => {
   expect(isEditor || isSignIn).toBe(true);
 });
 
-test('Pricing page loads', async ({ page }) => {
+test('Pricing redirects to upload-first homepage', async ({ page }) => {
   await page.goto('/pricing', { waitUntil: 'domcontentloaded' });
-  await expect(page.getByRole('heading', { name: /Fill PDFs free|Your Pro plan is active/ })).toBeVisible();
-
-  // Check current default annual Pro price is visible
-  const priceElement = page.locator('text=A$100').first();
-  await expect(priceElement).toBeVisible();
-  
-  // Check Pro upgrade button exists
-  const proButton = page.locator('button:has-text("Get Pro"), a:has-text("Get Pro"), button:has-text("Manage billing"), a:has-text("Fill a PDF")').first();
-  await expect(proButton).toBeVisible();
+  await expect(page).toHaveURL('/');
+  await expect(page.getByRole('heading', { name: 'Upload. Fill. Sign. Download.' })).toBeVisible();
+  await expect(page.locator('a[href="/editor"]').first()).toBeVisible();
 });
 
 test('Template opens in editor', async ({ page }) => {
@@ -101,12 +95,9 @@ test('Navigation links work', async ({ page }) => {
   // Go back to homepage
   await page.goto('/', { waitUntil: 'domcontentloaded' });
   
-  // Check Pricing link works
-  const pricingLink = page.locator('a[href="/pricing"]').first();
-  await expect(pricingLink).toBeVisible();
-  await pricingLink.click();
-  await page.waitForURL('/pricing');
-  await expect(page).toHaveURL('/pricing');
+  // Public nav should favor starting the editor instead of sending users to pricing.
+  await expect(page.locator('a[href="/pricing"]')).toHaveCount(0);
+  await expect(page.locator('a[href="/editor"]').first()).toBeVisible();
 });
 
 test('Templates page shows public form badge', async ({ page }) => {
@@ -141,33 +132,15 @@ test('Homepage  -  comparison table exists', async ({ page }) => {
 test('Homepage  -  FAQ section exists', async ({ page }) => {
   await page.goto('/', { waitUntil: 'domcontentloaded' });
 
-  // Check at least one FAQ question is visible
-  // Look for common FAQ patterns: accordion, question text, or FAQ heading
-  const faqQuestion = page.locator('button:text("What"), h3:text("What"), .faq-question, [role="button"]:has-text("How"), [role="button"]:has-text("What")').first();
-  await expect(faqQuestion).toBeVisible();
-  
-  // If we find any FAQ-like element, it's good
-  const count = await faqQuestion.count();
-  expect(count).toBeGreaterThan(0);
-  
-  if (count > 0) {
-    await expect(faqQuestion).toBeVisible();
-  }
+  await expect(page.getByRole('heading', { name: 'Frequently asked questions' })).toBeVisible();
+  await expect(page.locator('body')).toContainText('When do I see download options?');
 });
 
-test('Pricing  -  Free tier shown', async ({ page }) => {
+test('Pricing route keeps upload-first flow', async ({ page }) => {
   await page.goto('/pricing', { waitUntil: 'domcontentloaded' });
-
-  // Check element with "Free" visible
-  const freeTier = page.locator('text=Free').first();
-  await expect(freeTier).toBeVisible();
-  
-  // Check for "3 downloads" text (Free tier shows "3 downloads per month")
-  const threeDocs = page.locator('text="3 downloads per month"').first();
-  const threeDocsAlt = page.locator('text=3 downloads').first();
-  
-  const hasThreeDocs = await threeDocs.count() > 0 || await threeDocsAlt.count() > 0;
-  expect(hasThreeDocs).toBe(true);
+  await expect(page).toHaveURL('/');
+  await expect(page.locator('body')).not.toContainText(`A$${"12"}.50`);
+  await expect(page.locator('body')).not.toContainText('Get Pro');
 });
 
 test('Editor toolbar loads', async ({ page }) => {

@@ -91,10 +91,10 @@ export default function CheckoutPage() {
               Try again
             </button>
             <Link
-              href="/pricing"
+              href="/"
               className="flex h-11 items-center justify-center rounded-lg border border-border px-5 text-sm font-semibold text-text hover:bg-surface-alt transition-colors"
             >
-              Back to pricing
+              Back to start
             </Link>
           </div>
         )}

@@ -45,19 +45,13 @@ export default function HowItWorksContent() {
           <p className="mt-4 text-text-muted">
             It takes less than 60 seconds. Try it free, no sign up needed.
           </p>
-          <div className="mt-8 flex flex-col items-center gap-4 sm:flex-row sm:justify-center">
+          <div className="mt-8 flex flex-col items-center gap-4 sm:justify-center">
             <Link
               href="/editor"
               className="flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-accent px-6 text-base font-semibold text-white shadow-lg shadow-accent/25 hover:bg-accent-hover transition-colors sm:w-auto"
             >
               Fill a PDF Free
               <ArrowRight className="h-4 w-4" />
-            </Link>
-            <Link
-              href="/pricing"
-              className="flex h-12 w-full items-center justify-center rounded-xl border border-border px-6 text-base font-semibold hover:bg-surface transition-colors sm:w-auto"
-            >
-              See Pricing
             </Link>
           </div>
         </>

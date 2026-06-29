@@ -10,7 +10,6 @@ import { ContextPanel } from "@/components/ContextPanel";
 import { SignatureModal } from "@/components/SignatureModal";
 import { WelcomeModal } from "@/components/WelcomeModal";
 import { TourModal } from "@/components/TourModal";
-import { ProUnlockModal } from "@/components/ProUnlockModal";
 import { SupportForm } from "@/components/SupportForm";
 import type { PdfViewerHandle } from "@/components/PdfViewer";
 import { useHistory } from "@/lib/use-history";
@@ -211,8 +210,6 @@ function EditorPageContent() {
   const [showGuestSignupPrompt, setShowGuestSignupPrompt] = useState(false);
   const [lastDownloadError, setLastDownloadError] = useState<string | null>(null);
   const [showSupportForm, setShowSupportForm] = useState(false);
-  const [showProUnlockModal, setShowProUnlockModal] = useState(false);
-  const [unlockFeatureName, setUnlockFeatureName] = useState<string | undefined>(undefined);
   const [zoom, setZoom] = useState(100);
   const [pageScales] = useState(() => new Map<number, number>());
   const [viewportDims] = useState(() => new Map<number, { width: number; height: number }>());
@@ -445,28 +442,6 @@ function EditorPageContent() {
   }, [fields]);
 
   const totalFieldCount = fields.length;
-
-  // Check if user is Pro, show unlock modal if not
-  const checkProFeature = useCallback(async (featureName?: string): Promise<boolean> => {
-    try {
-      const res = await fetch("/api/usage");
-      if (res.ok) {
-        const usage = await res.json();
-        if (usage.tier === "pro" || usage.tier === "business") {
-          return true;
-        }
-        // Not Pro - show unlock modal
-        if (featureName) {
-          setUnlockFeatureName(featureName);
-        }
-        setShowProUnlockModal(true);
-        return false;
-      }
-      return false;
-    } catch {
-      return false;
-    }
-  }, []);
 
   const handleZoomIn = useCallback(() => {
     setZoom((prev) => ZOOM_LEVELS.find((z) => z > prev && z <= SNAP_MAX) ?? prev);
@@ -1199,8 +1174,8 @@ function EditorPageContent() {
           <div className="mx-8 -mt-2 mb-8 grid gap-3 lg:grid-cols-3">
             {[
               { icon: LockKeyhole, title: "No file storage", body: "Your file is used to create your download, then discarded. Never saved." },
-              { icon: ShieldCheck, title: "Free to start", body: "Three free fills each month, with watermark." },
-              { icon: BadgeCheck, title: "Pro removes friction", body: "Unlimited fills, no watermark, full history." },
+              { icon: ShieldCheck, title: "Edit first", body: "Fill, mark up, and sign your document before download." },
+              { icon: BadgeCheck, title: "Finish online", body: "Use text, boxes, dates, lines, whiteout, and signatures in one editor." },
             ].map((item) => (
               <div key={item.title} className="flex items-start gap-3 rounded-xl border border-border bg-surface-alt px-4 py-3">
                 <item.icon className="mt-0.5 h-5 w-5 shrink-0 text-accent" />
@@ -1725,12 +1700,6 @@ function EditorPageContent() {
         <TourModal isOpen={showTour} onClose={handleTourComplete} />
       )}
 
-      {/* Pro unlock modal */}
-      <ProUnlockModal
-        open={showProUnlockModal}
-        onClose={() => setShowProUnlockModal(false)}
-        featureName={unlockFeatureName}
-      />
     </div>
     </>
   );

@@ -3,30 +3,31 @@ import { PRICING, formatAud } from "../pricing";
 describe("pricing module", () => {
   it("formats whole and decimal AUD amounts correctly", () => {
     expect(formatAud(25)).toBe("A$25");
-    expect(formatAud(12.5)).toBe("A$12.50");
+    expect(formatAud(12.42)).toBe("A$12.42");
     expect(formatAud(149)).toBe("A$149");
   });
 
   it("has correct Pro monthly values and disclosure", () => {
     expect(PRICING.pro.monthly.amount).toBe(25);
-    expect(PRICING.pro.monthly.introAmount).toBe(12.5);
+    expect(PRICING.pro.monthly.introAmount).toBe(2);
+    expect(PRICING.pro.monthly.introDays).toBe(7);
     expect(PRICING.pro.monthly.label).toBe("A$25");
     expect(PRICING.pro.monthly.labelWithPeriod).toBe("A$25/month");
-    expect(PRICING.pro.monthly.introLabel).toBe("A$12.50");
+    expect(PRICING.pro.monthly.introLabel).toBe("A$2");
     expect(PRICING.pro.monthly.disclosure).toBe(
-      "A$12.50 first month, then A$25/month. Cancel anytime."
+      "A$2 today for the 7-day intro, then A$25/month. Cancel anytime."
     );
   });
 
   it("has intro-led monthly display fields and conversion value", () => {
-    expect(PRICING.pro.monthly.introTodayLabel).toBe("A$12.50 today");
-    expect(PRICING.pro.monthly.introBadge).toBe("First month intro offer");
-    expect(PRICING.pro.monthly.thenLabel).toBe("Then A$25/month");
-    expect(PRICING.pro.monthly.ctaLabel).toBe("Start monthly for A$12.50");
+    expect(PRICING.pro.monthly.introTodayLabel).toBe("A$2 today");
+    expect(PRICING.pro.monthly.introBadge).toBe("7-day intro offer");
+    expect(PRICING.pro.monthly.thenLabel).toBe("Then A$25/month after 7 days");
+    expect(PRICING.pro.monthly.ctaLabel).toBe("Start 7-day intro for A$2");
     expect(PRICING.pro.monthly.finePrint).toBe(
-      "First month only. Then A$25/month unless cancelled."
+      "A$2 today. Then A$25/month after 7 days unless cancelled."
     );
-    expect(PRICING.pro.monthly.conversionValue).toBe(12.5);
+    expect(PRICING.pro.monthly.conversionValue).toBe(2);
   });
 
   it("has correct Pro annual values, derived figures, and disclosure", () => {

@@ -36,18 +36,6 @@ export function Navbar() {
 
         {/* Desktop nav */}
         <div className="hidden items-center gap-6 md:flex">
-          <Link href="/how-it-works" className="text-sm font-medium text-text-muted hover:text-text transition-colors">
-            How It Works
-          </Link>
-          <Link href="/templates" className="text-sm font-medium text-text-muted hover:text-text transition-colors">
-            Templates
-          </Link>
-          <Link href="/blog" className="text-sm font-medium text-text-muted hover:text-text transition-colors">
-            Resources
-          </Link>
-          <Link href="/editor" className="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-white hover:bg-accent-hover transition-colors">
-            Fill a PDF
-          </Link>
           {isSignedIn && isPro ? (
             <button
               onClick={async () => {
@@ -65,14 +53,7 @@ export function Navbar() {
             >
               {isPortalLoading ? "Loading..." : "Billing"}
             </button>
-          ) : (
-            <Link href="/pricing" className="text-sm font-medium text-text-muted hover:text-text transition-colors">
-              Pricing
-            </Link>
-          )}
-          <Link href="/support" className="text-sm font-medium text-text-muted hover:text-text transition-colors">
-            Support
-          </Link>
+          ) : null}
           <ThemeToggle />
 
           {!isSignedIn ? (
@@ -80,8 +61,8 @@ export function Navbar() {
               <Link href="/sign-in" className="text-sm font-medium text-text-muted hover:text-text transition-colors">
                 Sign In
               </Link>
-              <Link href="/sign-up" className="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-white hover:bg-accent-hover transition-colors">
-                Try Free
+              <Link href="/editor" className="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-white hover:bg-accent-hover transition-colors">
+                Start Editing
               </Link>
             </>
           ) : (
@@ -118,18 +99,6 @@ export function Navbar() {
       {menuOpen && (
         <div className="border-t border-border bg-surface px-4 pb-4 md:hidden">
           <div className="flex flex-col gap-2 pt-2">
-            <Link href="/how-it-works" onClick={() => setMenuOpen(false)} className="rounded-lg px-3 py-3 text-sm font-medium hover:bg-surface-alt transition-colors">
-              How It Works
-            </Link>
-            <Link href="/templates" onClick={() => setMenuOpen(false)} className="rounded-lg px-3 py-3 text-sm font-medium hover:bg-surface-alt transition-colors">
-              Templates
-            </Link>
-            <Link href="/blog" onClick={() => setMenuOpen(false)} className="rounded-lg px-3 py-3 text-sm font-medium hover:bg-surface-alt transition-colors">
-              Resources
-            </Link>
-            <Link href="/editor" onClick={() => setMenuOpen(false)} className="rounded-lg bg-accent px-3 py-3 text-sm font-semibold text-white hover:bg-accent-hover transition-colors text-center">
-              Fill a PDF
-            </Link>
             {isSignedIn && isPro ? (
               <button
                 onClick={async () => {
@@ -147,22 +116,15 @@ export function Navbar() {
               >
                 {isPortalLoading ? "Loading..." : "Billing"}
               </button>
-            ) : (
-              <Link href="/pricing" onClick={() => setMenuOpen(false)} className="rounded-lg px-3 py-3 text-sm font-medium hover:bg-surface-alt transition-colors">
-                Pricing
-              </Link>
-            )}
-            <Link href="/support" onClick={() => setMenuOpen(false)} className="rounded-lg px-3 py-3 text-sm font-medium hover:bg-surface-alt transition-colors">
-              Support
-            </Link>
+            ) : null}
 
             {!isSignedIn ? (
               <>
                 <Link href="/sign-in" onClick={() => setMenuOpen(false)} className="rounded-lg px-3 py-3 text-sm font-medium hover:bg-surface-alt transition-colors">
                   Sign In
                 </Link>
-                <Link href="/sign-up" onClick={() => setMenuOpen(false)} className="mt-1 rounded-lg bg-accent px-3 py-3 text-center text-sm font-semibold text-white hover:bg-accent-hover transition-colors">
-                  Try Free
+                <Link href="/editor" onClick={() => setMenuOpen(false)} className="mt-1 rounded-lg bg-accent px-3 py-3 text-center text-sm font-semibold text-white hover:bg-accent-hover transition-colors">
+                  Start Editing
                 </Link>
               </>
             ) : (

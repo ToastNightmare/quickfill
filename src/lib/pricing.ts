@@ -3,13 +3,12 @@
  * annual savings, and disclosure strings.
  *
  * Note: this module holds display copy and math only. Stripe price IDs and
- * the intro coupon ID live in server-side env vars (STRIPE_PRO_PRICE_ID,
- * STRIPE_PRO_ANNUAL_PRICE_ID, STRIPE_PRO_INTRO_COUPON_ID) and are never
+ * the intro price ID lives in server-side env vars (STRIPE_PRO_MONTHLY_PRICE_ID,
+ * STRIPE_PRO_MONTHLY_INTRO_PRICE_ID, STRIPE_PRO_ANNUAL_PRICE_ID) and are never
  * referenced here.
  *
  * Pricing direction (2026-06-13):
- *  - Pro Monthly: A$25/month, with A$12.50 first month via a once-off Stripe
- *    coupon (A$12.50 off the first invoice).
+ *  - Pro Monthly: A$2 today for the 7-day intro, then A$25/month.
  *  - Pro Annual: A$149/year.
  */
 
@@ -22,7 +21,8 @@ export function formatAud(amount: number): string {
 }
 
 const PRO_MONTHLY_AMOUNT = 25;
-const PRO_MONTHLY_INTRO_AMOUNT = 12.5;
+const PRO_MONTHLY_INTRO_AMOUNT = 2;
+const PRO_MONTHLY_INTRO_DAYS = 7;
 const PRO_ANNUAL_AMOUNT = 149;
 
 // Derived annual figures
@@ -36,26 +36,25 @@ export const PRICING = {
     monthly: {
       amount: PRO_MONTHLY_AMOUNT,
       introAmount: PRO_MONTHLY_INTRO_AMOUNT,
+      introDays: PRO_MONTHLY_INTRO_DAYS,
       /** "A$25" */
       label: formatAud(PRO_MONTHLY_AMOUNT),
       /** "A$25/month" */
       labelWithPeriod: `${formatAud(PRO_MONTHLY_AMOUNT)}/month`,
-      /** "A$12.50" */
+      /** "A$2" */
       introLabel: formatAud(PRO_MONTHLY_INTRO_AMOUNT),
-      /** "A$12.50 first month" */
-      introLabelWithPeriod: `${formatAud(PRO_MONTHLY_INTRO_AMOUNT)} first month`,
-      /** "A$12.50 today" - primary intro headline */
+      /** "A$2 today" */
       introTodayLabel: `${formatAud(PRO_MONTHLY_INTRO_AMOUNT)} today`,
       /** Intro badge text */
-      introBadge: "First month intro offer",
-      /** "Then A$25/month" - must sit next to the intro price */
-      thenLabel: `Then ${formatAud(PRO_MONTHLY_AMOUNT)}/month`,
+      introBadge: "7-day intro offer",
+      /** "Then A$25/month after 7 days" */
+      thenLabel: `Then ${formatAud(PRO_MONTHLY_AMOUNT)}/month after ${PRO_MONTHLY_INTRO_DAYS} days`,
       /** Primary monthly CTA */
-      ctaLabel: `Start monthly for ${formatAud(PRO_MONTHLY_INTRO_AMOUNT)}`,
+      ctaLabel: `Start 7-day intro for ${formatAud(PRO_MONTHLY_INTRO_AMOUNT)}`,
       /** Fine print under the monthly CTA */
-      finePrint: `First month only. Then ${formatAud(PRO_MONTHLY_AMOUNT)}/month unless cancelled.`,
+      finePrint: `${formatAud(PRO_MONTHLY_INTRO_AMOUNT)} today. Then ${formatAud(PRO_MONTHLY_AMOUNT)}/month after ${PRO_MONTHLY_INTRO_DAYS} days unless cancelled.`,
       /** Required public disclosure for monthly. */
-      disclosure: `${formatAud(PRO_MONTHLY_INTRO_AMOUNT)} first month, then ${formatAud(PRO_MONTHLY_AMOUNT)}/month. Cancel anytime.`,
+      disclosure: `${formatAud(PRO_MONTHLY_INTRO_AMOUNT)} today for the ${PRO_MONTHLY_INTRO_DAYS}-day intro, then ${formatAud(PRO_MONTHLY_AMOUNT)}/month. Cancel anytime.`,
       /** Google Ads + Meta conversion value (actual first charge). */
       conversionValue: PRO_MONTHLY_INTRO_AMOUNT,
     },
