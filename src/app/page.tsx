@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Logo } from "@/components/Logo";
-import HeroEditorDemo from "@/components/HeroEditorDemo";
+import { LandingUploadBox } from "@/components/LandingUploadBox";
 import {
   Upload,
   ScanSearch,
@@ -298,7 +298,7 @@ const verticals = [
 
 const heroTrustPills = [
   { icon: Check, text: "Fill any PDF without locked fields stopping you" },
-  { icon: Upload, text: "Upload first, decide what you need at download" },
+  { icon: Upload, text: "Upload first, choose your download option at the end" },
   { icon: BadgeCheck, text: "Australian templates included. Works with any PDF." },
 ];
 
@@ -680,49 +680,31 @@ export default function Home() {
       />
 
       {/* Hero */}
-      <section className="relative overflow-hidden bg-navy px-4 py-20 sm:px-6 sm:py-24 lg:px-8">
-        <div className="relative mx-auto max-w-5xl text-center">
+      <section className="relative overflow-hidden bg-navy px-4 py-16 sm:px-6 sm:py-20 lg:px-8">
+        <div className="relative mx-auto max-w-4xl text-center">
           <h1 className="text-4xl font-extrabold tracking-tight text-white sm:text-5xl lg:text-6xl">
-            Stop printing locked PDFs forever
+            Fill PDF Forms Online
           </h1>
           <p className="mx-auto mt-6 max-w-2xl text-lg text-gray-300 sm:text-xl">
-            Fill any PDF form online: no Adobe, no printing, no scanning. Works on any device.
+            Upload your PDF, type into it, and download the completed file without printing or scanning.
           </p>
-          {/* Feature pills */}
-          <div className="mt-6 flex flex-wrap items-center justify-center gap-3 text-sm text-gray-300">
+
+          {/* Upload box */}
+          <LandingUploadBox />
+
+          {/* Trust pills */}
+          <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
             {heroTrustPills.map(({ icon: Icon, text }) => (
-              <span key={text} className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1.5">
+              <span key={text} className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-sm text-gray-300">
                 <Icon className="h-4 w-4 text-accent" />
                 {text}
               </span>
             ))}
           </div>
-          <div className="mt-10 flex flex-col items-center gap-4 sm:flex-row sm:justify-center">
-            <Link
-              href="/editor"
-              onClick={() => {
-                trackEvent("home_cta_click", { cta: "hero_fill_pdf" });
-                trackMetaEvent('Lead', { content_name: 'hero_fill_pdf' });
-              }}
-              className="flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-accent px-6 text-base font-semibold text-white shadow-lg shadow-accent/25 hover:bg-accent-hover transition-colors sm:w-auto"
-            >
-              Fill a PDF Free
-              <ArrowRight className="h-4 w-4" />
-            </Link>
-            <Link
-              href="/templates"
-              onClick={() => trackEvent("home_cta_click", { cta: "hero_browse_templates" })}
-              className="flex h-12 w-full items-center justify-center rounded-xl border border-white/20 px-6 text-base font-semibold text-white hover:bg-white/10 transition-colors sm:w-auto"
-            >
-              Browse Templates
-            </Link>
-          </div>
-          {/* Social proof */}
+
           <p className="mt-4 text-center text-xs text-gray-400">
             Works with tax forms, rental applications, government paperwork, and any PDF you need to fill.
           </p>
-
-          <HeroEditorDemo />
         </div>
       </section>
 
