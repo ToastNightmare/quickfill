@@ -229,6 +229,7 @@ function LoggedInHome() {
             <Link href="/how-it-works" className="text-sm text-gray-400 hover:text-white transition-colors">How It Works</Link>
             <Link href="/dashboard" className="text-sm text-gray-400 hover:text-white transition-colors">Dashboard</Link>
             <Link href="/profile" className="text-sm text-gray-400 hover:text-white transition-colors">Profile</Link>
+            <Link href="/support" className="text-sm text-gray-400 hover:text-white transition-colors">Support</Link>
             <Link href="/privacy" className="text-sm text-gray-400 hover:text-white transition-colors">Privacy</Link>
             <Link href="/terms" className="text-sm text-gray-400 hover:text-white transition-colors">Terms</Link>
           </div>
@@ -1077,6 +1078,7 @@ export default function Home() {
             ) : (
               <Link href="/sign-in" className="text-sm text-gray-400 hover:text-white transition-colors">Sign In</Link>
             )}
+            <Link href="/support" className="text-sm text-gray-400 hover:text-white transition-colors">Support</Link>
             <Link href="/privacy" className="text-sm text-gray-400 hover:text-white transition-colors">Privacy</Link>
             <Link href="/terms" className="text-sm text-gray-400 hover:text-white transition-colors">Terms</Link>
           </div>

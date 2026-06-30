@@ -5,7 +5,7 @@ import { SupportForm } from "@/components/SupportForm";
 
 export const metadata: Metadata = {
   title: "Support | QuickFill",
-  description: "Send a support message to QuickFill for billing, Pro account, PDF download, and product issues.",
+  description: "Send a support message to QuickFill for upload, editing, download, login, account, billing, and product issues.",
 };
 
 const TOPICS = {
@@ -17,18 +17,18 @@ const TOPICS = {
     body: "Payments, invoices, subscriptions, and refunds.",
   },
   pro: {
-    label: "Pro account",
+    label: "Login and account",
     icon: UserCheck,
     category: "account",
-    subject: "Pro account help",
-    body: "Plan status, limits, watermarks, and account access.",
+    subject: "Login and account help",
+    body: "Sign in, account access, saved details, and profile help.",
   },
   pdf: {
-    label: "PDF download issue",
+    label: "Upload or download issue",
     icon: FileWarning,
     category: "pdf",
-    subject: "PDF download issue",
-    body: "Uploads, downloads, viewer errors, and filled PDF output.",
+    subject: "Upload or download issue",
+    body: "Upload problems, download problems, viewer errors, and finished document output.",
   },
   bug: {
     label: "Bug report",
@@ -78,7 +78,7 @@ export default async function SupportPage({ searchParams }: { searchParams?: Sea
         </div>
         <h1 className="mt-5 text-3xl font-extrabold sm:text-4xl">Support</h1>
         <p className="mt-3 text-base leading-7 text-text-muted">
-          Send one support message for billing, Pro account, PDF download, bug, template request, or general help.
+          Send one support message for upload issues, editing issues, download issues, login and account help, billing, payment help, bugs, or general questions.
           If you are signed in, QuickFill attaches your account context automatically.
         </p>
       </section>

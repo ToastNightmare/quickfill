@@ -97,7 +97,18 @@ test('Navigation links work', async ({ page }) => {
   
   // Public nav should favor starting the editor instead of sending users to pricing.
   await expect(page.locator('a[href="/pricing"]')).toHaveCount(0);
+  await expect(page.getByRole('link', { name: 'Support' }).first()).toBeVisible();
   await expect(page.locator('a[href="/editor"]').first()).toBeVisible();
+
+  await page.getByRole('link', { name: 'Support' }).first().click();
+  await page.waitForURL('/support');
+  await expect(page.getByRole('heading', { name: 'Support', exact: true })).toBeVisible();
+  await expect(page.locator('body')).toContainText('upload issues');
+  await expect(page.locator('body')).not.toContainText('A$2');
+  await expect(page.locator('body')).not.toContainText('A$25');
+  await expect(page.locator('body')).not.toContainText('A$149');
+  await expect(page.locator('body')).not.toContainText(`A$${"12"}.50`);
+  await expect(page.locator('body')).not.toContainText('Upgrade');
 });
 
 test('Templates page shows public form badge', async ({ page }) => {
