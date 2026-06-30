@@ -1,34 +1,30 @@
 import type { Metadata } from "next";
-import PricingClient from "./PricingClient";
+import { redirect } from "next/navigation";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 export const metadata: Metadata = {
-  title: "QuickFill Pricing | PDF Form Filler Plans",
+  title: "QuickFill | Upload and Fill Documents Online",
   description:
-    "Start filling PDF forms for free. Upgrade to QuickFill Pro for unlimited PDF form filling, no watermark, fill history, and priority support.",
+    "Upload a PDF, JPG, PNG, scan, or screenshot. Fill, mark up, sign, and finish your document online.",
   keywords: [
-    "QuickFill pricing",
-    "PDF form filler pricing",
-    "fill PDF online pricing",
-    "online PDF filler plans",
-    "PDF form filler Pro",
-    "no watermark PDF downloads",
-    "unlimited PDF fills",
-    "PDF editor pricing",
+    "QuickFill",
+    "PDF form filler",
+    "fill PDF online",
+    "online PDF editor",
   ],
   alternates: {
-    canonical: "/pricing",
+    canonical: "/",
   },
   openGraph: {
-    title: "QuickFill Pricing",
+    title: "QuickFill",
     description:
-      "Simple pricing for filling PDF forms online. Start free, upgrade when you need unlimited fills.",
-    url: "/pricing",
+      "Upload your file, fill it online, and finish your document without printing.",
+    url: "/",
   },
 };
 
 export default function PricingPage() {
-  return <PricingClient />;
+  redirect("/");
 }

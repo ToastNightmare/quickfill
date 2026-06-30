@@ -499,7 +499,7 @@ export default function AdminAnalyticsClient() {
             />
           </div>
           <p className="mt-4 text-xs text-slate-500">
-            Revenue signal is estimated from subscription-start analytics events using current pricing assumptions. First-period revenue reflects estimated first charges: monthly intro A$12.50 or annual A$149. Run-rate reflects estimated ongoing monthly value: A$25/month or annual counted as A$149/12. For live Stripe-derived revenue, use the admin revenue view.
+            Revenue signal is estimated from subscription-start analytics events using current pricing assumptions. First-period revenue reflects estimated first charges: monthly intro A$2 or annual A$149. Run-rate reflects estimated ongoing monthly value: A$25/month or annual counted as A$149/12. For live Stripe-derived revenue, use the admin revenue view.
           </p>
         </section>
 

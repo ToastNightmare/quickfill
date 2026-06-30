@@ -118,17 +118,15 @@ describe("HowItWorksContent", () => {
       });
     });
 
-    it("should render 'See Pricing' button for free users", async () => {
+    it("should NOT render 'See Pricing' button for free users", async () => {
       render(<HowItWorksContent />);
 
-      // Wait for free-tier specific text to appear
       await waitFor(() => {
         expect(screen.getByText(/Try it free, no sign up needed/i)).toBeInTheDocument();
       });
 
-      // Verify See Pricing IS present
-      const seePricingLink = screen.getByRole("link", { name: /See Pricing/i });
-      expect(seePricingLink).toBeInTheDocument();
+      const seePricingLink = screen.queryByText(/See Pricing/i);
+      expect(seePricingLink).not.toBeInTheDocument();
     });
 
     it("should render 'Fill a PDF Free' button for free users", async () => {
@@ -170,12 +168,11 @@ describe("HowItWorksContent", () => {
       mockUseAuth.mockReturnValue({ isSignedIn: false });
     });
 
-    it("should render 'See Pricing' button for guest users", () => {
+    it("should NOT render 'See Pricing' button for guest users", () => {
       render(<HowItWorksContent />);
 
-      // For guests, should show free tier CTAs
-      const seePricingLink = screen.getByRole("link", { name: /See Pricing/i });
-      expect(seePricingLink).toBeInTheDocument();
+      const seePricingLink = screen.queryByText(/See Pricing/i);
+      expect(seePricingLink).not.toBeInTheDocument();
     });
 
     it("should render 'Fill a PDF Free' button for guest users", () => {

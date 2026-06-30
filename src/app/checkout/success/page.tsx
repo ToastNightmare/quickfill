@@ -42,7 +42,7 @@ function CheckoutSuccessContent() {
   });
   const [message, setMessage] = useState(() => {
     if (initialSyncError) return initialSyncError;
-    if (syncAlreadyRan) return "Your Pro access is ready.";
+    if (syncAlreadyRan) return "Your QuickFill Pro access is active.";
     return "Getting your Pro workspace ready...";
   });
   const [retrying, setRetrying] = useState(false);
@@ -51,9 +51,9 @@ function CheckoutSuccessContent() {
   const repairedBilling = searchParams.get("repair") === "true";
 
   const contextText = useMemo(() => {
-    if (alreadyPro) return "You already have an active Pro subscription.";
+    if (alreadyPro) return "You already have active Pro access.";
     if (repairedBilling) return "Your Pro access is being restored.";
-    return "Payment received. Your Pro workspace is being prepared.";
+    return "Your QuickFill Pro access is active. You can now download finished documents.";
   }, [alreadyPro, repairedBilling]);
 
   const syncBilling = useCallback(async () => {
@@ -81,7 +81,7 @@ function CheckoutSuccessContent() {
 
       if (looksSynced) {
         setStatus("ready");
-        setMessage("Your Pro access is ready.");
+        setMessage("Your QuickFill Pro access is active.");
         return;
       }
 
@@ -147,7 +147,7 @@ function CheckoutSuccessContent() {
     const conversionLabel = process.env.NEXT_PUBLIC_GOOGLE_ADS_CONVERSION_LABEL;
     if (!conversionLabel || conversionLabel.trim() === '') return;
 
-    // Conversion value reflects the actual first charge: monthly intro A$12.50,
+    // Conversion value reflects the actual first charge: monthly intro A$2,
     // annual A$149. Driven by the billing URL param set on the checkout success URL.
     const billing = searchParams.get("billing");
     const conversionValue = billing === "annual"

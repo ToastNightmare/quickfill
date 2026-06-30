@@ -82,7 +82,7 @@ describe("CheckoutSuccessPage - Purchase Event", () => {
     jest.restoreAllMocks();
   });
 
-  it("billing=monthly, status reaches ready -> fbq called with { value: 12.50, currency: 'AUD' }", async () => {
+  it("billing=monthly, status reaches ready -> fbq called with { value: 2, currency: 'AUD' }", async () => {
     setupSearchParams({
       session_id: "test-session-123",
       billing: "monthly",
@@ -99,7 +99,7 @@ describe("CheckoutSuccessPage - Purchase Event", () => {
 
     await waitFor(() => {
       expect(mockFbq).toHaveBeenCalledWith("track", "Purchase", {
-        value: 12.50,
+        value: 2,
         currency: "AUD",
       });
     });
@@ -128,7 +128,7 @@ describe("CheckoutSuccessPage - Purchase Event", () => {
     });
   });
 
-  it("billing param missing, status reaches ready -> fbq called with { value: 12.50, currency: 'AUD' }", async () => {
+  it("billing param missing, status reaches ready -> fbq called with { value: 2, currency: 'AUD' }", async () => {
     setupSearchParams({
       session_id: "test-session-789",
       synced: "true",
@@ -144,7 +144,7 @@ describe("CheckoutSuccessPage - Purchase Event", () => {
 
     await waitFor(() => {
       expect(mockFbq).toHaveBeenCalledWith("track", "Purchase", {
-        value: 12.50,
+        value: 2,
         currency: "AUD",
       });
     });
@@ -333,7 +333,7 @@ describe("CheckoutSuccessPage - Google Ads Conversion Event", () => {
     delete process.env.NEXT_PUBLIC_GOOGLE_ADS_CONVERSION_LABEL;
   });
 
-  it("billing=monthly, status reaches ready -> trackGoogleAdsConversion called with value 12.50", async () => {
+  it("billing=monthly, status reaches ready -> trackGoogleAdsConversion called with value 2", async () => {
     setupSearchParams({
       session_id: "gads-session-001",
       billing: "monthly",
@@ -350,7 +350,7 @@ describe("CheckoutSuccessPage - Google Ads Conversion Event", () => {
     await waitFor(() => {
       expect(mockTrackGoogleAdsConversion).toHaveBeenCalledWith(
         'jzjNCNyf970cEP-s4vzD',
-        12.50,
+        2,
         'AUD'
       );
     });

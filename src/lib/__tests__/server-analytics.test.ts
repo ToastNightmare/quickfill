@@ -40,11 +40,11 @@ describe("trackServerEvent revenue estimates", () => {
     const monthlyFirstPeriodCents = Math.round(PRICING.pro.monthly.conversionValue * 100);
     const monthlyRunRateCents = Math.round(PRICING.pro.monthly.amount * 100);
 
-    expect(monthlyFirstPeriodCents).toBe(1250);
+    expect(monthlyFirstPeriodCents).toBe(200);
     expect(monthlyRunRateCents).toBe(2500);
-    expect(pipeline.hincrby).toHaveBeenCalledWith(dailyRevenueKey, "first_period_cents", 1250);
+    expect(pipeline.hincrby).toHaveBeenCalledWith(dailyRevenueKey, "first_period_cents", 200);
     expect(pipeline.hincrby).toHaveBeenCalledWith(dailyRevenueKey, "monthly_run_rate_cents", 2500);
-    expect(pipeline.hincrby).toHaveBeenCalledWith(totalRevenueKey, "first_period_cents", 1250);
+    expect(pipeline.hincrby).toHaveBeenCalledWith(totalRevenueKey, "first_period_cents", 200);
     expect(pipeline.hincrby).toHaveBeenCalledWith(totalRevenueKey, "monthly_run_rate_cents", 2500);
   });
 

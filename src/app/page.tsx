@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Logo } from "@/components/Logo";
-import HeroEditorDemo from "@/components/HeroEditorDemo";
+import { LandingUploadBox } from "@/components/LandingUploadBox";
 import {
   Upload,
   ScanSearch,
@@ -34,10 +34,9 @@ import {
 } from "lucide-react";
 import { useAuth } from "@clerk/nextjs";
 import { APP_CONFIG } from "@/lib/config";
-import { PRICING } from "@/lib/pricing";
 import { trackEvent } from "@/lib/analytics";
 import { trackMetaEvent } from "@/lib/meta-pixel";
-import { captureAndStoreUtm, getStoredUtm } from "@/lib/utm";
+import { captureAndStoreUtm } from "@/lib/utm";
 import { PDF_UPLOAD_MAX_LABEL } from "@/lib/upload-limits";
 
 interface FillEntry {
@@ -132,14 +131,6 @@ function LoggedInHome() {
             </p>
             <p className="mt-1 text-sm text-text-muted">
               Current plan
-              {usage?.tier === "free" && (
-                <>
-                  {" "}&middot;{" "}
-                  <Link href="/pricing" className="text-accent hover:underline">
-                    Upgrade
-                  </Link>
-                </>
-              )}
             </p>
           </div>
           <div className="rounded-xl border border-border bg-surface p-6 text-center">
@@ -210,7 +201,7 @@ function LoggedInHome() {
               { label: "Fill a Form", href: "/editor", icon: FileText },
               { label: "Saved Details", href: "/profile", icon: User },
               { label: "View History", href: "/dashboard", icon: LayoutDashboard },
-              { label: "Pricing & Plans", href: "/pricing", icon: CreditCard },
+              { label: "Start New Document", href: "/editor", icon: Upload },
             ].map((action) => (
               <Link
                 key={action.label}
@@ -235,10 +226,10 @@ function LoggedInHome() {
           <div className="grid grid-cols-2 gap-x-8 gap-y-2 sm:flex sm:gap-6">
             <Link href="/editor" className="text-sm text-gray-400 hover:text-white transition-colors">Fill a PDF</Link>
             <Link href="/templates" className="text-sm text-gray-400 hover:text-white transition-colors">Templates</Link>
-            <Link href="/pricing" className="text-sm text-gray-400 hover:text-white transition-colors">Pricing</Link>
             <Link href="/how-it-works" className="text-sm text-gray-400 hover:text-white transition-colors">How It Works</Link>
             <Link href="/dashboard" className="text-sm text-gray-400 hover:text-white transition-colors">Dashboard</Link>
             <Link href="/profile" className="text-sm text-gray-400 hover:text-white transition-colors">Profile</Link>
+            <Link href="/support" className="text-sm text-gray-400 hover:text-white transition-colors">Support</Link>
             <Link href="/privacy" className="text-sm text-gray-400 hover:text-white transition-colors">Privacy</Link>
             <Link href="/terms" className="text-sm text-gray-400 hover:text-white transition-colors">Terms</Link>
           </div>
@@ -307,13 +298,13 @@ const verticals = [
 
 const heroTrustPills = [
   { icon: Check, text: "Fill any PDF without locked fields stopping you" },
-  { icon: CreditCard, text: `Free plan, Pro is ${PRICING.pro.monthly.labelWithPeriod}` },
+  { icon: Upload, text: "Upload first, choose your download option at the end" },
   { icon: BadgeCheck, text: "Australian templates included. Works with any PDF." },
 ];
 
 const proofStats = [
   { value: "15+", label: "ready templates" },
-  { value: "3", label: "free fills each month" },
+  { value: "0", label: "payment needed to start" },
   { value: "0", label: "stored PDF uploads" },
   { value: PDF_UPLOAD_MAX_LABEL, label: "PDF upload limit" },
 ];
@@ -332,7 +323,7 @@ const buyerQuestions = [
   {
     icon: BadgeCheck,
     title: "Can I try it before paying?",
-    body: "Yes. The free plan gives 3 fills each month so you can test your own PDF before upgrading.",
+    body: "Yes. Start by uploading your own PDF, fill it online, and finish the document before any payment decision.",
   },
 ];
 
@@ -651,38 +642,11 @@ function HeroProductDemo() {
 
 export default function Home() {
   const { isLoaded, isSignedIn } = useAuth();
-  const [upgradingPlan, setUpgradingPlan] = useState<string | null>(null);
 
   useEffect(() => {
     captureAndStoreUtm();
     trackEvent("landing_page_view", { page: "home" });
   }, []);
-
-  const handleUpgrade = async (plan: "pro", annual = true) => {
-    trackEvent("checkout_start", { source: "home_pricing", plan, billing: annual ? "annual" : "monthly" });
-    trackMetaEvent('InitiateCheckout', { content_name: plan, content_type: annual ? 'annual' : 'monthly' });
-    if (!isLoaded) return;
-    if (!isSignedIn) {
-      window.location.href = `/checkout?plan=${plan}&billing=${annual ? "annual" : "monthly"}&source=home_pricing`;
-      return;
-    }
-    setUpgradingPlan(annual ? "pro_annual" : "pro_monthly");
-    try {
-      const res = await fetch("/api/stripe/checkout", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ plan, annual, ...getStoredUtm() }),
-      });
-      const data = await res.json();
-      if (data.error) {
-        window.location.href = `/checkout?plan=${plan}&billing=${annual ? "annual" : "monthly"}&source=home_pricing`;
-        return;
-      }
-      if (data.url) window.location.href = data.url;
-    } finally {
-      setUpgradingPlan(null);
-    }
-  };
 
   if (isLoaded && isSignedIn) {
     return <LoggedInHome />;
@@ -703,23 +667,6 @@ export default function Home() {
             operatingSystem: "Any",
             description:
               "Fill any PDF form online free. Upload your PDF, fill it with text, signatures, checkboxes, and dates, then download your completed document instantly. No software required.",
-            offers: [
-              {
-                "@type": "Offer",
-                price: "0",
-                priceCurrency: "AUD",
-                name: "Free Plan",
-                description: "3 documents per month",
-              },
-              {
-                "@type": "Offer",
-                price: "12",
-                priceCurrency: "AUD",
-                name: "Pro Plan",
-                description: "Unlimited documents per month",
-              },
-
-            ],
             featureList: [
               "PDF form filling",
               "AcroForm field detection",
@@ -733,49 +680,31 @@ export default function Home() {
       />
 
       {/* Hero */}
-      <section className="relative overflow-hidden bg-navy px-4 py-20 sm:px-6 sm:py-24 lg:px-8">
-        <div className="relative mx-auto max-w-5xl text-center">
+      <section className="relative overflow-hidden bg-navy px-4 py-16 sm:px-6 sm:py-20 lg:px-8">
+        <div className="relative mx-auto max-w-4xl text-center">
           <h1 className="text-4xl font-extrabold tracking-tight text-white sm:text-5xl lg:text-6xl">
-            Stop printing locked PDFs forever
+            Fill PDF Forms Online
           </h1>
           <p className="mx-auto mt-6 max-w-2xl text-lg text-gray-300 sm:text-xl">
-            Fill any PDF form online: no Adobe, no printing, no scanning. Works on any device.
+            Upload your PDF, type into it, and download the completed file without printing or scanning.
           </p>
-          {/* Feature pills */}
-          <div className="mt-6 flex flex-wrap items-center justify-center gap-3 text-sm text-gray-300">
+
+          {/* Upload box */}
+          <LandingUploadBox />
+
+          {/* Trust pills */}
+          <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
             {heroTrustPills.map(({ icon: Icon, text }) => (
-              <span key={text} className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1.5">
+              <span key={text} className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-sm text-gray-300">
                 <Icon className="h-4 w-4 text-accent" />
                 {text}
               </span>
             ))}
           </div>
-          <div className="mt-10 flex flex-col items-center gap-4 sm:flex-row sm:justify-center">
-            <Link
-              href="/editor"
-              onClick={() => {
-                trackEvent("home_cta_click", { cta: "hero_fill_pdf" });
-                trackMetaEvent('Lead', { content_name: 'hero_fill_pdf' });
-              }}
-              className="flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-accent px-6 text-base font-semibold text-white shadow-lg shadow-accent/25 hover:bg-accent-hover transition-colors sm:w-auto"
-            >
-              Fill a PDF Free
-              <ArrowRight className="h-4 w-4" />
-            </Link>
-            <Link
-              href="/templates"
-              onClick={() => trackEvent("home_cta_click", { cta: "hero_browse_templates" })}
-              className="flex h-12 w-full items-center justify-center rounded-xl border border-white/20 px-6 text-base font-semibold text-white hover:bg-white/10 transition-colors sm:w-auto"
-            >
-              Browse Templates
-            </Link>
-          </div>
-          {/* Social proof */}
+
           <p className="mt-4 text-center text-xs text-gray-400">
             Works with tax forms, rental applications, government paperwork, and any PDF you need to fill.
           </p>
-
-          <HeroEditorDemo />
         </div>
       </section>
 
@@ -886,7 +815,7 @@ export default function Home() {
                     <th className="px-6 py-4 text-left font-semibold text-gray-900">Feature</th>
                     <th className="px-6 py-4 text-left font-semibold text-gray-900">General PDF suites</th>
                     <th className="px-6 py-4 text-left font-semibold text-gray-900">E-signature tools</th>
-                    <th className="px-6 py-4 text-left font-semibold text-accent bg-accent/10">QuickFill ({PRICING.pro.monthly.label}/mo)</th>
+                    <th className="px-6 py-4 text-left font-semibold text-accent bg-accent/10">QuickFill</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
@@ -915,10 +844,10 @@ export default function Home() {
                     <td className="px-6 py-4 font-semibold text-green-600 bg-accent/5">Download instantly</td>
                   </tr>
                   <tr className="bg-white">
-                    <td className="px-6 py-4 font-medium text-gray-900">Price</td>
-                    <td className="px-6 py-4 text-gray-900">$20+/mo</td>
-                    <td className="px-6 py-4 text-gray-900">$20+/mo</td>
-                    <td className="px-6 py-4 font-semibold text-accent bg-accent/5">{PRICING.pro.monthly.label}/mo</td>
+                    <td className="px-6 py-4 font-medium text-gray-900">Start editing</td>
+                    <td className="px-6 py-4 text-gray-900">Account or plan decision first</td>
+                    <td className="px-6 py-4 text-gray-900">Setup before the document is ready</td>
+                    <td className="px-6 py-4 font-semibold text-accent bg-accent/5">Upload first</td>
                   </tr>
                 </tbody>
               </table>
@@ -1093,7 +1022,7 @@ export default function Home() {
           <div className="mt-12 space-y-6">
             <div className="rounded-xl border border-border bg-surface-alt p-6">
               <h3 className="font-semibold text-base">Is it really free?</h3>
-              <p className="mt-2 text-sm text-text-muted">Yes! Get 3 free fills per month with no credit card required. Pro gives unlimited fills for {PRICING.pro.monthly.labelWithPeriod}.</p>
+              <p className="mt-2 text-sm text-text-muted">Yes. You can upload a file and start filling without a credit card.</p>
             </div>
             <div className="rounded-xl border border-border bg-surface-alt p-6">
               <h3 className="font-semibold text-base">Is it secure?</h3>
@@ -1108,134 +1037,8 @@ export default function Home() {
               <p className="mt-2 text-sm text-text-muted">Yes. QuickFill works with any PDF form and includes ready-made government templates: TFN declarations, Centrelink income forms, Medicare enrolment, NDIS service agreements, and more.</p>
             </div>
             <div className="rounded-xl border border-border bg-surface-alt p-6">
-              <h3 className="font-semibold text-base">What&apos;s the difference between free and Pro?</h3>
-              <p className="mt-2 text-sm text-text-muted">Free gives 3 fills per month. Pro ({PRICING.pro.monthly.labelWithPeriod}) gives unlimited fills and access to all ready-made templates.</p>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Pricing */}
-      <section id="pricing" className="scroll-mt-24 bg-surface px-4 py-20 sm:px-6 lg:px-8">
-        <div className="mx-auto max-w-5xl">
-          <h2 className="text-center text-3xl font-bold tracking-tight sm:text-4xl">
-            Simple, transparent pricing
-          </h2>
-          <p className="mx-auto mt-4 max-w-xl text-center text-text-muted">
-            Start free. Upgrade when you need unlimited downloads and no watermark.
-          </p>
-
-          <div className="mx-auto mt-12 grid max-w-4xl gap-6 lg:grid-cols-2 lg:items-stretch">
-            <div className="flex flex-col rounded-lg border border-border bg-surface p-6 shadow-sm">
-              <div>
-                <h3 className="text-lg font-semibold">Free</h3>
-                <div className="mt-5 flex items-end gap-2">
-                  <span className="text-4xl font-extrabold leading-none">$0</span>
-                  <span className="pb-1 text-sm text-text-muted">/month</span>
-                </div>
-                <p className="mt-4 text-sm text-text-muted">Perfect for occasional paperwork.</p>
-              </div>
-
-              <div className="mt-6">
-                <p className="text-xs font-semibold uppercase text-text-muted">Free includes</p>
-                <ul className="mt-3 space-y-3">
-                  {[
-                    "3 documents per month",
-                    "All field types",
-                    "AcroForm detection",
-                    "Instant PDF download",
-                  ].map((item) => (
-                    <li key={item} className="flex items-start gap-2 text-sm">
-                      <Check className="mt-0.5 h-4 w-4 shrink-0 text-accent" />
-                      <span>{item}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-
-              <div className="mt-auto pt-8">
-                <Link
-                  href="/sign-up"
-                  onClick={() => {
-                    trackEvent("home_cta_click", { cta: "pricing_free" });
-                    trackMetaEvent('Lead', { content_name: 'pricing_free' });
-                  }}
-                  className="flex h-11 items-center justify-center rounded-lg border-2 border-accent text-sm font-semibold text-accent hover:bg-accent/10 transition-colors"
-                >
-                  Get Started Free
-                </Link>
-              </div>
-            </div>
-
-            <div className="flex flex-col overflow-hidden rounded-lg border-2 border-accent bg-surface shadow-xl shadow-accent/15">
-              <div className="bg-navy p-6 text-white">
-                <div className="flex items-start justify-between gap-4">
-                  <div>
-                    <h3 className="text-lg font-semibold">Pro</h3>
-                    <p className="mt-1 text-sm text-gray-300">Unlimited fills, no watermark, priority support.</p>
-                  </div>
-                  <span className="rounded-full bg-accent px-3 py-1 text-xs font-semibold text-white">
-                    Best value
-                  </span>
-                </div>
-                <div className="mt-6">
-                  <span className="inline-flex rounded-full bg-emerald-400/20 px-3 py-1 text-xs font-bold uppercase tracking-wide text-emerald-300">
-                    {PRICING.pro.monthly.introBadge}
-                  </span>
-                  <div className="mt-2 flex items-end gap-2">
-                    <span className="text-4xl font-extrabold leading-none">{PRICING.pro.monthly.introLabel}</span>
-                    <span className="pb-1 text-sm text-gray-300">today</span>
-                  </div>
-                  <p className="mt-2 text-sm text-gray-300">{PRICING.pro.monthly.thenLabel}. Cancel anytime.</p>
-                  <p className="mt-1 text-sm text-gray-300">{PRICING.pro.annual.orLabel}, {PRICING.pro.annual.savingsLabel}.</p>
-                </div>
-              </div>
-
-              <div className="flex flex-1 flex-col p-6">
-                <p className="text-xs font-semibold uppercase text-text-muted">Pro adds</p>
-                <ul className="mt-3 grid gap-3 sm:grid-cols-2">
-                  {[
-                    "Unlimited documents",
-                    "No watermarks",
-                    "Fill faster with saved details",
-                    "Save and resume",
-                    "Re-fill from history",
-                    "Priority support",
-                  ].map((item) => (
-                    <li key={item} className="flex items-start gap-2 text-sm">
-                      <Check className="mt-0.5 h-4 w-4 shrink-0 text-accent" />
-                      <span>{item}</span>
-                    </li>
-                  ))}
-                </ul>
-
-                <div className="mt-auto pt-8">
-                  <button
-                    onClick={() => handleUpgrade("pro", false)}
-                    disabled={!!upgradingPlan}
-                    className="flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-accent text-sm font-semibold text-white hover:bg-accent-hover transition-colors disabled:opacity-70"
-                  >
-                    {upgradingPlan === "pro_monthly" ? (
-                      <><div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" /> Loading...</>
-                    ) : (
-                      <><Sparkles className="h-4 w-4" /> {PRICING.pro.monthly.ctaLabel}</>
-                    )}
-                  </button>
-                  <button
-                    onClick={() => handleUpgrade("pro", true)}
-                    disabled={!!upgradingPlan}
-                    className="mt-3 flex h-10 w-full items-center justify-center rounded-lg border border-border text-sm font-semibold text-text hover:bg-surface-alt transition-colors disabled:opacity-70"
-                  >
-                    {upgradingPlan === "pro_annual" ? "Loading..." : PRICING.pro.annual.ctaLabel}
-                  </button>
-                  <p className="mt-3 text-center text-xs font-medium text-text">
-                    {PRICING.pro.monthly.finePrint}
-                  </p>
-                  <p className="mt-1 text-center text-xs text-text-muted">
-                    Secure checkout by Stripe.
-                  </p>
-                </div>
-              </div>
+              <h3 className="font-semibold text-base">When do I see download options?</h3>
+              <p className="mt-2 text-sm text-text-muted">After you finish editing and choose Download, QuickFill shows the right next step for your document.</p>
             </div>
           </div>
         </div>
@@ -1248,7 +1051,6 @@ export default function Home() {
           <div className="grid grid-cols-2 gap-x-8 gap-y-2 sm:flex sm:gap-6">
             <Link href="/editor" className="text-sm text-gray-400 hover:text-white transition-colors">Fill a PDF</Link>
             <Link href="/templates" className="text-sm text-gray-400 hover:text-white transition-colors">Templates</Link>
-            <Link href="/pricing" className="text-sm text-gray-400 hover:text-white transition-colors">Pricing</Link>
             <Link href="/how-it-works" className="text-sm text-gray-400 hover:text-white transition-colors">How It Works</Link>
             {isSignedIn ? (
               <>
@@ -1258,6 +1060,7 @@ export default function Home() {
             ) : (
               <Link href="/sign-in" className="text-sm text-gray-400 hover:text-white transition-colors">Sign In</Link>
             )}
+            <Link href="/support" className="text-sm text-gray-400 hover:text-white transition-colors">Support</Link>
             <Link href="/privacy" className="text-sm text-gray-400 hover:text-white transition-colors">Privacy</Link>
             <Link href="/terms" className="text-sm text-gray-400 hover:text-white transition-colors">Terms</Link>
           </div>

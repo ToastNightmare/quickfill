@@ -17,7 +17,7 @@ type SupportCategory = "billing" | "account" | "pdf" | "bug" | "general";
 
 const CATEGORY_OPTIONS: { value: SupportCategory; label: string }[] = [
   { value: "billing", label: "Billing" },
-  { value: "account", label: "Pro account" },
+  { value: "account", label: "Account" },
   { value: "pdf", label: "PDF download issue" },
   { value: "bug", label: "Bug report" },
   { value: "general", label: "General" },

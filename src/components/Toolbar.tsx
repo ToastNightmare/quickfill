@@ -305,12 +305,6 @@ export function Toolbar({
             PRO
           </span>
         </div>
-      ) : isPro === false ? (
-        <div className="hidden border-t border-border px-2 py-2 sm:block">
-          <a href="/pricing" className="flex items-center gap-2 rounded-lg bg-accent/10 px-3 py-2 text-xs font-semibold text-accent transition-colors hover:bg-accent hover:text-white">
-            Upgrade to Pro
-          </a>
-        </div>
       ) : (
         <div className="hidden border-t border-border px-2 py-2 sm:block" aria-hidden="true" />
       )}
