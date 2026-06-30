@@ -18,6 +18,7 @@ export interface PdfViewerHandle {
   getCanvas: () => HTMLCanvasElement | null;
   getViewportDims: () => { width: number; height: number } | null;
   editField: (fieldId: string) => void;
+  getCompositePreviewURL: () => Promise<string | null>;
 }
 
 interface PdfViewerProps {
@@ -255,6 +256,40 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
       onToolSelect(null);
       onFieldSelect(fieldId);
       setEditingFieldId(fieldId);
+    },
+    getCompositePreviewURL: async (): Promise<string | null> => {
+      const pdfCanvas = canvasRef.current;
+      const stage = stageRef.current;
+      if (!pdfCanvas) return null;
+
+      const width = pdfCanvas.width;
+      const height = pdfCanvas.height;
+      if (width === 0 || height === 0) return null;
+
+      const offscreen = document.createElement("canvas");
+      offscreen.width = width;
+      offscreen.height = height;
+      const ctx = offscreen.getContext("2d");
+      if (!ctx) return null;
+
+      ctx.drawImage(pdfCanvas, 0, 0);
+
+      if (stage) {
+        const stageDataUrl = stage.toDataURL({ pixelRatio: 1 });
+        if (stageDataUrl) {
+          await new Promise<void>((resolve) => {
+            const img = new Image();
+            img.onload = () => {
+              ctx.drawImage(img, 0, 0);
+              resolve();
+            };
+            img.onerror = () => resolve();
+            img.src = stageDataUrl;
+          });
+        }
+      }
+
+      return offscreen.toDataURL("image/png");
     },
   }));
 
