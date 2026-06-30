@@ -79,16 +79,16 @@ export function DownloadPreviewGate({
         </div>
 
         <div className="mx-6 mt-6 overflow-hidden rounded-xl border border-border">
-          <div className="relative flex min-h-40 items-center justify-center bg-white">
+          <div className="relative flex min-h-48 items-center justify-center bg-white">
             {previewDataUrl ? (
               <img
                 src={previewDataUrl}
                 alt="Document preview"
-                className="h-auto w-full max-h-40 object-contain sm:max-h-56"
+                className="h-auto w-full max-h-48 object-contain sm:max-h-64"
               />
             ) : (
               <div
-                className="flex h-40 w-full items-center justify-center rounded-xl bg-surface-alt"
+                className="flex h-48 w-full items-center justify-center rounded-xl bg-surface-alt"
                 aria-label="Document preview loading"
               >
                 <FileText className="h-10 w-10 text-text-muted" />
@@ -126,7 +126,7 @@ export function DownloadPreviewGate({
               Unlock download for A$2
             </a>
             <p className="text-center text-xs text-text-muted">
-              A$12.50 first month. Then A$25/month unless cancelled.
+              A$2 today. Then A$25/month after 7 days. Cancel anytime.
             </p>
             <a
               href="/checkout?plan=pro&billing=annual&source=download_preview_gate"
