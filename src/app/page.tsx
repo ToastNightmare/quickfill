@@ -683,10 +683,10 @@ export default function Home() {
       <section className="relative overflow-hidden bg-navy px-4 py-20 sm:px-6 sm:py-24 lg:px-8">
         <div className="relative mx-auto max-w-5xl text-center">
           <h1 className="text-4xl font-extrabold tracking-tight text-white sm:text-5xl lg:text-6xl">
-            Upload. Fill. Sign. Download.
+            Stop printing locked PDFs forever
           </h1>
           <p className="mx-auto mt-6 max-w-2xl text-lg text-gray-300 sm:text-xl">
-            Upload your PDF, JPG, PNG, scan, or screenshot. Fill, mark up, sign, and finish your document online. No printing. No Adobe.
+            Fill any PDF form online: no Adobe, no printing, no scanning. Works on any device.
           </p>
           {/* Feature pills */}
           <div className="mt-6 flex flex-wrap items-center justify-center gap-3 text-sm text-gray-300">
@@ -706,7 +706,7 @@ export default function Home() {
               }}
               className="flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-accent px-6 text-base font-semibold text-white shadow-lg shadow-accent/25 hover:bg-accent-hover transition-colors sm:w-auto"
             >
-              Start editing first
+              Fill a PDF Free
               <ArrowRight className="h-4 w-4" />
             </Link>
             <Link
@@ -714,7 +714,7 @@ export default function Home() {
               onClick={() => trackEvent("home_cta_click", { cta: "hero_browse_templates" })}
               className="flex h-12 w-full items-center justify-center rounded-xl border border-white/20 px-6 text-base font-semibold text-white hover:bg-white/10 transition-colors sm:w-auto"
             >
-              Upload your file
+              Browse Templates
             </Link>
           </div>
           {/* Social proof */}
