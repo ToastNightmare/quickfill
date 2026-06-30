@@ -1,7 +1,7 @@
 "use client";
 
 import { Suspense, useState, useCallback, useEffect, useRef, useMemo } from "react";
-import { ChevronLeft, ChevronRight, Sparkles, X, RotateCcw, Minus, Plus, Download, ShieldCheck, LockKeyhole, BadgeCheck, FileText, CheckCircle } from "lucide-react";
+import { ChevronLeft, ChevronRight, Sparkles, X, RotateCcw, Minus, Plus, Download, ShieldCheck, LockKeyhole, BadgeCheck, FileText } from "lucide-react";
 import { UploadZone } from "@/components/UploadZone";
 import { MobileFiller } from "@/components/MobileFiller";
 import { Toolbar } from "@/components/Toolbar";
@@ -207,7 +207,6 @@ function EditorPageContent() {
   const [showDownloadPreviewGate, setShowDownloadPreviewGate] = useState(false);
   const [downloadPreviewUrl, setDownloadPreviewUrl] = useState<string | null>(null);
   const [showRestoredBanner, setShowRestoredBanner] = useState(false);
-  const [showGuestSignupPrompt, setShowGuestSignupPrompt] = useState(false);
   const [lastDownloadError, setLastDownloadError] = useState<string | null>(null);
   const [showSupportForm, setShowSupportForm] = useState(false);
   const [zoom, setZoom] = useState(100);
@@ -850,35 +849,23 @@ function EditorPageContent() {
     setIsDownloading(true);
     setLastDownloadError(null);
     try {
-      // Check usage before downloading
+      // Determine Pro status. Fail safe: any error or non-ok response treats user as non-Pro.
       let isPro = false;
-      let isGuest = false;
-      const usageRes = await fetch("/api/usage");
-      if (usageRes.ok) {
-        const usage = await usageRes.json();
-        isPro = usage.isPro;
-        isGuest = usage.tier === "guest";
-        
-        // Guest mode: check server-side fill count
-        if (isGuest && !isPro) {
-          const serverFillCount = usage.used || 0;
-          
-          // If this would be the 3rd fill, show the preview gate before download.
-          // Pro users never see this gate.
-          if (serverFillCount >= 3) {
-            trackEvent("free_limit_hit", { source: "guest_precheck", used: serverFillCount });
-            openDownloadPreviewGate();
-            setIsDownloading(false);
-            return;
-          }
+      try {
+        const usageRes = await fetch("/api/usage");
+        if (usageRes.ok) {
+          const usage = await usageRes.json();
+          isPro = Boolean(usage.isPro || usage.tier === "pro" || usage.tier === "business");
         }
+      } catch {
+      }
 
-        if (!isPro && !isGuest && usage.used >= usage.limit) {
-          trackEvent("free_limit_hit", { source: "user_precheck", used: usage.used, limit: usage.limit });
-          openDownloadPreviewGate();
-          setIsDownloading(false);
-          return;
-        }
+      // Non-Pro users always see the gate. Never call fill-pdf before payment.
+      if (!isPro) {
+        trackEvent("download_gate_shown", { source: "non_pro" });
+        openDownloadPreviewGate();
+        setIsDownloading(false);
+        return;
       }
 
       // Build FormData and send to server-side fill API
@@ -912,7 +899,7 @@ function EditorPageContent() {
       if (!fillRes.ok) {
         const errBody = await fillRes.json().catch(() => ({ error: "Server error" }));
         if (fillRes.status === 402) {
-          trackEvent("free_limit_hit", { source: "api_402", guest: isGuest });
+          trackEvent("download_gate_shown", { source: "api_402_safety" });
           openDownloadPreviewGate();
           setIsDownloading(false);
           return;
@@ -948,18 +935,8 @@ function EditorPageContent() {
       trackEvent("download_success", {
         fieldCount: fields.length,
         pageCount: totalPages || 1,
-        guest: isGuest,
         pro: isPro,
       });
-
-      if (!isPro) {
-        showToast("Download includes QuickFill watermark. Upgrade to Pro to remove it.", 5000);
-      }
-
-      // For guest mode, show signup prompt after download
-      if (isGuest) {
-        setShowGuestSignupPrompt(true);
-      }
 
       // Clear saved session after successful download
       try {
@@ -1600,27 +1577,6 @@ function EditorPageContent() {
                 Cancel
               </button>
             </div>
-          </div>
-        </div>
-      )}
-
-      {/* Guest signup prompt modal */}
-      {showGuestSignupPrompt && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-          <div className="w-full max-w-md rounded-2xl bg-surface p-8 shadow-2xl text-center">
-            <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-accent/10">
-              <CheckCircle className="h-6 w-6 text-accent" />
-            </div>
-            <h2 className="text-xl font-bold mb-2">Your PDF is ready!</h2>
-            <p className="text-text-muted text-sm mb-6">
-              Create a free account to get 3 fills per month, save your details, and re-fill forms faster.
-            </p>
-            <Link href="/sign-up" className="flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-accent text-sm font-semibold text-white hover:bg-accent-hover transition-colors mb-3">
-              Create Free Account
-            </Link>
-            <button onClick={() => setShowGuestSignupPrompt(false)} className="text-sm text-text-muted hover:text-text transition-colors">
-              Maybe later
-            </button>
           </div>
         </div>
       )}
