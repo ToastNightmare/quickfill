@@ -1,7 +1,7 @@
 "use client";
 
 import { Suspense, useState, useCallback, useEffect, useRef, useMemo } from "react";
-import { ChevronLeft, ChevronRight, Sparkles, X, RotateCcw, Minus, Plus, Download, Zap, ShieldCheck, LockKeyhole, BadgeCheck, FileText, CheckCircle } from "lucide-react";
+import { ChevronLeft, ChevronRight, Sparkles, X, RotateCcw, Minus, Plus, Download, ShieldCheck, LockKeyhole, BadgeCheck, FileText } from "lucide-react";
 import { UploadZone } from "@/components/UploadZone";
 import { MobileFiller } from "@/components/MobileFiller";
 import { Toolbar } from "@/components/Toolbar";
@@ -11,6 +11,7 @@ import { SignatureModal } from "@/components/SignatureModal";
 import { WelcomeModal } from "@/components/WelcomeModal";
 import { TourModal } from "@/components/TourModal";
 import { SupportForm } from "@/components/SupportForm";
+import { DownloadPreviewGate } from "@/components/DownloadPreviewGate";
 import type { PdfViewerHandle } from "@/components/PdfViewer";
 import { useHistory } from "@/lib/use-history";
 import { detectAcroFormFields } from "@/lib/pdf-utils";
@@ -38,7 +39,6 @@ import { runEditorProfileAutofill, trackEditorAutofillShadowReport } from "@/lib
 import { createEditorFieldId, repairDuplicateEditorFieldIds, withUniqueEditorFieldId } from "@/lib/field-ids";
 import { loadPdfjsClient } from "@/lib/pdfjs-client";
 import { getTemplateBySlug, isTemplateFillable, type TemplateConfig } from "@/lib/templates-config";
-import { PRICING } from "@/lib/pricing";
 import { PDF_UPLOAD_MAX_BYTES, PDF_UPLOAD_MAX_LABEL } from "@/lib/upload-limits";
 import { filledDocumentFilename, type NormalizedDocumentUpload } from "@/lib/document-intake";
 
@@ -204,10 +204,9 @@ function EditorPageContent() {
   const [totalPages, setTotalPages] = useState(0);
   const [hasAcroForm, setHasAcroForm] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
-  const [showUpgradeModal, setShowUpgradeModal] = useState(false);
-  const [showGuestUpsellModal, setShowGuestUpsellModal] = useState(false);
+  const [showDownloadPreviewGate, setShowDownloadPreviewGate] = useState(false);
+  const [downloadPreviewUrl, setDownloadPreviewUrl] = useState<string | null>(null);
   const [showRestoredBanner, setShowRestoredBanner] = useState(false);
-  const [showGuestSignupPrompt, setShowGuestSignupPrompt] = useState(false);
   const [lastDownloadError, setLastDownloadError] = useState<string | null>(null);
   const [showSupportForm, setShowSupportForm] = useState(false);
   const [zoom, setZoom] = useState(100);
@@ -229,9 +228,11 @@ function EditorPageContent() {
   const [showWelcomeModal, setShowWelcomeModal] = useState(false);
   const [showTour, setShowTour] = useState(false);
   const [activeTemplate, setActiveTemplate] = useState<string | null>(null);
+  const { isLoaded, isSignedIn } = useAuth();
   const { fields, set: setFields, undo, redo, reset, canUndo, canRedo } = useHistory();
   const restoredRef = useRef(false);
   const initialRestoreDoneRef = useRef(false);
+  const downloadReadyFiredRef = useRef(false);
   const searchParams = useSearchParams();
   const advancedMobile = searchParams.get("advanced") === "1";
   const showFullEditorOnMobile = advancedMobile || Boolean(pdfBytes);
@@ -825,6 +826,18 @@ function EditorPageContent() {
     setSignatureModalOpen(false);
   }, [pendingSignatureField, savedSignature, setFields]);
 
+  const openDownloadPreviewGate = useCallback(() => {
+    setShowDownloadPreviewGate(false);
+    setDownloadPreviewUrl(null);
+    setShowDownloadPreviewGate(true);
+
+    void pdfViewerRef.current?.getCompositePreviewURL()
+      .then((url) => {
+        if (url) setDownloadPreviewUrl(url);
+      })
+      .catch(() => {});
+  }, []);
+
   const handleDownload = useCallback(async () => {
     if (!pdfBytes) return;
     trackEvent("download_attempt", {
@@ -836,35 +849,23 @@ function EditorPageContent() {
     setIsDownloading(true);
     setLastDownloadError(null);
     try {
-      // Check usage before downloading
+      // Determine Pro status. Fail safe: any error or non-ok response treats user as non-Pro.
       let isPro = false;
-      let isGuest = false;
-      const usageRes = await fetch("/api/usage");
-      if (usageRes.ok) {
-        const usage = await usageRes.json();
-        isPro = usage.isPro;
-        isGuest = usage.tier === "guest";
-        
-        // Guest mode: check server-side fill count
-        if (isGuest && !isPro) {
-          const serverFillCount = usage.used || 0;
-          
-          // If this would be the 3rd fill, show upsell modal BEFORE download
-          // Pro users never see this modal
-          if (serverFillCount >= 3) {
-            trackEvent("free_limit_hit", { source: "guest_precheck", used: serverFillCount });
-            setShowGuestUpsellModal(true);
-            setIsDownloading(false);
-            return;
-          }
+      try {
+        const usageRes = await fetch("/api/usage");
+        if (usageRes.ok) {
+          const usage = await usageRes.json();
+          isPro = Boolean(usage.isPro || usage.tier === "pro" || usage.tier === "business");
         }
-        
-        if (!isPro && !isGuest && usage.used >= usage.limit) {
-          trackEvent("free_limit_hit", { source: "user_precheck", used: usage.used, limit: usage.limit });
-          setShowUpgradeModal(true);
-          setIsDownloading(false);
-          return;
-        }
+      } catch {
+      }
+
+      // Non-Pro users always see the gate. Never call fill-pdf before payment.
+      if (!isPro) {
+        trackEvent("download_gate_shown", { source: "non_pro" });
+        openDownloadPreviewGate();
+        setIsDownloading(false);
+        return;
       }
 
       // Build FormData and send to server-side fill API
@@ -898,9 +899,9 @@ function EditorPageContent() {
       if (!fillRes.ok) {
         const errBody = await fillRes.json().catch(() => ({ error: "Server error" }));
         if (fillRes.status === 402) {
-          trackEvent("free_limit_hit", { source: "api_402", guest: isGuest });
-          if (isGuest) setShowGuestUpsellModal(true);
-          else setShowUpgradeModal(true);
+          trackEvent("download_gate_shown", { source: "api_402_safety" });
+          openDownloadPreviewGate();
+          setIsDownloading(false);
           return;
         }
         throw new Error(errBody.error || `Server responded ${fillRes.status}`);
@@ -934,18 +935,8 @@ function EditorPageContent() {
       trackEvent("download_success", {
         fieldCount: fields.length,
         pageCount: totalPages || 1,
-        guest: isGuest,
         pro: isPro,
       });
-
-      if (!isPro) {
-        showToast("Download includes QuickFill watermark. Upgrade to Pro to remove it.", 5000);
-      }
-
-      // For guest mode, show signup prompt after download
-      if (isGuest) {
-        setShowGuestSignupPrompt(true);
-      }
 
       // Clear saved session after successful download
       try {
@@ -965,7 +956,25 @@ function EditorPageContent() {
     } finally {
       setIsDownloading(false);
     }
-  }, [pdfBytes, fields, pageScales, hasAcroForm, fileName, totalPages, showToast]);
+  }, [pdfBytes, fields, pageScales, hasAcroForm, fileName, totalPages, showToast, openDownloadPreviewGate]);
+
+  useEffect(() => {
+    if (!isLoaded || !isSignedIn) return;
+    if (!pdfBytes) return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("download") !== "ready") return;
+    if (downloadReadyFiredRef.current) return;
+    downloadReadyFiredRef.current = true;
+
+    fetch("/api/usage")
+      .then((res) => res.ok ? res.json() : null)
+      .then((usage) => {
+        if (usage?.isPro || usage?.tier === "pro") {
+          handleDownload();
+        }
+      })
+      .catch(() => {});
+  }, [isLoaded, isSignedIn, pdfBytes, handleDownload]);
 
   const handlePageScaleSet = useCallback(
     (page: number, scale: number) => {
@@ -1572,123 +1581,12 @@ function EditorPageContent() {
         </div>
       )}
 
-      {/* Guest signup prompt modal */}
-      {showGuestSignupPrompt && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-          <div className="w-full max-w-md rounded-2xl bg-surface p-8 shadow-2xl text-center">
-            <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-accent/10">
-              <CheckCircle className="h-6 w-6 text-accent" />
-            </div>
-            <h2 className="text-xl font-bold mb-2">Your PDF is ready!</h2>
-            <p className="text-text-muted text-sm mb-6">
-              Create a free account to get 3 fills per month, save your details, and re-fill forms faster.
-            </p>
-            <Link href="/sign-up" className="flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-accent text-sm font-semibold text-white hover:bg-accent-hover transition-colors mb-3">
-              Create Free Account
-            </Link>
-            <button onClick={() => setShowGuestSignupPrompt(false)} className="text-sm text-text-muted hover:text-text transition-colors">
-              Maybe later
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Guest 3rd-fill upsell modal */}
-      {showGuestUpsellModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4">
-          <div className="w-full max-w-md rounded-2xl bg-surface p-8 shadow-2xl text-center">
-            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-yellow-500/20 mb-4">
-              <Zap className="h-8 w-8 text-yellow-500" />
-            </div>
-            <h2 className="text-2xl font-bold mb-2">You&apos;ve used your 3 free fills</h2>
-            <p className="text-text-muted text-sm mb-6">
-              Upgrade to QuickFill Pro for unlimited fills with no watermarks.
-            </p>
-            
-            {/* Price comparison */}
-            <div className="bg-surface-alt rounded-xl p-4 mb-6">
-              <div className="flex items-center justify-center gap-4 text-sm">
-                <div className="text-text-muted">
-                  <span className="line-through">Adobe $24/mo</span>
-                </div>
-                <div className="text-green-500 font-bold">vs</div>
-                <div className="text-accent font-bold">
-                  QuickFill Pro {PRICING.pro.annual.perMonthLabel}
-                </div>
-              </div>
-            </div>
-            
-            <div className="flex flex-col gap-3">
-              <Link
-                href="/checkout?plan=pro&billing=monthly&source=editor_guest_upsell"
-                className="flex h-11 w-full items-center justify-center rounded-xl bg-accent text-sm font-semibold text-white hover:bg-accent-hover transition-colors"
-              >
-                {PRICING.pro.monthly.ctaLabel}
-              </Link>
-              <p className="text-xs text-text-muted">{PRICING.pro.monthly.finePrint}</p>
-              <Link
-                href="/checkout?plan=pro&billing=annual&source=editor_guest_upsell"
-                className="flex h-10 w-full items-center justify-center rounded-xl border border-border text-sm font-semibold text-text hover:bg-surface-alt transition-colors"
-              >
-                {PRICING.pro.annual.ctaLabel}
-              </Link>
-              <p className="text-xs text-text-muted">{PRICING.pro.annual.perMonthBilledAnnually}. {PRICING.pro.annual.disclosure}</p>
-              <button
-                onClick={() => setShowGuestUpsellModal(false)}
-                className="text-sm text-text-muted hover:text-text transition-colors"
-              >
-                Maybe later
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Upgrade modal */}
-      {showUpgradeModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4">
-          <div className="w-full max-w-md rounded-2xl bg-surface p-8 shadow-2xl">
-            <div className="text-center">
-              <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-accent/10">
-                <Sparkles className="h-7 w-7 text-accent" />
-              </div>
-              <h2 className="mt-4 text-xl font-bold">Free limit reached</h2>
-              <p className="mt-2 text-sm text-text-muted">
-                You have used all 3 of your free fills this month.
-              </p>
-              <div className="mt-4 rounded-xl bg-surface-alt p-4">
-                <div className="flex items-center justify-center gap-4 text-sm">
-                  <span className="text-text-muted line-through">Adobe $24/mo</span>
-                  <span className="font-bold text-green-500">vs</span>
-                  <span className="font-bold text-accent">QuickFill Pro {PRICING.pro.annual.perMonthLabel}</span>
-                </div>
-              </div>
-              <div className="mt-5 flex flex-col gap-3">
-                <Link
-                  href="/checkout?plan=pro&billing=monthly&source=editor_limit_modal"
-                  className="flex h-11 w-full items-center justify-center rounded-xl bg-accent text-sm font-semibold text-white hover:bg-accent-hover transition-colors"
-                >
-                  {PRICING.pro.monthly.ctaLabel}
-                </Link>
-                <p className="text-xs text-text-muted">{PRICING.pro.monthly.finePrint}</p>
-                <Link
-                  href="/checkout?plan=pro&billing=annual&source=editor_limit_modal"
-                  className="flex h-10 w-full items-center justify-center rounded-xl border border-border text-sm font-semibold text-text hover:bg-surface-alt transition-colors"
-                >
-                  {PRICING.pro.annual.ctaLabel}
-                </Link>
-                <p className="text-xs text-text-muted">{PRICING.pro.annual.perMonthBilledAnnually}. {PRICING.pro.annual.disclosure}</p>
-                <button
-                  onClick={() => setShowUpgradeModal(false)}
-                  className="flex h-11 w-full items-center justify-center rounded-xl border border-border text-sm font-semibold hover:bg-surface-alt transition-colors"
-                >
-                  Maybe later
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      <DownloadPreviewGate
+        open={showDownloadPreviewGate}
+        onClose={() => setShowDownloadPreviewGate(false)}
+        previewDataUrl={downloadPreviewUrl}
+        fileName={fileName}
+      />
 
       {/* Welcome modal for first-time users */}
       {showWelcomeModal && (

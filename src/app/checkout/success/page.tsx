@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { CheckCircle2, FileText, Loader2, RefreshCw, Sparkles } from "lucide-react";
+import { CheckCircle2, Download, FileText, Loader2, RefreshCw, Sparkles } from "lucide-react";
 import { trackGoogleAdsConversion } from "@/lib/google-ads";
 import { PRICING } from "@/lib/pricing";
 
@@ -237,7 +237,18 @@ function CheckoutSuccessContent() {
                 <FileText className="h-4 w-4 text-accent" />
                 Fill your first Pro PDF
               </Link>
+              <Link
+                href="/editor?download=ready"
+                className="flex h-12 items-center justify-center gap-2 rounded-xl bg-accent px-5 text-sm font-semibold text-white transition-colors hover:bg-accent-hover sm:col-span-2"
+              >
+                <Download className="h-4 w-4" />
+                Download your document
+              </Link>
             </div>
+
+            <p className="mt-4 text-center text-xs text-text-muted">
+              Tip: press <kbd className="rounded border border-border bg-surface-alt px-1.5 py-0.5 text-xs font-mono">Ctrl+D</kbd> / <kbd className="rounded border border-border bg-surface-alt px-1.5 py-0.5 text-xs font-mono">Cmd+D</kbd> to bookmark QuickFill for next time.
+            </p>
 
             <div className="mt-8 rounded-xl bg-surface-alt p-5 text-sm text-text-muted">
               <p className="font-semibold text-text">What&apos;s unlocked</p>
