@@ -40,7 +40,12 @@ export default function CheckoutPage() {
         const res = await fetch("/api/stripe/checkout", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ plan: "pro", annual: billing === "annual", ...getStoredUtm() }),
+          body: JSON.stringify({
+            plan: "pro",
+            annual: billing === "annual",
+            source,
+            ...getStoredUtm(),
+          }),
         });
         const data = await res.json().catch(() => ({}));
         if (cancelled) return;
