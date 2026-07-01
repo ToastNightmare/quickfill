@@ -79,16 +79,16 @@ export function DownloadPreviewGate({
         </div>
 
         <div className="mx-6 mt-6 overflow-hidden rounded-xl border border-border">
-          <div className="relative flex min-h-48 items-center justify-center bg-white">
+          <div className="relative flex min-h-56 items-center justify-center bg-white p-3 sm:min-h-80">
             {previewDataUrl ? (
               <img
                 src={previewDataUrl}
                 alt="Document preview"
-                className="h-auto w-full max-h-48 object-contain sm:max-h-64"
+                className="h-auto w-full max-h-56 object-contain sm:max-h-80"
               />
             ) : (
               <div
-                className="flex h-48 w-full items-center justify-center rounded-xl bg-surface-alt"
+                className="flex h-56 w-full items-center justify-center rounded-xl bg-surface-alt sm:h-80"
                 aria-label="Document preview loading"
               >
                 <FileText className="h-10 w-10 text-text-muted" />
@@ -104,9 +104,22 @@ export function DownloadPreviewGate({
 
         <div className="px-8 py-6">
           <div className="text-center">
-            <p className="text-2xl font-bold text-text">Start with 7 days for A$2</p>
-            <p className="mt-1 text-sm text-text-muted">Then A$25/month. Cancel anytime.</p>
-            <p className="mt-1 text-xs text-text-muted">Or choose annual for A$149/year below.</p>
+            <p className="text-xl font-bold text-text">Unlock your clean PDF today</p>
+            <p className="mt-1 text-sm text-text-muted">
+              A$2 for 7 days, then A$25/month. Cancel anytime.
+            </p>
+          </div>
+
+          <div className="mt-6 flex flex-col gap-3">
+            <a
+              href="/checkout?plan=pro&billing=monthly&source=download_preview_gate"
+              className="flex h-12 w-full items-center justify-center rounded-xl bg-accent px-4 text-sm font-semibold text-white transition-colors hover:bg-accent-hover"
+            >
+              Unlock download for A$2
+            </a>
+            <p className="text-center text-xs text-text-muted">
+              Start with 7 days for A$2, then A$25/month after 7 days. Cancel anytime.
+            </p>
           </div>
 
           <ul className="mt-4 rounded-xl bg-surface-alt p-4 text-sm text-text-muted">
@@ -119,15 +132,6 @@ export function DownloadPreviewGate({
           </ul>
 
           <div className="mt-6 flex flex-col gap-3">
-            <a
-              href="/checkout?plan=pro&billing=monthly&source=download_preview_gate"
-              className="flex h-12 w-full items-center justify-center rounded-xl bg-accent px-4 text-sm font-semibold text-white transition-colors hover:bg-accent-hover"
-            >
-              Unlock download for A$2
-            </a>
-            <p className="text-center text-xs text-text-muted">
-              A$2 today. Then A$25/month after 7 days. Cancel anytime.
-            </p>
             <a
               href="/checkout?plan=pro&billing=annual&source=download_preview_gate"
               className="flex h-10 w-full items-center justify-center rounded-xl border border-border px-4 text-sm font-semibold text-text transition-colors hover:bg-surface-alt"

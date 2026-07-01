@@ -39,9 +39,11 @@ describe("DownloadPreviewGate", () => {
   it("shows offer copy: A$2, A$25, A$149", () => {
     renderGate();
 
-    expect(screen.getByText("Start with 7 days for A$2")).toBeInTheDocument();
-    expect(screen.getByText("Then A$25/month. Cancel anytime.")).toBeInTheDocument();
-    expect(screen.getByText("Or choose annual for A$149/year below.")).toBeInTheDocument();
+    expect(screen.getByText("Unlock your clean PDF today")).toBeInTheDocument();
+    expect(screen.getByText("A$2 for 7 days, then A$25/month. Cancel anytime.")).toBeInTheDocument();
+    expect(
+      screen.getByText("Start with 7 days for A$2, then A$25/month after 7 days. Cancel anytime.")
+    ).toBeInTheDocument();
   });
 
   it("shows 'Keep editing' button", () => {
