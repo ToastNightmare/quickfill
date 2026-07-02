@@ -14,6 +14,7 @@ import {
   Map,
   Save,
   FilePlus2,
+  FileMinus2,
   PaintBucket,
   Magnet,
   HelpCircle,
@@ -40,6 +41,8 @@ interface ToolbarProps {
   onStartOver?: () => void;
   onAddPage?: () => void;
   isAddingPage?: boolean;
+  onRemovePage?: () => void;
+  canRemovePage?: boolean;
   canUndo: boolean;
   canRedo: boolean;
   isDownloading: boolean;
@@ -90,6 +93,8 @@ export function Toolbar({
   onStartOver,
   onAddPage,
   isAddingPage,
+  onRemovePage,
+  canRemovePage,
   canUndo,
   canRedo,
   isDownloading,
@@ -173,7 +178,7 @@ export function Toolbar({
           </button>
         </div>
 
-        <div className={`mt-2 grid ${onAddPage ? "grid-cols-6" : "grid-cols-5"} gap-2`}>
+        <div className={`mt-2 grid ${[onAddPage, onRemovePage].filter(Boolean).length === 2 ? "grid-cols-7" : onAddPage || onRemovePage ? "grid-cols-6" : "grid-cols-5"} gap-2`}>
           <IconButton onClick={onUndo} disabled={!canUndo} title="Undo" icon={Undo2} />
           <IconButton onClick={onRedo} disabled={!canRedo} title="Redo" icon={Redo2} />
           {onAddPage && (
@@ -182,6 +187,15 @@ export function Toolbar({
               title="Add a page from a PDF, JPG, or PNG"
               icon={FilePlus2}
               disabled={isAddingPage}
+            />
+          )}
+          {onRemovePage && (
+            <IconButton
+              onClick={onRemovePage}
+              title="Remove the current page"
+              icon={FileMinus2}
+              disabled={!canRemovePage}
+              danger
             />
           )}
           <IconButton
@@ -287,6 +301,18 @@ export function Toolbar({
           >
             <FilePlus2 className="h-4 w-4 shrink-0" />
             <span className="hidden sm:inline">{isAddingPage ? "Adding Page" : "Add Page"}</span>
+          </button>
+        )}
+
+        {onRemovePage && (
+          <button
+            onClick={onRemovePage}
+            disabled={!canRemovePage}
+            title={canRemovePage ? "Remove the current page" : "You can't remove the only page"}
+            className="flex h-8 items-center gap-3 rounded-lg px-2 text-sm font-medium text-text-muted transition-colors hover:bg-red-50 hover:text-red-600 disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-text-muted"
+          >
+            <FileMinus2 className="h-4 w-4 shrink-0" />
+            <span className="hidden sm:inline">Remove Page</span>
           </button>
         )}
 

@@ -1,4 +1,5 @@
 import { PDFArray, PDFDict, PDFDocument, PDFName, rgb, type PDFObject } from "pdf-lib";
+import type { EditorField } from "@/lib/types";
 import { filledPdfFilename, sanitizePdfFilename } from "@/lib/pdf-download-response";
 import { DOCUMENT_UPLOAD_LABEL, PDF_UPLOAD_MAX_BYTES, PDF_UPLOAD_MAX_LABEL } from "@/lib/upload-limits";
 
@@ -21,7 +22,14 @@ const IMAGE_EXTENSIONS = [".jpg", ".jpeg", ".png"];
 export class DocumentIntakeError extends Error {
   constructor(
     message: string,
-    public readonly code: "unsupported" | "too_large" | "unreadable_image" | "merged_too_large" | "append_failed"
+    public readonly code:
+      | "unsupported"
+      | "too_large"
+      | "unreadable_image"
+      | "merged_too_large"
+      | "append_failed"
+      | "last_page"
+      | "remove_failed"
   ) {
     super(message);
     this.name = "DocumentIntakeError";
@@ -32,6 +40,11 @@ export type AppendUploadResult = {
   pdfBytes: ArrayBuffer;
   addedPageCount: number;
   firstAddedPageIndex: number;
+};
+
+export type RemovePageResult = {
+  pdfBytes: ArrayBuffer;
+  newPageCount: number;
 };
 
 function fileExtension(fileName: string) {
@@ -287,6 +300,50 @@ export async function appendUploadToDocument(
   }
 
   return { pdfBytes: mergedBytes, addedPageCount, firstAddedPageIndex };
+}
+
+/**
+ * Remove one page from an existing PDF document.
+ *
+ * - Refuses to remove the only page.
+ * - Output is re-validated before being returned.
+ */
+export async function removePageFromDocument(
+  existingBytes: ArrayBuffer,
+  pageIndex: number
+): Promise<RemovePageResult> {
+  try {
+    const doc = await PDFDocument.load(existingBytes, { ignoreEncryption: true });
+    const pageCount = doc.getPageCount();
+
+    if (pageCount <= 1) {
+      throw new DocumentIntakeError(
+        "You can't remove the only page. Start over to use a different document.",
+        "last_page"
+      );
+    }
+    if (!Number.isInteger(pageIndex) || pageIndex < 0 || pageIndex >= pageCount) {
+      throw new Error(`Page index ${pageIndex} out of range`);
+    }
+
+    doc.removePage(pageIndex);
+    const pdfBytes = exactArrayBuffer(await doc.save({ useObjectStreams: false }));
+    await assertLoadablePdf(pdfBytes);
+    return { pdfBytes, newPageCount: pageCount - 1 };
+  } catch (error) {
+    if (error instanceof DocumentIntakeError) throw error;
+    throw new DocumentIntakeError("This page could not be removed. Please try again.", "remove_failed");
+  }
+}
+
+/**
+ * Drop fields on the removed page and shift fields on later pages down by one.
+ * Fields on earlier pages are returned unchanged.
+ */
+export function shiftFieldsAfterPageRemoval(fields: EditorField[], removedPageIndex: number): EditorField[] {
+  return fields
+    .filter((field) => field.page !== removedPageIndex)
+    .map((field) => (field.page > removedPageIndex ? { ...field, page: field.page - 1 } : field));
 }
 
 export function filledDocumentFilename(originalName: string | null | undefined) {

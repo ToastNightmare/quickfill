@@ -40,7 +40,7 @@ import { createEditorFieldId, repairDuplicateEditorFieldIds, withUniqueEditorFie
 import { loadPdfjsClient } from "@/lib/pdfjs-client";
 import { getTemplateBySlug, isTemplateFillable, type TemplateConfig } from "@/lib/templates-config";
 import { DOCUMENT_FILE_INPUT_ACCEPT, PDF_UPLOAD_MAX_BYTES, PDF_UPLOAD_MAX_LABEL } from "@/lib/upload-limits";
-import { appendUploadToDocument, filledDocumentFilename, type NormalizedDocumentUpload } from "@/lib/document-intake";
+import { appendUploadToDocument, filledDocumentFilename, removePageFromDocument, shiftFieldsAfterPageRemoval, type NormalizedDocumentUpload } from "@/lib/document-intake";
 
 const ZOOM_LEVELS = [50, 75, 100, 125, 150, 175, 200];
 const SNAP_MIN = 125;
@@ -203,6 +203,8 @@ function EditorPageContent() {
   const [currentPage, setCurrentPage] = useState(0);
   const [isAddingPage, setIsAddingPage] = useState(false);
   const addPageInputRef = useRef<HTMLInputElement | null>(null);
+  const [showRemovePageConfirm, setShowRemovePageConfirm] = useState(false);
+  const [isRemovingPage, setIsRemovingPage] = useState(false);
   const [totalPages, setTotalPages] = useState(0);
   const [hasAcroForm, setHasAcroForm] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
@@ -742,6 +744,51 @@ function EditorPageContent() {
     },
     [pdfBytes, isAddingPage, markLocalSave]
   );
+
+  const handleRemovePageRequest = useCallback(() => {
+    if (totalPages <= 1) return;
+    setShowRemovePageConfirm(true);
+  }, [totalPages]);
+
+  const confirmRemovePage = useCallback(async () => {
+    if (!pdfBytes || totalPages <= 1 || isRemovingPage) return;
+    setIsRemovingPage(true);
+    try {
+      const result = await removePageFromDocument(pdfBytes, currentPage);
+      const newFields = shiftFieldsAfterPageRemoval(fields, currentPage);
+
+      // Persist first so a refresh cannot restore the removed page.
+      await savePdfToIndexedDB(result.pdfBytes);
+      saveFieldsToLocalStorage(newFields);
+      markLocalSave("saved");
+
+      // Page removal is not undoable: reset history so Ctrl+Z can never
+      // restore fields that point at a page which no longer exists.
+      setPdfBytes(result.pdfBytes);
+      reset(newFields);
+      setSelectedFieldId(null);
+      setTotalPages(result.newPageCount);
+      setCurrentPage(Math.min(currentPage, result.newPageCount - 1));
+      pageScales.clear(); // Page indexes shifted; scales repopulate on render.
+
+      trackEvent("page_removed", {
+        removedPageIndex: currentPage,
+        totalPages: result.newPageCount,
+      });
+      setToast("Page removed");
+      setTimeout(() => setToast(null), 3000);
+    } catch (err) {
+      const message =
+        err instanceof Error && err.message
+          ? err.message
+          : "This page could not be removed. Please try again.";
+      setToast(message);
+      setTimeout(() => setToast(null), 6000);
+    } finally {
+      setIsRemovingPage(false);
+      setShowRemovePageConfirm(false);
+    }
+  }, [pdfBytes, totalPages, isRemovingPage, currentPage, fields, reset, pageScales, markLocalSave]);
 
   const handleStartOver = useCallback(() => {
     clearEditorState();
@@ -1451,6 +1498,8 @@ function EditorPageContent() {
             onStartOver={handleStartOver}
             onAddPage={handleAddPageRequest}
             isAddingPage={isAddingPage}
+            onRemovePage={handleRemovePageRequest}
+            canRemovePage={totalPages > 1}
             onMinimapRefresh={() => { let qa = 0; const qp = () => { const c = pdfViewerRef.current?.getCanvas(); if (c) { try { const x = c.getContext("2d")?.getImageData(c.width/2,c.height/2,1,1); if (x && x.data[3]>0) { setMinimapCanvas(c); return; } } catch{} } if (qa++<15) setTimeout(qp,200); }; setTimeout(qp,500); }}
           />
         </div>
@@ -1567,6 +1616,8 @@ function EditorPageContent() {
         onStartOver={handleStartOver}
         onAddPage={handleAddPageRequest}
         isAddingPage={isAddingPage}
+        onRemovePage={handleRemovePageRequest}
+        canRemovePage={totalPages > 1}
         mobile
       />
 
@@ -1613,6 +1664,39 @@ function EditorPageContent() {
               defaultMessage={`File: ${fileName || "Untitled PDF"}\nFields: ${fields.length}\nPages: ${totalPages || 1}\nError: ${lastDownloadError}`}
               onSent={() => setTimeout(() => setShowSupportForm(false), 900)}
             />
+          </div>
+        </div>
+      )}
+
+      {/* Remove page confirmation */}
+      {showRemovePageConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4">
+          <div className="w-full max-w-sm rounded-2xl bg-surface p-6 shadow-2xl">
+            <h2 className="text-lg font-bold">Remove page {Math.min(currentPage + 1, totalPages)} of {totalPages}?</h2>
+            <p className="mt-2 text-sm text-text-muted">
+              {(() => {
+                const fieldsOnPage = fields.filter((f) => f.page === currentPage).length;
+                return fieldsOnPage > 0
+                  ? `This will delete ${fieldsOnPage} field${fieldsOnPage !== 1 ? "s" : ""} on this page. This cannot be undone.`
+                  : "This cannot be undone.";
+              })()}
+            </p>
+            <div className="mt-5 flex gap-3">
+              <button
+                onClick={confirmRemovePage}
+                disabled={isRemovingPage}
+                className="flex-1 rounded-xl bg-red-500 py-2.5 text-sm font-semibold text-white hover:bg-red-600 transition-colors disabled:opacity-60"
+              >
+                {isRemovingPage ? "Removing..." : "Remove Page"}
+              </button>
+              <button
+                onClick={() => setShowRemovePageConfirm(false)}
+                disabled={isRemovingPage}
+                className="flex-1 rounded-xl border border-border py-2.5 text-sm font-semibold hover:bg-surface-alt transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
           </div>
         </div>
       )}

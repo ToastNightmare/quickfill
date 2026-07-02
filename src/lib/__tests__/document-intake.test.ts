@@ -7,7 +7,10 @@ import {
   filledDocumentFilename,
   imageToPdfBytes,
   normalizeDocumentUpload,
+  removePageFromDocument,
+  shiftFieldsAfterPageRemoval,
 } from "@/lib/document-intake";
+import type { EditorField } from "@/lib/types";
 import { PDF_UPLOAD_MAX_BYTES } from "@/lib/upload-limits";
 
 global.TextDecoder = TextDecoder as typeof global.TextDecoder;
@@ -294,5 +297,104 @@ describe("appendUploadToDocument", () => {
     await expect(
       appendUploadToDocument(existing, file("broken.pdf", "application/pdf", ["not a pdf at all"]))
     ).rejects.toMatchObject({ code: "append_failed" });
+  });
+});
+
+describe("removePageFromDocument", () => {
+  async function createSizedPdfBytes(sizes: [number, number][]) {
+    const doc = await PDFDocument.create();
+    for (const size of sizes) {
+      doc.addPage(size);
+    }
+    return exactArrayBuffer(await doc.save({ useObjectStreams: false })) as ArrayBuffer;
+  }
+
+  it("removes the first page", async () => {
+    const existing = await createSizedPdfBytes([[100, 100], [200, 200], [300, 300]]);
+
+    const result = await removePageFromDocument(existing, 0);
+
+    expect(result.newPageCount).toBe(2);
+    const doc = await PDFDocument.load(result.pdfBytes);
+    expect(doc.getPageCount()).toBe(2);
+    expect(doc.getPage(0).getWidth()).toBe(200);
+    expect(doc.getPage(1).getWidth()).toBe(300);
+  });
+
+  it("removes a middle page", async () => {
+    const existing = await createSizedPdfBytes([[100, 100], [200, 200], [300, 300]]);
+
+    const result = await removePageFromDocument(existing, 1);
+
+    expect(result.newPageCount).toBe(2);
+    const doc = await PDFDocument.load(result.pdfBytes);
+    expect(doc.getPage(0).getWidth()).toBe(100);
+    expect(doc.getPage(1).getWidth()).toBe(300);
+  });
+
+  it("removes the last page", async () => {
+    const existing = await createSizedPdfBytes([[100, 100], [200, 200], [300, 300]]);
+
+    const result = await removePageFromDocument(existing, 2);
+
+    expect(result.newPageCount).toBe(2);
+    const doc = await PDFDocument.load(result.pdfBytes);
+    expect(doc.getPage(0).getWidth()).toBe(100);
+    expect(doc.getPage(1).getWidth()).toBe(200);
+  });
+
+  it("refuses to remove the only page", async () => {
+    const existing = await createSizedPdfBytes([[100, 100]]);
+
+    await expect(removePageFromDocument(existing, 0)).rejects.toMatchObject({ code: "last_page" });
+  });
+
+  it("rejects out-of-range page indexes", async () => {
+    const existing = await createSizedPdfBytes([[100, 100], [200, 200]]);
+
+    await expect(removePageFromDocument(existing, 5)).rejects.toMatchObject({ code: "remove_failed" });
+    await expect(removePageFromDocument(existing, -1)).rejects.toMatchObject({ code: "remove_failed" });
+  });
+
+  it("rejects unreadable input", async () => {
+    const broken = new TextEncoder().encode("not a pdf").buffer as ArrayBuffer;
+
+    await expect(removePageFromDocument(broken, 0)).rejects.toMatchObject({ code: "remove_failed" });
+  });
+});
+
+describe("shiftFieldsAfterPageRemoval", () => {
+  const makeField = (id: string, page: number): EditorField => ({
+    id,
+    type: "text",
+    x: 10,
+    y: 20,
+    width: 100,
+    height: 24,
+    page,
+    value: "",
+    fontSize: 12,
+  });
+
+  it("drops fields on the removed page and shifts later pages down", () => {
+    const fields = [makeField("a", 0), makeField("b", 1), makeField("c", 1), makeField("d", 2), makeField("e", 3)];
+
+    const result = shiftFieldsAfterPageRemoval(fields, 1);
+
+    expect(result.map((f) => f.id)).toEqual(["a", "d", "e"]);
+    expect(result.map((f) => f.page)).toEqual([0, 1, 2]);
+  });
+
+  it("leaves fields on earlier pages untouched", () => {
+    const fields = [makeField("a", 0), makeField("b", 1)];
+
+    const result = shiftFieldsAfterPageRemoval(fields, 1);
+
+    expect(result).toHaveLength(1);
+    expect(result[0]).toEqual(fields[0]);
+  });
+
+  it("handles empty field lists", () => {
+    expect(shiftFieldsAfterPageRemoval([], 0)).toEqual([]);
   });
 });
