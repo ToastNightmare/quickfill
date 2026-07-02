@@ -10,6 +10,8 @@ import {
   clearEditorState,
 } from "@/lib/persistence";
 import { normalizeDocumentUpload } from "@/lib/document-intake";
+import { isCleanablePhoto } from "@/lib/image-cleanup";
+import { PhotoCleanupModal } from "@/components/PhotoCleanupModal";
 import { DOCUMENT_DROPZONE_ACCEPT, PDF_UPLOAD_MAX_BYTES, PDF_UPLOAD_MAX_LABEL } from "@/lib/upload-limits";
 
 /**
@@ -24,6 +26,7 @@ export function LandingUploadBox() {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [pendingPhoto, setPendingPhoto] = useState<File | null>(null);
 
   const handleFile = useCallback(
     async (file: File) => {
@@ -57,7 +60,13 @@ export function LandingUploadBox() {
         return;
       }
       const file = acceptedFiles[0];
-      if (file) void handleFile(file);
+      if (!file) return;
+      if (isCleanablePhoto(file)) {
+        // Photos go through the cleanup modal; PDFs load directly.
+        setPendingPhoto(file);
+        return;
+      }
+      void handleFile(file);
     },
     [handleFile]
   );
@@ -107,6 +116,16 @@ export function LandingUploadBox() {
       </div>
       {error && (
         <p className="mt-3 text-center text-sm font-medium text-red-300">{error}</p>
+      )}
+      {pendingPhoto && (
+        <PhotoCleanupModal
+          file={pendingPhoto}
+          onConfirm={(cleanedFile) => {
+            setPendingPhoto(null);
+            void handleFile(cleanedFile);
+          }}
+          onCancel={() => setPendingPhoto(null)}
+        />
       )}
     </div>
   );

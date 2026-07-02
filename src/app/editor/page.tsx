@@ -41,6 +41,8 @@ import { loadPdfjsClient } from "@/lib/pdfjs-client";
 import { getTemplateBySlug, isTemplateFillable, type TemplateConfig } from "@/lib/templates-config";
 import { DOCUMENT_FILE_INPUT_ACCEPT, PDF_UPLOAD_MAX_BYTES, PDF_UPLOAD_MAX_LABEL } from "@/lib/upload-limits";
 import { appendUploadToDocument, filledDocumentFilename, removePageFromDocument, shiftFieldsAfterPageRemoval, type NormalizedDocumentUpload } from "@/lib/document-intake";
+import { isCleanablePhoto } from "@/lib/image-cleanup";
+import { PhotoCleanupModal } from "@/components/PhotoCleanupModal";
 
 const ZOOM_LEVELS = [50, 75, 100, 125, 150, 175, 200];
 const SNAP_MIN = 125;
@@ -203,6 +205,7 @@ function EditorPageContent() {
   const [currentPage, setCurrentPage] = useState(0);
   const [isAddingPage, setIsAddingPage] = useState(false);
   const addPageInputRef = useRef<HTMLInputElement | null>(null);
+  const [pendingAddPagePhoto, setPendingAddPagePhoto] = useState<File | null>(null);
   const [showRemovePageConfirm, setShowRemovePageConfirm] = useState(false);
   const [isRemovingPage, setIsRemovingPage] = useState(false);
   const [totalPages, setTotalPages] = useState(0);
@@ -705,11 +708,9 @@ function EditorPageContent() {
     addPageInputRef.current?.click();
   }, []);
 
-  const handleAddPageFile = useCallback(
-    async (event: React.ChangeEvent<HTMLInputElement>) => {
-      const file = event.target.files?.[0];
-      event.target.value = "";
-      if (!file || !pdfBytes || isAddingPage) return;
+  const appendPageFile = useCallback(
+    async (file: File) => {
+      if (!pdfBytes || isAddingPage) return;
       setIsAddingPage(true);
       try {
         const result = await appendUploadToDocument(pdfBytes, file);
@@ -743,6 +744,21 @@ function EditorPageContent() {
       }
     },
     [pdfBytes, isAddingPage, markLocalSave]
+  );
+
+  const handleAddPageFile = useCallback(
+    (event: React.ChangeEvent<HTMLInputElement>) => {
+      const file = event.target.files?.[0];
+      event.target.value = "";
+      if (!file) return;
+      if (isCleanablePhoto(file)) {
+        // Photos go through the cleanup modal; PDFs append directly.
+        setPendingAddPagePhoto(file);
+        return;
+      }
+      void appendPageFile(file);
+    },
+    [appendPageFile]
   );
 
   const handleRemovePageRequest = useCallback(() => {
@@ -1467,6 +1483,17 @@ function EditorPageContent() {
         onChange={handleAddPageFile}
         data-testid="add-page-input"
       />
+
+      {pendingAddPagePhoto && (
+        <PhotoCleanupModal
+          file={pendingAddPagePhoto}
+          onConfirm={(cleanedFile) => {
+            setPendingAddPagePhoto(null);
+            void appendPageFile(cleanedFile);
+          }}
+          onCancel={() => setPendingAddPagePhoto(null)}
+        />
+      )}
 
       {/* Sidebar + Canvas row */}
       <div className="flex flex-1 min-h-0">
