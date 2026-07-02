@@ -2,6 +2,7 @@ import { PDFDocument } from "pdf-lib";
 import { TextDecoder, TextEncoder } from "util";
 import { deflateSync } from "zlib";
 import {
+  appendUploadToDocument,
   DocumentIntakeError,
   filledDocumentFilename,
   imageToPdfBytes,
@@ -170,5 +171,128 @@ describe("document intake", () => {
     expect(filledDocumentFilename("photo.jpg")).toBe("photo-filled.pdf");
     expect(filledDocumentFilename("scan.jpeg")).toBe("scan-filled.pdf");
     expect(filledDocumentFilename("receipt.png")).toBe("receipt-filled.pdf");
+  });
+});
+
+async function createPdfBytes(pageCount: number, size: [number, number] = [612, 792]) {
+  const doc = await PDFDocument.create();
+  for (let index = 0; index < pageCount; index += 1) {
+    doc.addPage(size);
+  }
+  return exactArrayBuffer(await doc.save({ useObjectStreams: false })) as ArrayBuffer;
+}
+
+describe("appendUploadToDocument", () => {
+  it("appends a one-page PDF and reports the first added page index", async () => {
+    const existing = await createPdfBytes(2);
+    const incoming = new Uint8Array(await createPdfBytes(1, [500, 700]));
+
+    const result = await appendUploadToDocument(existing, file("extra.pdf", "application/pdf", [incoming]));
+
+    expect(result.addedPageCount).toBe(1);
+    expect(result.firstAddedPageIndex).toBe(2);
+    const merged = await PDFDocument.load(result.pdfBytes);
+    expect(merged.getPageCount()).toBe(3);
+  });
+
+  it("appends all pages from a multi-page PDF", async () => {
+    const existing = await createPdfBytes(1);
+    const incoming = new Uint8Array(await createPdfBytes(3));
+
+    const result = await appendUploadToDocument(existing, file("multi.pdf", "application/pdf", [incoming]));
+
+    expect(result.addedPageCount).toBe(3);
+    expect(result.firstAddedPageIndex).toBe(1);
+    const merged = await PDFDocument.load(result.pdfBytes);
+    expect(merged.getPageCount()).toBe(4);
+  });
+
+  it("appends JPG and PNG uploads as one new page each", async () => {
+    const existing = await createPdfBytes(1);
+
+    const jpgResult = await appendUploadToDocument(existing, file("photo.jpg", "image/jpeg", [ONE_PIXEL_JPG]));
+    expect(jpgResult.addedPageCount).toBe(1);
+    expect(jpgResult.firstAddedPageIndex).toBe(1);
+    expect((await PDFDocument.load(jpgResult.pdfBytes)).getPageCount()).toBe(2);
+
+    const pngResult = await appendUploadToDocument(jpgResult.pdfBytes, file("scan.png", "image/png", [ONE_PIXEL_PNG]));
+    expect(pngResult.addedPageCount).toBe(1);
+    expect(pngResult.firstAddedPageIndex).toBe(2);
+    expect((await PDFDocument.load(pngResult.pdfBytes)).getPageCount()).toBe(3);
+  });
+
+  it("keeps existing page order and dimensions stable", async () => {
+    const existingDoc = await PDFDocument.create();
+    existingDoc.addPage([612, 792]);
+    existingDoc.addPage([792, 612]);
+    const existing = exactArrayBuffer(await existingDoc.save({ useObjectStreams: false })) as ArrayBuffer;
+    const incoming = new Uint8Array(await createPdfBytes(1, [400, 400]));
+
+    const result = await appendUploadToDocument(existing, file("extra.pdf", "application/pdf", [incoming]));
+    const merged = await PDFDocument.load(result.pdfBytes);
+
+    expect(merged.getPage(0).getWidth()).toBe(612);
+    expect(merged.getPage(0).getHeight()).toBe(792);
+    expect(merged.getPage(1).getWidth()).toBe(792);
+    expect(merged.getPage(1).getHeight()).toBe(612);
+    expect(merged.getPage(2).getWidth()).toBe(400);
+    expect(merged.getPage(2).getHeight()).toBe(400);
+  });
+
+  it("strips widget annotations from appended pages", async () => {
+    const sourceDoc = await PDFDocument.create();
+    const sourcePage = sourceDoc.addPage([612, 792]);
+    const form = sourceDoc.getForm();
+    const textField = form.createTextField("applicant.name");
+    textField.addToPage(sourcePage, { x: 50, y: 700, width: 200, height: 24 });
+    const incoming = new Uint8Array(await sourceDoc.save({ useObjectStreams: false }));
+
+    const existing = await createPdfBytes(1);
+    const result = await appendUploadToDocument(existing, file("form.pdf", "application/pdf", [incoming]));
+
+    const merged = await PDFDocument.load(result.pdfBytes);
+    expect(merged.getPageCount()).toBe(2);
+    expect(merged.getForm().getFields()).toHaveLength(0);
+    const appendedAnnots = merged.getPage(1).node.Annots?.();
+    expect(appendedAnnots?.size() ?? 0).toBe(0);
+  });
+
+  it("rejects a merged document larger than the size cap", async () => {
+    const bigDoc = await PDFDocument.create();
+    bigDoc.addPage([612, 792]);
+    // Incompressible noise so the attachment stream stays near its raw size.
+    const noise = new Uint8Array(PDF_UPLOAD_MAX_BYTES);
+    let seed = 0x9e3779b9;
+    for (let index = 0; index < noise.length; index += 1) {
+      seed = (seed * 1664525 + 1013904223) >>> 0;
+      noise[index] = (seed >>> 16) & 0xff;
+    }
+    await bigDoc.attach(noise, "noise.bin", { mimeType: "application/octet-stream" });
+    const existing = exactArrayBuffer(await bigDoc.save({ useObjectStreams: false })) as ArrayBuffer;
+    const incoming = new Uint8Array(await createPdfBytes(1));
+
+    await expect(
+      appendUploadToDocument(existing, file("extra.pdf", "application/pdf", [incoming]))
+    ).rejects.toMatchObject({ code: "merged_too_large" });
+  });
+
+  it("rejects unsupported and oversized uploads before merging", async () => {
+    const existing = await createPdfBytes(1);
+
+    await expect(
+      appendUploadToDocument(existing, file("notes.txt", "text/plain", ["hello"]))
+    ).rejects.toMatchObject({ code: "unsupported" });
+
+    await expect(
+      appendUploadToDocument(existing, file("big.pdf", "application/pdf", [new Uint8Array(PDF_UPLOAD_MAX_BYTES + 1)]))
+    ).rejects.toMatchObject({ code: "too_large" });
+  });
+
+  it("rejects an unreadable incoming PDF with a friendly error", async () => {
+    const existing = await createPdfBytes(1);
+
+    await expect(
+      appendUploadToDocument(existing, file("broken.pdf", "application/pdf", ["not a pdf at all"]))
+    ).rejects.toMatchObject({ code: "append_failed" });
   });
 });
