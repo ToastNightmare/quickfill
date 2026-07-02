@@ -13,6 +13,7 @@ import {
   UserCheck,
   Map,
   Save,
+  FilePlus2,
   PaintBucket,
   Magnet,
   HelpCircle,
@@ -37,6 +38,8 @@ interface ToolbarProps {
   onSaveProgress?: () => void;
   isSavingProgress?: boolean;
   onStartOver?: () => void;
+  onAddPage?: () => void;
+  isAddingPage?: boolean;
   canUndo: boolean;
   canRedo: boolean;
   isDownloading: boolean;
@@ -85,6 +88,8 @@ export function Toolbar({
   onSaveProgress,
   isSavingProgress,
   onStartOver,
+  onAddPage,
+  isAddingPage,
   canUndo,
   canRedo,
   isDownloading,
@@ -168,9 +173,17 @@ export function Toolbar({
           </button>
         </div>
 
-        <div className="mt-2 grid grid-cols-5 gap-2">
+        <div className={`mt-2 grid ${onAddPage ? "grid-cols-6" : "grid-cols-5"} gap-2`}>
           <IconButton onClick={onUndo} disabled={!canUndo} title="Undo" icon={Undo2} />
           <IconButton onClick={onRedo} disabled={!canRedo} title="Redo" icon={Redo2} />
+          {onAddPage && (
+            <IconButton
+              onClick={onAddPage}
+              title="Add a page from a PDF, JPG, or PNG"
+              icon={FilePlus2}
+              disabled={isAddingPage}
+            />
+          )}
           <IconButton
             onClick={onSnapToggle}
             title={snapEnabled ? "Snap is on" : "Snap is off"}
@@ -264,6 +277,18 @@ export function Toolbar({
         )}
 
         <div className="mx-1 my-1 h-px bg-border" />
+
+        {onAddPage && (
+          <button
+            onClick={onAddPage}
+            disabled={isAddingPage}
+            title="Add a page from a PDF, JPG, or PNG"
+            className="flex h-8 items-center gap-3 rounded-lg px-2 text-sm font-medium text-text-muted transition-colors hover:bg-surface-alt hover:text-text disabled:opacity-60"
+          >
+            <FilePlus2 className="h-4 w-4 shrink-0" />
+            <span className="hidden sm:inline">{isAddingPage ? "Adding Page" : "Add Page"}</span>
+          </button>
+        )}
 
         {onSaveProgress && (
           <button

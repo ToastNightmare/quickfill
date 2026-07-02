@@ -39,8 +39,8 @@ import { runEditorProfileAutofill, trackEditorAutofillShadowReport } from "@/lib
 import { createEditorFieldId, repairDuplicateEditorFieldIds, withUniqueEditorFieldId } from "@/lib/field-ids";
 import { loadPdfjsClient } from "@/lib/pdfjs-client";
 import { getTemplateBySlug, isTemplateFillable, type TemplateConfig } from "@/lib/templates-config";
-import { PDF_UPLOAD_MAX_BYTES, PDF_UPLOAD_MAX_LABEL } from "@/lib/upload-limits";
-import { filledDocumentFilename, type NormalizedDocumentUpload } from "@/lib/document-intake";
+import { DOCUMENT_FILE_INPUT_ACCEPT, PDF_UPLOAD_MAX_BYTES, PDF_UPLOAD_MAX_LABEL } from "@/lib/upload-limits";
+import { appendUploadToDocument, filledDocumentFilename, type NormalizedDocumentUpload } from "@/lib/document-intake";
 
 const ZOOM_LEVELS = [50, 75, 100, 125, 150, 175, 200];
 const SNAP_MIN = 125;
@@ -201,6 +201,8 @@ function EditorPageContent() {
   const [selectedFieldId, setSelectedFieldId] = useState<string | null>(null);
   const [whiteoutColor, setWhiteoutColor] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(0);
+  const [isAddingPage, setIsAddingPage] = useState(false);
+  const addPageInputRef = useRef<HTMLInputElement | null>(null);
   const [totalPages, setTotalPages] = useState(0);
   const [hasAcroForm, setHasAcroForm] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
@@ -695,6 +697,50 @@ function EditorPageContent() {
       }
     },
     [selectedFieldId, handleFieldUpdate]
+  );
+
+  const handleAddPageRequest = useCallback(() => {
+    addPageInputRef.current?.click();
+  }, []);
+
+  const handleAddPageFile = useCallback(
+    async (event: React.ChangeEvent<HTMLInputElement>) => {
+      const file = event.target.files?.[0];
+      event.target.value = "";
+      if (!file || !pdfBytes || isAddingPage) return;
+      setIsAddingPage(true);
+      try {
+        const result = await appendUploadToDocument(pdfBytes, file);
+        const newTotalPages = result.firstAddedPageIndex + result.addedPageCount;
+
+        // Persist first so a refresh cannot lose the appended pages.
+        await savePdfToIndexedDB(result.pdfBytes);
+        markLocalSave("saved");
+
+        // Update totalPages alongside currentPage so the viewer's clamp
+        // guard never resets the jump to the first appended page.
+        setPdfBytes(result.pdfBytes);
+        setTotalPages(newTotalPages);
+        setCurrentPage(result.firstAddedPageIndex);
+
+        trackEvent("page_added", {
+          addedPageCount: result.addedPageCount,
+          totalPages: newTotalPages,
+        });
+        setToast(result.addedPageCount === 1 ? "Page added" : `${result.addedPageCount} pages added`);
+        setTimeout(() => setToast(null), 3000);
+      } catch (err) {
+        const message =
+          err instanceof Error && err.message
+            ? err.message
+            : "This page could not be added. Try a different PDF, JPG, or PNG.";
+        setToast(message);
+        setTimeout(() => setToast(null), 6000);
+      } finally {
+        setIsAddingPage(false);
+      }
+    },
+    [pdfBytes, isAddingPage, markLocalSave]
   );
 
   const handleStartOver = useCallback(() => {
@@ -1365,6 +1411,16 @@ function EditorPageContent() {
           </div>
         </div>
 
+      {/* Hidden picker for Add Page: native mobile pickers offer camera/photo options */}
+      <input
+        ref={addPageInputRef}
+        type="file"
+        accept={DOCUMENT_FILE_INPUT_ACCEPT}
+        className="hidden"
+        onChange={handleAddPageFile}
+        data-testid="add-page-input"
+      />
+
       {/* Sidebar + Canvas row */}
       <div className="flex flex-1 min-h-0">
         <div className="flex-shrink-0 h-full overflow-hidden hidden sm:flex">
@@ -1393,6 +1449,8 @@ function EditorPageContent() {
             zoom={zoom}
             fields={fields}
             onStartOver={handleStartOver}
+            onAddPage={handleAddPageRequest}
+            isAddingPage={isAddingPage}
             onMinimapRefresh={() => { let qa = 0; const qp = () => { const c = pdfViewerRef.current?.getCanvas(); if (c) { try { const x = c.getContext("2d")?.getImageData(c.width/2,c.height/2,1,1); if (x && x.data[3]>0) { setMinimapCanvas(c); return; } } catch{} } if (qa++<15) setTimeout(qp,200); }; setTimeout(qp,500); }}
           />
         </div>
@@ -1507,6 +1565,8 @@ function EditorPageContent() {
         onShowHelp={handleShowHelp}
         fields={fields}
         onStartOver={handleStartOver}
+        onAddPage={handleAddPageRequest}
+        isAddingPage={isAddingPage}
         mobile
       />
 

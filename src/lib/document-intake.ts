@@ -1,4 +1,4 @@
-import { PDFDocument, rgb } from "pdf-lib";
+import { PDFArray, PDFDict, PDFDocument, PDFName, rgb, type PDFObject } from "pdf-lib";
 import { filledPdfFilename, sanitizePdfFilename } from "@/lib/pdf-download-response";
 import { DOCUMENT_UPLOAD_LABEL, PDF_UPLOAD_MAX_BYTES, PDF_UPLOAD_MAX_LABEL } from "@/lib/upload-limits";
 
@@ -21,12 +21,18 @@ const IMAGE_EXTENSIONS = [".jpg", ".jpeg", ".png"];
 export class DocumentIntakeError extends Error {
   constructor(
     message: string,
-    public readonly code: "unsupported" | "too_large" | "unreadable_image"
+    public readonly code: "unsupported" | "too_large" | "unreadable_image" | "merged_too_large" | "append_failed"
   ) {
     super(message);
     this.name = "DocumentIntakeError";
   }
 }
+
+export type AppendUploadResult = {
+  pdfBytes: ArrayBuffer;
+  addedPageCount: number;
+  firstAddedPageIndex: number;
+};
 
 function fileExtension(fileName: string) {
   const match = /\.[^.]+$/.exec(fileName.toLowerCase());
@@ -197,6 +203,90 @@ export async function normalizeDocumentUpload(file: File): Promise<NormalizedDoc
     sourceType: "image",
     skipAcroFormDetection: true,
   };
+}
+
+/**
+ * Remove interactive widget annotations from a page so appended pages never
+ * introduce orphan AcroForm widgets. Non-widget annotations (links, etc.) are kept.
+ */
+function stripWidgetAnnotations(page: ReturnType<PDFDocument["getPages"]>[number]) {
+  try {
+    const annots = page.node.lookupMaybe(PDFName.of("Annots"), PDFArray);
+    if (!annots) return;
+
+    const kept: PDFObject[] = [];
+    for (let index = 0; index < annots.size(); index += 1) {
+      const annotationRef = annots.get(index);
+      const annotation = page.doc.context.lookupMaybe(annotationRef, PDFDict);
+      const subtype = annotation?.get(PDFName.of("Subtype"));
+      if (subtype === PDFName.of("Widget")) continue;
+      kept.push(annotationRef);
+    }
+
+    if (kept.length === annots.size()) return;
+    if (kept.length === 0) {
+      page.node.delete(PDFName.of("Annots"));
+      return;
+    }
+    page.node.set(PDFName.of("Annots"), page.doc.context.obj(kept));
+  } catch {
+    // Non-fatal: leave the page as-is rather than fail the append.
+  }
+}
+
+/**
+ * Append an uploaded PDF/JPG/PNG to an existing PDF document.
+ *
+ * - Images become one new page via the existing image-to-PDF path.
+ * - Multi-page PDFs append all pages.
+ * - Widget annotations are stripped from appended pages so the base
+ *   document's AcroForm state stays intact.
+ * - The merged result is rejected if it exceeds the upload size cap.
+ */
+export async function appendUploadToDocument(
+  existingBytes: ArrayBuffer,
+  file: File
+): Promise<AppendUploadResult> {
+  const incoming = await normalizeDocumentUpload(file);
+
+  let mergedBytes: ArrayBuffer;
+  let addedPageCount: number;
+  let firstAddedPageIndex: number;
+
+  try {
+    const baseDoc = await PDFDocument.load(existingBytes, { ignoreEncryption: true });
+    const sourceDoc = await PDFDocument.load(incoming.pdfBytes, { ignoreEncryption: true });
+
+    firstAddedPageIndex = baseDoc.getPageCount();
+    addedPageCount = sourceDoc.getPageCount();
+    if (addedPageCount === 0) {
+      throw new Error("Source document has no pages");
+    }
+
+    const copiedPages = await baseDoc.copyPages(sourceDoc, sourceDoc.getPageIndices());
+    for (const copiedPage of copiedPages) {
+      stripWidgetAnnotations(copiedPage);
+      baseDoc.addPage(copiedPage);
+    }
+
+    mergedBytes = exactArrayBuffer(await baseDoc.save({ useObjectStreams: false }));
+    await assertLoadablePdf(mergedBytes);
+  } catch (error) {
+    if (error instanceof DocumentIntakeError) throw error;
+    throw new DocumentIntakeError(
+      "This page could not be added. Try a different PDF, JPG, or PNG.",
+      "append_failed"
+    );
+  }
+
+  if (mergedBytes.byteLength > PDF_UPLOAD_MAX_BYTES) {
+    throw new DocumentIntakeError(
+      `Adding this page would make the document larger than ${PDF_UPLOAD_MAX_LABEL}. Try a smaller or compressed photo, or start a new file.`,
+      "merged_too_large"
+    );
+  }
+
+  return { pdfBytes: mergedBytes, addedPageCount, firstAddedPageIndex };
 }
 
 export function filledDocumentFilename(originalName: string | null | undefined) {
