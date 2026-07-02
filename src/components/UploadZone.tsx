@@ -4,6 +4,8 @@ import { useCallback, useState } from "react";
 import { useDropzone, type FileRejection } from "react-dropzone";
 import { LockKeyhole, ShieldCheck, Upload } from "lucide-react";
 import { normalizeDocumentUpload, type NormalizedDocumentUpload } from "@/lib/document-intake";
+import { isCleanablePhoto } from "@/lib/image-cleanup";
+import { PhotoCleanupModal } from "@/components/PhotoCleanupModal";
 import {
   DOCUMENT_DROPZONE_ACCEPT,
   DOCUMENT_UPLOAD_LABEL,
@@ -17,10 +19,10 @@ interface UploadZoneProps {
 
 export function UploadZone({ onFileLoad }: UploadZoneProps) {
   const [error, setError] = useState<string | null>(null);
+  const [pendingPhoto, setPendingPhoto] = useState<File | null>(null);
 
-  const handleAcceptedFile = useCallback(
-    async (file: File | undefined) => {
-      if (!file) return;
+  const loadFile = useCallback(
+    async (file: File) => {
       try {
         await onFileLoad(await normalizeDocumentUpload(file));
       } catch (err) {
@@ -30,6 +32,19 @@ export function UploadZone({ onFileLoad }: UploadZoneProps) {
       }
     },
     [onFileLoad]
+  );
+
+  const handleAcceptedFile = useCallback(
+    async (file: File | undefined) => {
+      if (!file) return;
+      if (isCleanablePhoto(file)) {
+        // Photos go through the cleanup modal; PDFs load directly.
+        setPendingPhoto(file);
+        return;
+      }
+      await loadFile(file);
+    },
+    [loadFile]
   );
 
   const onDrop = useCallback(
@@ -48,6 +63,14 @@ export function UploadZone({ onFileLoad }: UploadZoneProps) {
       await handleAcceptedFile(file);
     },
     [handleAcceptedFile]
+  );
+
+  const handlePhotoConfirm = useCallback(
+    async (cleanedFile: File) => {
+      setPendingPhoto(null);
+      await loadFile(cleanedFile);
+    },
+    [loadFile]
   );
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
@@ -117,6 +140,13 @@ export function UploadZone({ onFileLoad }: UploadZoneProps) {
           </p>
         )}
       </div>
+      {pendingPhoto && (
+        <PhotoCleanupModal
+          file={pendingPhoto}
+          onConfirm={handlePhotoConfirm}
+          onCancel={() => setPendingPhoto(null)}
+        />
+      )}
     </div>
   );
 }

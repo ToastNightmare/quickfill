@@ -91,6 +91,25 @@ jest.mock("@/components/DownloadPreviewGate", () => ({
   DownloadPreviewGate: () => null,
 }));
 
+jest.mock("@/components/PhotoCleanupModal", () => ({
+  PhotoCleanupModal: ({
+    file,
+    onConfirm,
+    onCancel,
+  }: {
+    file: File;
+    onConfirm: (cleaned: File) => void;
+    onCancel: () => void;
+  }) => (
+    <div data-testid="photo-cleanup-modal">
+      <button type="button" onClick={() => onConfirm(new File([new Uint8Array([7])], `cleaned-${file.name}`, { type: "image/jpeg" }))}>
+        Mock use photo
+      </button>
+      <button type="button" onClick={onCancel}>Mock cancel photo</button>
+    </div>
+  ),
+}));
+
 jest.mock("@/lib/persistence", () => ({
   savePdfToIndexedDB: jest.fn().mockResolvedValue(undefined),
   loadPdfFromIndexedDB: jest.fn().mockResolvedValue(null),
@@ -152,10 +171,15 @@ jest.mock("@/lib/document-intake", () => {
 const mockedAppend = appendUploadToDocument as jest.MockedFunction<typeof appendUploadToDocument>;
 const mockedSavePdf = savePdfToIndexedDB as jest.MockedFunction<typeof savePdfToIndexedDB>;
 
-function pickAddPageFile() {
+function pickAddPageFile(name = "page2.png", type = "image/png") {
   const input = screen.getByTestId("add-page-input");
-  const file = new File([new Uint8Array([1, 2, 3])], "page2.png", { type: "image/png" });
+  const file = new File([new Uint8Array([1, 2, 3])], name, { type });
   fireEvent.change(input, { target: { files: [file] } });
+}
+
+async function confirmPhotoCleanup() {
+  await screen.findByTestId("photo-cleanup-modal");
+  fireEvent.click(screen.getByRole("button", { name: "Mock use photo" }));
 }
 
 describe("Editor add page", () => {
@@ -185,15 +209,52 @@ describe("Editor add page", () => {
     await screen.findAllByRole("button", { name: "Mock add page" });
 
     pickAddPageFile();
+    await confirmPhotoCleanup();
 
     await waitFor(() => {
       expect(mockedAppend).toHaveBeenCalledTimes(1);
     });
+    expect((mockedAppend.mock.calls[0][1] as File).name).toBe("cleaned-page2.png");
     await waitFor(() => {
       expect(mockedSavePdf).toHaveBeenCalledWith(mergedBytes);
     });
     expect(await screen.findByText("2 pages added")).toBeInTheDocument();
     expect((await screen.findAllByText(/Page 2 of 3/))[0]).toBeInTheDocument();
+  });
+
+  it("appends PDF files directly without the cleanup modal", async () => {
+    mockedAppend.mockResolvedValue({
+      pdfBytes: new ArrayBuffer(16),
+      addedPageCount: 1,
+      firstAddedPageIndex: 1,
+    });
+
+    render(<EditorPage />);
+    fireEvent.click(screen.getByRole("button", { name: "Mock upload" }));
+    await screen.findAllByRole("button", { name: "Mock add page" });
+
+    pickAddPageFile("extra.pdf", "application/pdf");
+
+    await waitFor(() => {
+      expect(mockedAppend).toHaveBeenCalledTimes(1);
+    });
+    expect(screen.queryByTestId("photo-cleanup-modal")).not.toBeInTheDocument();
+    expect((mockedAppend.mock.calls[0][1] as File).name).toBe("extra.pdf");
+  });
+
+  it("cancelling photo cleanup aborts the add-page flow", async () => {
+    render(<EditorPage />);
+    fireEvent.click(screen.getByRole("button", { name: "Mock upload" }));
+    await screen.findAllByRole("button", { name: "Mock add page" });
+
+    pickAddPageFile();
+    await screen.findByTestId("photo-cleanup-modal");
+    fireEvent.click(screen.getByRole("button", { name: "Mock cancel photo" }));
+
+    await waitFor(() => {
+      expect(screen.queryByTestId("photo-cleanup-modal")).not.toBeInTheDocument();
+    });
+    expect(mockedAppend).not.toHaveBeenCalled();
   });
 
   it("shows a single-page toast when one page is added", async () => {
@@ -208,6 +269,7 @@ describe("Editor add page", () => {
     await screen.findAllByRole("button", { name: "Mock add page" });
 
     pickAddPageFile();
+    await confirmPhotoCleanup();
 
     expect(await screen.findByText("Page added")).toBeInTheDocument();
   });
@@ -226,6 +288,7 @@ describe("Editor add page", () => {
 
     const savesBefore = mockedSavePdf.mock.calls.length;
     pickAddPageFile();
+    await confirmPhotoCleanup();
 
     expect(await screen.findByText(/larger than 15MB/)).toBeInTheDocument();
     expect(mockedSavePdf.mock.calls.length).toBe(savesBefore);
