@@ -358,6 +358,10 @@ export async function POST(req: NextRequest) {
     // Default to Pro monthly when no JSON body is supplied.
   }
 
+  const checkoutSource =
+    typeof bodyJson.source === "string" && bodyJson.source.length > 0
+      ? bodyJson.source.slice(0, 100)
+      : "checkout";
   const billing = annual ? "annual" : "monthly";
 
   try {
@@ -403,6 +407,10 @@ export async function POST(req: NextRequest) {
     }
 
     const cancelParams = new URLSearchParams({ checkout: "cancelled", plan, billing });
+    const cancelUrl =
+      checkoutSource === "download_preview_gate"
+        ? `${origin}/editor?download=cancelled`
+        : `${origin}/pricing?${cancelParams.toString()}`;
     const subscriptionData = { metadata, ...checkoutOffer.subscriptionConfig };
 
     const session = await getStripe().checkout.sessions.create({
@@ -415,7 +423,7 @@ export async function POST(req: NextRequest) {
         plan,
         billing,
       }),
-      cancel_url: `${origin}/pricing?${cancelParams.toString()}`,
+      cancel_url: cancelUrl,
       ...checkoutOffer.promotionConfig,
       metadata,
       subscription_data: subscriptionData,

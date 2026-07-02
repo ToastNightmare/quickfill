@@ -30,6 +30,7 @@ jest.mock("next/link", () => {
 // Mock lucide-react icons
 jest.mock("lucide-react", () => ({
   CheckCircle2: () => <div data-icon="check" />,
+  Download: () => <div data-icon="download" />,
   FileText: () => <div data-icon="file" />,
   Loader2: () => <div data-icon="loader" />,
   RefreshCw: () => <div data-icon="refresh" />,
@@ -313,6 +314,32 @@ describe("CheckoutSuccessPage - Purchase Event", () => {
     await waitFor(() => {
       expect(mockFbq).not.toHaveBeenCalled();
     });
+  });
+});
+
+describe("CheckoutSuccessPage - Download Return CTA", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    setupSessionStorage();
+    global.fetch = jest.fn();
+  });
+
+  afterEach(() => {
+    global.fetch = originalFetch;
+    jest.restoreAllMocks();
+  });
+
+  it("links back to the editor with download=ready", async () => {
+    setupSearchParams({
+      synced: "true",
+    });
+
+    render(<CheckoutSuccessPage />);
+
+    expect(await screen.findByRole("link", { name: /download your document/i })).toHaveAttribute(
+      "href",
+      "/editor?download=ready"
+    );
   });
 });
 
