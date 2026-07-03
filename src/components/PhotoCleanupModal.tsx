@@ -4,9 +4,13 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { RotateCcw, RotateCw } from "lucide-react";
 import {
   cleanupPhotoFile,
+  FULL_FRAME_CROP,
+  isFullFrameCrop,
   normalizeQuarterTurns,
   renderCleanupPreview,
+  type CropRect,
 } from "@/lib/image-cleanup";
+import { CropOverlay } from "@/components/CropOverlay";
 
 interface PhotoCleanupModalProps {
   /** The original photo the user picked. */
@@ -21,6 +25,7 @@ export function PhotoCleanupModal({ file, onConfirm, onCancel }: PhotoCleanupMod
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [rotateQuarterTurns, setRotateQuarterTurns] = useState(0);
   const [documentMode, setDocumentMode] = useState(true);
+  const [cropRect, setCropRect] = useState<CropRect>(FULL_FRAME_CROP);
   const [isProcessing, setIsProcessing] = useState(false);
   const [previewFailed, setPreviewFailed] = useState(false);
 
@@ -28,7 +33,7 @@ export function PhotoCleanupModal({ file, onConfirm, onCancel }: PhotoCleanupMod
     let cancelled = false;
     const canvas = canvasRef.current;
     if (!canvas) return;
-    renderCleanupPreview(file, { rotateQuarterTurns, documentMode }, canvas)
+    renderCleanupPreview(file, { rotateQuarterTurns, documentMode, cropRect }, canvas)
       .then(() => {
         if (!cancelled) setPreviewFailed(false);
       })
@@ -38,21 +43,29 @@ export function PhotoCleanupModal({ file, onConfirm, onCancel }: PhotoCleanupMod
     return () => {
       cancelled = true;
     };
-  }, [file, rotateQuarterTurns, documentMode]);
+  }, [file, rotateQuarterTurns, documentMode, cropRect]);
 
+  // Rotating changes the frame the crop is relative to; reset to full frame
+  // rather than transforming coordinates. Users rotate first, crop second.
   const handleRotateLeft = useCallback(() => {
     setRotateQuarterTurns((turns) => normalizeQuarterTurns(turns - 1));
+    setCropRect(FULL_FRAME_CROP);
   }, []);
 
   const handleRotateRight = useCallback(() => {
     setRotateQuarterTurns((turns) => normalizeQuarterTurns(turns + 1));
+    setCropRect(FULL_FRAME_CROP);
+  }, []);
+
+  const handleResetCrop = useCallback(() => {
+    setCropRect(FULL_FRAME_CROP);
   }, []);
 
   const handleConfirm = useCallback(async () => {
     if (isProcessing) return;
     setIsProcessing(true);
     try {
-      const cleaned = await cleanupPhotoFile(file, { rotateQuarterTurns, documentMode });
+      const cleaned = await cleanupPhotoFile(file, { rotateQuarterTurns, documentMode, cropRect });
       onConfirm(cleaned);
     } catch {
       // Fall back to the original photo rather than blocking the upload.
@@ -60,14 +73,14 @@ export function PhotoCleanupModal({ file, onConfirm, onCancel }: PhotoCleanupMod
     } finally {
       setIsProcessing(false);
     }
-  }, [file, rotateQuarterTurns, documentMode, isProcessing, onConfirm]);
+  }, [file, rotateQuarterTurns, documentMode, cropRect, isProcessing, onConfirm]);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4">
       <div className="w-full max-w-md rounded-2xl bg-surface p-6 shadow-2xl">
         <h2 className="text-lg font-bold">Clean up photo</h2>
         <p className="mt-1 text-sm text-text-muted">
-          Rotate or improve the photo before adding it as a document page.
+          Rotate, crop, or improve the photo before adding it as a document page.
         </p>
 
         <div className="mt-4 flex max-h-[45vh] items-center justify-center overflow-hidden rounded-xl border border-border bg-surface-alt p-2">
@@ -76,11 +89,14 @@ export function PhotoCleanupModal({ file, onConfirm, onCancel }: PhotoCleanupMod
               Preview unavailable. Your photo will still be cleaned up when you continue.
             </p>
           ) : (
-            <canvas
-              ref={canvasRef}
-              data-testid="photo-cleanup-preview"
-              className="max-h-[42vh] max-w-full object-contain"
-            />
+            <div className="relative inline-flex">
+              <canvas
+                ref={canvasRef}
+                data-testid="photo-cleanup-preview"
+                className="max-h-[42vh] max-w-full object-contain"
+              />
+              <CropOverlay crop={cropRect} onChange={setCropRect} />
+            </div>
           )}
         </div>
 
@@ -104,6 +120,15 @@ export function PhotoCleanupModal({ file, onConfirm, onCancel }: PhotoCleanupMod
             >
               <RotateCw className="h-4 w-4" />
             </button>
+            {!isFullFrameCrop(cropRect) && (
+              <button
+                type="button"
+                onClick={handleResetCrop}
+                className="text-sm font-medium text-accent transition-colors hover:underline"
+              >
+                Reset crop
+              </button>
+            )}
           </div>
 
           <label className="flex cursor-pointer items-center gap-2 text-sm font-medium">

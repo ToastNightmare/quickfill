@@ -2,11 +2,16 @@ import { PDFDocument } from "pdf-lib";
 import { TextDecoder, TextEncoder } from "util";
 import {
   applyDocumentModeToPixels,
+  clampCropRect,
   cleanupImageToJpeg,
   cleanupPhotoFile,
+  cropRectToPixels,
   downscaleDimensions,
+  FULL_FRAME_CROP,
   isCleanablePhoto,
+  isFullFrameCrop,
   MAX_CLEANUP_EDGE_PX,
+  MIN_CROP_FRACTION,
   normalizeQuarterTurns,
   rotatedDimensions,
 } from "@/lib/image-cleanup";
@@ -51,6 +56,57 @@ describe("pure helpers", () => {
     expect(isCleanablePhoto(new File([""], "photo.jpg", { type: "image/jpeg" }))).toBe(true);
     expect(isCleanablePhoto(new File([""], "photo.JPEG", { type: "" }))).toBe(true);
     expect(isCleanablePhoto(new File([""], "form.pdf", { type: "application/pdf" }))).toBe(false);
+  });
+
+  it("detects full-frame crops, including undefined and near-full rects", () => {
+    expect(isFullFrameCrop(undefined)).toBe(true);
+    expect(isFullFrameCrop(FULL_FRAME_CROP)).toBe(true);
+    expect(isFullFrameCrop({ x: 0.0004, y: 0, width: 0.9996, height: 1 })).toBe(true);
+    expect(isFullFrameCrop({ x: 0.1, y: 0, width: 0.9, height: 1 })).toBe(false);
+    expect(isFullFrameCrop({ x: 0, y: 0, width: 0.5, height: 0.5 })).toBe(false);
+  });
+
+  it("clamps crop rects to bounds", () => {
+    expect(clampCropRect({ x: -0.2, y: -0.2, width: 0.5, height: 0.5 })).toEqual({
+      x: 0,
+      y: 0,
+      width: 0.5,
+      height: 0.5,
+    });
+    expect(clampCropRect({ x: 0.8, y: 0.9, width: 0.5, height: 0.5 })).toEqual({
+      x: 0.5,
+      y: 0.5,
+      width: 0.5,
+      height: 0.5,
+    });
+    expect(clampCropRect({ x: 0, y: 0, width: 2, height: 2 })).toEqual(FULL_FRAME_CROP);
+  });
+
+  it("enforces the minimum crop size per axis", () => {
+    const clamped = clampCropRect({ x: 0.5, y: 0.5, width: 0.01, height: 0.01 });
+    expect(clamped.width).toBe(MIN_CROP_FRACTION);
+    expect(clamped.height).toBe(MIN_CROP_FRACTION);
+    expect(clamped.x).toBe(0.5);
+    expect(clamped.y).toBe(0.5);
+  });
+
+  it("converts normalized crops to clamped pixel regions", () => {
+    expect(cropRectToPixels({ x: 0.25, y: 0.25, width: 0.5, height: 0.5 }, 2200, 1100)).toEqual({
+      x: 550,
+      y: 275,
+      width: 1100,
+      height: 550,
+    });
+    expect(cropRectToPixels(FULL_FRAME_CROP, 2200, 1100)).toEqual({
+      x: 0,
+      y: 0,
+      width: 2200,
+      height: 1100,
+    });
+    // Rounding can never escape the frame.
+    const edge = cropRectToPixels({ x: 0.999, y: 0.999, width: 0.999, height: 0.999 }, 100, 100);
+    expect(edge.x + edge.width).toBeLessThanOrEqual(100);
+    expect(edge.y + edge.height).toBeLessThanOrEqual(100);
   });
 });
 
@@ -97,6 +153,43 @@ describe("applyDocumentModeToPixels", () => {
 
   it("handles empty pixel data", () => {
     expect(() => applyDocumentModeToPixels(new Uint8ClampedArray(0))).not.toThrow();
+  });
+
+  it("samples the histogram from the crop region only when a layout is given", () => {
+    // 2x2 image. Left column is extreme background (0 and 255) that would
+    // flatten the stretch; right column is dull paper (180) and ink (80).
+    const data = rgbaPixels([
+      [0, 0, 0],
+      [180, 180, 180],
+      [255, 255, 255],
+      [80, 80, 80],
+    ]);
+
+    applyDocumentModeToPixels(data, {
+      width: 2,
+      height: 2,
+      region: { x: 1, y: 0, width: 1, height: 2 },
+    });
+
+    // Stretch anchored on the region (80..180): paper whitens, ink darkens.
+    expect(data[1 * 4]).toBeGreaterThan(230);
+    expect(data[3 * 4]).toBeLessThan(40);
+    // Pixels outside the region still get the same mapping, clamped.
+    expect(data[0]).toBe(0);
+    expect(data[2 * 4]).toBe(255);
+  });
+
+  it("falls back to the full frame when the layout region is empty", () => {
+    const data = rgbaPixels([[180, 180, 180], [80, 80, 80]]);
+    expect(() =>
+      applyDocumentModeToPixels(data, {
+        width: 2,
+        height: 1,
+        region: { x: 0, y: 0, width: 0, height: 0 },
+      })
+    ).not.toThrow();
+    // Grayscale output still produced.
+    expect(data[0]).toBe(data[1]);
   });
 });
 
@@ -210,5 +303,59 @@ describe("cleanupImageToJpeg pipeline", () => {
     expect(cleaned.name).toBe("receipt scan.jpg");
     expect(cleaned.type).toBe("image/jpeg");
     expect(cleaned.size).toBeGreaterThan(0);
+  });
+
+  it("crops the output to the requested region", async () => {
+    const input = new Blob([new Uint8Array(ONE_PIXEL_JPG)], { type: "image/jpeg" });
+
+    // 4400x2200 source -> downscaled frame 2200x1100 -> center 50% crop.
+    await cleanupImageToJpeg(input, {
+      rotateQuarterTurns: 0,
+      documentMode: false,
+      cropRect: { x: 0.25, y: 0.25, width: 0.5, height: 0.5 },
+    });
+
+    expect(capturedCanvasSizes[0]).toEqual({ width: 1100, height: 550 });
+  });
+
+  it("crops relative to the rotated frame", async () => {
+    const input = new Blob([new Uint8Array(ONE_PIXEL_JPG)], { type: "image/jpeg" });
+
+    // Rotated frame is 1100x2200; half crop of that is 550x1100.
+    await cleanupImageToJpeg(input, {
+      rotateQuarterTurns: 1,
+      documentMode: false,
+      cropRect: { x: 0, y: 0, width: 0.5, height: 0.5 },
+    });
+
+    expect(capturedCanvasSizes[0]).toEqual({ width: 550, height: 1100 });
+  });
+
+  it("treats a full-frame crop as a no-op", async () => {
+    const input = new Blob([new Uint8Array(ONE_PIXEL_JPG)], { type: "image/jpeg" });
+
+    await cleanupImageToJpeg(input, {
+      rotateQuarterTurns: 0,
+      documentMode: false,
+      cropRect: FULL_FRAME_CROP,
+    });
+    await cleanupImageToJpeg(input, { rotateQuarterTurns: 0, documentMode: false });
+
+    // Identical output dimensions with and without the explicit full-frame crop.
+    expect(capturedCanvasSizes[0]).toEqual({ width: 2200, height: 1100 });
+    expect(capturedCanvasSizes[1]).toEqual({ width: 2200, height: 1100 });
+  });
+
+  it("applies document mode to cropped exports", async () => {
+    const input = new Blob([new Uint8Array(ONE_PIXEL_JPG)], { type: "image/jpeg" });
+
+    await cleanupImageToJpeg(input, {
+      rotateQuarterTurns: 0,
+      documentMode: true,
+      cropRect: { x: 0.25, y: 0.25, width: 0.5, height: 0.5 },
+    });
+
+    expect(documentModeApplied).toBe(true);
+    expect(capturedCanvasSizes[0]).toEqual({ width: 1100, height: 550 });
   });
 });
