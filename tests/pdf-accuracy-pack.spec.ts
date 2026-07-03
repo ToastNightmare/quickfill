@@ -238,7 +238,7 @@ async function countWidgetAnnotations(bytes: Buffer) {
 }
 
 async function uploadPdf(page: Page, pdf: TestPdf, inputIndex: number) {
-  await page.locator("input[type='file']").nth(inputIndex).setInputFiles({
+  await page.locator("input[type='file'][accept*='pdf']").nth(inputIndex).setInputFiles({
     name: pdf.name,
     mimeType: "application/pdf",
     buffer: pdf.bytes,
