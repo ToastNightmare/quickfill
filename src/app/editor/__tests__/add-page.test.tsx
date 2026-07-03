@@ -2,7 +2,7 @@ import "@testing-library/jest-dom";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import EditorPage from "../page";
 import { appendUploadToDocument, DocumentIntakeError } from "@/lib/document-intake";
-import { savePdfToIndexedDB } from "@/lib/persistence";
+import { loadPdfFromIndexedDB, savePdfToIndexedDB } from "@/lib/persistence";
 
 jest.mock("@clerk/nextjs", () => ({
   useAuth: () => ({ isLoaded: true, isSignedIn: true }),
@@ -170,6 +170,7 @@ jest.mock("@/lib/document-intake", () => {
 
 const mockedAppend = appendUploadToDocument as jest.MockedFunction<typeof appendUploadToDocument>;
 const mockedSavePdf = savePdfToIndexedDB as jest.MockedFunction<typeof savePdfToIndexedDB>;
+const mockedLoadPdf = loadPdfFromIndexedDB as jest.MockedFunction<typeof loadPdfFromIndexedDB>;
 
 function pickAddPageFile(name = "page2.png", type = "image/png") {
   const input = screen.getByTestId("add-page-input");
@@ -188,6 +189,8 @@ describe("Editor add page", () => {
   beforeEach(() => {
     jest.clearAllMocks();
     localStorage.clear();
+    sessionStorage.clear();
+    mockedLoadPdf.mockResolvedValue(null);
     global.fetch = jest.fn(async () => ({ ok: true, json: async () => ({}) } as Response));
   });
 
@@ -219,6 +222,7 @@ describe("Editor add page", () => {
       expect(mockedSavePdf).toHaveBeenCalledWith(mergedBytes);
     });
     expect(await screen.findByText("2 pages added")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Add another page" })).toBeInTheDocument();
     expect((await screen.findAllByText(/Page 2 of 3/))[0]).toBeInTheDocument();
   });
 
@@ -239,6 +243,7 @@ describe("Editor add page", () => {
       expect(mockedAppend).toHaveBeenCalledTimes(1);
     });
     expect(screen.queryByTestId("photo-cleanup-modal")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Add another page" })).not.toBeInTheDocument();
     expect((mockedAppend.mock.calls[0][1] as File).name).toBe("extra.pdf");
   });
 
@@ -271,7 +276,53 @@ describe("Editor add page", () => {
     pickAddPageFile();
     await confirmPhotoCleanup();
 
-    expect(await screen.findByText("Page added")).toBeInTheDocument();
+    expect((await screen.findAllByText("Page added")).length).toBeGreaterThan(0);
+    expect(screen.getByRole("button", { name: "Add another page" })).toBeInTheDocument();
+  });
+
+  it("Add another page reopens the picker and Done dismisses the prompt", async () => {
+    const inputClickSpy = jest.spyOn(HTMLInputElement.prototype, "click").mockImplementation(() => undefined);
+    mockedAppend.mockResolvedValue({
+      pdfBytes: new ArrayBuffer(16),
+      addedPageCount: 1,
+      firstAddedPageIndex: 1,
+    });
+
+    render(<EditorPage />);
+    fireEvent.click(screen.getByRole("button", { name: "Mock upload" }));
+    await screen.findAllByRole("button", { name: "Mock add page" });
+
+    pickAddPageFile();
+    await confirmPhotoCleanup();
+
+    const addAnother = await screen.findByRole("button", { name: "Add another page" });
+    fireEvent.click(addAnother);
+
+    expect(inputClickSpy).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole("button", { name: "Add another page" })).not.toBeInTheDocument();
+
+    pickAddPageFile();
+    await confirmPhotoCleanup();
+    fireEvent.click(await screen.findByRole("button", { name: "Done" }));
+
+    expect(screen.queryByRole("button", { name: "Add another page" })).not.toBeInTheDocument();
+    inputClickSpy.mockRestore();
+  });
+
+  it("shows the add another page prompt once for a photo-started document and clears the flag", async () => {
+    mockedLoadPdf.mockResolvedValue(new ArrayBuffer(8));
+    sessionStorage.setItem("qf-photo-capture-source", "1");
+
+    render(<EditorPage />);
+
+    expect(await screen.findByRole("button", { name: "Add another page" })).toBeInTheDocument();
+    expect(sessionStorage.getItem("qf-photo-capture-source")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Done" }));
+    await waitFor(() => {
+      expect(screen.queryByRole("button", { name: "Add another page" })).not.toBeInTheDocument();
+    });
+    expect(screen.queryByRole("button", { name: "Add another page" })).not.toBeInTheDocument();
   });
 
   it("keeps the current document and shows an error when the merge is too large", async () => {
