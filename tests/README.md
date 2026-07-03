@@ -31,11 +31,39 @@ pnpm qa
 
 ### PDF Accuracy Pack
 
+`pnpm qa:pdf` verifies the **local/current worktree** by default (baseURL `http://localhost:3000`).
+
+Requirements before running:
+
+1. `pnpm build` has been run in this worktree (Playwright boots `pnpm start` automatically; it reuses an already-running server on port 3000 if one exists).
+2. `.env.local` exists in this worktree (copy from an existing QuickFill checkout; it is gitignored).
+3. `QUICKFILL_QA_TOKEN` is exported in the shell and matches the server value in `.env.local`. Without it, most of the pack silently skips and a "pass" is meaningless.
+4. `PLAYWRIGHT_BASE_URL` is unset, otherwise it overrides localhost.
+
 ```bash
-QUICKFILL_QA_TOKEN="$(cat /home/kyle/.quickfill-qa-token)" npm run qa:pdf
+pnpm build
+QUICKFILL_QA_TOKEN="$(cat /home/kyle/.quickfill-qa-token)" pnpm qa:pdf
 ```
 
 This runs the focused desktop and mobile PDF checks for AcroForm downloads, flat PDF fallback, widget cleanup, page overflow, real template export coverage, and browser-rendered visual smoke checks.
+
+### Production Smoke
+
+`pnpm qa:pdf:prod` explicitly targets live production (`https://getquickfill.com`). No local server is started.
+
+```bash
+QUICKFILL_QA_TOKEN="$(cat /home/kyle/.quickfill-qa-token)" pnpm qa:pdf:prod
+```
+
+**Production smoke is not branch verification.** Do not treat a `qa:pdf:prod` pass as evidence that a PR branch works. Pre-merge verification must use `pnpm qa:pdf` (localhost) or a preview URL.
+
+### Preview Smoke
+
+```bash
+QUICKFILL_QA_TOKEN="$(cat /home/kyle/.quickfill-qa-token)" PLAYWRIGHT_BASE_URL=https://<preview>.vercel.app pnpm qa:pdf
+```
+
+Remote URLs never boot the local web server.
 
 ### With Debugging
 
@@ -63,7 +91,8 @@ pnpm exec playwright test --ui
 See `playwright.config.ts` for test configuration:
 - Test directory: `./tests`
 - Timeout: 30000ms
-- Base URL: `https://getquickfill.com`
+- Base URL: `PLAYWRIGHT_BASE_URL` if set, otherwise `http://localhost:3000`
+- Web server: auto-starts `pnpm start` for localhost runs only (reuses an existing server)
 - Headless mode: enabled
 - Screenshots: on failure only
 - Video: retained on failure

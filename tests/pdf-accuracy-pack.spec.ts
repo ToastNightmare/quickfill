@@ -451,7 +451,7 @@ test.describe("PDF accuracy pack", () => {
     expect(overflow).toBeLessThanOrEqual(2);
 
     const downloadPromise = page.waitForEvent("download");
-    await page.getByRole("button", { name: /download filled pdf/i }).click();
+    await page.getByRole("button", { name: /download(?: filled)? pdf/i }).click();
     const download = await downloadPromise;
     expect(download.suggestedFilename()).toContain("quickfill-qa-acroform-filled.pdf");
 
