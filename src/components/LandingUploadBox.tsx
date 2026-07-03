@@ -1,9 +1,9 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState, type ChangeEvent } from "react";
 import { useRouter } from "next/navigation";
 import { useDropzone, type FileRejection } from "react-dropzone";
-import { Upload, FileText } from "lucide-react";
+import { Upload, FileText, Camera } from "lucide-react";
 import {
   savePdfToIndexedDB,
   saveFileNameToLocalStorage,
@@ -12,7 +12,12 @@ import {
 import { normalizeDocumentUpload } from "@/lib/document-intake";
 import { isCleanablePhoto } from "@/lib/image-cleanup";
 import { PhotoCleanupModal } from "@/components/PhotoCleanupModal";
-import { DOCUMENT_DROPZONE_ACCEPT, PDF_UPLOAD_MAX_BYTES, PDF_UPLOAD_MAX_LABEL } from "@/lib/upload-limits";
+import {
+  DOCUMENT_DROPZONE_ACCEPT,
+  IMAGE_CAPTURE_ACCEPT,
+  PDF_UPLOAD_MAX_BYTES,
+  PDF_UPLOAD_MAX_LABEL,
+} from "@/lib/upload-limits";
 
 /**
  * Real above-the-fold upload box for the /pdf-form-filler landing page.
@@ -27,6 +32,7 @@ export function LandingUploadBox() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [pendingPhoto, setPendingPhoto] = useState<File | null>(null);
+  const photoCaptureInputRef = useRef<HTMLInputElement>(null);
 
   const handleFile = useCallback(
     async (file: File) => {
@@ -38,6 +44,9 @@ export function LandingUploadBox() {
         await clearEditorState();
         await savePdfToIndexedDB(upload.pdfBytes);
         saveFileNameToLocalStorage(upload.fileName);
+        if (upload.sourceType === "image" && typeof window !== "undefined") {
+          window.sessionStorage.setItem("qf-photo-capture-source", "1");
+        }
         router.push("/editor");
       } catch (error) {
         setError(error instanceof Error ? error.message : "That file could not be opened. Try a different file.");
@@ -70,6 +79,17 @@ export function LandingUploadBox() {
     },
     [handleFile]
   );
+
+  const handlePhotoCapturePick = useCallback((event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    if (isCleanablePhoto(file)) {
+      setPendingPhoto(file);
+      return;
+    }
+    void handleFile(file);
+  }, [handleFile]);
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
@@ -114,6 +134,27 @@ export function LandingUploadBox() {
           </>
         )}
       </div>
+      {!loading && (
+        <div className="mt-3 sm:hidden">
+          <input
+            ref={photoCaptureInputRef}
+            type="file"
+            accept={IMAGE_CAPTURE_ACCEPT}
+            capture="environment"
+            className="hidden"
+            onChange={handlePhotoCapturePick}
+            aria-label="Take photo"
+          />
+          <button
+            type="button"
+            onClick={() => photoCaptureInputRef.current?.click()}
+            className="flex w-full items-center justify-center gap-2 rounded-xl border border-white/25 bg-white/10 px-5 py-3 text-sm font-semibold text-white transition-colors hover:border-accent/70 hover:bg-white/15 sm:hidden"
+          >
+            <Camera className="h-4 w-4" />
+            Take photo
+          </button>
+        </div>
+      )}
       {error && (
         <p className="mt-3 text-center text-sm font-medium text-red-300">{error}</p>
       )}

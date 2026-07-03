@@ -12,6 +12,7 @@ import { WelcomeModal } from "@/components/WelcomeModal";
 import { TourModal } from "@/components/TourModal";
 import { SupportForm } from "@/components/SupportForm";
 import { DownloadPreviewGate } from "@/components/DownloadPreviewGate";
+import { AddAnotherPagePrompt } from "@/components/AddAnotherPagePrompt";
 import type { PdfViewerHandle } from "@/components/PdfViewer";
 import { useHistory } from "@/lib/use-history";
 import { detectAcroFormFields } from "@/lib/pdf-utils";
@@ -206,6 +207,7 @@ function EditorPageContent() {
   const [isAddingPage, setIsAddingPage] = useState(false);
   const addPageInputRef = useRef<HTMLInputElement | null>(null);
   const [pendingAddPagePhoto, setPendingAddPagePhoto] = useState<File | null>(null);
+  const [showAddAnotherPagePrompt, setShowAddAnotherPagePrompt] = useState(false);
   const [showRemovePageConfirm, setShowRemovePageConfirm] = useState(false);
   const [isRemovingPage, setIsRemovingPage] = useState(false);
   const [totalPages, setTotalPages] = useState(0);
@@ -327,6 +329,8 @@ function EditorPageContent() {
       const savedFields = repairDuplicateEditorFieldIds(loadFieldsFromLocalStorage());
       const savedPage = loadPageFromLocalStorage();
       const savedName = loadFileNameFromLocalStorage();
+      const startedFromPhoto = window.sessionStorage.getItem("qf-photo-capture-source") === "1";
+      window.sessionStorage.removeItem("qf-photo-capture-source");
 
       setPdfBytes(savedPdf);
       setFileName(savedName);
@@ -338,6 +342,7 @@ function EditorPageContent() {
       markLocalSave("restored");
       setShowRestoredBanner(true);
       setTimeout(() => setShowRestoredBanner(false), 3000);
+      if (startedFromPhoto) setShowAddAnotherPagePrompt(true);
       pollCanvasForContent(pdfViewerRef, setMinimapCanvas);
 
       // Mark initial restoration as complete so persist effect can save
@@ -709,7 +714,7 @@ function EditorPageContent() {
   }, []);
 
   const appendPageFile = useCallback(
-    async (file: File) => {
+    async (file: File, options?: { showPrompt?: boolean }) => {
       if (!pdfBytes || isAddingPage) return;
       setIsAddingPage(true);
       try {
@@ -732,6 +737,7 @@ function EditorPageContent() {
         });
         setToast(result.addedPageCount === 1 ? "Page added" : `${result.addedPageCount} pages added`);
         setTimeout(() => setToast(null), 3000);
+        if (options?.showPrompt) setShowAddAnotherPagePrompt(true);
       } catch (err) {
         const message =
           err instanceof Error && err.message
@@ -1489,11 +1495,20 @@ function EditorPageContent() {
           file={pendingAddPagePhoto}
           onConfirm={(cleanedFile) => {
             setPendingAddPagePhoto(null);
-            void appendPageFile(cleanedFile);
+            void appendPageFile(cleanedFile, { showPrompt: true });
           }}
           onCancel={() => setPendingAddPagePhoto(null)}
         />
       )}
+
+      <AddAnotherPagePrompt
+        open={showAddAnotherPagePrompt}
+        onAddAnother={() => {
+          setShowAddAnotherPagePrompt(false);
+          addPageInputRef.current?.click();
+        }}
+        onDone={() => setShowAddAnotherPagePrompt(false)}
+      />
 
       {/* Sidebar + Canvas row */}
       <div className="flex flex-1 min-h-0">

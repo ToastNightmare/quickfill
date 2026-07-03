@@ -1,14 +1,16 @@
 import "@testing-library/jest-dom";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { LandingUploadBox } from "@/components/LandingUploadBox";
+import { MobileFiller } from "@/components/MobileFiller";
 import { normalizeDocumentUpload } from "@/lib/document-intake";
 import { savePdfToIndexedDB } from "@/lib/persistence";
 
-const pushMock = jest.fn();
-
-jest.mock("next/navigation", () => ({
-  useRouter: () => ({ push: pushMock }),
-}));
+jest.mock("next/link", () => {
+  const MockLink = ({ children, href }: { children: React.ReactNode; href: string }) => (
+    <a href={href}>{children}</a>
+  );
+  MockLink.displayName = "MockLink";
+  return MockLink;
+});
 
 jest.mock("lucide-react", () => new Proxy({}, {
   get: () => {
@@ -17,19 +19,9 @@ jest.mock("lucide-react", () => new Proxy({}, {
   },
 }));
 
-jest.mock("@/lib/persistence", () => ({
-  savePdfToIndexedDB: jest.fn().mockResolvedValue(undefined),
-  saveFileNameToLocalStorage: jest.fn(),
-  clearEditorState: jest.fn().mockResolvedValue(undefined),
+jest.mock("@/components/SignatureModal", () => ({
+  SignatureModal: () => null,
 }));
-
-jest.mock("@/lib/document-intake", () => {
-  const actual = jest.requireActual("@/lib/document-intake");
-  return {
-    ...actual,
-    normalizeDocumentUpload: jest.fn(),
-  };
-});
 
 jest.mock("@/components/PhotoCleanupModal", () => ({
   PhotoCleanupModal: ({
@@ -50,18 +42,50 @@ jest.mock("@/components/PhotoCleanupModal", () => ({
   ),
 }));
 
+jest.mock("@/lib/persistence", () => ({
+  clearEditorState: jest.fn().mockResolvedValue(undefined),
+  saveFieldsToLocalStorage: jest.fn(),
+  saveFileNameToLocalStorage: jest.fn(),
+  savePageToLocalStorage: jest.fn(),
+  savePdfToIndexedDB: jest.fn().mockResolvedValue(undefined),
+}));
+
+jest.mock("@/lib/pdf-utils", () => ({
+  detectAcroFormFields: jest.fn().mockResolvedValue([]),
+}));
+
+jest.mock("@/lib/document-intake", () => {
+  const actual = jest.requireActual("@/lib/document-intake");
+  return {
+    ...actual,
+    normalizeDocumentUpload: jest.fn(),
+  };
+});
+
+jest.mock("@/lib/autofill-shadow-reporting", () => ({
+  trackAutofillShadowReport: jest.fn(),
+}));
+
+jest.mock("@/lib/profile-autofill", () => ({
+  autofillModeFromFlag: jest.fn(() => "off"),
+  runProfileAutofill: jest.fn(),
+}));
+
 const mockedNormalize = normalizeDocumentUpload as jest.MockedFunction<typeof normalizeDocumentUpload>;
 const mockedSavePdf = savePdfToIndexedDB as jest.MockedFunction<typeof savePdfToIndexedDB>;
 
-function pickFile(file: File) {
-  const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+function pickUploadFile(file: File) {
+  const input = document.querySelector('input[accept*="application/pdf"]') as HTMLInputElement;
   fireEvent.change(input, { target: { files: [file] } });
 }
 
-describe("LandingUploadBox photo cleanup wiring", () => {
+describe("MobileFiller photo cleanup wiring", () => {
+  const originalFetch = global.fetch;
+
   beforeEach(() => {
     jest.clearAllMocks();
     sessionStorage.clear();
+    global.fetch = jest.fn(async () => ({ ok: true, json: async () => ({}) } as Response));
     mockedNormalize.mockResolvedValue({
       fileName: "cleaned.pdf",
       pdfBytes: new ArrayBuffer(8),
@@ -70,8 +94,12 @@ describe("LandingUploadBox photo cleanup wiring", () => {
     });
   });
 
+  afterEach(() => {
+    global.fetch = originalFetch;
+  });
+
   it("shows a mobile Take photo input with rear camera capture", () => {
-    render(<LandingUploadBox />);
+    render(<MobileFiller />);
 
     const input = screen.getByLabelText("Take photo");
     expect(input).toHaveAttribute("type", "file");
@@ -80,10 +108,10 @@ describe("LandingUploadBox photo cleanup wiring", () => {
     expect(screen.getByRole("button", { name: "Take photo" })).toHaveClass("sm:hidden");
   });
 
-  it("routes image uploads through the cleanup modal, then into the editor flow", async () => {
-    render(<LandingUploadBox />);
+  it("opens cleanup for cleanable photos and proceeds with the cleaned file", async () => {
+    render(<MobileFiller />);
 
-    pickFile(new File([new Uint8Array([1])], "photo.png", { type: "image/png" }));
+    pickUploadFile(new File([new Uint8Array([1])], "photo.png", { type: "image/png" }));
 
     expect(await screen.findByTestId("photo-cleanup-modal")).toBeInTheDocument();
     expect(mockedNormalize).not.toHaveBeenCalled();
@@ -97,16 +125,13 @@ describe("LandingUploadBox photo cleanup wiring", () => {
     await waitFor(() => {
       expect(mockedSavePdf).toHaveBeenCalled();
     });
-    await waitFor(() => {
-      expect(pushMock).toHaveBeenCalledWith("/editor");
-    });
     expect(sessionStorage.getItem("qf-photo-capture-source")).toBe("1");
   });
 
-  it("cancel aborts the landing photo upload", async () => {
-    render(<LandingUploadBox />);
+  it("cancel aborts a cleanable photo without processing", async () => {
+    render(<MobileFiller />);
 
-    pickFile(new File([new Uint8Array([1])], "photo.jpg", { type: "image/jpeg" }));
+    pickUploadFile(new File([new Uint8Array([1])], "photo.jpg", { type: "image/jpeg" }));
 
     expect(await screen.findByTestId("photo-cleanup-modal")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Mock cancel" }));
@@ -115,10 +140,10 @@ describe("LandingUploadBox photo cleanup wiring", () => {
       expect(screen.queryByTestId("photo-cleanup-modal")).not.toBeInTheDocument();
     });
     expect(mockedNormalize).not.toHaveBeenCalled();
-    expect(pushMock).not.toHaveBeenCalled();
+    expect(mockedSavePdf).not.toHaveBeenCalled();
   });
 
-  it("PDF uploads bypass the cleanup modal", async () => {
+  it("processes PDF uploads without showing cleanup", async () => {
     mockedNormalize.mockResolvedValueOnce({
       fileName: "form.pdf",
       pdfBytes: new ArrayBuffer(8),
@@ -126,12 +151,12 @@ describe("LandingUploadBox photo cleanup wiring", () => {
       skipAcroFormDetection: false,
     });
 
-    render(<LandingUploadBox />);
+    render(<MobileFiller />);
 
-    pickFile(new File([new Uint8Array([1])], "form.pdf", { type: "application/pdf" }));
+    pickUploadFile(new File([new Uint8Array([1])], "form.pdf", { type: "application/pdf" }));
 
     await waitFor(() => {
-      expect(pushMock).toHaveBeenCalledWith("/editor");
+      expect(mockedNormalize).toHaveBeenCalledTimes(1);
     });
     expect(screen.queryByTestId("photo-cleanup-modal")).not.toBeInTheDocument();
     expect(sessionStorage.getItem("qf-photo-capture-source")).toBeNull();

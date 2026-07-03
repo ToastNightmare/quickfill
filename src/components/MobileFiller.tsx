@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useState, useCallback, useRef, useEffect } from "react";
 import {
   Upload,
+  Camera,
   FileText,
   UserCheck,
   Download,
@@ -30,9 +31,12 @@ import {
 import type { EditorField } from "@/lib/types";
 import {
   DOCUMENT_FILE_INPUT_ACCEPT,
+  IMAGE_CAPTURE_ACCEPT,
   PDF_UPLOAD_MAX_LABEL,
 } from "@/lib/upload-limits";
 import { filledDocumentFilename, normalizeDocumentUpload } from "@/lib/document-intake";
+import { isCleanablePhoto } from "@/lib/image-cleanup";
+import { PhotoCleanupModal } from "@/components/PhotoCleanupModal";
 
 const SIG_KEYWORDS = ["signature", "sign here", "signed", "sig", "esign", "e-sign"];
 
@@ -148,7 +152,9 @@ export function MobileFiller() {
   const [savedSignature, setSavedSignature] = useState<string | null>(null);
   const [sigModalOpen, setSigModalOpen] = useState(false);
   const [activeSigFieldId, setActiveSigFieldId] = useState<string | null>(null);
+  const [pendingPhoto, setPendingPhoto] = useState<File | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const photoCaptureInputRef = useRef<HTMLInputElement>(null);
   const fieldRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
   useEffect(() => {
@@ -215,6 +221,9 @@ export function MobileFiller() {
       }
 
       if (upload.skipAcroFormDetection && typeof window !== "undefined") {
+        if (upload.sourceType === "image") {
+          window.sessionStorage.setItem("qf-photo-capture-source", "1");
+        }
         window.location.assign("/editor?advanced=1");
         return;
       }
@@ -231,7 +240,13 @@ export function MobileFiller() {
 
   const handleFilePick = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) void handleFile(file);
+    e.target.value = "";
+    if (!file) return;
+    if (isCleanablePhoto(file)) {
+      setPendingPhoto(file);
+      return;
+    }
+    void handleFile(file);
   }, [handleFile]);
 
   const handleAutoFill = useCallback(async () => {
@@ -389,6 +404,15 @@ export function MobileFiller() {
         </p>
 
         <input ref={fileInputRef} type="file" accept={DOCUMENT_FILE_INPUT_ACCEPT} className="hidden" onChange={handleFilePick} />
+        <input
+          ref={photoCaptureInputRef}
+          type="file"
+          accept={IMAGE_CAPTURE_ACCEPT}
+          capture="environment"
+          className="hidden"
+          onChange={handleFilePick}
+          aria-label="Take photo"
+        />
 
         <button
           onClick={() => fileInputRef.current?.click()}
@@ -398,7 +422,27 @@ export function MobileFiller() {
           {isLoading ? <Loader2 className="h-5 w-5 animate-spin" /> : <Upload className="h-5 w-5" />}
           {isLoading ? "Reading file..." : "Choose file"}
         </button>
+        <button
+          type="button"
+          onClick={() => photoCaptureInputRef.current?.click()}
+          disabled={isLoading}
+          className="mt-3 flex w-full max-w-sm items-center justify-center gap-3 rounded-2xl border border-border bg-surface py-4 text-base font-semibold text-text transition-colors hover:border-accent hover:text-accent disabled:opacity-60 sm:hidden"
+        >
+          <Camera className="h-5 w-5" />
+          Take photo
+        </button>
         <p className="mt-4 text-xs text-text-muted">PDF, JPG, or PNG, up to {PDF_UPLOAD_MAX_LABEL}</p>
+
+        {pendingPhoto && (
+          <PhotoCleanupModal
+            file={pendingPhoto}
+            onConfirm={(cleanedFile) => {
+              setPendingPhoto(null);
+              void handleFile(cleanedFile);
+            }}
+            onCancel={() => setPendingPhoto(null)}
+          />
+        )}
 
         <div className="mt-10 w-full max-w-sm rounded-2xl border border-border bg-surface-alt p-4">
           <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-text-muted">Works well for</p>
