@@ -464,4 +464,19 @@ describe("Stripe checkout Pro offer", () => {
     const callArgs = (stripe.checkout.sessions.create as jest.Mock).mock.calls[0][0];
     expect(callArgs.cancel_url).toBe("https://getquickfill.com/editor?download=cancelled");
   });
+
+  it("mobile download gate checkouts also cancel back to /editor?download=cancelled", async () => {
+    const response = await POST(
+      makeRequest({ plan: "pro", annual: false, source: "download_preview_gate_mobile" })
+    );
+    expect(response.status).toBe(200);
+
+    const callArgs = (stripe.checkout.sessions.create as jest.Mock).mock.calls[0][0];
+    expect(callArgs.cancel_url).toBe("https://getquickfill.com/editor?download=cancelled");
+    expect(mockTrackServerEvent).toHaveBeenCalledWith("checkout_start", {
+      source: "download_preview_gate_mobile",
+      plan: "pro",
+      billing: "monthly",
+    });
+  });
 });
