@@ -70,6 +70,15 @@ describe("LandingUploadBox photo cleanup wiring", () => {
     });
   });
 
+  it("shows truthful trust copy near the upload box", () => {
+    render(<LandingUploadBox />);
+
+    expect(
+      screen.getByText("Your document stays in your browser while you edit. We don't store your document file on our servers.")
+    ).toBeInTheDocument();
+    expect(screen.getByText(/No account needed to start/)).toBeInTheDocument();
+  });
+
   it("shows a mobile Take photo input with rear camera capture", () => {
     render(<LandingUploadBox />);
 

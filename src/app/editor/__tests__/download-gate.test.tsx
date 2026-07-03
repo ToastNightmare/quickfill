@@ -1,6 +1,7 @@
 import "@testing-library/jest-dom";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import EditorPage from "../page";
+import { trackEvent } from "@/lib/analytics";
 
 jest.mock("@clerk/nextjs", () => ({
   useAuth: () => ({ isLoaded: true, isSignedIn: true }),
@@ -169,6 +170,7 @@ describe("Editor download gate", () => {
   beforeEach(() => {
     jest.clearAllMocks();
     localStorage.clear();
+    window.history.replaceState(null, "", "/");
     Object.defineProperty(URL, "createObjectURL", {
       configurable: true,
       value: jest.fn(() => "blob:download"),
@@ -193,6 +195,37 @@ describe("Editor download gate", () => {
 
     expect(await screen.findByRole("heading", { name: "Your document is ready" })).toBeInTheDocument();
     expect(await screen.findByAltText("Document preview")).toHaveAttribute("src", "data:image/png;base64,composite");
+  });
+
+  it("reopens the gate and fires checkout_cancelled on /editor?download=cancelled", async () => {
+    mockFetchForUsage({ isPro: false, tier: "user", used: 0, limit: 3 });
+    window.history.replaceState(null, "", "/editor?download=cancelled");
+
+    render(<EditorPage />);
+
+    // Document restores/loads as normal; the gate reopens without a download click.
+    fireEvent.click(screen.getByRole("button", { name: "Mock upload" }));
+
+    expect(await screen.findByRole("heading", { name: "Your document is ready" })).toBeInTheDocument();
+    expect(trackEvent).toHaveBeenCalledWith("checkout_cancelled", { source: "download_preview_gate" });
+
+    // Param is stripped so refresh does not re-fire.
+    expect(window.location.search).toBe("");
+    // The document itself is still loaded in the editor.
+    expect(screen.getByTestId("pdf-viewer")).toBeInTheDocument();
+  });
+
+  it("does not fire checkout_cancelled without the cancelled param", async () => {
+    mockFetchForUsage({ isPro: false, tier: "user", used: 0, limit: 3 });
+
+    render(<EditorPage />);
+    fireEvent.click(screen.getByRole("button", { name: "Mock upload" }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("pdf-viewer")).toBeInTheDocument();
+    });
+    expect(trackEvent).not.toHaveBeenCalledWith("checkout_cancelled", expect.anything());
+    expect(screen.queryByRole("heading", { name: "Your document is ready" })).not.toBeInTheDocument();
   });
 
   it("does not show the preview gate for Pro downloads", async () => {

@@ -430,4 +430,38 @@ describe("Stripe checkout Pro offer", () => {
     expect(callArgs.line_items).toEqual([{ price: "price_pro_monthly_rollback", quantity: 1 }]);
     expect(callArgs.subscription_data.trial_period_days).toBeUndefined();
   });
+
+  it("logs checkout_start with the client checkout source", async () => {
+    const response = await POST(
+      makeRequest({ plan: "pro", annual: false, source: "download_preview_gate" })
+    );
+    expect(response.status).toBe(200);
+
+    expect(mockTrackServerEvent).toHaveBeenCalledWith("checkout_start", {
+      source: "download_preview_gate",
+      plan: "pro",
+      billing: "monthly",
+    });
+  });
+
+  it("logs checkout_start with default source when none is sent", async () => {
+    const response = await POST(makeRequest({ plan: "pro", annual: false }));
+    expect(response.status).toBe(200);
+
+    expect(mockTrackServerEvent).toHaveBeenCalledWith("checkout_start", {
+      source: "checkout",
+      plan: "pro",
+      billing: "monthly",
+    });
+  });
+
+  it("download gate checkouts cancel back to /editor?download=cancelled", async () => {
+    const response = await POST(
+      makeRequest({ plan: "pro", annual: false, source: "download_preview_gate" })
+    );
+    expect(response.status).toBe(200);
+
+    const callArgs = (stripe.checkout.sessions.create as jest.Mock).mock.calls[0][0];
+    expect(callArgs.cancel_url).toBe("https://getquickfill.com/editor?download=cancelled");
+  });
 });

@@ -10,13 +10,10 @@ interface DownloadPreviewGateProps {
 }
 
 const valueItems = [
-  "Clean PDF download",
-  "No watermark after unlock",
+  "Clean PDF, no watermark",
   "Unlimited downloads",
-  "Saved progress",
-  "Works with PDFs, JPGs, PNGs, scans and screenshots",
-  "Secure checkout by Stripe",
-  "Cancel anytime",
+  "Works with PDFs, photos and scans",
+  "Secure checkout by Stripe, cancel anytime",
 ];
 
 function PreviewWatermark() {
@@ -104,13 +101,13 @@ export function DownloadPreviewGate({
 
         <div className="px-8 py-6">
           <div className="text-center">
-            <p className="text-xl font-bold text-text">Unlock your clean PDF today</p>
+            <p className="text-xl font-bold text-text">Unlock your clean download for A$2</p>
             <p className="mt-1 text-sm text-text-muted">
-              A$2 for 7 days, then A$25/month. Cancel anytime.
+              7-day intro, then A$25/month. Cancel anytime.
             </p>
           </div>
 
-          <div className="mt-6 flex flex-col gap-3">
+          <div className="mt-5 flex flex-col gap-2">
             <a
               href="/checkout?plan=pro&billing=monthly&source=download_preview_gate"
               className="flex h-12 w-full items-center justify-center rounded-xl bg-accent px-4 text-sm font-semibold text-white transition-colors hover:bg-accent-hover"
@@ -118,7 +115,7 @@ export function DownloadPreviewGate({
               Unlock download for A$2
             </a>
             <p className="text-center text-xs text-text-muted">
-              Start with 7 days for A$2, then A$25/month after 7 days. Cancel anytime.
+              We process your file to create the download, but we don&apos;t store your document file.
             </p>
           </div>
 
@@ -131,18 +128,17 @@ export function DownloadPreviewGate({
             ))}
           </ul>
 
-          <div className="mt-6 flex flex-col gap-3">
+          <div className="mt-5 flex flex-col items-center gap-3">
             <a
               href="/checkout?plan=pro&billing=annual&source=download_preview_gate"
-              className="flex h-10 w-full items-center justify-center rounded-xl border border-border px-4 text-sm font-semibold text-text transition-colors hover:bg-surface-alt"
+              className="text-sm font-medium text-text-muted underline underline-offset-2 transition-colors hover:text-text"
             >
-              Choose annual, A$149/year
+              Prefer annual? A$149/year
             </a>
-            <p className="text-center text-xs text-text-muted">A$149/year. Cancel anytime.</p>
             <button
               type="button"
               onClick={onClose}
-              className="mt-2 text-sm font-medium text-text-muted transition-colors hover:text-text"
+              className="text-sm font-medium text-text-muted transition-colors hover:text-text"
             >
               Keep editing
             </button>

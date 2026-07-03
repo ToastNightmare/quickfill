@@ -36,14 +36,36 @@ describe("DownloadPreviewGate", () => {
     expect(screen.getByRole("heading", { name: "Your document is ready" })).toBeInTheDocument();
   });
 
-  it("shows offer copy: A$2, A$25, A$149", () => {
+  it("shows one clean price block: A$2 headline and A$25/month subline", () => {
     renderGate();
 
-    expect(screen.getByText("Unlock your clean PDF today")).toBeInTheDocument();
-    expect(screen.getByText("A$2 for 7 days, then A$25/month. Cancel anytime.")).toBeInTheDocument();
+    expect(screen.getByText("Unlock your clean download for A$2")).toBeInTheDocument();
+    expect(screen.getByText("7-day intro, then A$25/month. Cancel anytime.")).toBeInTheDocument();
+    // Old repeated price copy is gone.
+    expect(screen.queryByText("Unlock your clean PDF today")).not.toBeInTheDocument();
     expect(
-      screen.getByText("Start with 7 days for A$2, then A$25/month after 7 days. Cancel anytime.")
+      screen.queryByText("Start with 7 days for A$2, then A$25/month after 7 days. Cancel anytime.")
+    ).not.toBeInTheDocument();
+  });
+
+  it("shows trust microcopy near the CTA", () => {
+    renderGate();
+
+    expect(
+      screen.getByText("We process your file to create the download, but we don't store your document file.")
     ).toBeInTheDocument();
+  });
+
+  it("shows exactly 4 value bullets", () => {
+    renderGate();
+
+    const list = screen.getByRole("list");
+    const items = list.querySelectorAll("li");
+    expect(items).toHaveLength(4);
+    expect(screen.getByText("Clean PDF, no watermark")).toBeInTheDocument();
+    expect(screen.getByText("Unlimited downloads")).toBeInTheDocument();
+    expect(screen.getByText("Works with PDFs, photos and scans")).toBeInTheDocument();
+    expect(screen.getByText("Secure checkout by Stripe, cancel anytime")).toBeInTheDocument();
   });
 
   it("shows 'Keep editing' button", () => {
@@ -70,13 +92,17 @@ describe("DownloadPreviewGate", () => {
     );
   });
 
-  it("annual CTA links to correct checkout URL", () => {
+  it("annual option is a quiet secondary link to the annual checkout URL", () => {
     renderGate();
 
-    expect(screen.getByRole("link", { name: "Choose annual, A$149/year" })).toHaveAttribute(
+    const annualLink = screen.getByRole("link", { name: "Prefer annual? A$149/year" });
+    expect(annualLink).toHaveAttribute(
       "href",
       "/checkout?plan=pro&billing=annual&source=download_preview_gate"
     );
+    // Quiet link styling, not a competing full-width button.
+    expect(annualLink.className).toContain("underline");
+    expect(annualLink.className).not.toContain("w-full");
   });
 
   it("shows placeholder when previewDataUrl is null", () => {

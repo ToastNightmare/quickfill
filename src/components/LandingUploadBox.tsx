@@ -3,7 +3,7 @@
 import { useCallback, useRef, useState, type ChangeEvent } from "react";
 import { useRouter } from "next/navigation";
 import { useDropzone, type FileRejection } from "react-dropzone";
-import { Upload, FileText, Camera } from "lucide-react";
+import { Upload, FileText, Camera, Lock } from "lucide-react";
 import {
   savePdfToIndexedDB,
   saveFileNameToLocalStorage,
@@ -155,6 +155,10 @@ export function LandingUploadBox() {
           </button>
         </div>
       )}
+      <p className="mt-3 flex items-center justify-center gap-1.5 text-center text-xs text-gray-400">
+        <Lock className="h-3.5 w-3.5 shrink-0 text-accent" aria-hidden="true" />
+        <span>Your document stays in your browser while you edit. We don&apos;t store your document file on our servers.</span>
+      </p>
       {error && (
         <p className="mt-3 text-center text-sm font-medium text-red-300">{error}</p>
       )}

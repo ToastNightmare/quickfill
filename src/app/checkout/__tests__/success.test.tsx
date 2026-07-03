@@ -20,8 +20,8 @@ jest.mock("@clerk/nextjs", () => ({
 
 // Mock next/link
 jest.mock("next/link", () => {
-  const MockLink = ({ children, href }: { children: React.ReactNode; href: string }) => (
-    <a href={href}>{children}</a>
+  const MockLink = ({ children, href, className }: { children: React.ReactNode; href: string; className?: string }) => (
+    <a href={href} className={className}>{children}</a>
   );
   MockLink.displayName = "MockLink";
   return MockLink;
@@ -340,6 +340,43 @@ describe("CheckoutSuccessPage - Download Return CTA", () => {
       "href",
       "/editor?download=ready"
     );
+  });
+
+  it("makes 'Download your document' the first, primary CTA", async () => {
+    setupSearchParams({
+      synced: "true",
+    });
+
+    render(<CheckoutSuccessPage />);
+
+    const downloadLink = await screen.findByRole("link", { name: /download your document/i });
+    const dashboardLink = screen.getByRole("link", { name: /go to dashboard/i });
+    const fillLink = screen.getByRole("link", { name: /fill your first pro pdf/i });
+
+    // Download comes first in DOM order.
+    expect(
+      downloadLink.compareDocumentPosition(dashboardLink) & Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
+    expect(
+      downloadLink.compareDocumentPosition(fillLink) & Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
+
+    // Download is the accent-styled primary; the others are quiet secondaries.
+    expect(downloadLink.className).toContain("bg-accent");
+    expect(dashboardLink.className).not.toContain("bg-accent");
+    expect(fillLink.className).not.toContain("bg-accent");
+  });
+
+  it("shows continuity reassurance copy", async () => {
+    setupSearchParams({
+      synced: "true",
+    });
+
+    render(<CheckoutSuccessPage />);
+
+    expect(
+      await screen.findByText("Your document and edits are saved right where you left them.")
+    ).toBeInTheDocument();
   });
 });
 

@@ -223,27 +223,32 @@ function CheckoutSuccessContent() {
               </div>
             </div>
 
-            <div className="mt-8 grid gap-4 sm:grid-cols-2">
-              <Link
-                href="/dashboard?upgraded=true"
-                className="flex h-12 items-center justify-center rounded-xl bg-accent px-5 text-sm font-semibold text-white transition-colors hover:bg-accent-hover"
-              >
-                Go to dashboard
-              </Link>
-              <Link
-                href="/editor?upgraded=true"
-                className="flex h-12 items-center justify-center gap-2 rounded-xl border border-border bg-surface px-5 text-sm font-semibold transition-colors hover:bg-surface-alt"
-              >
-                <FileText className="h-4 w-4 text-accent" />
-                Fill your first Pro PDF
-              </Link>
+            <div className="mt-8 flex flex-col gap-3">
               <Link
                 href="/editor?download=ready"
-                className="flex h-12 items-center justify-center gap-2 rounded-xl bg-accent px-5 text-sm font-semibold text-white transition-colors hover:bg-accent-hover sm:col-span-2"
+                className="flex h-12 items-center justify-center gap-2 rounded-xl bg-accent px-5 text-sm font-semibold text-white transition-colors hover:bg-accent-hover"
               >
                 <Download className="h-4 w-4" />
                 Download your document
               </Link>
+              <p className="text-center text-xs text-text-muted">
+                Your document and edits are saved right where you left them.
+              </p>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <Link
+                  href="/dashboard?upgraded=true"
+                  className="flex h-11 items-center justify-center rounded-xl border border-border bg-surface px-5 text-sm font-medium text-text-muted transition-colors hover:bg-surface-alt hover:text-text"
+                >
+                  Go to dashboard
+                </Link>
+                <Link
+                  href="/editor?upgraded=true"
+                  className="flex h-11 items-center justify-center gap-2 rounded-xl border border-border bg-surface px-5 text-sm font-medium text-text-muted transition-colors hover:bg-surface-alt hover:text-text"
+                >
+                  <FileText className="h-4 w-4 text-accent" />
+                  Fill your first Pro PDF
+                </Link>
+              </div>
             </div>
 
             <p className="mt-4 text-center text-xs text-text-muted">

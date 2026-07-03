@@ -242,6 +242,7 @@ function EditorPageContent() {
   const restoredRef = useRef(false);
   const initialRestoreDoneRef = useRef(false);
   const downloadReadyFiredRef = useRef(false);
+  const downloadCancelledHandledRef = useRef(false);
   const searchParams = useSearchParams();
   const advancedMobile = searchParams.get("advanced") === "1";
   const showFullEditorOnMobile = advancedMobile || Boolean(pdfBytes);
@@ -1072,6 +1073,29 @@ function EditorPageContent() {
       setIsDownloading(false);
     }
   }, [pdfBytes, fields, pageScales, hasAcroForm, fileName, totalPages, showToast, openDownloadPreviewGate]);
+
+  // Stripe cancel from the download gate returns to /editor?download=cancelled.
+  // The user's document restores from IndexedDB as normal; reopen the gate so
+  // they land back at the unlock moment instead of a bare editor.
+  useEffect(() => {
+    if (!pdfBytes) return;
+    if (downloadCancelledHandledRef.current) return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("download") !== "cancelled") return;
+    downloadCancelledHandledRef.current = true;
+
+    trackEvent("checkout_cancelled", { source: "download_preview_gate" });
+    openDownloadPreviewGate();
+
+    // Strip the param so a refresh does not re-fire the event or reopen the gate.
+    params.delete("download");
+    const query = params.toString();
+    window.history.replaceState(
+      null,
+      "",
+      query ? `${window.location.pathname}?${query}` : window.location.pathname
+    );
+  }, [pdfBytes, openDownloadPreviewGate]);
 
   useEffect(() => {
     if (!isLoaded || !isSignedIn) return;
