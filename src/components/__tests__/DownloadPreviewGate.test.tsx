@@ -11,6 +11,7 @@ interface TestProps {
   onClose: jest.Mock;
   previewDataUrl: string | null;
   fileName: string;
+  checkoutSource?: string;
 }
 
 const defaultProps: TestProps = {
@@ -116,6 +117,19 @@ describe("DownloadPreviewGate", () => {
     renderGate({ previewDataUrl: "data:image/png;base64,abc" });
 
     expect(screen.getByAltText("Document preview")).toHaveAttribute("src", "data:image/png;base64,abc");
+  });
+
+  it("checkoutSource prop rewrites both checkout hrefs", () => {
+    renderGate({ checkoutSource: "download_preview_gate_mobile" });
+
+    expect(screen.getByRole("link", { name: "Unlock download for A$2" })).toHaveAttribute(
+      "href",
+      "/checkout?plan=pro&billing=monthly&source=download_preview_gate_mobile"
+    );
+    expect(screen.getByRole("link", { name: "Prefer annual? A$149/year" })).toHaveAttribute(
+      "href",
+      "/checkout?plan=pro&billing=annual&source=download_preview_gate_mobile"
+    );
   });
 
   it("does not render when open=false", () => {

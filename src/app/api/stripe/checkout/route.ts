@@ -407,8 +407,10 @@ export async function POST(req: NextRequest) {
     }
 
     const cancelParams = new URLSearchParams({ checkout: "cancelled", plan, billing });
+    // Any download gate source (desktop or mobile) cancels back to the editor
+    // so the user lands at the unlock moment with their document restored.
     const cancelUrl =
-      checkoutSource === "download_preview_gate"
+      checkoutSource.startsWith("download_preview_gate")
         ? `${origin}/editor?download=cancelled`
         : `${origin}/pricing?${cancelParams.toString()}`;
     const subscriptionData = { metadata, ...checkoutOffer.subscriptionConfig };

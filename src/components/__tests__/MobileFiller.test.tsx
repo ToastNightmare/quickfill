@@ -3,6 +3,8 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MobileFiller } from "@/components/MobileFiller";
 import { normalizeDocumentUpload } from "@/lib/document-intake";
 import { savePdfToIndexedDB } from "@/lib/persistence";
+import { detectAcroFormFields } from "@/lib/pdf-utils";
+import { trackEvent } from "@/lib/analytics";
 
 jest.mock("next/link", () => {
   const MockLink = ({ children, href }: { children: React.ReactNode; href: string }) => (
@@ -64,6 +66,14 @@ jest.mock("@/lib/document-intake", () => {
 
 jest.mock("@/lib/autofill-shadow-reporting", () => ({
   trackAutofillShadowReport: jest.fn(),
+}));
+
+jest.mock("@/lib/analytics", () => ({
+  trackEvent: jest.fn(),
+}));
+
+jest.mock("@/lib/pdfjs-client", () => ({
+  loadPdfjsClient: jest.fn().mockRejectedValue(new Error("pdfjs disabled in tests")),
 }));
 
 jest.mock("@/lib/profile-autofill", () => ({
@@ -160,5 +170,148 @@ describe("MobileFiller photo cleanup wiring", () => {
     });
     expect(screen.queryByTestId("photo-cleanup-modal")).not.toBeInTheDocument();
     expect(sessionStorage.getItem("qf-photo-capture-source")).toBeNull();
+  });
+});
+
+describe("MobileFiller download gate", () => {
+  const originalFetch = global.fetch;
+  const originalCreateObjectURL = global.URL.createObjectURL;
+  const originalRevokeObjectURL = global.URL.revokeObjectURL;
+  const mockedDetect = detectAcroFormFields as jest.MockedFunction<typeof detectAcroFormFields>;
+  const mockedTrackEvent = trackEvent as jest.MockedFunction<typeof trackEvent>;
+
+  const fillPdfCalls: string[] = [];
+
+  function mockFetchWithUsage(usage: Record<string, unknown>) {
+    global.fetch = jest.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/api/signature")) {
+        return { ok: true, json: async () => ({}) } as Response;
+      }
+      if (url.includes("/api/usage")) {
+        return { ok: true, json: async () => usage } as Response;
+      }
+      if (url.includes("/api/fill-pdf")) {
+        fillPdfCalls.push(url);
+        return {
+          ok: true,
+          status: 200,
+          arrayBuffer: async () => new ArrayBuffer(8),
+        } as unknown as Response;
+      }
+      return { ok: true, json: async () => ({}) } as Response;
+    }) as unknown as typeof global.fetch;
+  }
+
+  async function uploadAcroFormPdf() {
+    mockedNormalize.mockResolvedValueOnce({
+      fileName: "form.pdf",
+      pdfBytes: new ArrayBuffer(8),
+      sourceType: "pdf",
+      skipAcroFormDetection: false,
+    });
+    mockedDetect.mockResolvedValueOnce([
+      { name: "full_name", type: "text", x: 10, y: 10, width: 120, height: 20, page: 0, value: "" },
+    ]);
+
+    render(<MobileFiller />);
+    pickUploadFile(new File([new Uint8Array([1])], "form.pdf", { type: "application/pdf" }));
+
+    return screen.findByRole("button", { name: /Download PDF/i });
+  }
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    sessionStorage.clear();
+    fillPdfCalls.length = 0;
+    global.URL.createObjectURL = jest.fn(() => "blob:mock");
+    global.URL.revokeObjectURL = jest.fn();
+  });
+
+  afterEach(() => {
+    global.fetch = originalFetch;
+    global.URL.createObjectURL = originalCreateObjectURL;
+    global.URL.revokeObjectURL = originalRevokeObjectURL;
+  });
+
+  it("non-Pro download opens the gate and never calls fill-pdf", async () => {
+    mockFetchWithUsage({ isPro: false, used: 0, limit: 3, guest: true });
+
+    const downloadButton = await uploadAcroFormPdf();
+    fireEvent.click(downloadButton);
+
+    expect(
+      await screen.findByRole("heading", { name: "Your document is ready" })
+    ).toBeInTheDocument();
+    expect(fillPdfCalls).toHaveLength(0);
+    expect(mockedTrackEvent).toHaveBeenCalledWith(
+      "download_attempt",
+      expect.objectContaining({ surface: "mobile" })
+    );
+    expect(mockedTrackEvent).toHaveBeenCalledWith("download_gate_shown", {
+      source: "mobile_filler",
+    });
+    // Old free-tier language is gone.
+    expect(screen.queryByText(/Free limit reached/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Downloaded with QuickFill watermark/i)).not.toBeInTheDocument();
+  });
+
+  it("gate checkout links carry the mobile checkout source", async () => {
+    mockFetchWithUsage({ isPro: false, used: 0, limit: 3, guest: true });
+
+    const downloadButton = await uploadAcroFormPdf();
+    fireEvent.click(downloadButton);
+
+    await screen.findByRole("heading", { name: "Your document is ready" });
+    expect(screen.getByRole("link", { name: "Unlock download for A$2" })).toHaveAttribute(
+      "href",
+      "/checkout?plan=pro&billing=monthly&source=download_preview_gate_mobile"
+    );
+    expect(screen.getByRole("link", { name: "Prefer annual? A$149/year" })).toHaveAttribute(
+      "href",
+      "/checkout?plan=pro&billing=annual&source=download_preview_gate_mobile"
+    );
+  });
+
+  it("Keep editing closes the gate and preserves typed work", async () => {
+    mockFetchWithUsage({ isPro: false, used: 0, limit: 3, guest: true });
+
+    const downloadButton = await uploadAcroFormPdf();
+
+    const input = screen.getByPlaceholderText("Type here");
+    fireEvent.change(input, { target: { value: "Kyle" } });
+
+    fireEvent.click(downloadButton);
+    await screen.findByRole("heading", { name: "Your document is ready" });
+
+    fireEvent.click(screen.getByRole("button", { name: "Keep editing" }));
+
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("heading", { name: "Your document is ready" })
+      ).not.toBeInTheDocument();
+    });
+    expect(screen.getByPlaceholderText("Type here")).toHaveValue("Kyle");
+  });
+
+  it("Pro download stays clean: fill-pdf runs, no gate, success step", async () => {
+    mockFetchWithUsage({ isPro: true, tier: "pro", guest: false });
+
+    const downloadButton = await uploadAcroFormPdf();
+    fireEvent.click(downloadButton);
+
+    expect(await screen.findByRole("heading", { name: "All done!" })).toBeInTheDocument();
+    expect(fillPdfCalls).toHaveLength(1);
+    expect(
+      screen.queryByRole("heading", { name: "Your document is ready" })
+    ).not.toBeInTheDocument();
+    expect(mockedTrackEvent).toHaveBeenCalledWith(
+      "download_success",
+      expect.objectContaining({ surface: "mobile", pro: true })
+    );
+    expect(mockedTrackEvent).not.toHaveBeenCalledWith(
+      "download_gate_shown",
+      expect.anything()
+    );
   });
 });

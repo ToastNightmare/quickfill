@@ -7,6 +7,12 @@ interface DownloadPreviewGateProps {
   onClose: () => void;
   previewDataUrl: string | null;
   fileName: string;
+  /**
+   * Checkout attribution source carried through the checkout links.
+   * Any source starting with "download_preview_gate" cancels back to
+   * /editor?download=cancelled so the user returns to the unlock moment.
+   */
+  checkoutSource?: string;
 }
 
 const valueItems = [
@@ -55,8 +61,11 @@ export function DownloadPreviewGate({
   onClose,
   previewDataUrl,
   fileName,
+  checkoutSource = "download_preview_gate",
 }: DownloadPreviewGateProps) {
   if (!open) return null;
+
+  const sourceParam = encodeURIComponent(checkoutSource);
 
   return (
     <div
@@ -109,7 +118,7 @@ export function DownloadPreviewGate({
 
           <div className="mt-5 flex flex-col gap-2">
             <a
-              href="/checkout?plan=pro&billing=monthly&source=download_preview_gate"
+              href={`/checkout?plan=pro&billing=monthly&source=${sourceParam}`}
               className="flex h-12 w-full items-center justify-center rounded-xl bg-accent px-4 text-sm font-semibold text-white transition-colors hover:bg-accent-hover"
             >
               Unlock download for A$2
@@ -130,7 +139,7 @@ export function DownloadPreviewGate({
 
           <div className="mt-5 flex flex-col items-center gap-3">
             <a
-              href="/checkout?plan=pro&billing=annual&source=download_preview_gate"
+              href={`/checkout?plan=pro&billing=annual&source=${sourceParam}`}
               className="text-sm font-medium text-text-muted underline underline-offset-2 transition-colors hover:text-text"
             >
               Prefer annual? A$149/year
