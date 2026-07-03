@@ -70,7 +70,7 @@ const tools: { type: ToolType; icon: typeof Type; label: string; shortLabel: str
   { type: "line", icon: Pencil, label: "Line", shortLabel: "Line", title: "Line: click to place a horizontal or vertical line" },
   { type: "mask-eraser", icon: Eraser, label: "Eraser", shortLabel: "Eraser", title: "Eraser: drag to erase parts of placed fields" },
   { type: "signature", icon: PenTool, label: "Signature", shortLabel: "Sign", title: "Signature field: tap to place" },
-  { type: "date", icon: Calendar, label: "Date", shortLabel: "Date", title: "Date field: tap or drag to place" },
+  { type: "date", icon: Calendar, label: "Date", shortLabel: "Date", title: "Date: tap to stamp today's date" },
   { type: "whiteout", icon: PaintBucket, label: "Whiteout", shortLabel: "Erase", title: "Whiteout: drag over text to cover it" },
 ];
 
