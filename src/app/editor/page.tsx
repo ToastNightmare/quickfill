@@ -31,6 +31,7 @@ import {
   cleanupOldIndexedDBSessions,
 } from "@/lib/persistence";
 import type { EditorField, LineOrientation, PlacementToolType, ToolDefaultState, ToolType } from "@/lib/types";
+import { todayDateStamp } from "@/lib/date-stamp";
 import { useAuth } from "@clerk/nextjs";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
@@ -431,7 +432,7 @@ function EditorPageContent() {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && (activeTool === "checkbox" || activeTool === "line")) {
+      if (e.key === "Escape" && (activeTool === "checkbox" || activeTool === "line" || activeTool === "date")) {
         setActiveTool("select");
       }
     };
@@ -620,8 +621,9 @@ function EditorPageContent() {
       trackEvent("field_added", { source: "manual", type: fieldToAdd.type, snapped: Boolean(fieldToAdd.snapped) });
       setFields((prev) => [...prev, fieldToAdd]);
       // Select the newly added field and keep stamp-style tools active
-      setSelectedFieldId((fieldToAdd.type === "line" || fieldToAdd.type === "checkbox") ? null : fieldToAdd.id);
-      setActiveTool((prev) => (fieldToAdd.type === "checkbox" || fieldToAdd.type === "line" ? prev : "select"));
+      const isStampStyle = fieldToAdd.type === "checkbox" || fieldToAdd.type === "line" || fieldToAdd.type === "date";
+      setSelectedFieldId(isStampStyle ? null : fieldToAdd.id);
+      setActiveTool((prev) => (isStampStyle ? prev : "select"));
       return fieldToAdd;
     },
     [fields, setFields]
@@ -1233,7 +1235,7 @@ function EditorPageContent() {
                   x: f.x / zoomFactor, y: f.y / zoomFactor,
                   width: f.width / zoomFactor, height: f.height / zoomFactor,
                   page: currentPage,
-                  value: fieldType === "date" ? new Date().toLocaleDateString("en-AU") : "",
+                  value: fieldType === "date" ? todayDateStamp() : "",
                   fontSize: fieldType === "signature" ? 16 : 14,
                 };
               }

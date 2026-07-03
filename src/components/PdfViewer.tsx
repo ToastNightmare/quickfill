@@ -4,6 +4,7 @@ import { useEffect, useLayoutEffect, useRef, useState, useCallback, useImperativ
 import { Stage, Layer, Rect, Text, Group, Transformer, Image as KonvaImage, Line } from "react-konva";
 import type Konva from "konva";
 import type { EditorField, PlacementToolType, SignatureField, CheckboxStamp, WhiteoutField, CombField, ToolDefaultState, LineField, LineOrientation } from "@/lib/types";
+import { todayDateStamp, DATE_STAMP_PLACEHOLDER } from "@/lib/date-stamp";
 import { detectSnapBox, detectAllBoxes, snapCredibilityScore, floodFillCell, detectCombCells } from "@/lib/snap-detect";
 import type { SnapResult, CombDetectResult } from "@/lib/snap-detect";
 import { createEditorFieldId } from "@/lib/field-ids";
@@ -1119,7 +1120,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
               field = { ...base, type: "signature", width: fieldW, height: fieldH, value: "", fontSize: 16 };
               break;
             case "date":
-              field = { ...base, type: "date", width: fieldW, height: fieldH, value: new Date().toLocaleDateString("en-AU"), fontSize: 14 };
+              field = { ...base, type: "date", width: fieldW, height: fieldH, value: todayDateStamp(), fontSize: 14 };
               break;
             case "box": {
               // Try to auto-detect comb cells from the PDF
@@ -1379,7 +1380,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
                 field = { ...base, type: "signature", width: fieldW, height: fieldH, value: "", fontSize: inferredFontSize ?? 16 };
                 break;
               case "date":
-                field = { ...base, type: "date", width: fieldW, height: fieldH, value: new Date().toLocaleDateString("en-AU"), fontSize: inferredFontSize ?? 14 };
+                field = { ...base, type: "date", width: fieldW, height: fieldH, value: todayDateStamp(), fontSize: inferredFontSize ?? 14 };
                 break;
               case "box": {
                 // Try to auto-detect comb cells from the PDF
@@ -1650,7 +1651,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
           field = { ...base, type: "signature", width: fieldW, height: fieldH, value: "", fontSize: inferredFontSize ?? 16 };
           break;
         case "date":
-          field = { ...base, type: "date", width: fieldW, height: fieldH, value: new Date().toLocaleDateString("en-AU"), fontSize: inferredFontSize ?? 14 };
+          field = { ...base, type: "date", width: fieldW, height: fieldH, value: todayDateStamp(), fontSize: inferredFontSize ?? 14 };
           break;
         case "box": {
           // Try to auto-detect comb cells from the PDF
@@ -2330,7 +2331,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
                 value={editField.value}
                 placeholder={
                   editField.type === "date"
-                    ? "MM/DD/YYYY"
+                    ? DATE_STAMP_PLACEHOLDER
                     : "Type here..."
                 }
                 onChange={(e) => {

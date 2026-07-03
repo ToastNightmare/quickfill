@@ -58,7 +58,7 @@ const TOOL_META: Record<Exclude<ToolType, "eraser">, { icon: typeof Type; label:
   text: { icon: Type, label: "Text Field", hint: "Tap or drag on the PDF to place a text field.", color: "text-blue-500" },
   checkbox: { icon: CheckSquare, label: "Checkbox", hint: "Tap a box to place a tick, then tap the field to change it.", color: "text-violet-500" },
   signature: { icon: PenTool, label: "Signature", hint: "Tap where the signature should go, then draw or reuse your saved signature.", color: "text-pink-500" },
-  date: { icon: Calendar, label: "Date", hint: "Tap where the date should go. Today's date is added first.", color: "text-amber-500" },
+  date: { icon: Calendar, label: "Date", hint: "Tap to stamp today's date. Keep tapping to add more, then press Select to finish.", color: "text-amber-500" },
   box: { icon: SquareSplitHorizontal, label: "Box Field", hint: "Drag across character boxes for TFN, ABN, Medicare, and similar forms.", color: "text-cyan-500" },
   whiteout: { icon: PaintBucket, label: "Whiteout", hint: "Drag over text you want to cover. QuickFill samples the paper color.", color: "text-gray-500" },
   line: { icon: Pencil, label: "Line", hint: "Click on the PDF to place a line. Choose orientation, colour, and thickness before placing.", color: "text-emerald-500" },
