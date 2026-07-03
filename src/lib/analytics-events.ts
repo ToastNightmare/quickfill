@@ -10,6 +10,7 @@ export const ANALYTICS_EVENTS = [
   "download_attempt",
   "download_success",
   "download_failed",
+  "download_gate_shown",
   "free_limit_hit",
   "upgrade_prompted",
   "checkout_start",

@@ -429,7 +429,7 @@ export async function POST(req: NextRequest) {
       subscription_data: subscriptionData,
     });
 
-    await trackServerEvent("checkout_start", { source: "server", plan, billing });
+    await trackServerEvent("checkout_start", { source: checkoutSource, plan, billing });
     return NextResponse.json({ url: session.url });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
