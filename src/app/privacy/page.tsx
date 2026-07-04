@@ -22,6 +22,16 @@ export default function PrivacyPage() {
         </section>
 
         <section>
+          <h2 className="text-lg font-semibold text-text">Saved Signatures</h2>
+          <p className="mt-2">
+            If you save a signature for reuse, it may be stored locally in your browser on your
+            device so you can sign again without redrawing it. You can delete it anytime from the
+            signature tool. Signed-in users may also have their signature stored with their account
+            for reuse across devices.
+          </p>
+        </section>
+
+        <section>
           <h2 className="text-lg font-semibold text-text">Account Data</h2>
           <p className="mt-2">
             Account data (email, profile information) is stored securely via Clerk authentication

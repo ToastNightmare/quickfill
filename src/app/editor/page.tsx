@@ -44,6 +44,7 @@ import { getTemplateBySlug, isTemplateFillable, type TemplateConfig } from "@/li
 import { DOCUMENT_FILE_INPUT_ACCEPT, PDF_UPLOAD_MAX_BYTES, PDF_UPLOAD_MAX_LABEL } from "@/lib/upload-limits";
 import { appendUploadToDocument, filledDocumentFilename, removePageFromDocument, shiftFieldsAfterPageRemoval, type NormalizedDocumentUpload } from "@/lib/document-intake";
 import { isCleanablePhoto } from "@/lib/image-cleanup";
+import { clearLocalSignature, loadLocalSignature, saveLocalSignature } from "@/lib/signature-store";
 import { PhotoCleanupModal } from "@/components/PhotoCleanupModal";
 
 const ZOOM_LEVELS = [50, 75, 100, 125, 150, 175, 200];
@@ -227,6 +228,7 @@ function EditorPageContent() {
   const [toast, setToast] = useState<string | null>(null);
   const [highlightFieldIds, setHighlightFieldIds] = useState<Set<string>>(new Set());
   const [savedSignature, setSavedSignature] = useState<string | null>(null);
+  const [savedSignatureSource, setSavedSignatureSource] = useState<"account" | "device" | null>(null);
   const [signatureModalOpen, setSignatureModalOpen] = useState(false);
   const [pendingSignatureField, setPendingSignatureField] = useState<EditorField | null>(null);
   const [showWelcome, setShowWelcome] = useState(false);
@@ -289,16 +291,30 @@ function EditorPageContent() {
     }
   }, [fileName]);
 
-  // Load saved signature on mount
+  // Load saved signature on mount: account signature wins, otherwise
+  // fall back to the signature saved on this device (anonymous users).
   useEffect(() => {
     fetch("/api/signature")
       .then((r) => r.ok ? r.json() : null)
       .then((data) => {
         if (data?.signatureDataUrl) {
           setSavedSignature(data.signatureDataUrl);
+          setSavedSignatureSource("account");
+          return;
+        }
+        const local = loadLocalSignature();
+        if (local) {
+          setSavedSignature(local);
+          setSavedSignatureSource("device");
         }
       })
-      .catch(() => {});
+      .catch(() => {
+        const local = loadLocalSignature();
+        if (local) {
+          setSavedSignature(local);
+          setSavedSignatureSource("device");
+        }
+      });
   }, []);
 
 
@@ -902,16 +918,20 @@ function EditorPageContent() {
 
   const handleSignatureModalSave = useCallback(
     async (dataUrl: string) => {
-      // Save to account
+      // Always remember on this device so anonymous users keep their
+      // signature across sessions; account save stays best-effort.
+      saveLocalSignature(dataUrl);
+      setSavedSignature(dataUrl);
+      setSavedSignatureSource("device");
       try {
-        await fetch("/api/signature", {
+        const res = await fetch("/api/signature", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ signatureDataUrl: dataUrl }),
         });
-        setSavedSignature(dataUrl);
+        if (res.ok) setSavedSignatureSource("account");
       } catch {
-        // Still apply locally even if account save fails
+        // Still applied locally even if account save fails
       }
 
       // Apply to pending field
@@ -943,6 +963,20 @@ function EditorPageContent() {
     setPendingSignatureField(null);
     setSignatureModalOpen(false);
   }, [pendingSignatureField, savedSignature, setFields]);
+
+  const handleSignatureDelete = useCallback(async () => {
+    clearLocalSignature();
+    setSavedSignature(null);
+    setSavedSignatureSource(null);
+    try {
+      // Best-effort account cleanup; anonymous users get a harmless 401.
+      await fetch("/api/signature", { method: "DELETE" });
+    } catch {
+      // Local clear already succeeded
+    }
+    setPendingSignatureField(null);
+    setSignatureModalOpen(false);
+  }, []);
 
   const openDownloadPreviewGate = useCallback(() => {
     setShowDownloadPreviewGate(false);
@@ -1700,7 +1734,9 @@ function EditorPageContent() {
             setPendingSignatureField(null);
           }}
           onSave={handleSignatureModalSave}
+          onDelete={handleSignatureDelete}
           existingSignature={savedSignature}
+          signatureSource={savedSignatureSource}
           useMode
           onUseExisting={handleSignatureModalUseExisting}
         />
