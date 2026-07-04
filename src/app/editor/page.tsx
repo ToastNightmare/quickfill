@@ -667,12 +667,32 @@ function EditorPageContent() {
       const source = fields.find((f) => f.id === id);
       if (!source) return;
       const newId = createEditorFieldId(fields, "dup");
-      const dup = { ...source, id: newId, x: source.x + 12, y: source.y + 12 } as EditorField;
+
+      // Preferred offset for the copy.
+      let x = source.x + 12;
+      let y = source.y + 12;
+
+      // Clamp inside page bounds so the copy never lands partially off the
+      // right/bottom edge. Field coords are in PDF point space, matching the
+      // viewport-at-scale-1 dimensions. Only clamp when we have dimensions for
+      // the field's own page (the viewer reports the current page's viewport);
+      // otherwise preserve the plain offset behaviour.
+      const dims =
+        source.page === currentPage ? pdfViewerRef.current?.getViewportDims() ?? null : null;
+      if (dims && dims.width > 0 && dims.height > 0) {
+        const maxX = dims.width - source.width;
+        const maxY = dims.height - source.height;
+        // If the field is wider/taller than the page, pin to the top/left edge.
+        x = maxX >= 0 ? Math.min(Math.max(x, 0), maxX) : 0;
+        y = maxY >= 0 ? Math.min(Math.max(y, 0), maxY) : 0;
+      }
+
+      const dup = { ...source, id: newId, x, y } as EditorField;
       trackEvent("field_added", { source: "duplicate", type: dup.type });
       setFields((prev) => [...prev, dup]);
       setSelectedFieldId(newId);
     },
-    [fields, setFields]
+    [fields, setFields, currentPage]
   );
 
   // Keyboard shortcuts
@@ -692,11 +712,10 @@ function EditorPageContent() {
         e.preventDefault();
         redo();
       }
-      // Duplicate selected field: Ctrl+D / Cmd+D
-      if ((e.ctrlKey || e.metaKey) && e.key === "d" && selectedFieldId) {
-        e.preventDefault();
-        handleFieldDuplicate(selectedFieldId);
-      }
+      // No Ctrl/Cmd+D duplicate shortcut: browsers use it for bookmarks
+      // (preventDefault is not reliable across browsers, e.g. Edge favourites).
+      // Duplicate stays available via the Duplicate button, the mobile
+      // bottom sheet, and the right-click context menu.
       // Escape: deselect
       if (e.key === "Escape") {
         setSelectedFieldId(null);
@@ -706,7 +725,7 @@ function EditorPageContent() {
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [undo, redo, selectedFieldId, handleFieldDelete, handleFieldDuplicate]);
+  }, [undo, redo]);
 
 
   const handleClear = useCallback(() => {

@@ -187,6 +187,26 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
   const [cursorStyle, setCursorStyle] = useState("default");
   const [snapPreviewOpacity, setSnapPreviewOpacity] = useState(0);
   const [contextMenu, setContextMenu] = useState<{ x: number, y: number, fieldId: string } | null>(null);
+  // Ref to the page wrapper (the context menu's positioning parent)
+  const pageWrapRef = useRef<HTMLDivElement>(null);
+
+  // Open the field context menu from DOM client coordinates.
+  // Clamps to the visible viewport so the menu never renders off-screen
+  // (e.g. when the editor is scrolled or the click is near a screen edge),
+  // then converts to coordinates local to the page wrapper.
+  const openFieldContextMenu = useCallback((clientX: number, clientY: number, fieldId: string) => {
+    const wrap = pageWrapRef.current;
+    if (!wrap) return;
+    const rect = wrap.getBoundingClientRect();
+    const MENU_W = 150;
+    const MENU_H = 120;
+    const PAD = 8;
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    const cx = Math.max(PAD, Math.min(clientX, vw - MENU_W - PAD));
+    const cy = Math.max(PAD, Math.min(clientY, vh - MENU_H - PAD));
+    setContextMenu({ x: cx - rect.left, y: cy - rect.top, fieldId });
+  }, []);
   // Line tool preview state
   const [linePreview, setLinePreview] = useState<{ x: number; y: number; orientation: LineOrientation } | null>(null);
   const [checkboxPreview, setCheckboxPreview] = useState<{ x: number; y: number } | null>(null);
@@ -614,23 +634,11 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
         return;
       }
       
-      // Ctrl+D / Cmd+D - duplicate selected field
-      if ((e.ctrlKey || e.metaKey) && e.key === 'd') {
-        e.preventDefault();
-        if (selectedFieldId) {
-          const field = fields.find(f => f.id === selectedFieldId && f.page === currentPage);
-          if (field) {
-            const newId = createFieldId();
-            const duplicate = { ...field, id: newId, x: field.x + 16, y: field.y + 16 };
-            const addedField = onFieldAdd(duplicate);
-            onToolSelect(null);
-            setCursorStyle("default");
-            onFieldSelect(addedField.id);
-          }
-        }
-        return;
-      }
-      
+      // No keyboard duplicate shortcut: Ctrl/Cmd+D conflicts with browser
+      // bookmark shortcuts. Duplicate is available via the Duplicate button,
+      // the mobile bottom sheet, and the right-click context menu, all of
+      // which route through the unified onFieldDuplicate handler.
+
       // Escape - deactivate tool and deselect
       if (e.key === "Escape") {
         e.preventDefault();
@@ -1899,6 +1907,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
       )}
 
       <div
+        ref={pageWrapRef}
         className="relative mx-auto bg-white shadow-xl rounded-sm"
         data-testid="pdf-page"
         style={{ width: dimensions.width, height: dimensions.height }}
@@ -2096,10 +2105,9 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
                 registerNode={registerNode}
                 unregisterNode={unregisterNode}
                 onContextMenu={(e, fieldId) => {
-                  const pos = e.target.getStage()?.getPointerPosition();
-                  if (pos) {
-                    setContextMenu({ x: pos.x, y: pos.y, fieldId });
-                  }
+                  // Use DOM client coordinates (scroll-safe), not stage coords
+                  const nativeEvt = e.evt as MouseEvent;
+                  openFieldContextMenu(nativeEvt.clientX, nativeEvt.clientY, fieldId);
                 }}
               />
             ))}
@@ -2228,15 +2236,10 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
               <div
                 className="px-4 py-2 text-sm hover:bg-surface cursor-pointer flex items-center gap-2"
                 onClick={() => {
-                  const field = pageFields.find(f => f.id === contextMenu.fieldId);
-                  if (field) {
-                    const newId = createFieldId();
-                    const duplicate = { ...field, id: newId, x: field.x + 16, y: field.y + 16 };
-                    const addedField = onFieldAdd(duplicate);
-                    onToolSelect(null);
-                    setCursorStyle("default");
-                    onFieldSelect(addedField.id);
-                  }
+                  // Route through the unified duplicate handler so right-click
+                  // matches the Duplicate button and mobile sheet (same offset,
+                  // clamping, selection, and analytics).
+                  onFieldDuplicate?.(contextMenu.fieldId);
                   setContextMenu(null);
                 }}
               >
@@ -2366,15 +2369,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
                 }}
                 onContextMenu={(e) => {
                   e.preventDefault();
-                  const rect = (e.target as HTMLElement).getBoundingClientRect();
-                  const stage = document.querySelector("canvas")?.getBoundingClientRect();
-                  if (stage && editField) {
-                    setContextMenu({
-                      x: e.clientX - stage.left,
-                      y: e.clientY - stage.top,
-                      fieldId: editField.id,
-                    });
-                  }
+                  openFieldContextMenu(e.clientX, e.clientY, editField.id);
                 }}
               />
             );
