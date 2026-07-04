@@ -712,11 +712,10 @@ function EditorPageContent() {
         e.preventDefault();
         redo();
       }
-      // Duplicate selected field: Ctrl+D / Cmd+D
-      if ((e.ctrlKey || e.metaKey) && e.key === "d" && selectedFieldId) {
-        e.preventDefault();
-        handleFieldDuplicate(selectedFieldId);
-      }
+      // No Ctrl/Cmd+D duplicate shortcut: browsers use it for bookmarks
+      // (preventDefault is not reliable across browsers, e.g. Edge favourites).
+      // Duplicate stays available via the Duplicate button, the mobile
+      // bottom sheet, and the right-click context menu.
       // Escape: deselect
       if (e.key === "Escape") {
         setSelectedFieldId(null);
@@ -726,7 +725,7 @@ function EditorPageContent() {
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [undo, redo, selectedFieldId, handleFieldDelete, handleFieldDuplicate]);
+  }, [undo, redo]);
 
 
   const handleClear = useCallback(() => {

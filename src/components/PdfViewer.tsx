@@ -614,9 +614,10 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
         return;
       }
       
-      // Ctrl+D / Cmd+D duplication is handled by the editor page's global
-      // shortcut, which routes through the unified onFieldDuplicate handler
-      // (offset + page-bounds clamping + analytics). No duplicate logic here.
+      // No keyboard duplicate shortcut: Ctrl/Cmd+D conflicts with browser
+      // bookmark shortcuts. Duplicate is available via the Duplicate button,
+      // the mobile bottom sheet, and the right-click context menu, all of
+      // which route through the unified onFieldDuplicate handler.
 
       // Escape - deactivate tool and deselect
       if (e.key === "Escape") {
@@ -2216,7 +2217,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
                 className="px-4 py-2 text-sm hover:bg-surface cursor-pointer flex items-center gap-2"
                 onClick={() => {
                   // Route through the unified duplicate handler so right-click
-                  // matches the Duplicate button and Ctrl/Cmd+D (same offset,
+                  // matches the Duplicate button and mobile sheet (same offset,
                   // clamping, selection, and analytics).
                   onFieldDuplicate?.(contextMenu.fieldId);
                   setContextMenu(null);

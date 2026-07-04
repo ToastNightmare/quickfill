@@ -74,7 +74,6 @@ jest.mock("@/components/PdfViewer", () => {
         <div data-testid="pdf-viewer">
           <div data-testid="selected-field-id">{props.selectedFieldId ?? "none"}</div>
           <div data-testid="fields-json">{JSON.stringify(props.fields)}</div>
-          <input aria-label="Mock text input" />
           <button
             type="button"
             onClick={() =>
@@ -166,8 +165,19 @@ jest.mock("@/components/PdfViewer", () => {
           >
             Mock place signature
           </button>
-          {/* Simulates the right-click context menu Duplicate item, which now
-              routes through the unified onFieldDuplicate prop. */}
+          {/* Simulates the ContextPanel Duplicate button (desktop + mobile
+              bottom sheet), which duplicates the selected field through the
+              unified onFieldDuplicate handler. */}
+          <button
+            type="button"
+            onClick={() => {
+              if (props.selectedFieldId) props.onFieldDuplicate?.(props.selectedFieldId);
+            }}
+          >
+            Mock duplicate selected
+          </button>
+          {/* Simulates the right-click context menu Duplicate item, which
+              routes through the same unified onFieldDuplicate prop. */}
           <button
             type="button"
             onClick={() => props.onFieldDuplicate?.("text-1")}
@@ -288,8 +298,8 @@ function placeText() {
   fireEvent.click(screen.getByRole("button", { name: "Mock place text" }));
 }
 
-function pressCtrlD(target: Element | Window = window, useMeta = false) {
-  fireEvent.keyDown(target, useMeta ? { key: "d", metaKey: true } : { key: "d", ctrlKey: true });
+function duplicateSelected() {
+  fireEvent.click(screen.getByRole("button", { name: "Mock duplicate selected" }));
 }
 
 describe("Duplicate field hardening", () => {
@@ -308,11 +318,11 @@ describe("Duplicate field hardening", () => {
     jest.restoreAllMocks();
   });
 
-  it("duplicates the selected field with Ctrl+D, preserving type/value/fontSize/page with a fresh id", async () => {
+  it("duplicates the selected field via the Duplicate button, preserving type/value/fontSize/page with a fresh id", async () => {
     await loadEditorWithPdf();
     placeText(); // text fields auto-select on add
 
-    pressCtrlD();
+    duplicateSelected();
 
     const fields = getFields();
     expect(fields).toHaveLength(2);
@@ -324,20 +334,11 @@ describe("Duplicate field hardening", () => {
     expect(copy.page).toBe(0);
   });
 
-  it("duplicates with Cmd+D (metaKey)", async () => {
-    await loadEditorWithPdf();
-    placeText();
-
-    pressCtrlD(window, true);
-
-    expect(getFields()).toHaveLength(2);
-  });
-
   it("offsets the copy by +12/+12 in the normal case", async () => {
     await loadEditorWithPdf();
     placeText();
 
-    pressCtrlD();
+    duplicateSelected();
 
     const [, copy] = getFields();
     expect(copy.x).toBe(22);
@@ -348,7 +349,7 @@ describe("Duplicate field hardening", () => {
     await loadEditorWithPdf();
     placeText();
 
-    pressCtrlD();
+    duplicateSelected();
 
     const [, copy] = getFields();
     expect(selectedFieldId()).toBe(copy.id);
@@ -358,7 +359,7 @@ describe("Duplicate field hardening", () => {
     await loadEditorWithPdf();
     placeText();
 
-    pressCtrlD();
+    duplicateSelected();
 
     const [original] = getFields();
     expect(original.id).toBe("text-1");
@@ -371,7 +372,7 @@ describe("Duplicate field hardening", () => {
     await loadEditorWithPdf();
     fireEvent.click(screen.getByRole("button", { name: "Mock place edge text" }));
 
-    pressCtrlD();
+    duplicateSelected();
 
     const [, copy] = getFields();
     // Page 600x800, field 120x24 at (500, 770): clamped to (480, 776)
@@ -383,7 +384,7 @@ describe("Duplicate field hardening", () => {
     await loadEditorWithPdf();
     fireEvent.click(screen.getByRole("button", { name: "Mock place oversized text" }));
 
-    pressCtrlD();
+    duplicateSelected();
 
     const [, copy] = getFields();
     expect(copy.x).toBe(0);
@@ -395,7 +396,7 @@ describe("Duplicate field hardening", () => {
     mockViewportDims = null;
     fireEvent.click(screen.getByRole("button", { name: "Mock place edge text" }));
 
-    pressCtrlD();
+    duplicateSelected();
 
     const [, copy] = getFields();
     expect(copy.x).toBe(512);
@@ -428,11 +429,20 @@ describe("Duplicate field hardening", () => {
     );
   });
 
-  it("does not duplicate while typing inside an input", async () => {
+  it("does not duplicate on Ctrl+D (reserved for browser bookmarks)", async () => {
     await loadEditorWithPdf();
-    placeText();
+    placeText(); // field is selected
 
-    pressCtrlD(screen.getByLabelText("Mock text input"));
+    fireEvent.keyDown(window, { key: "d", ctrlKey: true });
+
+    expect(getFields()).toHaveLength(1);
+  });
+
+  it("does not duplicate on Cmd+D (reserved for browser bookmarks)", async () => {
+    await loadEditorWithPdf();
+    placeText(); // field is selected
+
+    fireEvent.keyDown(window, { key: "d", metaKey: true });
 
     expect(getFields()).toHaveLength(1);
   });
@@ -441,7 +451,7 @@ describe("Duplicate field hardening", () => {
     await loadEditorWithPdf();
     placeText();
 
-    pressCtrlD();
+    duplicateSelected();
     expect(getFields()).toHaveLength(2);
 
     fireEvent.keyDown(window, { key: "z", ctrlKey: true });
@@ -454,7 +464,7 @@ describe("Duplicate field hardening", () => {
     placeText();
     (trackEvent as jest.Mock).mockClear();
 
-    pressCtrlD();
+    duplicateSelected();
 
     expect(trackEvent).toHaveBeenCalledWith("field_added", { source: "duplicate", type: "text" });
   });
