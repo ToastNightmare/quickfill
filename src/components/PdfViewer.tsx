@@ -187,6 +187,26 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
   const [cursorStyle, setCursorStyle] = useState("default");
   const [snapPreviewOpacity, setSnapPreviewOpacity] = useState(0);
   const [contextMenu, setContextMenu] = useState<{ x: number, y: number, fieldId: string } | null>(null);
+  // Ref to the page wrapper (the context menu's positioning parent)
+  const pageWrapRef = useRef<HTMLDivElement>(null);
+
+  // Open the field context menu from DOM client coordinates.
+  // Clamps to the visible viewport so the menu never renders off-screen
+  // (e.g. when the editor is scrolled or the click is near a screen edge),
+  // then converts to coordinates local to the page wrapper.
+  const openFieldContextMenu = useCallback((clientX: number, clientY: number, fieldId: string) => {
+    const wrap = pageWrapRef.current;
+    if (!wrap) return;
+    const rect = wrap.getBoundingClientRect();
+    const MENU_W = 150;
+    const MENU_H = 120;
+    const PAD = 8;
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    const cx = Math.max(PAD, Math.min(clientX, vw - MENU_W - PAD));
+    const cy = Math.max(PAD, Math.min(clientY, vh - MENU_H - PAD));
+    setContextMenu({ x: cx - rect.left, y: cy - rect.top, fieldId });
+  }, []);
   // Line tool preview state
   const [linePreview, setLinePreview] = useState<{ x: number; y: number; orientation: LineOrientation } | null>(null);
   const [checkboxPreview, setCheckboxPreview] = useState<{ x: number; y: number } | null>(null);
@@ -1887,6 +1907,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
       )}
 
       <div
+        ref={pageWrapRef}
         className="relative mx-auto bg-white shadow-xl rounded-sm"
         data-testid="pdf-page"
         style={{ width: dimensions.width, height: dimensions.height }}
@@ -2084,10 +2105,9 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
                 registerNode={registerNode}
                 unregisterNode={unregisterNode}
                 onContextMenu={(e, fieldId) => {
-                  const pos = e.target.getStage()?.getPointerPosition();
-                  if (pos) {
-                    setContextMenu({ x: pos.x, y: pos.y, fieldId });
-                  }
+                  // Use DOM client coordinates (scroll-safe), not stage coords
+                  const nativeEvt = e.evt as MouseEvent;
+                  openFieldContextMenu(nativeEvt.clientX, nativeEvt.clientY, fieldId);
                 }}
               />
             ))}
@@ -2349,15 +2369,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
                 }}
                 onContextMenu={(e) => {
                   e.preventDefault();
-                  const rect = (e.target as HTMLElement).getBoundingClientRect();
-                  const stage = document.querySelector("canvas")?.getBoundingClientRect();
-                  if (stage && editField) {
-                    setContextMenu({
-                      x: e.clientX - stage.left,
-                      y: e.clientY - stage.top,
-                      fieldId: editField.id,
-                    });
-                  }
+                  openFieldContextMenu(e.clientX, e.clientY, editField.id);
                 }}
               />
             );
