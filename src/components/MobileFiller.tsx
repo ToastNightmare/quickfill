@@ -39,6 +39,7 @@ import {
 } from "@/lib/upload-limits";
 import { filledDocumentFilename, normalizeDocumentUpload } from "@/lib/document-intake";
 import { isCleanablePhoto } from "@/lib/image-cleanup";
+import { clearLocalSignature, loadLocalSignature, saveLocalSignature } from "@/lib/signature-store";
 import { PhotoCleanupModal } from "@/components/PhotoCleanupModal";
 
 const SIG_KEYWORDS = ["signature", "sign here", "signed", "sig", "esign", "e-sign"];
@@ -249,6 +250,7 @@ export function MobileFiller() {
   const [isDownloading, setIsDownloading] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [savedSignature, setSavedSignature] = useState<string | null>(null);
+  const [savedSignatureSource, setSavedSignatureSource] = useState<"account" | "device" | null>(null);
   const [sigModalOpen, setSigModalOpen] = useState(false);
   const [activeSigFieldId, setActiveSigFieldId] = useState<string | null>(null);
   const [pendingPhoto, setPendingPhoto] = useState<File | null>(null);
@@ -259,10 +261,24 @@ export function MobileFiller() {
   const fieldRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
   useEffect(() => {
+    const applyLocalFallback = () => {
+      const local = loadLocalSignature();
+      if (local) {
+        setSavedSignature(local);
+        setSavedSignatureSource("device");
+      }
+    };
     fetch("/api/signature")
       .then((r) => r.ok ? r.json() : null)
-      .then((d) => { if (d?.signatureDataUrl) setSavedSignature(d.signatureDataUrl); })
-      .catch(() => {});
+      .then((d) => {
+        if (d?.signatureDataUrl) {
+          setSavedSignature(d.signatureDataUrl);
+          setSavedSignatureSource("account");
+        } else {
+          applyLocalFallback();
+        }
+      })
+      .catch(applyLocalFallback);
   }, []);
 
   useEffect(() => {
@@ -380,15 +396,20 @@ export function MobileFiller() {
   }, []);
 
   const handleSignatureSave = useCallback(async (dataUrl: string) => {
+    // Always remember on this device so anonymous users keep their
+    // signature across sessions; account save stays best-effort.
+    saveLocalSignature(dataUrl);
+    setSavedSignature(dataUrl);
+    setSavedSignatureSource("device");
     try {
-      await fetch("/api/signature", {
+      const res = await fetch("/api/signature", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ signatureDataUrl: dataUrl }),
       });
-      setSavedSignature(dataUrl);
+      if (res.ok) setSavedSignatureSource("account");
     } catch {
-      // Apply locally even if account save fails.
+      // Already applied locally even if account save fails.
     }
 
     if (activeSigFieldId) {
@@ -409,6 +430,20 @@ export function MobileFiller() {
     setSigModalOpen(false);
     setActiveSigFieldId(null);
   }, [activeSigFieldId, savedSignature]);
+
+  const handleSignatureDelete = useCallback(async () => {
+    clearLocalSignature();
+    setSavedSignature(null);
+    setSavedSignatureSource(null);
+    try {
+      // Best-effort account cleanup; anonymous users get a harmless 401.
+      await fetch("/api/signature", { method: "DELETE" });
+    } catch {
+      // Local clear already succeeded
+    }
+    setSigModalOpen(false);
+    setActiveSigFieldId(null);
+  }, []);
 
   const openDownloadGate = useCallback(() => {
     setDownloadPreviewUrl(null);
@@ -734,7 +769,9 @@ export function MobileFiller() {
         open={sigModalOpen}
         onClose={() => { setSigModalOpen(false); setActiveSigFieldId(null); }}
         onSave={handleSignatureSave}
+        onDelete={handleSignatureDelete}
         existingSignature={savedSignature}
+        signatureSource={savedSignatureSource}
         useMode
         onUseExisting={handleSignatureUseExisting}
       />

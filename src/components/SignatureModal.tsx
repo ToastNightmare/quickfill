@@ -11,6 +11,8 @@ interface SignatureModalProps {
   onSave: (dataUrl: string) => void | Promise<void>;
   onDelete?: () => void | Promise<void>;
   existingSignature?: string | null;
+  /** Where the saved signature lives, drives the trust copy line */
+  signatureSource?: "account" | "device" | null;
   /** If true, show "Use Signature" instead of "Save Signature" */
   useMode?: boolean;
   /** Called when user wants to use the existing saved signature */
@@ -38,6 +40,7 @@ export function SignatureModal({
   onSave,
   onDelete,
   existingSignature,
+  signatureSource,
   useMode,
   onUseExisting,
 }: SignatureModalProps) {
@@ -179,6 +182,14 @@ export function SignatureModal({
                   draggable={false}
                 />
               </div>
+
+              <p className="w-full text-center text-xs text-text-muted">
+                {signatureSource === "account"
+                  ? "Saved to your account. You can delete it anytime."
+                  : signatureSource === "device"
+                    ? "Saved on this device. You can delete it anytime."
+                    : "Saved for reuse. You can delete it anytime."}
+              </p>
 
               <div className="flex w-full flex-col gap-2 sm:flex-row">
                 {useMode && onUseExisting && (
