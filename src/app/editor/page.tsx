@@ -667,12 +667,32 @@ function EditorPageContent() {
       const source = fields.find((f) => f.id === id);
       if (!source) return;
       const newId = createEditorFieldId(fields, "dup");
-      const dup = { ...source, id: newId, x: source.x + 12, y: source.y + 12 } as EditorField;
+
+      // Preferred offset for the copy.
+      let x = source.x + 12;
+      let y = source.y + 12;
+
+      // Clamp inside page bounds so the copy never lands partially off the
+      // right/bottom edge. Field coords are in PDF point space, matching the
+      // viewport-at-scale-1 dimensions. Only clamp when we have dimensions for
+      // the field's own page (the viewer reports the current page's viewport);
+      // otherwise preserve the plain offset behaviour.
+      const dims =
+        source.page === currentPage ? pdfViewerRef.current?.getViewportDims() ?? null : null;
+      if (dims && dims.width > 0 && dims.height > 0) {
+        const maxX = dims.width - source.width;
+        const maxY = dims.height - source.height;
+        // If the field is wider/taller than the page, pin to the top/left edge.
+        x = maxX >= 0 ? Math.min(Math.max(x, 0), maxX) : 0;
+        y = maxY >= 0 ? Math.min(Math.max(y, 0), maxY) : 0;
+      }
+
+      const dup = { ...source, id: newId, x, y } as EditorField;
       trackEvent("field_added", { source: "duplicate", type: dup.type });
       setFields((prev) => [...prev, dup]);
       setSelectedFieldId(newId);
     },
-    [fields, setFields]
+    [fields, setFields, currentPage]
   );
 
   // Keyboard shortcuts

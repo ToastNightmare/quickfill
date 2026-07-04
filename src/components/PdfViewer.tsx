@@ -614,23 +614,10 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
         return;
       }
       
-      // Ctrl+D / Cmd+D - duplicate selected field
-      if ((e.ctrlKey || e.metaKey) && e.key === 'd') {
-        e.preventDefault();
-        if (selectedFieldId) {
-          const field = fields.find(f => f.id === selectedFieldId && f.page === currentPage);
-          if (field) {
-            const newId = createFieldId();
-            const duplicate = { ...field, id: newId, x: field.x + 16, y: field.y + 16 };
-            const addedField = onFieldAdd(duplicate);
-            onToolSelect(null);
-            setCursorStyle("default");
-            onFieldSelect(addedField.id);
-          }
-        }
-        return;
-      }
-      
+      // Ctrl+D / Cmd+D duplication is handled by the editor page's global
+      // shortcut, which routes through the unified onFieldDuplicate handler
+      // (offset + page-bounds clamping + analytics). No duplicate logic here.
+
       // Escape - deactivate tool and deselect
       if (e.key === "Escape") {
         e.preventDefault();
@@ -2228,15 +2215,10 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
               <div
                 className="px-4 py-2 text-sm hover:bg-surface cursor-pointer flex items-center gap-2"
                 onClick={() => {
-                  const field = pageFields.find(f => f.id === contextMenu.fieldId);
-                  if (field) {
-                    const newId = createFieldId();
-                    const duplicate = { ...field, id: newId, x: field.x + 16, y: field.y + 16 };
-                    const addedField = onFieldAdd(duplicate);
-                    onToolSelect(null);
-                    setCursorStyle("default");
-                    onFieldSelect(addedField.id);
-                  }
+                  // Route through the unified duplicate handler so right-click
+                  // matches the Duplicate button and Ctrl/Cmd+D (same offset,
+                  // clamping, selection, and analytics).
+                  onFieldDuplicate?.(contextMenu.fieldId);
                   setContextMenu(null);
                 }}
               >
