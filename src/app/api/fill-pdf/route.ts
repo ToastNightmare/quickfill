@@ -7,6 +7,7 @@ import crypto from "crypto";
 import {
   PDFDocument,
   rgb,
+  degrees,
   StandardFonts,
   PDFName,
   PDFArray,
@@ -31,6 +32,12 @@ import { finalizePdfForDownload } from "@/lib/pdf-finalize";
 import { PDF_UPLOAD_MAX_BYTES, PDF_UPLOAD_MAX_LABEL } from "@/lib/upload-limits";
 import { lineMaskSegments } from "@/lib/eraser-mask";
 import { maskToPdfRect } from "@/lib/pdf-mask-transform";
+import {
+  clampSignatureOpacity,
+  clampSignatureRotation,
+  signaturePdfDrawTransform,
+  type SignatureAdjustments,
+} from "@/lib/signature-transform";
 import { applyFlattenedPages, parseFlattenedPages, whiteoutPageSet } from "@/lib/pdf-flatten";
 
 /** Replace control characters (including newlines) with a space */
@@ -432,7 +439,8 @@ function drawMultilineText(page: PDFPage, text: string, x: number, startY: numbe
 
 async function drawSignatureImage(pdfDoc: PDFDocument, page: PDFPage, signatureDataUrl: string,
   pdfX: number, pdfY: number, pdfW: number, pdfH: number,
-  fallbackText: string, signatureFont: PDFFont, fontSize: number) {
+  fallbackText: string, signatureFont: PDFFont, fontSize: number,
+  adjustments: SignatureAdjustments = {}) {
   try {
     const imgBytes = dataUrlToBytes(signatureDataUrl);
     if (imgBytes.length === 0) throw new Error("Empty signature data");
@@ -444,9 +452,24 @@ async function drawSignatureImage(pdfDoc: PDFDocument, page: PDFPage, signatureD
     let drawW = pdfW - 4;
     let drawH = pdfH - 4;
     if (imgAspect > fieldAspect) { drawH = drawW / imgAspect; } else { drawW = drawH * imgAspect; }
-    const drawX = pdfX + (pdfW - drawW) / 2;
-    const drawY = pdfY + (pdfH - drawH) / 2;
-    page.drawImage(img, { x: drawX, y: drawY, width: drawW, height: drawH });
+    // Rotate/flip about the centre of the fitted image so the exported
+    // placement matches the editor preview exactly.
+    const transform = signaturePdfDrawTransform({
+      centerX: pdfX + pdfW / 2,
+      centerY: pdfY + pdfH / 2,
+      drawWidth: drawW,
+      drawHeight: drawH,
+      rotationDeg: clampSignatureRotation(adjustments.rotation),
+      flipH: Boolean(adjustments.flipH),
+    });
+    page.drawImage(img, {
+      x: transform.x,
+      y: transform.y,
+      width: transform.width,
+      height: transform.height,
+      rotate: degrees(transform.rotateDeg),
+      opacity: clampSignatureOpacity(adjustments.opacity),
+    });
   } catch {
     if (fallbackText) {
       page.drawText(sanitize(fallbackText), { x: pdfX + 2, y: pdfY + 4, size: fontSize, font: signatureFont, color: rgb(0, 0, 0) });
@@ -633,7 +656,12 @@ async function drawFieldOnPage(pdfDoc: PDFDocument, field: EditorField, _pageSca
       color: rgb(r, g, b),
     });
   } else if (field.type === "signature" && field.signatureDataUrl) {
-    await drawSignatureImage(pdfDoc, page, field.signatureDataUrl, pdfX, finalPdfY, pdfW, pdfH, field.value, signatureFont, field.fontSize ?? 16);
+    const sigField = field as import("@/lib/types").SignatureField;
+    await drawSignatureImage(pdfDoc, page, field.signatureDataUrl, pdfX, finalPdfY, pdfW, pdfH, field.value, signatureFont, field.fontSize ?? 16, {
+      opacity: sigField.opacity,
+      rotation: sigField.rotation,
+      flipH: sigField.flipH,
+    });
   } else if (field.type === "text" || field.type === "date" || field.type === "signature") {
     if (field.value) {
       const fontSize = field.type === "signature" ? 16 : field.fontSize ?? 14;

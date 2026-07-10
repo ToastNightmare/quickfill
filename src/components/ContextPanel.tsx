@@ -18,9 +18,21 @@ import {
   Eraser,
   ChevronDown,
   ChevronUp,
+  ChevronLeft,
+  ChevronRight,
   SquareSplitHorizontal,
+  RotateCcw,
+  RotateCw,
+  FlipHorizontal2,
 } from "lucide-react";
 import type { CheckboxStamp, CombField, EditorField, FieldLayerDirection, LineField, LineOrientation, SignatureField, ToolDefaultState, ToolType, WhiteoutField } from "@/lib/types";
+import {
+  SIGNATURE_ADJUSTMENT_DEFAULTS,
+  SIGNATURE_ROTATION_MAX,
+  SIGNATURE_ROTATION_MIN,
+  clampSignatureOpacity,
+  clampSignatureRotation,
+} from "@/lib/signature-transform";
 
 const FONT_SIZES = [8, 10, 11, 12, 14, 16, 18, 24, 36];
 const CHECKBOX_COLORS = [
@@ -182,7 +194,7 @@ export function ContextPanel({
           {fieldType === "checkbox" && <CheckboxControls selectedField={selectedField} onStampChange={onStampChange} onFieldUpdate={onFieldUpdate} />}
           {fieldType === "line" && <LineControls selectedField={selectedField} onFieldUpdate={onFieldUpdate} />}
           {fieldType === "whiteout" && <WhiteoutControls selectedField={selectedField} onFieldUpdate={onFieldUpdate} />}
-          {fieldType === "signature" && <SignatureControls selectedField={selectedField} onSignatureRequest={onSignatureRequest} />}
+          {fieldType === "signature" && <SignatureControls selectedField={selectedField} onSignatureRequest={onSignatureRequest} onFieldUpdate={onFieldUpdate} />}
           {(fieldType === "text" || fieldType === "date") && <FontSizeControls selectedField={selectedField} onFieldUpdate={onFieldUpdate} />}
           {fieldType === "comb" && (
             <CombControls
@@ -369,7 +381,7 @@ function MobileFieldSheet({
       {selectedField.type === "checkbox" && <CheckboxControls selectedField={selectedField} onStampChange={onStampChange} onFieldUpdate={onFieldUpdate} />}
       {selectedField.type === "line" && <LineControls selectedField={selectedField} onFieldUpdate={onFieldUpdate} />}
       {selectedField.type === "whiteout" && <WhiteoutControls selectedField={selectedField} onFieldUpdate={onFieldUpdate} />}
-      {selectedField.type === "signature" && <SignatureControls selectedField={selectedField} onSignatureRequest={onSignatureRequest} />}
+      {selectedField.type === "signature" && <SignatureControls selectedField={selectedField} onSignatureRequest={onSignatureRequest} onFieldUpdate={onFieldUpdate} isMobile />}
       {(selectedField.type === "text" || selectedField.type === "date") && <FontSizeControls selectedField={selectedField} onFieldUpdate={onFieldUpdate} />}
       {selectedField.type === "comb" && (
         <CombControls
@@ -698,34 +710,166 @@ function WhiteoutControls({ selectedField, onFieldUpdate }: { selectedField: Edi
   );
 }
 
-function SignatureControls({ selectedField, onSignatureRequest }: { selectedField: EditorField; onSignatureRequest: (fieldId: string) => void }) {
+function SignatureControls({
+  selectedField,
+  onSignatureRequest,
+  onFieldUpdate,
+  isMobile,
+}: {
+  selectedField: EditorField;
+  onSignatureRequest: (fieldId: string) => void;
+  onFieldUpdate: (id: string, updates: Partial<EditorField>) => void;
+  isMobile?: boolean;
+}) {
   if (selectedField.type !== "signature") return null;
   const sigField = selectedField as SignatureField;
   const isSigned = Boolean(sigField.signatureDataUrl);
+  const opacity = clampSignatureOpacity(sigField.opacity);
+  const rotation = clampSignatureRotation(sigField.rotation);
+  const flipH = Boolean(sigField.flipH);
+  const hasAdjustments =
+    opacity !== SIGNATURE_ADJUSTMENT_DEFAULTS.opacity ||
+    rotation !== SIGNATURE_ADJUSTMENT_DEFAULTS.rotation ||
+    flipH !== SIGNATURE_ADJUSTMENT_DEFAULTS.flipH;
+
+  const update = (updates: Partial<SignatureField>) =>
+    onFieldUpdate(selectedField.id, updates as Partial<EditorField>);
+  const rotateBy = (delta: number) =>
+    update({ rotation: clampSignatureRotation(rotation + delta) });
+  const nudge = (dx: number, dy: number) =>
+    onFieldUpdate(selectedField.id, { x: sigField.x + dx, y: sigField.y + dy } as Partial<EditorField>);
+
+  const iconButton =
+    "flex h-9 w-9 items-center justify-center rounded-lg border border-border text-text-muted transition-colors hover:bg-surface-alt";
+
   return (
-    <Section label="Signature">
-      {isSigned && sigField.signatureDataUrl ? (
-        <div className="mb-3 flex min-h-[80px] items-center justify-center rounded-xl border border-green-200 bg-white p-3 shadow-inner">
-          <img src={sigField.signatureDataUrl} alt="Signature" className="max-h-16 max-w-full object-contain" />
-        </div>
-      ) : (
-        <div className="mb-3 flex min-h-[80px] items-center justify-center rounded-xl border-2 border-dashed border-border bg-surface-alt p-4 text-center">
-          <div>
-            <PenTool className="mx-auto mb-1.5 h-6 w-6 text-text-muted" />
-            <p className="text-xs font-medium text-text-muted">Not signed yet</p>
+    <>
+      <Section label="Signature">
+        {isSigned && sigField.signatureDataUrl ? (
+          <div className="mb-3 flex min-h-[80px] items-center justify-center rounded-xl border border-green-200 bg-white p-3 shadow-inner">
+            <img
+              src={sigField.signatureDataUrl}
+              alt="Signature"
+              className="max-h-16 max-w-full object-contain"
+              style={{
+                opacity,
+                transform: `rotate(${rotation}deg)${flipH ? " scaleX(-1)" : ""}`,
+              }}
+            />
           </div>
-        </div>
+        ) : (
+          <div className="mb-3 flex min-h-[80px] items-center justify-center rounded-xl border-2 border-dashed border-border bg-surface-alt p-4 text-center">
+            <div>
+              <PenTool className="mx-auto mb-1.5 h-6 w-6 text-text-muted" />
+              <p className="text-xs font-medium text-text-muted">Not signed yet</p>
+            </div>
+          </div>
+        )}
+        <button
+          onClick={() => onSignatureRequest(selectedField.id)}
+          className={isSigned
+            ? "flex w-full items-center justify-center gap-2 rounded-xl border border-border py-2.5 text-sm font-medium text-text-muted transition-colors hover:bg-surface-alt"
+            : "flex w-full items-center justify-center gap-2 rounded-xl bg-accent py-2.5 text-sm font-semibold text-white transition-colors hover:bg-accent-hover"}
+        >
+          <PenTool className="h-4 w-4" />
+          {isSigned ? "Re-sign" : "Sign Now"}
+        </button>
+      </Section>
+      {isSigned && (
+        <Section label="Adjust">
+          <div className="space-y-3">
+            <div>
+              <div className="mb-1 flex items-center justify-between">
+                <span className="text-xs font-medium text-text-muted">Opacity</span>
+                <span className="text-xs font-semibold tabular-nums text-text" data-testid="signature-opacity-value">
+                  {Math.round(opacity * 100)}%
+                </span>
+              </div>
+              <input
+                type="range"
+                min={20}
+                max={100}
+                step={1}
+                value={Math.round(opacity * 100)}
+                onChange={(event) => update({ opacity: Number(event.target.value) / 100 })}
+                className="w-full accent-accent"
+                aria-label="Signature opacity"
+              />
+            </div>
+            <div>
+              <div className="mb-1 flex items-center justify-between">
+                <span className="text-xs font-medium text-text-muted">Rotation</span>
+                <span className="text-xs font-semibold tabular-nums text-text" data-testid="signature-rotation-value">
+                  {rotation}&deg;
+                </span>
+              </div>
+              <input
+                type="range"
+                min={SIGNATURE_ROTATION_MIN}
+                max={SIGNATURE_ROTATION_MAX}
+                step={1}
+                value={rotation}
+                onChange={(event) => update({ rotation: clampSignatureRotation(Number(event.target.value)) })}
+                className="w-full accent-accent"
+                aria-label="Signature rotation"
+              />
+              <div className="mt-2 flex items-center gap-2">
+                <button onClick={() => rotateBy(-1)} className={iconButton} aria-label="Rotate 1 degree left">
+                  <RotateCcw className="h-4 w-4" />
+                </button>
+                <button onClick={() => rotateBy(1)} className={iconButton} aria-label="Rotate 1 degree right">
+                  <RotateCw className="h-4 w-4" />
+                </button>
+                <button
+                  onClick={() => update({ flipH: !flipH })}
+                  className={`${iconButton} ${flipH ? "border-accent bg-accent/10 text-accent" : ""}`}
+                  aria-label="Flip horizontally"
+                  aria-pressed={flipH}
+                >
+                  <FlipHorizontal2 className="h-4 w-4" />
+                </button>
+                <button
+                  onClick={() =>
+                    update({
+                      opacity: SIGNATURE_ADJUSTMENT_DEFAULTS.opacity,
+                      rotation: SIGNATURE_ADJUSTMENT_DEFAULTS.rotation,
+                      flipH: SIGNATURE_ADJUSTMENT_DEFAULTS.flipH,
+                    })
+                  }
+                  disabled={!hasAdjustments}
+                  className="flex h-9 flex-1 items-center justify-center rounded-lg border border-border text-xs font-medium text-text-muted transition-colors hover:bg-surface-alt disabled:opacity-30"
+                >
+                  Reset
+                </button>
+              </div>
+            </div>
+            {isMobile ? (
+              <div>
+                <p className="mb-1 text-xs font-medium text-text-muted">Nudge position</p>
+                <div className="flex items-center justify-center gap-2" data-testid="signature-nudge-pad">
+                  <button onClick={() => nudge(-1, 0)} className={iconButton} aria-label="Nudge left">
+                    <ChevronLeft className="h-4 w-4" />
+                  </button>
+                  <button onClick={() => nudge(0, -1)} className={iconButton} aria-label="Nudge up">
+                    <ChevronUp className="h-4 w-4" />
+                  </button>
+                  <button onClick={() => nudge(0, 1)} className={iconButton} aria-label="Nudge down">
+                    <ChevronDown className="h-4 w-4" />
+                  </button>
+                  <button onClick={() => nudge(1, 0)} className={iconButton} aria-label="Nudge right">
+                    <ChevronRight className="h-4 w-4" />
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <p className="text-[10px] leading-relaxed text-text-muted">
+                Tip: arrow keys nudge the selected signature. Hold Shift for bigger steps.
+              </p>
+            )}
+          </div>
+        </Section>
       )}
-      <button
-        onClick={() => onSignatureRequest(selectedField.id)}
-        className={isSigned
-          ? "flex w-full items-center justify-center gap-2 rounded-xl border border-border py-2.5 text-sm font-medium text-text-muted transition-colors hover:bg-surface-alt"
-          : "flex w-full items-center justify-center gap-2 rounded-xl bg-accent py-2.5 text-sm font-semibold text-white transition-colors hover:bg-accent-hover"}
-      >
-        <PenTool className="h-4 w-4" />
-        {isSigned ? "Re-sign" : "Sign Now"}
-      </button>
-    </Section>
+    </>
   );
 }
 
