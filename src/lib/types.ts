@@ -98,6 +98,12 @@ export interface SignatureField extends FieldBase {
   fontSize: number;
   /** Base64 PNG data URL of a drawn/saved signature */
   signatureDataUrl?: string;
+  /** Signature image opacity, 0.2 to 1. Default 1 (fully opaque). */
+  opacity?: number;
+  /** Signature lean/rotation in degrees, -180 to 180, clockwise positive. Default 0. */
+  rotation?: number;
+  /** Mirror the signature image horizontally. Default false. */
+  flipH?: boolean;
 }
 
 export interface DateField extends FieldBase {

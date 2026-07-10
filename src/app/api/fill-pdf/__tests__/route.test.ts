@@ -298,6 +298,95 @@ describe("fill-pdf flattened whiteout export", () => {
   });
 });
 
+async function makeSignatureRequest(signatureField: Record<string, unknown>) {
+  const sourceBytes = await createSourcePdf();
+  const formData = new FormData();
+
+  formData.set("pdf", new Blob([sourceBytes], { type: "application/pdf" }), "signature sample.pdf");
+  formData.set("fields", JSON.stringify([signatureField]));
+  formData.set("pageScales", JSON.stringify([[0, 1]]));
+  formData.set("hasAcroForm", "false");
+
+  return new NextRequest("https://getquickfill.com/api/fill-pdf", {
+    method: "POST",
+    body: formData,
+    headers: {
+      "x-quickfill-qa-token": "test-token",
+    },
+  });
+}
+
+function baseSignatureField(): Record<string, unknown> {
+  return {
+    id: "sig-1",
+    type: "signature",
+    x: 40,
+    y: 60,
+    width: 160,
+    height: 50,
+    page: 0,
+    value: "",
+    fontSize: 16,
+    signatureDataUrl: TINY_PNG_DATA_URL,
+  };
+}
+
+describe("fill-pdf signature adjustments", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    process.env.QUICKFILL_QA_TOKEN = "test-token";
+  });
+
+  afterEach(() => {
+    delete process.env.QUICKFILL_QA_TOKEN;
+  });
+
+  it("exports an unadjusted signature exactly as before", async () => {
+    const response = await POST(await makeSignatureRequest(baseSignatureField()));
+    const bytes = new Uint8Array(await response.arrayBuffer());
+
+    expect(response.status).toBe(200);
+    await expect(PDFDocument.load(bytes)).resolves.toBeDefined();
+    // Full opacity draws without an ExtGState alpha entry.
+    expect(Buffer.from(bytes).toString("latin1")).not.toContain("/ca 0.5");
+  });
+
+  it("applies opacity via a PDF ExtGState when set", async () => {
+    const response = await POST(
+      await makeSignatureRequest({ ...baseSignatureField(), opacity: 0.5 }),
+    );
+    const bytes = new Uint8Array(await response.arrayBuffer());
+
+    expect(response.status).toBe(200);
+    await expect(PDFDocument.load(bytes)).resolves.toBeDefined();
+    expect(Buffer.from(bytes).toString("latin1")).toContain("/ca 0.5");
+  });
+
+  it("exports rotated and flipped signatures as a valid PDF", async () => {
+    const response = await POST(
+      await makeSignatureRequest({ ...baseSignatureField(), rotation: 30, flipH: true, opacity: 0.8 }),
+    );
+    const bytes = new Uint8Array(await response.arrayBuffer());
+
+    expect(response.status).toBe(200);
+    const resultDoc = await PDFDocument.load(bytes);
+    expect(resultDoc.getPageCount()).toBe(1);
+    expect(Buffer.from(bytes).toString("latin1")).toContain("/ca 0.8");
+    expect(recordDownloadLog).toHaveBeenCalledWith(expect.objectContaining({ status: "success" }));
+  });
+
+  it("tolerates out-of-range adjustment values without failing the export", async () => {
+    const response = await POST(
+      await makeSignatureRequest({ ...baseSignatureField(), rotation: 9999, opacity: 5 }),
+    );
+
+    expect(response.status).toBe(200);
+    await expect(
+      PDFDocument.load(new Uint8Array(await response.arrayBuffer())),
+    ).resolves.toBeDefined();
+  });
+});
+
 describe("maskToPdfRect", () => {
   it("uses the same PDF point coordinate system and Y flip as fields", () => {
     expect(maskToPdfRect({ x: 100, y: 120, width: 40, height: 30 }, 800)).toEqual({

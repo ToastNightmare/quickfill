@@ -5,6 +5,7 @@ import { Stage, Layer, Rect, Text, Group, Transformer, Image as KonvaImage, Line
 import type Konva from "konva";
 import type { EditorField, PlacementToolType, SignatureField, CheckboxStamp, WhiteoutField, CombField, ToolDefaultState, LineField, LineOrientation } from "@/lib/types";
 import { todayDateStamp, DATE_STAMP_PLACEHOLDER } from "@/lib/date-stamp";
+import { clampSignatureOpacity, clampSignatureRotation } from "@/lib/signature-transform";
 import { detectSnapBox, detectAllBoxes, snapCredibilityScore, floodFillCell, detectCombCells } from "@/lib/snap-detect";
 import type { SnapResult, CombDetectResult } from "@/lib/snap-detect";
 import { createEditorFieldId } from "@/lib/field-ids";
@@ -3096,13 +3097,21 @@ function FieldShape({
             const scale = Math.min(maxW / sigImage.naturalWidth, maxH / sigImage.naturalHeight);
             const drawW = sigImage.naturalWidth * scale;
             const drawH = sigImage.naturalHeight * scale;
+            const sigField = field as SignatureField;
+            const sigOpacity = clampSignatureOpacity(sigField.opacity);
+            const sigRotation = clampSignatureRotation(sigField.rotation);
             return (
               <KonvaImage
                 image={sigImage}
-                x={(stageW - drawW) / 2}
-                y={(stageH - drawH) / 2}
+                x={stageW / 2}
+                y={stageH / 2}
                 width={drawW}
                 height={drawH}
+                offsetX={drawW / 2}
+                offsetY={drawH / 2}
+                rotation={sigRotation}
+                scaleX={sigField.flipH ? -1 : 1}
+                opacity={sigOpacity}
               />
             );
           })()
