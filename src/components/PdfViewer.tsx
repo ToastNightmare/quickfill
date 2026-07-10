@@ -437,6 +437,32 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
     if (!selectedFieldId) setEditingFieldId(null);
   }, [selectedFieldId]);
 
+  // On small screens, keep the inline text editor visible while typing.
+  // The on-screen keyboard plus the fixed bottom toolbar can otherwise hide
+  // the field being edited. Re-centres on visualViewport resize (keyboard
+  // open/close) while an edit is active.
+  useEffect(() => {
+    if (!editingFieldId) return;
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function") return;
+    if (!window.matchMedia("(max-width: 639px)").matches) return;
+
+    const scrollEditorIntoView = (behavior: ScrollBehavior) => {
+      document
+        .querySelector<HTMLInputElement>('[data-testid="pdf-field-editor"]')
+        ?.scrollIntoView({ block: "center", inline: "nearest", behavior });
+    };
+
+    // Delay lets the keyboard animation start before we position the field.
+    const timer = window.setTimeout(() => scrollEditorIntoView("smooth"), 300);
+    const viewport = window.visualViewport;
+    const onViewportResize = () => scrollEditorIntoView("auto");
+    viewport?.addEventListener("resize", onViewportResize);
+    return () => {
+      window.clearTimeout(timer);
+      viewport?.removeEventListener("resize", onViewportResize);
+    };
+  }, [editingFieldId]);
+
   // Reset cursor when tool is deactivated
   useEffect(() => {
     if (!activeTool) {
@@ -2297,6 +2323,21 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
             const isEditSnapped = editField.snapped ?? false;
             // Convert from PDF point space to canvas pixels
             const effectiveScale = fitScale * zoomFactor;
+            const editorFontSize = Math.max(
+              16,
+              ((editField as { fontSize?: number }).fontSize ?? 14) * effectiveScale
+            );
+            // On small screens the fit scale shrinks fields below the 16px
+            // font floor, which clips typed text. Give the input enough
+            // height and a readable background so users can see what they
+            // type. Desktop keeps the exact field box and transparency.
+            const isSmallScreen =
+              typeof window !== "undefined" &&
+              typeof window.matchMedia === "function" &&
+              window.matchMedia("(max-width: 639px)").matches;
+            const editorHeight = isSmallScreen
+              ? Math.max(editField.height * effectiveScale, editorFontSize + 8)
+              : editField.height * effectiveScale;
 
             return (
               <input
@@ -2309,8 +2350,8 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
                   left: editField.x * effectiveScale,
                   top: editField.y * effectiveScale,
                   width: editField.width * effectiveScale,
-                  height: editField.height * effectiveScale,
-                  fontSize: Math.max(16, ((editField as { fontSize?: number }).fontSize ?? 14) * effectiveScale),
+                  height: editorHeight,
+                  fontSize: editorFontSize,
                   fontFamily: "Arial, sans-serif",
                   color: "#1a1a2e",
                   cursor: "text",
@@ -2320,9 +2361,10 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
                   paddingTop: 0,
                   paddingBottom: 0,
                   boxSizing: "border-box",
-                  // Fully transparent, no background at all
-                  backgroundColor: "rgba(0,0,0,0)",
-                  background: "none",
+                  // Desktop: fully transparent so the field box shows through.
+                  // Small screens: near-solid white so typed text stays legible.
+                  backgroundColor: isSmallScreen ? "rgba(255,255,255,0.95)" : "rgba(0,0,0,0)",
+                  background: isSmallScreen ? "rgba(255,255,255,0.95)" : "none",
                   WebkitAppearance: "none",
                   // Underline only while editing
                   border: "none",

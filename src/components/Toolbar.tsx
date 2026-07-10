@@ -71,7 +71,7 @@ const tools: { type: ToolType; icon: typeof Type; label: string; shortLabel: str
   { type: "mask-eraser", icon: Eraser, label: "Eraser", shortLabel: "Eraser", title: "Eraser: drag to erase parts of placed fields" },
   { type: "signature", icon: PenTool, label: "Signature", shortLabel: "Sign", title: "Signature field: tap to place" },
   { type: "date", icon: Calendar, label: "Date", shortLabel: "Date", title: "Date: tap to stamp today's date" },
-  { type: "whiteout", icon: PaintBucket, label: "Whiteout", shortLabel: "Erase", title: "Whiteout: drag over text to cover it" },
+  { type: "whiteout", icon: PaintBucket, label: "Whiteout", shortLabel: "Whiteout", title: "Whiteout: drag over text to cover it" },
 ];
 
 const isPlacementTool = (tool: ToolType) => tool !== "select" && tool !== "eraser" && tool !== "mask-eraser";
@@ -148,34 +148,24 @@ export function Toolbar({
           </div>
         )}
 
-        <div className="flex items-center gap-2">
-          <div className="flex min-w-0 flex-1 gap-2 overflow-x-auto pb-1 pr-1">
-            {tools.map(({ type, icon: Icon, shortLabel, title }) => (
-              <button
-                key={type}
-                onClick={() => onToolSelect(type)}
-                title={title}
-                className={`flex h-12 min-w-[58px] shrink-0 flex-col items-center justify-center gap-1 rounded-xl border text-[11px] font-semibold transition-colors ${
-                  activeTool === type
-                    ? "border-accent bg-accent text-white shadow-sm"
-                    : "border-border bg-surface-alt text-text-muted hover:border-accent hover:text-accent"
-                }`}
-              >
-                <Icon className="h-4 w-4" />
-                <span>{shortLabel}</span>
-              </button>
-            ))}
-          </div>
-
-          <button
-            onClick={onDownload}
-            disabled={isDownloading}
-            title="Download PDF"
-            className="flex h-12 min-w-[108px] shrink-0 items-center justify-center gap-2 rounded-xl bg-accent px-3 text-sm font-bold text-white shadow-sm hover:bg-accent-hover disabled:opacity-60"
-          >
-            <Download className="h-4 w-4" />
-            {isDownloading ? "Saving" : "Download"}
-          </button>
+        {/* Full-width scrollable tool row. Download lives on its own row
+            below so it can never crowd or overlap the tools. */}
+        <div className="flex w-full gap-2 overflow-x-auto pb-1">
+          {tools.map(({ type, icon: Icon, shortLabel, title }) => (
+            <button
+              key={type}
+              onClick={() => onToolSelect(type)}
+              title={title}
+              className={`flex h-12 min-w-[58px] shrink-0 flex-col items-center justify-center gap-1 rounded-xl border px-2 text-[11px] font-semibold transition-colors ${
+                activeTool === type
+                  ? "border-accent bg-accent text-white shadow-sm"
+                  : "border-border bg-surface-alt text-text-muted hover:border-accent hover:text-accent"
+              }`}
+            >
+              <Icon className="h-4 w-4" />
+              <span className="whitespace-nowrap">{shortLabel}</span>
+            </button>
+          ))}
         </div>
 
         <div className={`mt-2 grid ${[onAddPage, onRemovePage].filter(Boolean).length === 2 ? "grid-cols-7" : onAddPage || onRemovePage ? "grid-cols-6" : "grid-cols-5"} gap-2`}>
@@ -222,6 +212,16 @@ export function Toolbar({
             <IconButton onClick={onClear} title="Clear fields" icon={Trash2} disabled={fieldCount === 0} danger />
           )}
         </div>
+
+        <button
+          onClick={onDownload}
+          disabled={isDownloading}
+          title="Download PDF"
+          className="mt-2 flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-accent px-3 text-sm font-bold text-white shadow-sm hover:bg-accent-hover disabled:opacity-60"
+        >
+          <Download className="h-4 w-4" />
+          {isDownloading ? "Saving" : "Download PDF"}
+        </button>
 
         {isPro === true && (
           <div className="pointer-events-none absolute right-3 top-[-10px] rounded-full bg-accent px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white shadow-sm">

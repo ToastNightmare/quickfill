@@ -1503,7 +1503,7 @@ function EditorPageContent() {
             <button
               onClick={() => setZoom(100)}
               title="Fit to Page"
-              className="ml-1 hidden sm:block rounded-md px-2 py-1 text-xs font-medium text-text-muted hover:bg-surface-alt hover:text-text transition-colors"
+              className="ml-1 block rounded-md px-2 py-1 text-xs font-medium text-text-muted hover:bg-surface-alt hover:text-text transition-colors"
             >
               Fit
             </button>
