@@ -61,7 +61,6 @@ describe("proxy auth protection", () => {
     "/api/fills",
     "/api/profile",
     "/api/session",
-    "/api/signature",
     "/api/detect-fields",
     "/api/admin/health",
   ])(
@@ -97,8 +96,8 @@ describe("proxy auth protection", () => {
     },
   );
 
-  it.each(["/api/stripe/webhook", "/api/webhooks/clerk", "/api/analytics"])(
-    "keeps ingestion route %s unprotected",
+  it.each(["/api/stripe/webhook", "/api/webhooks/clerk", "/api/analytics", "/api/signature"])(
+    "keeps self-authenticating route %s unprotected",
     async (path) => {
       await proxy(request(path));
 

@@ -20,6 +20,10 @@ const isPublicRoute = createRouteMatcher([
   "/api/stripe/webhook",
   "/api/fill-pdf",
   "/api/usage",
+  // The signature route enforces its own auth (401 for anonymous users).
+  // Middleware protect() would return 404 for anonymous fetches, which the
+  // mobile filler and editor hit on mount to look up a saved signature.
+  "/api/signature",
   "/api/analytics",
   "/not-found",
   "/robots.txt",
