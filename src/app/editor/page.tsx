@@ -40,6 +40,7 @@ import { trackMetaEvent } from "@/lib/meta-pixel";
 import { runEditorProfileAutofill, trackEditorAutofillShadowReport } from "@/lib/editor-profile-autofill";
 import { createEditorFieldId, repairDuplicateEditorFieldIds, withUniqueEditorFieldId } from "@/lib/field-ids";
 import { loadPdfjsClient } from "@/lib/pdfjs-client";
+import { renderFlattenedWhiteoutPages } from "@/lib/pdf-flatten-client";
 import { getTemplateBySlug, isTemplateFillable, type TemplateConfig } from "@/lib/templates-config";
 import { DOCUMENT_FILE_INPUT_ACCEPT, PDF_UPLOAD_MAX_BYTES, PDF_UPLOAD_MAX_LABEL } from "@/lib/upload-limits";
 import { appendUploadToDocument, filledDocumentFilename, removePageFromDocument, shiftFieldsAfterPageRemoval, type NormalizedDocumentUpload } from "@/lib/document-intake";
@@ -1058,6 +1059,18 @@ function EditorPageContent() {
             const page = await pdf.getPage(i + 1);
             const viewport = page.getViewport({ scale: 1 });
             pageViewportDims.set(i, { width: viewport.width, height: viewport.height });
+          }
+
+          // Flattened Whiteout: render pages that contain whiteout fields and
+          // burn the whiteout into the page image before it leaves the client.
+          // Fails open: on any error the server keeps the vector whiteout.
+          try {
+            const flattenedPages = await renderFlattenedWhiteoutPages(pdf, fields);
+            if (flattenedPages.length > 0) {
+              fd.append("flattenedPages", JSON.stringify(flattenedPages));
+            }
+          } catch (err) {
+            console.warn("Flattened whiteout rendering failed, keeping vector whiteout:", err);
           }
         } catch (err) {
           console.error("Failed to get viewport dimensions:", err);

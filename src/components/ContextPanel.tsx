@@ -289,6 +289,11 @@ export function ContextPanel({
                 </div>
               </div>
             </Section>
+            <Section>
+              <p className="text-[10px] leading-relaxed text-text-muted">
+                On download, pages with whiteout are flattened so covered text can&apos;t be selected or copied.
+              </p>
+            </Section>
           </>
         )}
 

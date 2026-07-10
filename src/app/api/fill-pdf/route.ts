@@ -31,6 +31,7 @@ import { finalizePdfForDownload } from "@/lib/pdf-finalize";
 import { PDF_UPLOAD_MAX_BYTES, PDF_UPLOAD_MAX_LABEL } from "@/lib/upload-limits";
 import { lineMaskSegments } from "@/lib/eraser-mask";
 import { maskToPdfRect } from "@/lib/pdf-mask-transform";
+import { applyFlattenedPages, parseFlattenedPages, whiteoutPageSet } from "@/lib/pdf-flatten";
 
 /** Replace control characters (including newlines) with a space */
 function sanitize(text: string): string {
@@ -146,6 +147,7 @@ export async function POST(request: NextRequest) {
     const fieldsJson = formData.get("fields") as string | null;
     const pageScalesJson = formData.get("pageScales") as string | null;
     const viewportDimsJson = formData.get("viewportDims") as string | null;
+    const flattenedPagesJson = formData.get("flattenedPages") as string | null;
     const hasAcroForm = formData.get("hasAcroForm") === "true";
     hasAcroFormForLog = hasAcroForm;
 
@@ -241,28 +243,32 @@ export async function POST(request: NextRequest) {
       }
 
       cleanupAcroFormArtifacts(pdfDoc);
+    }
 
-      const wrappedPages = new Set<number>();
-      for (const field of orderedFields) {
-        if (!wrappedPages.has(field.page)) {
-          const page = pdfDoc.getPages()[field.page];
-          if (page) preparePageForDrawing(page, pdfDoc);
-          wrappedPages.add(field.page);
-        }
-        await drawFieldOnPage(pdfDoc, field, pageScales, font, signatureFont, viewportDims);
+    // Flattened Whiteout: pages with whiteout may arrive with a client-rendered
+    // image that already has the whiteout burned in. Replacing the page content
+    // with that image removes the covered original text from the download.
+    // Any invalid/missing image falls back to the vector whiteout below.
+    const flattenedEntries = parseFlattenedPages(
+      flattenedPagesJson,
+      pdfDoc.getPageCount(),
+      whiteoutPageSet(editorFields),
+    );
+    const flattenedPageSet = await applyFlattenedPages(pdfDoc, flattenedEntries);
+
+    // Track which pages have been wrapped to avoid duplicate wrapping
+    const wrappedPages = new Set<number>();
+    for (const field of orderedFields) {
+      // Whiteout is already burned into flattened page images; skip the vector rect.
+      if (field.type === "whiteout" && flattenedPageSet.has(field.page)) continue;
+      if (!wrappedPages.has(field.page)) {
+        const page = pdfDoc.getPages()[field.page];
+        // Prepare page for drawing by popping unbalanced graphics states once per page.
+        // Flattened pages have fresh pdf-lib content and need no wrapping.
+        if (page && !flattenedPageSet.has(field.page)) preparePageForDrawing(page, pdfDoc);
+        wrappedPages.add(field.page);
       }
-    } else {
-      // Track which pages have been wrapped to avoid duplicate wrapping
-      const wrappedPages = new Set<number>();
-      for (const field of orderedFields) {
-        // Prepare page for drawing by popping unbalanced graphics states once per page
-        if (!wrappedPages.has(field.page)) {
-          const page = pdfDoc.getPages()[field.page];
-          if (page) preparePageForDrawing(page, pdfDoc);
-          wrappedPages.add(field.page);
-        }
-        await drawFieldOnPage(pdfDoc, field, pageScales, font, signatureFont, viewportDims);
-      }
+      await drawFieldOnPage(pdfDoc, field, pageScales, font, signatureFont, viewportDims);
     }
 
     const resultBytes = await finalizePdfForDownload(pdfDoc, access.isPro || access.isQaBypass === true);

@@ -214,6 +214,111 @@ async function installPdfVisualRenderer(page: Page) {
   await page.waitForFunction(() => typeof (window as any).comparePdfVisuals === "function");
 }
 
+async function installPdfTextExtractor(page: Page) {
+  const pdfjsBrowserPath = join(process.cwd(), "node_modules", "pdfjs-dist", "build", "pdf.mjs");
+  await page.route("**/__quickfill-qa/pdf.mjs", (route) => {
+    route.fulfill({ path: pdfjsBrowserPath, contentType: "text/javascript" });
+  });
+  await page.goto("/");
+  await page.setContent(`
+    <html>
+      <body>
+        <script type="module">
+          import * as pdfjsLib from "/__quickfill-qa/pdf.mjs";
+          pdfjsLib.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs";
+
+          function base64ToBytes(base64) {
+            return Uint8Array.from(atob(base64), (char) => char.charCodeAt(0));
+          }
+
+          window.extractPdfPageTexts = async (base64) => {
+            const doc = await pdfjsLib.getDocument({ data: base64ToBytes(base64) }).promise;
+            const texts = [];
+            for (let i = 1; i <= doc.numPages; i++) {
+              const page = await doc.getPage(i);
+              const content = await page.getTextContent();
+              texts.push(content.items.map((item) => ("str" in item ? item.str : "")).join(" "));
+            }
+            return texts;
+          };
+        </script>
+      </body>
+    </html>
+  `);
+  await page.waitForFunction(() => typeof (window as any).extractPdfPageTexts === "function");
+}
+
+// Two-page source PDF with known extractable text on both pages.
+async function createWhiteoutSourcePdf(): Promise<TestPdf> {
+  const pdfDoc = await PDFDocument.create();
+  const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+
+  const pageOne = pdfDoc.addPage([612, 792]);
+  pageOne.drawText("SECRETCOVEREDTEXT", { x: 48, y: 700, size: 14, font });
+  pageOne.drawText("Visible page one context", { x: 48, y: 660, size: 12, font });
+
+  const pageTwo = pdfDoc.addPage([612, 792]);
+  pageTwo.drawText("KEEPPAGETWOTEXT", { x: 48, y: 700, size: 14, font });
+
+  const bytes = await pdfDoc.save();
+  return { name: "quickfill-qa-whiteout.pdf", bytes: Buffer.from(bytes) };
+}
+
+// 1x1 white PNG stand-in for a client-rendered flattened page image.
+const FLATTENED_WHITE_PNG =
+  "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+
+async function requestWhiteoutExport(
+  request: APIRequestContext,
+  pdf: TestPdf,
+  options: { flattened: boolean },
+) {
+  const fields = [
+    {
+      id: "whiteout-1",
+      type: "whiteout",
+      x: 40,
+      y: 80,
+      width: 260,
+      height: 30,
+      page: 0,
+      fillColor: "#ffffff",
+    },
+    {
+      id: "overlay-1",
+      type: "text",
+      x: 48,
+      y: 200,
+      width: 260,
+      height: 24,
+      page: 0,
+      value: "OVERLAYVISIBLETEXT",
+      fontSize: 12,
+    },
+  ];
+
+  const multipart: Record<string, unknown> = {
+    pdf: {
+      name: pdf.name,
+      mimeType: "application/pdf",
+      buffer: pdf.bytes,
+    },
+    fields: JSON.stringify(fields),
+    pageScales: JSON.stringify([[0, 1], [1, 1]]),
+    hasAcroForm: "false",
+  };
+  if (options.flattened) {
+    multipart.flattenedPages = JSON.stringify([[0, FLATTENED_WHITE_PNG]]);
+  }
+
+  const response = await request.post("/api/fill-pdf", {
+    headers: qaToken ? { "x-quickfill-qa-token": qaToken } : undefined,
+    multipart: multipart as never,
+  });
+  expect(response.status()).toBe(200);
+  return Buffer.from(await response.body());
+}
+
 async function hasCatalogAcroForm(bytes: Buffer) {
   const pdfDoc = await PDFDocument.load(bytes);
   return pdfDoc.catalog.get(PDFName.of("AcroForm")) !== undefined;
@@ -423,6 +528,45 @@ test.describe("PDF accuracy pack", () => {
     const pdf = await createAcroFormPdf();
     const body = await requestFilledPdf(request, pdf);
     await verifyStaticPdf(body);
+  });
+
+  test("flattened whiteout removes covered text from pdf.js extraction", async ({ page, request }) => {
+    test.skip(!qaToken, "Set QUICKFILL_QA_TOKEN to run download accuracy checks.");
+
+    const pdf = await createWhiteoutSourcePdf();
+
+    // Control export (no flattened image): extractor must still see the text,
+    // proving the extraction harness works and the vector fallback keeps it.
+    const controlBytes = await requestWhiteoutExport(request, pdf, { flattened: false });
+    // Flattened export: page one content is replaced with the burned-in image.
+    const flattenedBytes = await requestWhiteoutExport(request, pdf, { flattened: true });
+
+    await installPdfTextExtractor(page);
+
+    const controlTexts = await page.evaluate(
+      (base64) => (window as unknown as {
+        extractPdfPageTexts: (b64: string) => Promise<string[]>;
+      }).extractPdfPageTexts(base64),
+      controlBytes.toString("base64"),
+    );
+    expect(controlTexts[0]).toContain("SECRETCOVEREDTEXT");
+
+    const flattenedTexts = await page.evaluate(
+      (base64) => (window as unknown as {
+        extractPdfPageTexts: (b64: string) => Promise<string[]>;
+      }).extractPdfPageTexts(base64),
+      flattenedBytes.toString("base64"),
+    );
+
+    // Covered original text must no longer be extractable on the flattened page.
+    expect(flattenedTexts[0]).not.toContain("SECRETCOVEREDTEXT");
+    // User-added overlay text stays extractable because it is drawn as text.
+    expect(flattenedTexts[0]).toContain("OVERLAYVISIBLETEXT");
+    // Non-whiteout pages keep their original extractable text.
+    expect(flattenedTexts[1]).toContain("KEEPPAGETWOTEXT");
+
+    // Output must still be a valid, static PDF.
+    await verifyStaticPdf(flattenedBytes);
   });
 
   test("mobile AcroForm flow can fill and download", async ({ page }) => {
