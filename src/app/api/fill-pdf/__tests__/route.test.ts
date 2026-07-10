@@ -3,7 +3,7 @@
  */
 
 import { NextRequest } from "next/server";
-import { PDFDocument } from "pdf-lib";
+import { PDFDocument, PDFRawStream, decodePDFRawStream } from "pdf-lib";
 
 import { POST } from "../route";
 import { recordDownloadLog } from "@/lib/admin-logs";
@@ -129,6 +129,172 @@ describe("fill-pdf route", () => {
       reason: "file_too_large",
       status: "blocked",
     }));
+  });
+});
+
+// 1x1 white PNG used as a stand-in flattened page image.
+const TINY_PNG_DATA_URL =
+  "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+
+async function createTwoPageTextPdf() {
+  const pdfDoc = await PDFDocument.create();
+  const font = await pdfDoc.embedFont("Helvetica");
+  const pageOne = pdfDoc.addPage([300, 200]);
+  pageOne.drawText("SECRETCOVEREDTEXT", { x: 24, y: 120, size: 12, font });
+  const pageTwo = pdfDoc.addPage([300, 200]);
+  pageTwo.drawText("KEEPPAGETWOTEXT", { x: 24, y: 120, size: 12, font });
+  return await pdfDoc.save();
+}
+
+/**
+ * Check whether a text marker is still recoverable from the PDF's decoded
+ * content streams, either as a literal string or as the hex-encoded form
+ * pdf-lib writes for standard-font text (<...> Tj). This mirrors what text
+ * extraction tools like pdf.js getTextContent can recover.
+ */
+async function hasTextEvidence(bytes: Uint8Array, marker: string): Promise<boolean> {
+  const doc = await PDFDocument.load(bytes);
+  let decoded = "";
+  for (const [, obj] of doc.context.enumerateIndirectObjects()) {
+    if (obj instanceof PDFRawStream) {
+      try {
+        decoded += Buffer.from(decodePDFRawStream(obj).decode()).toString("latin1");
+      } catch {
+        decoded += Buffer.from(obj.getContents()).toString("latin1");
+      }
+    }
+  }
+  const haystack = decoded.toLowerCase();
+  const literal = marker.toLowerCase();
+  const hex = Buffer.from(marker, "latin1").toString("hex").toLowerCase();
+  return haystack.includes(literal) || haystack.includes(hex);
+}
+
+interface FlattenRequestOptions {
+  flattenedPages?: [number, string][] | string;
+  includeWhiteout?: boolean;
+}
+
+async function makeFlattenRequest(options: FlattenRequestOptions = {}) {
+  const sourceBytes = await createTwoPageTextPdf();
+  const formData = new FormData();
+
+  const fields: Record<string, unknown>[] = [
+    {
+      id: "overlay-1",
+      type: "text",
+      x: 24,
+      y: 40,
+      width: 200,
+      height: 24,
+      page: 0,
+      value: "OVERLAYVISIBLETEXT",
+      fontSize: 12,
+    },
+  ];
+  if (options.includeWhiteout !== false) {
+    fields.push({
+      id: "whiteout-1",
+      type: "whiteout",
+      x: 20,
+      y: 70,
+      width: 200,
+      height: 30,
+      page: 0,
+      fillColor: "#ffffff",
+    });
+  }
+
+  formData.set("pdf", new Blob([sourceBytes], { type: "application/pdf" }), "flatten-sample.pdf");
+  formData.set("fields", JSON.stringify(fields));
+  formData.set("pageScales", JSON.stringify([[0, 1], [1, 1]]));
+  formData.set("hasAcroForm", "false");
+  if (options.flattenedPages !== undefined) {
+    formData.set(
+      "flattenedPages",
+      typeof options.flattenedPages === "string"
+        ? options.flattenedPages
+        : JSON.stringify(options.flattenedPages),
+    );
+  }
+
+  return new NextRequest("https://getquickfill.com/api/fill-pdf", {
+    method: "POST",
+    body: formData,
+    headers: {
+      "x-quickfill-qa-token": "test-token",
+    },
+  });
+}
+
+describe("fill-pdf flattened whiteout export", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    process.env.QUICKFILL_QA_TOKEN = "test-token";
+  });
+
+  afterEach(() => {
+    delete process.env.QUICKFILL_QA_TOKEN;
+  });
+
+  it("keeps covered text evidence when no flattened image is sent (current behaviour)", async () => {
+    const response = await POST(await makeFlattenRequest());
+    const bytes = new Uint8Array(await response.arrayBuffer());
+
+    expect(response.status).toBe(200);
+    await expect(PDFDocument.load(bytes)).resolves.toBeDefined();
+    // Vector whiteout only covers visually; original text operators remain.
+    await expect(hasTextEvidence(bytes, "SECRETCOVEREDTEXT")).resolves.toBe(true);
+  });
+
+  it("removes covered original text from flattened whiteout pages", async () => {
+    const response = await POST(
+      await makeFlattenRequest({ flattenedPages: [[0, TINY_PNG_DATA_URL]] }),
+    );
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    const resultDoc = await PDFDocument.load(bytes);
+
+    expect(response.status).toBe(200);
+    expect(resultDoc.getPageCount()).toBe(2);
+    // Covered original text is gone from the flattened page.
+    await expect(hasTextEvidence(bytes, "SECRETCOVEREDTEXT")).resolves.toBe(false);
+    // User-added overlay text is still drawn as real text.
+    await expect(hasTextEvidence(bytes, "OVERLAYVISIBLETEXT")).resolves.toBe(true);
+    // Non-whiteout pages keep their original text.
+    await expect(hasTextEvidence(bytes, "KEEPPAGETWOTEXT")).resolves.toBe(true);
+    expect(recordDownloadLog).toHaveBeenCalledWith(expect.objectContaining({ status: "success" }));
+  });
+
+  it("ignores flattened images for pages without whiteout fields", async () => {
+    const response = await POST(
+      await makeFlattenRequest({ flattenedPages: [[1, TINY_PNG_DATA_URL]] }),
+    );
+    const bytes = new Uint8Array(await response.arrayBuffer());
+
+    expect(response.status).toBe(200);
+    // Page two has no whiteout, so its image must be rejected and text kept.
+    await expect(hasTextEvidence(bytes, "KEEPPAGETWOTEXT")).resolves.toBe(true);
+  });
+
+  it("falls back to a valid PDF when flattenedPages is malformed", async () => {
+    const response = await POST(await makeFlattenRequest({ flattenedPages: "{not-json" }));
+    const bytes = new Uint8Array(await response.arrayBuffer());
+
+    expect(response.status).toBe(200);
+    await expect(PDFDocument.load(bytes)).resolves.toBeDefined();
+    await expect(hasTextEvidence(bytes, "SECRETCOVEREDTEXT")).resolves.toBe(true);
+  });
+
+  it("falls back to a valid PDF when the flattened image bytes are invalid", async () => {
+    const response = await POST(
+      await makeFlattenRequest({ flattenedPages: [[0, "data:image/png;base64,bm90LWEtcG5n"]] }),
+    );
+    const bytes = new Uint8Array(await response.arrayBuffer());
+
+    expect(response.status).toBe(200);
+    await expect(PDFDocument.load(bytes)).resolves.toBeDefined();
+    // Embed failed, so the vector whiteout fallback keeps the page intact.
+    await expect(hasTextEvidence(bytes, "SECRETCOVEREDTEXT")).resolves.toBe(true);
   });
 });
 
