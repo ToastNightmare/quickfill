@@ -2,7 +2,14 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { Camera, ImagePlus, X, Trash2, RotateCcw } from "lucide-react";
-import { cleanSignatureImage } from "@/lib/signature-image";
+import {
+  analyzeSignaturePhoto,
+  hasCleanupAdjustments,
+  renderCleanedSignature,
+  SIGNATURE_CLEANUP_DEFAULTS,
+  type SignatureCleanupOptions,
+  type SignaturePhotoAnalysis,
+} from "@/lib/signature-image";
 import { useSignaturePad } from "./SignaturePad";
 
 interface SignatureModalProps {
@@ -31,8 +38,10 @@ async function processSignaturePhoto(file: File) {
     throw new Error("Image is too large");
   }
 
-  return cleanSignatureImage(file);
+  return analyzeSignaturePhoto(file);
 }
+
+const CLEANUP_PREVIEW_DEBOUNCE_MS = 80;
 
 export function SignatureModal({
   open,
@@ -48,6 +57,10 @@ export function SignatureModal({
   const [saving, setSaving] = useState(false);
   const [padWidth, setPadWidth] = useState(400);
   const [photoSignature, setPhotoSignature] = useState<string | null>(null);
+  const [photoAnalysis, setPhotoAnalysis] = useState<SignaturePhotoAnalysis | null>(null);
+  const [cleanupOptions, setCleanupOptions] = useState<SignatureCleanupOptions>(
+    SIGNATURE_CLEANUP_DEFAULTS,
+  );
   const [photoError, setPhotoError] = useState<string | null>(null);
   const [photoProcessing, setPhotoProcessing] = useState(false);
   const cameraInputRef = useRef<HTMLInputElement>(null);
@@ -73,6 +86,8 @@ export function SignatureModal({
     if (open) {
       setMode(existingSignature ? "view" : "draw");
       setPhotoSignature(null);
+      setPhotoAnalysis(null);
+      setCleanupOptions(SIGNATURE_CLEANUP_DEFAULTS);
       setPhotoError(null);
       setPhotoProcessing(false);
     }
@@ -101,10 +116,13 @@ export function SignatureModal({
     setPhotoProcessing(true);
     setPhotoError(null);
     try {
-      const dataUrl = await processSignaturePhoto(file);
-      setPhotoSignature(dataUrl);
+      const analysis = await processSignaturePhoto(file);
+      setPhotoAnalysis(analysis);
+      setCleanupOptions(SIGNATURE_CLEANUP_DEFAULTS);
+      setPhotoSignature(renderCleanedSignature(analysis, SIGNATURE_CLEANUP_DEFAULTS));
     } catch (error) {
       setPhotoSignature(null);
+      setPhotoAnalysis(null);
       setPhotoError(error instanceof Error ? error.message : "Could not use image");
     } finally {
       setPhotoProcessing(false);
@@ -126,8 +144,32 @@ export function SignatureModal({
 
   const resetPhoto = useCallback(() => {
     setPhotoSignature(null);
+    setPhotoAnalysis(null);
+    setCleanupOptions(SIGNATURE_CLEANUP_DEFAULTS);
     setPhotoError(null);
   }, []);
+
+  const resetCleanup = useCallback(() => {
+    setCleanupOptions(SIGNATURE_CLEANUP_DEFAULTS);
+  }, []);
+
+  const updateCleanupOption = useCallback(
+    (key: keyof SignatureCleanupOptions, value: number) => {
+      setCleanupOptions((prev) => ({ ...prev, [key]: value }));
+    },
+    [],
+  );
+
+  // Live preview: cheap alpha remap over the cached analysis, debounced so
+  // slider drags stay responsive. Crop bounds are frozen in the analysis, so
+  // the preview never jumps while adjusting.
+  useEffect(() => {
+    if (!photoAnalysis) return;
+    const timer = setTimeout(() => {
+      setPhotoSignature(renderCleanedSignature(photoAnalysis, cleanupOptions));
+    }, CLEANUP_PREVIEW_DEBOUNCE_MS);
+    return () => clearTimeout(timer);
+  }, [photoAnalysis, cleanupOptions]);
 
   const handleDelete = useCallback(async () => {
     if (!onDelete) return;
@@ -299,6 +341,72 @@ export function SignatureModal({
                       </div>
                     )}
                   </div>
+
+                  {photoSignature && photoAnalysis && (
+                    <div className="flex w-full flex-col gap-3 rounded-xl border border-border bg-surface-alt px-4 py-3">
+                      <div className="flex flex-col gap-1">
+                        <div className="flex items-center justify-between">
+                          <label
+                            htmlFor="signature-bg-fade"
+                            className="text-xs font-semibold text-text"
+                          >
+                            Background fade
+                          </label>
+                          <span className="text-[11px] text-text-muted">Low → High</span>
+                        </div>
+                        <input
+                          id="signature-bg-fade"
+                          data-testid="signature-bg-fade"
+                          type="range"
+                          min={0}
+                          max={100}
+                          step={1}
+                          value={Math.round(cleanupOptions.backgroundRemoval * 100)}
+                          onChange={(event) =>
+                            updateCleanupOption("backgroundRemoval", Number(event.target.value) / 100)
+                          }
+                          className="h-2 w-full cursor-pointer accent-accent"
+                          aria-label="Background fade"
+                        />
+                      </div>
+
+                      <div className="flex flex-col gap-1">
+                        <div className="flex items-center justify-between">
+                          <label
+                            htmlFor="signature-ink-strength"
+                            className="text-xs font-semibold text-text"
+                          >
+                            Ink strength
+                          </label>
+                          <span className="text-[11px] text-text-muted">Light → Strong</span>
+                        </div>
+                        <input
+                          id="signature-ink-strength"
+                          data-testid="signature-ink-strength"
+                          type="range"
+                          min={0}
+                          max={100}
+                          step={1}
+                          value={Math.round(cleanupOptions.inkStrength * 100)}
+                          onChange={(event) =>
+                            updateCleanupOption("inkStrength", Number(event.target.value) / 100)
+                          }
+                          className="h-2 w-full cursor-pointer accent-accent"
+                          aria-label="Ink strength"
+                        />
+                      </div>
+
+                      <button
+                        type="button"
+                        data-testid="signature-cleanup-reset"
+                        onClick={resetCleanup}
+                        disabled={!hasCleanupAdjustments(cleanupOptions)}
+                        className="self-end text-xs font-medium text-accent transition-colors hover:text-accent-hover disabled:cursor-default disabled:text-text-muted/50"
+                      >
+                        Reset cleanup
+                      </button>
+                    </div>
+                  )}
 
                   {photoError && (
                     <p className="w-full rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">

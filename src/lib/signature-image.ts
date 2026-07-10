@@ -3,6 +3,91 @@ const MAX_SIGNATURE_DATA_URL_CHARS = 180_000;
 
 type Rgb = { r: number; g: number; b: number };
 
+// --- Cleanup options ---------------------------------------------------
+//
+// Photo signature cleanup exposes two user-facing knobs. Both default to 0,
+// which reproduces the historical cleanup output exactly, so existing users
+// who never touch the sliders see no change.
+//
+// - backgroundRemoval (0..1): raises a hard alpha cutoff so weak background
+//   haze (shadows, grey paper) becomes fully transparent.
+// - inkStrength (0..1): boosts alpha for surviving ink so the signature
+//   stays strong and readable, especially at high background removal. It
+//   never resurrects pixels below the cutoff.
+
+export interface SignatureCleanupOptions {
+  backgroundRemoval: number;
+  inkStrength: number;
+}
+
+export const SIGNATURE_CLEANUP_DEFAULTS: SignatureCleanupOptions = {
+  backgroundRemoval: 0,
+  inkStrength: 0,
+};
+
+/** Maximum strength cutoff at backgroundRemoval = 1. */
+const MAX_BACKGROUND_CUTOFF = 0.45;
+/** Historical alpha gamma; strength^0.72 protects faint ink. */
+const DEFAULT_ALPHA_GAMMA = 0.72;
+
+function clampOption(value: unknown, fallback: number): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) return fallback;
+  return clamp(value, 0, 1);
+}
+
+/** Normalize possibly-partial/invalid options into safe 0..1 values. */
+export function clampCleanupOptions(
+  options?: Partial<SignatureCleanupOptions> | null,
+): SignatureCleanupOptions {
+  return {
+    backgroundRemoval: clampOption(
+      options?.backgroundRemoval,
+      SIGNATURE_CLEANUP_DEFAULTS.backgroundRemoval,
+    ),
+    inkStrength: clampOption(options?.inkStrength, SIGNATURE_CLEANUP_DEFAULTS.inkStrength),
+  };
+}
+
+/** True when options differ from the defaults (drives the Reset control). */
+export function hasCleanupAdjustments(
+  options?: Partial<SignatureCleanupOptions> | null,
+): boolean {
+  const clamped = clampCleanupOptions(options);
+  return (
+    clamped.backgroundRemoval !== SIGNATURE_CLEANUP_DEFAULTS.backgroundRemoval ||
+    clamped.inkStrength !== SIGNATURE_CLEANUP_DEFAULTS.inkStrength
+  );
+}
+
+/**
+ * Map a per-pixel ink strength (0..1) to an output alpha byte (0..255).
+ *
+ * With default options this is exactly the historical mapping:
+ * round(strength^0.72 * 255).
+ *
+ * Pure and monotonic in `strength` so it can be unit tested without canvas.
+ */
+export function cleanupAlpha(
+  strength: number,
+  options?: Partial<SignatureCleanupOptions> | null,
+): number {
+  const { backgroundRemoval, inkStrength } = clampCleanupOptions(options);
+  const s = clamp(strength, 0, 1);
+
+  const cutoff = backgroundRemoval * MAX_BACKGROUND_CUTOFF;
+  if (s <= cutoff) return 0;
+
+  // Re-normalize the surviving range so ink still spans the full ramp.
+  const normalized = cutoff > 0 ? (s - cutoff) / (1 - cutoff) : s;
+
+  // Higher ink strength lowers gamma (lifts mid alphas) and adds gain.
+  const gamma = DEFAULT_ALPHA_GAMMA * (1 - inkStrength * 0.45);
+  const gain = 1 + inkStrength * 0.35;
+  const alpha = clamp(Math.pow(normalized, gamma) * gain, 0, 1);
+
+  return Math.round(alpha * 255);
+}
+
 function clamp(value: number, min: number, max: number) {
   return Math.max(min, Math.min(max, value));
 }
@@ -200,7 +285,29 @@ function findSignatureBounds(
   return { minX, minY, maxX, maxY, strengths, paperLuma };
 }
 
-export async function cleanSignatureImage(source: File | string) {
+/**
+ * Immutable result of the expensive photo analysis pass.
+ *
+ * Crop bounds and per-pixel ink strengths are frozen here so slider-driven
+ * re-renders are cheap and the preview never jumps while adjusting.
+ */
+export interface SignaturePhotoAnalysis {
+  cropWidth: number;
+  cropHeight: number;
+  /** Per crop pixel ink strength, 0..1, row-major. */
+  strengths: Float32Array;
+  /** Per crop pixel RGB output colour (already ink-recoloured), 3 bytes each. */
+  colors: Uint8ClampedArray;
+}
+
+/**
+ * Expensive pass: decode, downscale, estimate paper colour, compute per-pixel
+ * ink strength, find crop bounds, and bake the output ink colours.
+ * Run once per photo; cache the result and feed it to renderCleanedSignature.
+ */
+export async function analyzeSignaturePhoto(
+  source: File | string,
+): Promise<SignaturePhotoAnalysis> {
   const image = await loadImageFromSource(source);
   const imageWidth = image.naturalWidth || image.width;
   const imageHeight = image.naturalHeight || image.height;
@@ -238,11 +345,8 @@ export async function cleanSignatureImage(source: File | string) {
 
   const cropWidth = maxX - minX + 1;
   const cropHeight = maxY - minY + 1;
-  const alphaCanvas = document.createElement("canvas");
-  alphaCanvas.width = cropWidth;
-  alphaCanvas.height = cropHeight;
-  const alphaCtx = alphaCanvas.getContext("2d")!;
-  const output = alphaCtx.createImageData(cropWidth, cropHeight);
+  const cropStrengths = new Float32Array(cropWidth * cropHeight);
+  const colors = new Uint8ClampedArray(cropWidth * cropHeight * 3);
 
   for (let y = 0; y < cropHeight; y += 1) {
     for (let x = 0; x < cropWidth; x += 1) {
@@ -250,20 +354,48 @@ export async function cleanSignatureImage(source: File | string) {
       const sourceY = minY + y;
       const sourceIndex = sourceY * width + sourceX;
       const dataIndex = sourceIndex * 4;
-      const targetIndex = (y * cropWidth + x) * 4;
+      const targetIndex = y * cropWidth + x;
       const luma = luminance(
         imageData.data[dataIndex],
         imageData.data[dataIndex + 1],
         imageData.data[dataIndex + 2],
       );
-      const strength = strengths[sourceIndex] || getInkStrength(imageData.data, dataIndex, paper, paperLuma);
-      const alpha = Math.round(Math.pow(clamp(strength, 0, 1), 0.72) * 255);
+      const strength =
+        strengths[sourceIndex] || getInkStrength(imageData.data, dataIndex, paper, paperLuma);
 
-      output.data[targetIndex] = luma < 105 ? imageData.data[dataIndex] : 13;
-      output.data[targetIndex + 1] = luma < 105 ? imageData.data[dataIndex + 1] : 13;
-      output.data[targetIndex + 2] = luma < 105 ? imageData.data[dataIndex + 2] : 26;
-      output.data[targetIndex + 3] = alpha;
+      cropStrengths[targetIndex] = clamp(strength, 0, 1);
+      colors[targetIndex * 3] = luma < 105 ? imageData.data[dataIndex] : 13;
+      colors[targetIndex * 3 + 1] = luma < 105 ? imageData.data[dataIndex + 1] : 13;
+      colors[targetIndex * 3 + 2] = luma < 105 ? imageData.data[dataIndex + 2] : 26;
     }
+  }
+
+  return { cropWidth, cropHeight, strengths: cropStrengths, colors };
+}
+
+/**
+ * Cheap pass: remap cached ink strengths to alpha using the cleanup options
+ * and encode the final PNG data URL. Safe to run on every slider change.
+ */
+export function renderCleanedSignature(
+  analysis: SignaturePhotoAnalysis,
+  options?: Partial<SignatureCleanupOptions> | null,
+): string {
+  const { cropWidth, cropHeight, strengths, colors } = analysis;
+  const clamped = clampCleanupOptions(options);
+
+  const alphaCanvas = document.createElement("canvas");
+  alphaCanvas.width = cropWidth;
+  alphaCanvas.height = cropHeight;
+  const alphaCtx = alphaCanvas.getContext("2d")!;
+  const output = alphaCtx.createImageData(cropWidth, cropHeight);
+
+  for (let i = 0; i < strengths.length; i += 1) {
+    const targetIndex = i * 4;
+    output.data[targetIndex] = colors[i * 3];
+    output.data[targetIndex + 1] = colors[i * 3 + 1];
+    output.data[targetIndex + 2] = colors[i * 3 + 2];
+    output.data[targetIndex + 3] = cleanupAlpha(strengths[i], clamped);
   }
 
   alphaCtx.putImageData(output, 0, 0);
@@ -278,4 +410,16 @@ export async function cleanSignatureImage(source: File | string) {
   finalCtx.drawImage(alphaCanvas, 0, 0, finalCanvas.width, finalCanvas.height);
 
   return shrinkPngDataUrl(finalCanvas);
+}
+
+/**
+ * One-shot clean: analyze then render. Defaults reproduce the historical
+ * output exactly.
+ */
+export async function cleanSignatureImage(
+  source: File | string,
+  options?: Partial<SignatureCleanupOptions> | null,
+) {
+  const analysis = await analyzeSignaturePhoto(source);
+  return renderCleanedSignature(analysis, options);
 }
