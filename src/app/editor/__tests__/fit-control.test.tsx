@@ -1,7 +1,7 @@
 import "@testing-library/jest-dom";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import EditorPage from "../page";
-import { loadZoomFromLocalStorage } from "@/lib/persistence";
+import { loadZoomFromLocalStorage, saveZoomToLocalStorage } from "@/lib/persistence";
 
 // PR #93: the Fit control must actually recompute the viewer's fit scale
 // (not only reset the zoom percentage), and mobile/tablet cold loads start
@@ -50,11 +50,17 @@ jest.mock("@/components/Toolbar", () => ({
 }));
 
 const refitMock = jest.fn();
+// Captures the latest props passed to the mocked PdfViewer so tests can
+// drive the gesture callbacks (PR #94 pinch zoom wiring).
+const viewerPropsRef: { current: Record<string, unknown> } = { current: {} };
 
 jest.mock("@/components/PdfViewer", () => {
   const React = jest.requireActual("react");
   return {
-    PdfViewer: React.forwardRef(function MockPdfViewer(_props: unknown, ref: React.Ref<unknown>) {
+    PdfViewer: React.forwardRef(function MockPdfViewer(props: Record<string, unknown>, ref: React.Ref<unknown>) {
+      React.useEffect(() => {
+        viewerPropsRef.current = props;
+      });
       React.useImperativeHandle(ref, () => ({
         getCanvasDataURL: () => "data:image/png;base64,base",
         getCanvasDimensions: () => ({ width: 100, height: 100 }),
@@ -217,5 +223,130 @@ describe("Editor Fit control and initial fit", () => {
     });
 
     expect(screen.getByText("150%")).toBeInTheDocument();
+  });
+});
+
+describe("Editor pinch zoom gesture wiring (PR #94)", () => {
+  const originalFetch = global.fetch;
+  const originalInnerWidth = window.innerWidth;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    localStorage.clear();
+    global.fetch = jest.fn(async () => ({ ok: false, json: async () => ({}) })) as unknown as typeof fetch;
+  });
+
+  afterEach(() => {
+    global.fetch = originalFetch;
+    setViewportWidth(originalInnerWidth);
+  });
+
+  async function openEditor(width = 1280) {
+    setViewportWidth(width);
+    const view = render(<EditorPage />);
+    fireEvent.click(screen.getByRole("button", { name: "Mock upload" }));
+    await waitFor(() => {
+      expect(screen.getByTestId("pdf-viewer")).toBeInTheDocument();
+    });
+    return view;
+  }
+
+  it("pinch preview overrides the zoom readout and clears when the gesture ends", async () => {
+    await openEditor();
+    expect(screen.getByText("150%")).toBeInTheDocument();
+
+    const preview = viewerPropsRef.current.onGestureZoomPreview as (z: number | null) => void;
+    act(() => preview(163));
+    expect(screen.getByText("163%")).toBeInTheDocument();
+    expect(screen.queryByText("150%")).not.toBeInTheDocument();
+
+    // Gesture ended without a zoom change: readout returns to committed zoom.
+    act(() => preview(null));
+    expect(screen.getByText("150%")).toBeInTheDocument();
+  });
+
+  it("gesture commit updates the zoom, clamps to 50-200, and persists", async () => {
+    await openEditor();
+
+    const commit = viewerPropsRef.current.onGestureZoomCommit as (z: number) => void;
+
+    act(() => commit(137.4));
+    expect(screen.getByText("137%")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(saveZoomToLocalStorage).toHaveBeenCalledWith(137);
+    });
+
+    act(() => commit(999));
+    expect(screen.getByText("200%")).toBeInTheDocument();
+
+    act(() => commit(3));
+    expect(screen.getByText("50%")).toBeInTheDocument();
+  });
+
+  it("gesture commit clears any in-progress pinch preview", async () => {
+    await openEditor();
+
+    const preview = viewerPropsRef.current.onGestureZoomPreview as (z: number | null) => void;
+    const commit = viewerPropsRef.current.onGestureZoomCommit as (z: number) => void;
+
+    act(() => preview(176));
+    expect(screen.getByText("176%")).toBeInTheDocument();
+
+    act(() => commit(180));
+    expect(screen.getByText("180%")).toBeInTheDocument();
+    expect(screen.queryByText("176%")).not.toBeInTheDocument();
+  });
+});
+
+describe("Editor gesture discovery hint (PR #94)", () => {
+  const originalFetch = global.fetch;
+  const originalInnerWidth = window.innerWidth;
+  const originalMatchMedia = window.matchMedia;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    localStorage.clear();
+    global.fetch = jest.fn(async () => ({ ok: false, json: async () => ({}) })) as unknown as typeof fetch;
+    // Simulate a touch device (coarse pointer).
+    window.matchMedia = jest.fn((query: string) => ({
+      matches: query === "(pointer: coarse)",
+      media: query,
+      addEventListener: jest.fn(),
+      removeEventListener: jest.fn(),
+      addListener: jest.fn(),
+      removeListener: jest.fn(),
+      onchange: null,
+      dispatchEvent: jest.fn(),
+    })) as unknown as typeof window.matchMedia;
+  });
+
+  afterEach(() => {
+    global.fetch = originalFetch;
+    window.matchMedia = originalMatchMedia;
+    setViewportWidth(originalInnerWidth);
+  });
+
+  async function openEditor() {
+    setViewportWidth(390);
+    const view = render(<EditorPage />);
+    fireEvent.click(screen.getByRole("button", { name: "Mock upload" }));
+    await waitFor(() => {
+      expect(screen.getByTestId("pdf-viewer")).toBeInTheDocument();
+    });
+    return view;
+  }
+
+  it("shows the pinch/pan hint once on touch devices and never again", async () => {
+    const first = await openEditor();
+    expect(
+      await screen.findByText("Pinch to zoom. Use two fingers to move around.")
+    ).toBeInTheDocument();
+    expect(localStorage.getItem("quickfill_gesture_hint_seen")).toBe("1");
+    first.unmount();
+
+    await openEditor();
+    expect(
+      screen.queryByText("Pinch to zoom. Use two fingers to move around.")
+    ).not.toBeInTheDocument();
   });
 });

@@ -46,9 +46,11 @@ import { DOCUMENT_FILE_INPUT_ACCEPT, PDF_UPLOAD_MAX_BYTES, PDF_UPLOAD_MAX_LABEL 
 import { appendUploadToDocument, filledDocumentFilename, removePageFromDocument, shiftFieldsAfterPageRemoval, type NormalizedDocumentUpload } from "@/lib/document-intake";
 import { isCleanablePhoto } from "@/lib/image-cleanup";
 import { clearLocalSignature, loadLocalSignature, saveLocalSignature } from "@/lib/signature-store";
+import { clampGestureZoom } from "@/lib/pinch-zoom";
 import { PhotoCleanupModal } from "@/components/PhotoCleanupModal";
 
 const ZOOM_LEVELS = [50, 75, 100, 125, 150, 175, 200];
+const GESTURE_HINT_KEY = "quickfill_gesture_hint_seen";
 const SNAP_MIN = 125;
 const SNAP_MAX = 175;
 // On mobile/tablet (below the lg desktop layout) we allow zooming below
@@ -227,6 +229,8 @@ function EditorPageContent() {
   const [lastDownloadError, setLastDownloadError] = useState<string | null>(null);
   const [showSupportForm, setShowSupportForm] = useState(false);
   const [zoom, setZoom] = useState(100);
+  // Live zoom readout while a pinch gesture is in progress (null when idle).
+  const [pinchZoomPreview, setPinchZoomPreview] = useState<number | null>(null);
   const [pageScales] = useState(() => new Map<number, number>());
   const [viewportDims] = useState(() => new Map<number, { width: number; height: number }>());
   const [isDetecting, setIsDetecting] = useState(false);
@@ -497,8 +501,20 @@ function EditorPageContent() {
   // re-measure the viewport and recompute its fit scale, so Fit works even
   // after rotation, resize, or a restored session left the page clipped.
   const handleFitToWidth = useCallback(() => {
+    setPinchZoomPreview(null);
     setZoom(100);
     pdfViewerRef.current?.refit?.();
+  }, []);
+
+  // Pinch zoom (PR #94): live readout during the gesture, then a single
+  // committed zoom value on release (clamped 50-200).
+  const handleGestureZoomPreview = useCallback((value: number | null) => {
+    setPinchZoomPreview(value);
+  }, []);
+
+  const handleGestureZoomCommit = useCallback((value: number) => {
+    setPinchZoomPreview(null);
+    setZoom(clampGestureZoom(Math.round(value)));
   }, []);
 
   const handleFileLoad = useCallback(
@@ -886,6 +902,23 @@ function EditorPageContent() {
     setToast(msg);
     setTimeout(() => setToast(null), duration);
   }, []);
+
+  // One-time gesture discovery hint on touch devices (PR #94). Non-intrusive:
+  // a single toast the first time a document opens, never again after that.
+  useEffect(() => {
+    if (!pdfBytes || typeof window === "undefined") return;
+    const isTouchDevice =
+      window.matchMedia?.("(pointer: coarse)").matches === true ||
+      navigator.maxTouchPoints > 0;
+    if (!isTouchDevice) return;
+    try {
+      if (localStorage.getItem(GESTURE_HINT_KEY)) return;
+      localStorage.setItem(GESTURE_HINT_KEY, "1");
+    } catch {
+      return;
+    }
+    showToast("Pinch to zoom. Use two fingers to move around.", 5000);
+  }, [pdfBytes, showToast]);
 
   const handleSaveProgress = useCallback(async () => {
     if (!fileName) return;
@@ -1511,7 +1544,7 @@ function EditorPageContent() {
               <Minus className="h-3.5 w-3.5" />
             </button>
             <span className="min-w-[3rem] text-center text-xs tabular-nums text-text-muted select-none">
-              {zoom}%
+              {pinchZoomPreview ?? zoom}%
             </span>
             {zoom < 125 && (
               <span className="hidden sm:inline text-[10px] text-amber-500 font-medium">too small</span>
@@ -1676,6 +1709,8 @@ function EditorPageContent() {
             totalPages={totalPages}
             onTotalPagesChange={setTotalPages}
             zoom={zoom}
+            onGestureZoomPreview={handleGestureZoomPreview}
+            onGestureZoomCommit={handleGestureZoomCommit}
             highlightFieldIds={highlightFieldIds}
             onSignatureFieldPlaced={handleSignatureFieldPlaced}
             onSignatureRequest={(fieldId) => {
