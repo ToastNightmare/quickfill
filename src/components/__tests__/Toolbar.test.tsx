@@ -8,9 +8,10 @@ beforeEach(() => {
   global.fetch = jest.fn(() => new Promise(() => {})) as unknown as typeof fetch;
 });
 
-function renderMobileToolbar() {
+function renderMobileToolbar(extraProps: { hidden?: boolean } = {}) {
   return render(
     <Toolbar
+      {...extraProps}
       activeTool="select"
       onToolSelect={jest.fn()}
       onUndo={jest.fn()}
@@ -63,5 +64,23 @@ describe("Toolbar (mobile)", () => {
     for (const label of ["Select", "Text", "Box", "Tick", "Line", "Eraser", "Sign", "Date", "Whiteout"]) {
       expect(screen.getByText(label)).toBeInTheDocument();
     }
+  });
+
+  it("renders nothing when hidden (field sheet or text edit owns the bottom)", () => {
+    const { container } = renderMobileToolbar({ hidden: true });
+
+    expect(container).toBeEmptyDOMElement();
+    expect(screen.queryByTitle("Download PDF")).not.toBeInTheDocument();
+  });
+
+  it("stays visible below the lg desktop breakpoint so tablets get mobile controls", () => {
+    renderMobileToolbar();
+
+    const download = screen.getByTitle("Download PDF");
+    // The fixed bottom bar hides at lg (not sm): tablet portrait keeps the
+    // mobile toolbar instead of two fixed side panels.
+    const bar = download.closest("div.fixed") as HTMLElement;
+    expect(bar).toHaveClass("lg:hidden");
+    expect(bar.className).not.toContain("sm:hidden");
   });
 });

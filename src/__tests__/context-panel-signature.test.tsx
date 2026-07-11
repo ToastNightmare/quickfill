@@ -6,7 +6,10 @@ import type { ComponentProps } from "react";
 
 // Note: ContextPanel renders both the desktop panel and the mobile bottom
 // sheet (hidden via CSS, still present in jsdom), so shared controls appear
-// twice. Queries below use getAllBy* where both instances exist.
+// twice once the mobile sheet's Adjust section is expanded. The mobile sheet
+// is compact by default, so its type-specific controls only exist after
+// clicking the Adjust toggle. Queries below use getAllBy* where both
+// instances can exist.
 
 const toolDefaults: ToolDefaultState = {
   select: {},
@@ -148,6 +151,10 @@ describe("ContextPanel signature adjustments", () => {
 
   it("renders the mobile nudge pad only in the mobile sheet and nudges x/y by 1pt", () => {
     const props = renderPanel();
+
+    // Compact sheet hides advanced controls until Adjust is expanded.
+    expect(screen.queryByTestId("signature-nudge-pad")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByTestId("mobile-field-adjust-toggle"));
 
     // Exactly one nudge pad: the mobile bottom sheet instance.
     const pads = screen.getAllByTestId("signature-nudge-pad");
