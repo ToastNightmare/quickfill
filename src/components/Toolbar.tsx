@@ -55,6 +55,8 @@ interface ToolbarProps {
   onSnapToggle: () => void;
   onShowHelp?: () => void;
   mobile?: boolean;
+  /** Mobile only: render nothing (e.g. while a field sheet or text edit owns the bottom of the screen). */
+  hidden?: boolean;
   fields?: EditorField[];
   minimapCanvas?: HTMLCanvasElement | null;
   viewerRef?: RefObject<HTMLDivElement | null>;
@@ -107,6 +109,7 @@ export function Toolbar({
   onSnapToggle,
   onShowHelp,
   mobile,
+  hidden,
   fields,
   minimapCanvas,
   viewerRef,
@@ -132,8 +135,11 @@ export function Toolbar({
   }, []);
 
   if (mobile) {
+    // A selected-field sheet or an active text edit replaces the toolbar so
+    // the document keeps as much of the screen as possible.
+    if (hidden) return null;
     return (
-      <div className="sm:hidden fixed bottom-0 left-0 right-0 z-40 border-t border-border bg-surface/95 px-3 pt-2 pb-[max(env(safe-area-inset-bottom),10px)] shadow-[0_-10px_30px_rgba(15,23,42,0.12)] backdrop-blur">
+      <div className="lg:hidden fixed bottom-0 left-0 right-0 z-40 border-t border-border bg-surface/95 px-3 pt-2 pb-[max(env(safe-area-inset-bottom),10px)] shadow-[0_-10px_30px_rgba(15,23,42,0.12)] backdrop-blur">
         {isPlacementTool(activeTool) && (
           <div className="mb-2 flex items-center justify-between gap-3 rounded-xl border border-accent/20 bg-accent/5 px-3 py-2">
             <p className="min-w-0 text-xs font-semibold text-accent">

@@ -21,6 +21,8 @@ export interface PdfViewerHandle {
   getViewportDims: () => { width: number; height: number } | null;
   editField: (fieldId: string) => void;
   getCompositePreviewURL: () => Promise<string | null>;
+  /** Recompute the fit-to-width scale from the current viewport size. */
+  refit: () => void;
 }
 
 interface PdfViewerProps {
@@ -49,6 +51,8 @@ interface PdfViewerProps {
   whiteoutColor?: string | null;
   onWhiteoutColorChange?: (color: string | null) => void;
   toolDefaults: ToolDefaultState;
+  /** Reports the id of the field being inline text-edited (null when idle). */
+  onEditingChange?: (fieldId: string | null) => void;
 }
 
 interface SnapPreview {
@@ -168,6 +172,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
   whiteoutColor: whiteoutColorProp,
   onWhiteoutColorChange,
   toolDefaults,
+  onEditingChange,
 }, ref) {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -181,6 +186,14 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
   // Store viewport dimensions at scale 1 for coordinate transformation
   const [viewportAtScale1, setViewportAtScale1] = useState<{ width: number; height: number } | null>(null);
   const [editingFieldId, setEditingFieldId] = useState<string | null>(null);
+  // While capturing the download-gate preview, editor chrome (selection
+  // outlines, transformer handles, mobile field borders) is suppressed so the
+  // preview shows the finished document. Selection state itself is untouched.
+  const [isCapturingPreview, setIsCapturingPreview] = useState(false);
+  // Bumped by refit() and by the viewport ResizeObserver to force the render
+  // effect to re-measure the container and recompute the fit scale.
+  const [fitRequestId, setFitRequestId] = useState(0);
+  const lastFitWidthRef = useRef<number | null>(null);
   const [snappedFieldId, setSnappedFieldId] = useState<string | null>(null);
   const [hoveredFieldId, setHoveredFieldId] = useState<string | null>(null);
   const [snapPreview, setSnapPreview] = useState<SnapPreview | null>(null);
@@ -297,22 +310,40 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
       ctx.drawImage(pdfCanvas, 0, 0);
 
       if (stage) {
-        const stageDataUrl = stage.toDataURL({ pixelRatio: 1 });
-        if (stageDataUrl) {
+        // Temporarily hide selection outlines and transformer handles so the
+        // captured preview shows a finished document, not editor chrome. The
+        // user's selection state is restored immediately after capture.
+        setIsCapturingPreview(true);
+        try {
+          // Let React commit the suppressed props and Konva redraw the layer.
+          await new Promise<void>((resolve) => setTimeout(resolve, 0));
           await new Promise<void>((resolve) => {
-            const img = new Image();
-            img.onload = () => {
-              ctx.drawImage(img, 0, 0);
-              resolve();
-            };
-            img.onerror = () => resolve();
-            img.src = stageDataUrl;
+            if (typeof requestAnimationFrame === "function") {
+              requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+            } else {
+              setTimeout(resolve, 50);
+            }
           });
+          const stageDataUrl = stage.toDataURL({ pixelRatio: 1 });
+          if (stageDataUrl) {
+            await new Promise<void>((resolve) => {
+              const img = new Image();
+              img.onload = () => {
+                ctx.drawImage(img, 0, 0);
+                resolve();
+              };
+              img.onerror = () => resolve();
+              img.src = stageDataUrl;
+            });
+          }
+        } finally {
+          setIsCapturingPreview(false);
         }
       }
 
       return offscreen.toDataURL("image/png");
     },
+    refit: () => setFitRequestId((id) => id + 1),
   }));
 
   useEffect(() => {
@@ -442,10 +473,16 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
   // The on-screen keyboard plus the fixed bottom toolbar can otherwise hide
   // the field being edited. Re-centres on visualViewport resize (keyboard
   // open/close) while an edit is active.
+  // Report inline text-edit state so the editor page can free up screen
+  // space (hide mobile toolbar/sheet) while the user is typing.
+  useEffect(() => {
+    onEditingChange?.(editingFieldId);
+  }, [editingFieldId, onEditingChange]);
+
   useEffect(() => {
     if (!editingFieldId) return;
     if (typeof window === "undefined" || typeof window.matchMedia !== "function") return;
-    if (!window.matchMedia("(max-width: 639px)").matches) return;
+    if (!window.matchMedia("(max-width: 1023px)").matches) return;
 
     const scrollEditorIntoView = (behavior: ScrollBehavior) => {
       document
@@ -514,7 +551,13 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
         const page = await pdf.getPage(Math.min(currentPage + 1, newTotalPages));
         if (cancelled) return;
 
-        const containerWidth = containerRef.current?.clientWidth ?? 800;
+        // Measure the scroll viewport (parent), not the inner w-max content
+        // wrapper: after rendering wider than the viewport, the wrapper's own
+        // clientWidth inflates to the content width and would poison refits.
+        const scrollViewport = containerRef.current?.parentElement;
+        const containerWidth =
+          (scrollViewport?.clientWidth || containerRef.current?.clientWidth) ?? 800;
+        lastFitWidthRef.current = containerWidth;
         const viewport = page.getViewport({ scale: 1 });
         
         // Store viewport dimensions at scale 1 for coordinate transformation
@@ -569,18 +612,32 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pdfBytes, currentPage, zoom]);
+  }, [pdfBytes, currentPage, zoom, fitRequestId]);
 
-  // Resize observer
+  // Refit on viewport resize and orientation change. Observes the scroll
+  // viewport and bumps fitRequestId (debounced) when the available width
+  // actually changes, which re-runs the render effect above and recomputes
+  // the fit-to-width scale. Rotating a phone or tablet therefore refits the
+  // page instead of leaving it clipped.
   useEffect(() => {
-    const container = containerRef.current;
-    if (!container) return;
+    const viewportEl = containerRef.current?.parentElement ?? containerRef.current;
+    if (!viewportEl || typeof ResizeObserver === "undefined") return;
 
+    let timer: ReturnType<typeof setTimeout> | null = null;
     const observer = new ResizeObserver(() => {
-      // Re-render on resize is handled by the pdfBytes/currentPage effect
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => {
+        const width = viewportEl.clientWidth;
+        const lastWidth = lastFitWidthRef.current;
+        if (lastWidth !== null && Math.abs(width - lastWidth) < 2) return;
+        setFitRequestId((id) => id + 1);
+      }, 150);
     });
-    observer.observe(container);
-    return () => observer.disconnect();
+    observer.observe(viewportEl);
+    return () => {
+      if (timer) clearTimeout(timer);
+      observer.disconnect();
+    };
   }, []);
 
 
@@ -711,7 +768,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
   useLayoutEffect(() => {
     const tr = trRef.current;
     if (!tr) return;
-    if (!selectedFieldId || activeTool === "mask-eraser") {
+    if (!selectedFieldId || activeTool === "mask-eraser" || isCapturingPreview) {
       tr.nodes([]);
       tr.getLayer()?.batchDraw();
       return;
@@ -731,7 +788,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
       tr.getLayer()?.batchDraw();
     }
     // If node not found yet, do nothing  -  registerNode will attach when it mounts
-  }, [selectedFieldId, fields, activeTool]);
+  }, [selectedFieldId, fields, activeTool, isCapturingPreview]);
 
   // Animate snap preview opacity
   useEffect(() => {
@@ -2044,11 +2101,11 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
                 field={field}
                 fitScale={fitScale}
                 zoomFactor={zoomFactor}
-                isSelected={activeTool !== "mask-eraser" && field.id === selectedFieldId && field.type !== "whiteout"}
+                isSelected={!isCapturingPreview && activeTool !== "mask-eraser" && field.id === selectedFieldId && field.type !== "whiteout"}
                 isEditing={activeTool !== "mask-eraser" && field.id === editingFieldId}
-                isHighlighted={field.id === snappedFieldId || (highlightFieldIds?.has(field.id) ?? false)}
-                isHovered={field.id === hoveredFieldId}
-                isMobileEditor={isMobileEditor}
+                isHighlighted={!isCapturingPreview && (field.id === snappedFieldId || (highlightFieldIds?.has(field.id) ?? false))}
+                isHovered={!isCapturingPreview && field.id === hoveredFieldId}
+                isMobileEditor={isMobileEditor && !isCapturingPreview}
                 activeTool={isPlacementTool(activeTool) ? activeTool : null}
                 disableInteraction={activeTool === "mask-eraser"}
                 onSelect={() => {
@@ -2335,7 +2392,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
             const isSmallScreen =
               typeof window !== "undefined" &&
               typeof window.matchMedia === "function" &&
-              window.matchMedia("(max-width: 639px)").matches;
+              window.matchMedia("(max-width: 1023px)").matches;
             const editorHeight = isSmallScreen
               ? Math.max(editField.height * effectiveScale, editorFontSize + 8)
               : editField.height * effectiveScale;

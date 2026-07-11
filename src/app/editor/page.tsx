@@ -51,8 +51,9 @@ import { PhotoCleanupModal } from "@/components/PhotoCleanupModal";
 const ZOOM_LEVELS = [50, 75, 100, 125, 150, 175, 200];
 const SNAP_MIN = 125;
 const SNAP_MAX = 175;
-// On mobile we allow zooming below SNAP_MIN so the full page fits the screen
-const isMobileDevice = () => typeof window !== "undefined" && window.innerWidth < 640;
+// On mobile/tablet (below the lg desktop layout) we allow zooming below
+// SNAP_MIN so the full page fits the screen
+const isMobileDevice = () => typeof window !== "undefined" && window.innerWidth < 1024;
 type LocalSaveStatus = "idle" | "saved" | "restored";
 
 const DEFAULT_TOOL_DEFAULTS: ToolDefaultState = {
@@ -192,9 +193,13 @@ function LocalSaveBadge({ status }: { status: LocalSaveStatus }) {
     <span
       data-testid="local-save-status"
       title="Saved in this browser only. Use Save Progress for account save when available."
-      className="inline-flex shrink-0 rounded-full border border-green-200 bg-green-50 px-2 py-0.5 text-[11px] font-semibold text-green-700"
+      className="inline-flex shrink-0 items-center rounded-full border border-green-200 bg-green-50 px-2 py-0.5 text-[11px] font-semibold text-green-700"
     >
-      {label}
+      {/* Compact dot on small screens so the badge can never crowd or overlap
+          the zoom controls; full label from sm up. */}
+      <span className="h-1.5 w-1.5 rounded-full bg-green-500 sm:hidden" aria-hidden="true" />
+      <span className="hidden sm:inline">{label}</span>
+      <span className="sr-only sm:hidden">{label}</span>
     </span>
   );
 }
@@ -238,6 +243,7 @@ function EditorPageContent() {
   const [savingProgress, setSavingProgress] = useState(false);
   const [localSaveStatus, setLocalSaveStatus] = useState<LocalSaveStatus>("idle");
   const [snapEnabled, setSnapEnabled] = useState(false); // OFF by default
+  const [editingTextFieldId, setEditingTextFieldId] = useState<string | null>(null);
   const [showWelcomeModal, setShowWelcomeModal] = useState(false);
   const [showTour, setShowTour] = useState(false);
   const [activeTemplate, setActiveTemplate] = useState<string | null>(null);
@@ -340,8 +346,11 @@ function EditorPageContent() {
     if (restoredRef.current) return;
     restoredRef.current = true;
 
-    // Restore zoom
-    setZoom(loadZoomFromLocalStorage());
+    // Restore zoom. Mobile/tablet sessions always start at fit-to-width
+    // (zoom 100) so a zoom saved by a previous session can never leave the
+    // page clipped on a cold load. Zoom set during the current session is
+    // untouched. Desktop keeps its restored zoom.
+    setZoom(isMobileDevice() ? 100 : loadZoomFromLocalStorage());
 
     loadPdfFromIndexedDB().then(async (savedPdf) => {
       if (!savedPdf) return;
@@ -482,6 +491,14 @@ function EditorPageContent() {
   const handleZoomOut = useCallback(() => {
     const mobile = isMobileDevice();
     setZoom((prev) => [...ZOOM_LEVELS].reverse().find((z) => z < prev && (mobile || z >= SNAP_MIN)) ?? prev);
+  }, []);
+
+  // Fit to width: reset zoom to the base fit level AND ask the viewer to
+  // re-measure the viewport and recompute its fit scale, so Fit works even
+  // after rotation, resize, or a restored session left the page clipped.
+  const handleFitToWidth = useCallback(() => {
+    setZoom(100);
+    pdfViewerRef.current?.refit?.();
   }, []);
 
   const handleFileLoad = useCallback(
@@ -1479,7 +1496,7 @@ function EditorPageContent() {
               <span className="hidden sm:inline">Templates</span>
             </Link>
             <span className="hidden sm:inline text-text-muted/30 text-xs">/</span>
-            <p className="truncate text-sm font-medium text-text-muted">{fileName}</p>
+            <p className="min-w-0 truncate text-sm font-medium text-text-muted">{fileName}</p>
             <LocalSaveBadge status={localSaveStatus} />
           </div>
 
@@ -1514,8 +1531,9 @@ function EditorPageContent() {
               <Plus className="h-3.5 w-3.5" />
             </button>
             <button
-              onClick={() => setZoom(100)}
+              onClick={handleFitToWidth}
               title="Fit to Page"
+              aria-label="Fit document to screen width"
               className="ml-1 block rounded-md px-2 py-1 text-xs font-medium text-text-muted hover:bg-surface-alt hover:text-text transition-colors"
             >
               Fit
@@ -1602,9 +1620,10 @@ function EditorPageContent() {
         onDone={() => setShowAddAnotherPagePrompt(false)}
       />
 
-      {/* Sidebar + Canvas row */}
+      {/* Sidebar + Canvas row. Side panels only mount at lg+ so tablet
+          portrait never loses the document between two fixed 256px panels. */}
       <div className="flex flex-1 min-h-0">
-        <div className="flex-shrink-0 h-full overflow-hidden hidden sm:flex">
+        <div className="flex-shrink-0 h-full overflow-hidden hidden lg:flex">
           <Toolbar
             activeTool={activeTool}
             onToolSelect={handleToolSelect}
@@ -1672,6 +1691,7 @@ function EditorPageContent() {
             whiteoutColor={whiteoutColor}
             onWhiteoutColorChange={setWhiteoutColor}
             toolDefaults={toolDefaults}
+            onEditingChange={setEditingTextFieldId}
           />
         </div>
 
@@ -1707,13 +1727,14 @@ function EditorPageContent() {
           }}
           whiteoutColor={whiteoutColor}
           onWhiteoutColorChange={setWhiteoutColor}
+          suppressMobileSheet={editingTextFieldId !== null}
         />
 
       </div>
 
       {/* Floating bottom page nav, only on multi-page docs */}
       {pdfBytes && totalPages > 1 && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 hidden sm:flex items-center gap-2 rounded-full bg-navy shadow-xl border border-white/10 px-4 py-2">
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 hidden lg:flex items-center gap-2 rounded-full bg-navy shadow-xl border border-white/10 px-4 py-2">
           <span className="text-xs text-white/70 font-medium">{Math.min(currentPage + 1, totalPages)} / {totalPages}</span>
           <div className="w-px h-4 bg-white/20" />
           <button onClick={() => setCurrentPage(p => Math.max(0, p - 1))} disabled={currentPage === 0} className="text-white/70 hover:text-white disabled:opacity-30 transition-colors">
@@ -1753,6 +1774,7 @@ function EditorPageContent() {
         onRemovePage={handleRemovePageRequest}
         canRemovePage={totalPages > 1}
         mobile
+        hidden={(selectedField !== null && activeTool !== "mask-eraser") || editingTextFieldId !== null}
       />
 
       {/* Signature modal for editor: key forces full remount on each open so

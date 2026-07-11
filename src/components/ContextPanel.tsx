@@ -95,6 +95,8 @@ interface ContextPanelProps {
   onToolDefaultChange: <T extends keyof ToolDefaultState>(tool: T, updates: Partial<ToolDefaultState[T]>) => void;
   whiteoutColor?: string | null;
   onWhiteoutColorChange?: (color: string) => void;
+  /** Hide the mobile bottom sheet (e.g. while inline text editing on mobile). */
+  suppressMobileSheet?: boolean;
 }
 
 function dispatchLayerMove(fieldId: string, direction: FieldLayerDirection) {
@@ -149,6 +151,7 @@ export function ContextPanel({
   onToolDefaultChange,
   whiteoutColor,
   onWhiteoutColorChange,
+  suppressMobileSheet,
 }: ContextPanelProps) {
   const [sizeExpanded, setSizeExpanded] = useState(false);
   const [charCountExpanded, setCharCountExpanded] = useState(false);
@@ -164,18 +167,21 @@ export function ContextPanel({
 
     return (
       <>
-        <MobileFieldSheet
-          selectedField={selectedField}
-          onFieldUpdate={onFieldUpdate}
-          onFieldDelete={onFieldDelete}
-          onFieldDeselect={onFieldDeselect}
-          onFieldEdit={onFieldEdit}
-          onFieldDuplicate={onFieldDuplicate}
-          onStampChange={onStampChange}
-          onSignatureRequest={onSignatureRequest}
-          charCountExpanded={charCountExpanded}
-          onCharCountExpandedChange={setCharCountExpanded}
-        />
+        {!suppressMobileSheet && (
+          <MobileFieldSheet
+            key={selectedField.id}
+            selectedField={selectedField}
+            onFieldUpdate={onFieldUpdate}
+            onFieldDelete={onFieldDelete}
+            onFieldDeselect={onFieldDeselect}
+            onFieldEdit={onFieldEdit}
+            onFieldDuplicate={onFieldDuplicate}
+            onStampChange={onStampChange}
+            onSignatureRequest={onSignatureRequest}
+            charCountExpanded={charCountExpanded}
+            onCharCountExpandedChange={setCharCountExpanded}
+          />
+        )}
         <Panel>
           <Section>
             <div className={`flex items-center gap-2 ${fieldColor(fieldType)}`}>
@@ -360,69 +366,107 @@ function MobileFieldSheet({
   charCountExpanded: boolean;
   onCharCountExpandedChange: (value: boolean) => void;
 }) {
+  // Compact by default: the document stays the hero. Type-specific controls
+  // live behind the Adjust toggle so the sheet never swallows the work area.
+  const [adjustExpanded, setAdjustExpanded] = useState(false);
+
+  const isSignature = selectedField.type === "signature";
+  const isSigned = isSignature && Boolean((selectedField as SignatureField).signatureDataUrl);
+  const canEdit = (selectedField.type === "text" || selectedField.type === "date") && Boolean(onFieldEdit);
+
+  const compactAction =
+    "flex h-10 flex-1 items-center justify-center gap-1.5 rounded-xl border text-xs font-semibold transition-colors";
+
   return (
     <div
-      className="fixed bottom-[8.25rem] left-3 right-3 z-30 max-h-[42svh] overflow-y-auto rounded-2xl border border-border bg-surface shadow-2xl sm:hidden"
+      className="fixed inset-x-0 bottom-0 z-40 border-t border-border bg-surface/95 pb-[max(env(safe-area-inset-bottom),8px)] shadow-[0_-10px_30px_rgba(15,23,42,0.12)] backdrop-blur lg:hidden"
       data-testid="mobile-field-sheet"
+      data-expanded={adjustExpanded ? "true" : "false"}
     >
-      <div className="sticky top-0 z-10 flex items-center justify-between gap-3 border-b border-border bg-surface px-4 py-3">
+      <div className="flex items-center justify-between gap-3 px-3 pt-2 pb-1">
         <div className={`flex min-w-0 items-center gap-2 ${fieldColor(selectedField.type)}`}>
           <FieldIcon type={selectedField.type} className="h-4 w-4 shrink-0" />
           <p className="truncate text-sm font-bold text-text">{fieldLabel(selectedField.type)} selected</p>
         </div>
         <button
           onClick={onFieldDeselect}
-          className="shrink-0 rounded-lg px-3 py-1.5 text-xs font-semibold text-text-muted hover:bg-surface-alt hover:text-text"
+          className="shrink-0 rounded-lg bg-surface-alt px-3 py-1.5 text-xs font-semibold text-text hover:bg-border"
+          data-testid="mobile-field-done"
         >
           Done
         </button>
       </div>
 
-      {selectedField.type === "checkbox" && <CheckboxControls selectedField={selectedField} onStampChange={onStampChange} onFieldUpdate={onFieldUpdate} />}
-      {selectedField.type === "line" && <LineControls selectedField={selectedField} onFieldUpdate={onFieldUpdate} />}
-      {selectedField.type === "whiteout" && <WhiteoutControls selectedField={selectedField} onFieldUpdate={onFieldUpdate} />}
-      {selectedField.type === "signature" && <SignatureControls selectedField={selectedField} onSignatureRequest={onSignatureRequest} onFieldUpdate={onFieldUpdate} isMobile />}
-      {(selectedField.type === "text" || selectedField.type === "date") && <FontSizeControls selectedField={selectedField} onFieldUpdate={onFieldUpdate} />}
-      {selectedField.type === "comb" && (
-        <CombControls
-          selectedField={selectedField}
-          expanded={charCountExpanded}
-          onExpandedChange={onCharCountExpandedChange}
-          onFieldUpdate={onFieldUpdate}
-        />
-      )}
-
-      <Section>
-        <div className="grid grid-cols-2 gap-2">
-          {(selectedField.type === "text" || selectedField.type === "date") && onFieldEdit && (
-            <button
-              onClick={() => onFieldEdit(selectedField.id)}
-              className="flex h-11 items-center justify-center gap-2 rounded-xl border border-accent/30 bg-accent/5 text-sm font-semibold text-accent hover:bg-accent/10"
-              data-testid="mobile-field-edit"
-            >
-              <Pencil className="h-4 w-4" />
-              Edit
-            </button>
-          )}
-          {onFieldDuplicate && (
-            <button
-              onClick={() => onFieldDuplicate(selectedField.id)}
-              className="flex h-11 items-center justify-center gap-2 rounded-xl border border-border text-sm font-semibold text-text-muted hover:bg-surface-alt hover:text-text"
-            >
-              <Copy className="h-4 w-4" />
-              Duplicate
-            </button>
-          )}
+      <div className="flex items-stretch gap-2 px-3 pb-1">
+        {canEdit && (
           <button
-            onClick={() => { onFieldDelete(selectedField.id); onFieldDeselect(); }}
-            className="flex h-11 items-center justify-center gap-2 rounded-xl bg-red-50 text-sm font-semibold text-red-600 hover:bg-red-100"
-            data-testid="mobile-field-delete"
+            onClick={() => onFieldEdit?.(selectedField.id)}
+            className={`${compactAction} border-accent/30 bg-accent/5 text-accent hover:bg-accent/10`}
+            data-testid="mobile-field-edit"
           >
-            <Trash2 className="h-4 w-4" />
-            Delete
+            <Pencil className="h-4 w-4" />
+            Edit
           </button>
+        )}
+        {isSignature && (
+          <button
+            onClick={() => onSignatureRequest(selectedField.id)}
+            className={`${compactAction} ${isSigned ? "border-border text-text-muted hover:bg-surface-alt" : "border-accent bg-accent text-white hover:bg-accent-hover"}`}
+            data-testid="mobile-field-sign"
+          >
+            <PenTool className="h-4 w-4" />
+            {isSigned ? "Re-sign" : "Sign"}
+          </button>
+        )}
+        {onFieldDuplicate && (
+          <button
+            onClick={() => onFieldDuplicate(selectedField.id)}
+            className={`${compactAction} border-border text-text-muted hover:bg-surface-alt hover:text-text`}
+            data-testid="mobile-field-duplicate"
+          >
+            <Copy className="h-4 w-4" />
+            Duplicate
+          </button>
+        )}
+        <button
+          onClick={() => { onFieldDelete(selectedField.id); onFieldDeselect(); }}
+          className={`${compactAction} border-red-100 bg-red-50 text-red-600 hover:bg-red-100`}
+          data-testid="mobile-field-delete"
+        >
+          <Trash2 className="h-4 w-4" />
+          Delete
+        </button>
+        <button
+          onClick={() => setAdjustExpanded((value) => !value)}
+          aria-expanded={adjustExpanded}
+          className={`${compactAction} ${adjustExpanded ? "border-accent bg-accent/5 text-accent" : "border-border text-text-muted hover:bg-surface-alt hover:text-text"}`}
+          data-testid="mobile-field-adjust-toggle"
+        >
+          Adjust
+          {adjustExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />}
+        </button>
+      </div>
+
+      {adjustExpanded && (
+        <div
+          className="max-h-[40svh] overflow-y-auto border-t border-border"
+          data-testid="mobile-field-advanced"
+        >
+          {selectedField.type === "checkbox" && <CheckboxControls selectedField={selectedField} onStampChange={onStampChange} onFieldUpdate={onFieldUpdate} />}
+          {selectedField.type === "line" && <LineControls selectedField={selectedField} onFieldUpdate={onFieldUpdate} />}
+          {selectedField.type === "whiteout" && <WhiteoutControls selectedField={selectedField} onFieldUpdate={onFieldUpdate} />}
+          {selectedField.type === "signature" && <SignatureControls selectedField={selectedField} onSignatureRequest={onSignatureRequest} onFieldUpdate={onFieldUpdate} isMobile />}
+          {(selectedField.type === "text" || selectedField.type === "date") && <FontSizeControls selectedField={selectedField} onFieldUpdate={onFieldUpdate} />}
+          {selectedField.type === "comb" && (
+            <CombControls
+              selectedField={selectedField}
+              expanded={charCountExpanded}
+              onExpandedChange={onCharCountExpandedChange}
+              onFieldUpdate={onFieldUpdate}
+            />
+          )}
         </div>
-      </Section>
+      )}
     </div>
   );
 }
@@ -1085,7 +1129,7 @@ function SizeInput({ label, value, min, onChange }: { label: string; value: numb
 
 function Panel({ children }: { children: ReactNode }) {
   return (
-    <div className="hidden h-full w-64 flex-shrink-0 flex-col overflow-y-auto border-l border-border bg-surface sm:flex">
+    <div className="hidden h-full w-64 flex-shrink-0 flex-col overflow-y-auto border-l border-border bg-surface lg:flex">
       {children}
     </div>
   );

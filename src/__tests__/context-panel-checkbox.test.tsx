@@ -85,7 +85,14 @@ describe("ContextPanel checkbox controls", () => {
   it("shows color controls when a checkbox field is selected", () => {
     renderPanel({ activeTool: "select", selectedField: checkboxField });
 
+    // Desktop panel and compact mobile sheet both show the selection header.
     expect(screen.getAllByText("Checkbox selected")).toHaveLength(2);
+    // Compact mobile sheet hides type-specific controls until expanded.
+    expect(screen.getAllByText("Color")).toHaveLength(1);
+    expect(screen.getAllByLabelText("Red checkbox color")).toHaveLength(1);
+
+    fireEvent.click(screen.getByTestId("mobile-field-adjust-toggle"));
+
     expect(screen.getAllByText("Color")).toHaveLength(2);
     expect(screen.getAllByLabelText("Red checkbox color")).toHaveLength(2);
   });
