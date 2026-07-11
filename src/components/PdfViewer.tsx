@@ -11,6 +11,16 @@ import type { SnapResult, CombDetectResult } from "@/lib/snap-detect";
 import { createEditorFieldId } from "@/lib/field-ids";
 import { loadPdfjsClient } from "@/lib/pdfjs-client";
 import { MASK_ERASE_FILL, addEraserMask, brushIntersectField, interpolateMaskPath, isMaskErasable, maskCacheConfig } from "@/lib/eraser-mask";
+import {
+  GESTURE_PLACEMENT_SUPPRESS_MS,
+  anchoredScrollPosition,
+  clampGestureZoom,
+  gestureZoom,
+  shouldSuppressTouchPlacement,
+  touchDistance,
+  touchMidpoint,
+  type GesturePoint,
+} from "@/lib/pinch-zoom";
 
 type PdfActiveTool = PlacementToolType | "mask-eraser";
 
@@ -53,6 +63,10 @@ interface PdfViewerProps {
   toolDefaults: ToolDefaultState;
   /** Reports the id of the field being inline text-edited (null when idle). */
   onEditingChange?: (fieldId: string | null) => void;
+  /** Live readout while a pinch gesture is in progress; null when it ends. */
+  onGestureZoomPreview?: (zoom: number | null) => void;
+  /** Commits the final pinch zoom (clamped 50-200) when the gesture ends. */
+  onGestureZoomCommit?: (zoom: number) => void;
 }
 
 interface SnapPreview {
@@ -173,6 +187,8 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
   onWhiteoutColorChange,
   toolDefaults,
   onEditingChange,
+  onGestureZoomPreview,
+  onGestureZoomCommit,
 }, ref) {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -247,6 +263,34 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
   const maskAddedRef = useRef(false);
   const lastMaskPointRef = useRef<{ x: number; y: number } | null>(null);
   const lastTouchEndAtRef = useRef(0);
+  // --- Two-finger gesture state (pinch zoom + pan). Refs so native touch
+  // listeners always see current values without re-attaching mid-gesture. ---
+  const [isGesturing, setIsGesturing] = useState(false);
+  const gestureRef = useRef<{
+    startZoom: number;
+    currentZoom: number;
+    startDist: number;
+    lastMid: GesturePoint;
+    midX: number;
+    midY: number;
+  } | null>(null);
+  const lastGestureEndAtRef = useRef(0);
+  // Identifier of the finger left on screen when a gesture ends, so its
+  // eventual touchend never places a field.
+  const gestureTailTouchIdRef = useRef<number | null>(null);
+  const gesturePreviewAtRef = useRef(0);
+  const zoomPropRef = useRef(zoom);
+  const cancelGestureRef = useRef<() => void>(() => {});
+  // Scroll-restore intents consumed after the next successful render.
+  const pendingRecenterRef = useRef(false);
+  const coldLoadRecenterRef = useRef(false);
+  const pendingScrollAnchorRef = useRef<{
+    pageLocalX: number;
+    pageLocalY: number;
+    midX: number;
+    midY: number;
+    ratio: number;
+  } | null>(null);
   const snapPreviewTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const trRef = useRef<Konva.Transformer | null>(null);
   const nodeMapRef = useRef<Map<string, Konva.Group>>(new Map());
@@ -343,7 +387,14 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
 
       return offscreen.toDataURL("image/png");
     },
-    refit: () => setFitRequestId((id) => id + 1),
+    refit: () => {
+      // Fit must fully reset the viewport: recompute scale, drop any stale
+      // scroll/pan, and abandon in-flight gesture state.
+      cancelGestureRef.current();
+      pendingScrollAnchorRef.current = null;
+      pendingRecenterRef.current = true;
+      setFitRequestId((id) => id + 1);
+    },
   }));
 
   useEffect(() => {
@@ -598,6 +649,51 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
         }
 
         setLoading(false);
+
+        // --- Post-render scroll settling (PR #94) ---
+        // Mobile/tablet cold loads recenter once so restored sessions never
+        // reopen with stale horizontal pan. Fit/resize refits recenter via
+        // pendingRecenterRef; pinch commits re-anchor around the gesture
+        // midpoint via pendingScrollAnchorRef (anchor wins over recenter).
+        if (!coldLoadRecenterRef.current) {
+          coldLoadRecenterRef.current = true;
+          if (isMobileEditorViewport()) pendingRecenterRef.current = true;
+        }
+        const scrollAnchor = pendingScrollAnchorRef.current;
+        pendingScrollAnchorRef.current = null;
+        const shouldRecenter = pendingRecenterRef.current;
+        pendingRecenterRef.current = false;
+        if (scrollAnchor || shouldRecenter) {
+          // Double rAF: wait for React to commit the new dimensions and the
+          // browser to lay out before touching scroll positions.
+          requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+              if (cancelled) return;
+              const viewportEl = containerRef.current?.parentElement;
+              if (!viewportEl) return;
+              if (scrollAnchor) {
+                const wrap = pageWrapRef.current;
+                const next = anchoredScrollPosition({
+                  pageOffsetLeft: wrap?.offsetLeft ?? 0,
+                  pageOffsetTop: wrap?.offsetTop ?? 0,
+                  pageLocalX: scrollAnchor.pageLocalX,
+                  pageLocalY: scrollAnchor.pageLocalY,
+                  ratio: scrollAnchor.ratio,
+                  midX: scrollAnchor.midX,
+                  midY: scrollAnchor.midY,
+                });
+                viewportEl.scrollLeft = next.scrollLeft;
+                viewportEl.scrollTop = next.scrollTop;
+              } else {
+                viewportEl.scrollTop = 0;
+                viewportEl.scrollLeft = Math.max(
+                  0,
+                  (viewportEl.scrollWidth - viewportEl.clientWidth) / 2
+                );
+              }
+            });
+          });
+        }
       } catch (err) {
         if (!cancelled) {
           setError("Failed to render PDF. The file may be corrupted.");
@@ -630,6 +726,10 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
         const width = viewportEl.clientWidth;
         const lastWidth = lastFitWidthRef.current;
         if (lastWidth !== null && Math.abs(width - lastWidth) < 2) return;
+        // Orientation change / viewport resize on touch devices: recenter
+        // after the refit so the page never sits half off-screen. Desktop
+        // keeps its scroll position on window resizes.
+        if (isMobileEditorViewport()) pendingRecenterRef.current = true;
         setFitRequestId((id) => id + 1);
       }, 150);
     });
@@ -1854,6 +1954,14 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
 
   const handleStageClick = useCallback(
     (e: Konva.KonvaEventObject<MouseEvent | TouchEvent>) => {
+      // Ignore taps/clicks that belong to (or immediately follow) a
+      // two-finger gesture so ending a pinch/pan never selects or places.
+      if (
+        gestureRef.current ||
+        Date.now() - lastGestureEndAtRef.current < GESTURE_PLACEMENT_SUPPRESS_MS
+      ) {
+        return;
+      }
       if (isDragMove.current) {
         isDragMove.current = false;
         return;
@@ -1934,9 +2042,26 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
     (e: React.TouchEvent<HTMLDivElement>) => {
       if (!activeTool || !canvasRef.current) return;
       if (activeTool === "mask-eraser") return;
-      if (e.changedTouches.length !== 1) return;
+      if (
+        shouldSuppressTouchPlacement({
+          gestureActive: gestureRef.current !== null,
+          remainingTouches: e.touches.length,
+          changedTouches: e.changedTouches.length,
+          now: Date.now(),
+          lastGestureEndAt: lastGestureEndAtRef.current,
+        })
+      ) {
+        return;
+      }
 
       const touch = e.changedTouches[0];
+      // The last finger of a two-finger gesture must never place a field,
+      // even if it lingers past the suppression window.
+      if (gestureTailTouchIdRef.current !== null) {
+        const isTail = touch.identifier === gestureTailTouchIdRef.current;
+        gestureTailTouchIdRef.current = null;
+        if (isTail) return;
+      }
       const rect = canvasRef.current.getBoundingClientRect();
       const touchX = touch.clientX - rect.left;
       const touchY = touch.clientY - rect.top;
@@ -1960,6 +2085,170 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
     [activeTool, createFieldAtPoint, fieldFromStagePoint, selectFieldForInteraction]
   );
 
+  // --- Two-finger gestures: pinch zoom + pan (PR #94) -------------------
+  // Native (non-passive) listeners on the viewer content so preventDefault
+  // works; React attaches touch listeners passively. One finger keeps all
+  // existing behaviour (tap-to-place, drag, resize, mask eraser). Two
+  // fingers navigate: midpoint movement pans the scroll container, distance
+  // change scales the page via CSS transform, and the final zoom value is
+  // committed on release so pdf.js re-renders crisply exactly once.
+
+  useEffect(() => {
+    zoomPropRef.current = zoom;
+  }, [zoom]);
+
+  const endGesture = useCallback(
+    (commit: boolean) => {
+      const g = gestureRef.current;
+      if (!g) return;
+      gestureRef.current = null;
+      lastGestureEndAtRef.current = Date.now();
+      lastTouchEndAtRef.current = Date.now();
+      setIsGesturing(false);
+      onGestureZoomPreview?.(null);
+      const wrap = pageWrapRef.current;
+      if (wrap) {
+        wrap.style.transform = "";
+        wrap.style.transformOrigin = "";
+        wrap.style.willChange = "";
+      }
+      if (!commit) return;
+      // Dead zone: a wobbly two-finger pan (tiny distance change) must not
+      // trigger a zoom commit and re-render.
+      if (Math.abs(g.currentZoom - g.startZoom) < 2) return;
+      const finalZoom = Math.round(clampGestureZoom(g.currentZoom));
+      if (finalZoom === Math.round(g.startZoom) || !onGestureZoomCommit) return;
+      const viewportEl = containerRef.current?.parentElement;
+      if (viewportEl && wrap) {
+        // Anchor: keep the content point under the gesture midpoint fixed
+        // once the page re-renders at the committed zoom. Captured in the
+        // pre-commit layout (CSS transform does not affect layout metrics).
+        pendingScrollAnchorRef.current = {
+          pageLocalX: viewportEl.scrollLeft + g.midX - wrap.offsetLeft,
+          pageLocalY: viewportEl.scrollTop + g.midY - wrap.offsetTop,
+          midX: g.midX,
+          midY: g.midY,
+          ratio: finalZoom / g.startZoom,
+        };
+      }
+      onGestureZoomCommit(finalZoom);
+    },
+    [onGestureZoomCommit, onGestureZoomPreview]
+  );
+
+  useEffect(() => {
+    cancelGestureRef.current = () => endGesture(false);
+  }, [endGesture]);
+
+  const handleGestureTouchStart = useCallback(
+    (e: TouchEvent) => {
+      if (e.touches.length !== 2) return;
+      const viewportEl = containerRef.current?.parentElement;
+      const wrap = pageWrapRef.current;
+      if (!viewportEl || !wrap) return;
+      // Claim the touch sequence before the browser starts a native scroll
+      // or synthesizes clicks.
+      e.preventDefault();
+      // Cancel any in-flight single-finger work before navigating.
+      nodeMapRef.current.forEach((node) => {
+        if (node.isDragging()) node.stopDrag();
+      });
+      stopMaskDrag();
+      isDragDrawing.current = false;
+      dragStart.current = null;
+      dragCurrent.current = null;
+      setDrawRect(null);
+      setIsDragging(false);
+
+      const p0 = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+      const p1 = { x: e.touches[1].clientX, y: e.touches[1].clientY };
+      const mid = touchMidpoint(p0, p1);
+      const vpRect = viewportEl.getBoundingClientRect();
+      const wrapRect = wrap.getBoundingClientRect();
+      wrap.style.transformOrigin = `${mid.x - wrapRect.left}px ${mid.y - wrapRect.top}px`;
+      wrap.style.willChange = "transform";
+      gestureRef.current = {
+        startZoom: zoomPropRef.current,
+        currentZoom: zoomPropRef.current,
+        startDist: touchDistance(p0, p1),
+        lastMid: mid,
+        midX: mid.x - vpRect.left,
+        midY: mid.y - vpRect.top,
+      };
+      gestureTailTouchIdRef.current = null;
+      setIsGesturing(true);
+    },
+    [stopMaskDrag]
+  );
+
+  const handleGestureTouchMove = useCallback(
+    (e: TouchEvent) => {
+      const g = gestureRef.current;
+      if (!g || e.touches.length < 2) return;
+      e.preventDefault();
+      const p0 = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+      const p1 = { x: e.touches[1].clientX, y: e.touches[1].clientY };
+      const mid = touchMidpoint(p0, p1);
+
+      // Two-finger pan: midpoint deltas drive the native scroll container,
+      // so field coordinates and desktop behaviour are untouched.
+      const viewportEl = containerRef.current?.parentElement;
+      if (viewportEl) {
+        viewportEl.scrollLeft += g.lastMid.x - mid.x;
+        viewportEl.scrollTop += g.lastMid.y - mid.y;
+        const vpRect = viewportEl.getBoundingClientRect();
+        g.midX = mid.x - vpRect.left;
+        g.midY = mid.y - vpRect.top;
+      }
+      g.lastMid = mid;
+
+      // Pinch: CSS transform only during the gesture (no pdf.js re-render
+      // per frame); the crisp re-render happens once on release.
+      const nextZoom = gestureZoom(g.startZoom, g.startDist, touchDistance(p0, p1));
+      g.currentZoom = nextZoom;
+      const wrap = pageWrapRef.current;
+      if (wrap) {
+        wrap.style.transform = `scale(${nextZoom / g.startZoom})`;
+      }
+      if (onGestureZoomPreview) {
+        const now = Date.now();
+        if (now - gesturePreviewAtRef.current > 90) {
+          gesturePreviewAtRef.current = now;
+          onGestureZoomPreview(Math.round(nextZoom));
+        }
+      }
+    },
+    [onGestureZoomPreview]
+  );
+
+  const handleGestureTouchEnd = useCallback(
+    (e: TouchEvent) => {
+      if (!gestureRef.current) return;
+      if (e.touches.length >= 2) return;
+      if (e.touches.length === 1) {
+        gestureTailTouchIdRef.current = e.touches[0].identifier;
+      }
+      endGesture(true);
+    },
+    [endGesture]
+  );
+
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    el.addEventListener("touchstart", handleGestureTouchStart, { passive: false });
+    el.addEventListener("touchmove", handleGestureTouchMove, { passive: false });
+    el.addEventListener("touchend", handleGestureTouchEnd);
+    el.addEventListener("touchcancel", handleGestureTouchEnd);
+    return () => {
+      el.removeEventListener("touchstart", handleGestureTouchStart);
+      el.removeEventListener("touchmove", handleGestureTouchMove);
+      el.removeEventListener("touchend", handleGestureTouchEnd);
+      el.removeEventListener("touchcancel", handleGestureTouchEnd);
+      cancelGestureRef.current();
+    };
+  }, [handleGestureTouchStart, handleGestureTouchMove, handleGestureTouchEnd]);
+
   // Determine if selected field is snapped (for transformer behavior)
   const selectedFieldIsSnapped = selectedFieldId
     ? fields.find((f) => f.id === selectedFieldId)?.snapped ?? false
@@ -1971,7 +2260,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
       className="relative w-max min-w-full min-h-full bg-[#f0f0f0] p-4"
       data-testid="pdf-viewer"
       onTouchEnd={handleTouchEnd}
-      style={{ touchAction: activeTool || isDragging ? "none" : "pan-x pan-y" }}
+      style={{ touchAction: activeTool || isDragging || isGesturing ? "none" : "pan-x pan-y" }}
     >
       {loading && (
         <div className="absolute inset-0 z-10 flex items-center justify-center bg-surface/80">
@@ -2080,6 +2369,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
               height={dimensions.height}
               scaleX={zoomFactor}
               scaleY={zoomFactor}
+              listening={!isGesturing}
           onMouseDown={handleStageMouseDown}
           onMouseUp={handleStageMouseUp}
           onClick={handleStageClick}
@@ -2091,7 +2381,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
             top: 0,
             left: 0,
             cursor: activeTool ? cursorStyle : editingFieldId ? "text" : cursorStyle,
-            touchAction: activeTool || isDragging ? "none" : "pan-x pan-y",
+            touchAction: activeTool || isDragging || isGesturing ? "none" : "pan-x pan-y",
           }}
         >
           <Layer>
