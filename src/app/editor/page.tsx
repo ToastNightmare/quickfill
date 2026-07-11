@@ -13,6 +13,7 @@ import { TourModal } from "@/components/TourModal";
 import { SupportForm } from "@/components/SupportForm";
 import { DownloadPreviewGate } from "@/components/DownloadPreviewGate";
 import { AddAnotherPagePrompt } from "@/components/AddAnotherPagePrompt";
+import { SaveProgressPrompt } from "@/components/SaveProgressPrompt";
 import type { PdfViewerHandle } from "@/components/PdfViewer";
 import { useHistory } from "@/lib/use-history";
 import { detectAcroFormFields } from "@/lib/pdf-utils";
@@ -245,6 +246,7 @@ function EditorPageContent() {
   const [minimapCanvas, setMinimapCanvas] = useState<HTMLCanvasElement | null>(null);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
   const [savingProgress, setSavingProgress] = useState(false);
+  const [showSaveProgressPrompt, setShowSaveProgressPrompt] = useState(false);
   const [localSaveStatus, setLocalSaveStatus] = useState<LocalSaveStatus>("idle");
   const [snapEnabled, setSnapEnabled] = useState(false); // OFF by default
   const [editingTextFieldId, setEditingTextFieldId] = useState<string | null>(null);
@@ -922,6 +924,16 @@ function EditorPageContent() {
 
   const handleSaveProgress = useCallback(async () => {
     if (!fileName) return;
+
+    // Anonymous users cannot save to an account. Local autosave already
+    // protects their work on this device, so skip the doomed 401 request
+    // and explain how account saving works instead of failing silently.
+    if (isLoaded && !isSignedIn) {
+      setShowSaveProgressPrompt(true);
+      trackEvent("save_progress_anon_prompt");
+      return;
+    }
+
     setSavingProgress(true);
     try {
       const res = await fetch("/api/session", {
@@ -935,13 +947,21 @@ function EditorPageContent() {
       });
       if (res.ok) {
         showToast("Progress saved to your account");
+      } else if (res.status === 401) {
+        // Clerk state was not loaded yet or the session expired mid-edit.
+        setShowSaveProgressPrompt(true);
+        trackEvent("save_progress_anon_prompt");
+      } else if (res.status === 429) {
+        showToast("Too many saves. Try again in a moment.");
+      } else {
+        showToast("Account save failed. Local autosave is still on.");
       }
     } catch {
       showToast("Account save failed. Local autosave is still on.");
     } finally {
       setSavingProgress(false);
     }
-  }, [fileName, fields, currentPage, showToast]);
+  }, [fileName, fields, currentPage, showToast, isLoaded, isSignedIn]);
 
   const handleAutoFillFromProfile = useCallback(async () => {
     try {
@@ -1651,6 +1671,12 @@ function EditorPageContent() {
           addPageInputRef.current?.click();
         }}
         onDone={() => setShowAddAnotherPagePrompt(false)}
+      />
+
+      <SaveProgressPrompt
+        open={showSaveProgressPrompt}
+        onKeepEditing={() => setShowSaveProgressPrompt(false)}
+        onSignInClick={() => trackEvent("save_progress_sign_in_click")}
       />
 
       {/* Sidebar + Canvas row. Side panels only mount at lg+ so tablet
