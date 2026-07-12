@@ -90,7 +90,7 @@ export function Navbar() {
           <ThemeToggle className="h-11 w-11" />
           <button
             onClick={() => setMenuOpen(!menuOpen)}
-            className="flex h-11 w-11 items-center justify-center rounded-lg hover:bg-surface-alt transition-colors"
+            className="flex h-11 w-11 items-center justify-center rounded-lg hover:bg-surface-alt transition-colors outline-none focus-visible:ring-2 focus-visible:ring-accent"
             aria-label="Toggle menu"
           >
             {menuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}

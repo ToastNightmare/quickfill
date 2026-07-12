@@ -34,7 +34,7 @@ export function WelcomeModal({ onComplete }: WelcomeModalProps) {
       <div className="w-full max-w-md mx-4 bg-white rounded-2xl shadow-2xl p-8">
         <div className="text-center">
           <h2 className="text-2xl font-bold text-gray-900 mb-2">Welcome to QuickFill</h2>
-          <p className="text-gray-500 mb-6">Fill any PDF in 3 simple steps</p>
+          <p className="text-gray-500 mb-6">Finish your document in 3 simple steps</p>
 
           <div className="space-y-4 mb-8">
             <div className="flex items-center gap-4">
@@ -42,7 +42,7 @@ export function WelcomeModal({ onComplete }: WelcomeModalProps) {
                 <Upload className="h-6 w-6 text-blue-600" />
               </div>
               <div className="text-left">
-                <p className="text-sm font-medium text-gray-900">Upload your PDF or pick a template</p>
+                <p className="text-sm font-medium text-gray-900">Upload a PDF or photo, or pick a template</p>
               </div>
             </div>
 
@@ -69,7 +69,7 @@ export function WelcomeModal({ onComplete }: WelcomeModalProps) {
             onClick={handleComplete}
             className="w-full py-3 px-4 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl transition-colors"
           >
-            Let's go
+            Let&apos;s go
           </button>
         </div>
       </div>
