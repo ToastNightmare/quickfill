@@ -21,7 +21,7 @@ import { detectAcroFormFields } from "@/lib/pdf-utils";
 import { SignatureModal } from "@/components/SignatureModal";
 import { DownloadPreviewGate } from "@/components/DownloadPreviewGate";
 import { trackEvent } from "@/lib/analytics";
-import { loadPdfjsClient } from "@/lib/pdfjs-client";
+import { getPdfPageCount, renderGatePagePreview } from "@/lib/gate-preview";
 import { trackAutofillShadowReport } from "@/lib/autofill-shadow-reporting";
 import { autofillModeFromFlag, runProfileAutofill } from "@/lib/profile-autofill";
 import {
@@ -144,101 +144,7 @@ function pageCountFromFields(fields: MobileField[]) {
   return Math.max(...fields.map((field) => field.page)) + 1;
 }
 
-const PREVIEW_MAX_WIDTH = 1000;
 
-function drawImageInRect(
-  ctx: CanvasRenderingContext2D,
-  dataUrl: string,
-  x: number,
-  y: number,
-  w: number,
-  h: number
-): Promise<void> {
-  return new Promise((resolve) => {
-    const img = new Image();
-    img.onload = () => {
-      try {
-        const ratio = Math.min(w / img.width, h / img.height);
-        const dw = img.width * ratio;
-        const dh = img.height * ratio;
-        ctx.drawImage(img, x + (w - dw) / 2, y + (h - dh) / 2, dw, dh);
-      } catch {
-        // Skip the signature rather than lose the preview.
-      }
-      resolve();
-    };
-    img.onerror = () => resolve();
-    img.src = dataUrl;
-  });
-}
-
-/**
- * Best-effort page 1 preview for the download gate. Renders the raw page with
- * pdf.js, then composites filled values on top. Field coordinates come from
- * detectAcroFormFields in top-left-origin PDF points (the same space the
- * editor overlay uses), so scaling by the viewport scale is safe. Compositing
- * is skipped on rotated pages; any failure returns null and the gate falls
- * back to its watermarked placeholder. Never calls /api/fill-pdf.
- */
-async function renderMobilePreviewDataUrl(
-  pdfBytes: ArrayBuffer,
-  fields: MobileField[]
-): Promise<string | null> {
-  try {
-    const pdfjs = await loadPdfjsClient();
-    const pdf = await pdfjs.getDocument({ data: pdfBytes.slice(0) }).promise;
-    const page = await pdf.getPage(1);
-    const baseViewport = page.getViewport({ scale: 1 });
-    if (!baseViewport.width || !baseViewport.height) return null;
-    const scale = Math.min(2, PREVIEW_MAX_WIDTH / baseViewport.width);
-    const viewport = page.getViewport({ scale });
-    const canvas = document.createElement("canvas");
-    canvas.width = Math.ceil(viewport.width);
-    canvas.height = Math.ceil(viewport.height);
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return null;
-    await page.render({
-      canvasContext: ctx,
-      viewport,
-    } as Parameters<typeof page.render>[0]).promise;
-
-    if ((page.rotate ?? 0) % 360 === 0) {
-      for (const field of fields) {
-        if (field.page !== 0 || !fieldIsFilled(field)) continue;
-        const x = field.x * scale;
-        const y = field.y * scale;
-        const w = field.width * scale;
-        const h = field.height * scale;
-        try {
-          if (field.type === "checkbox" && field.checked) {
-            ctx.strokeStyle = "#111827";
-            ctx.lineWidth = Math.max(1.5, h * 0.12);
-            ctx.lineCap = "round";
-            ctx.beginPath();
-            ctx.moveTo(x + w * 0.22, y + h * 0.55);
-            ctx.lineTo(x + w * 0.42, y + h * 0.75);
-            ctx.lineTo(x + w * 0.78, y + h * 0.28);
-            ctx.stroke();
-          } else if (field.type === "signature" && field.signatureDataUrl) {
-            await drawImageInRect(ctx, field.signatureDataUrl, x, y, w, h);
-          } else if (field.type === "text" && field.value.trim() !== "") {
-            const fontSize = Math.max(9, Math.min(12 * scale, h * 0.7));
-            ctx.fillStyle = "#111827";
-            ctx.font = `${fontSize}px Helvetica, Arial, sans-serif`;
-            ctx.textBaseline = "middle";
-            ctx.fillText(field.value, x + 2 * scale, y + h / 2, Math.max(w - 4 * scale, 10));
-          }
-        } catch {
-          // Skip a field rather than lose the whole preview.
-        }
-      }
-    }
-
-    return canvas.toDataURL("image/png");
-  } catch {
-    return null;
-  }
-}
 
 export function MobileFiller() {
   const [step, setStep] = useState<Step>("upload");
@@ -255,8 +161,9 @@ export function MobileFiller() {
   const [activeSigFieldId, setActiveSigFieldId] = useState<string | null>(null);
   const [pendingPhoto, setPendingPhoto] = useState<File | null>(null);
   const [showDownloadGate, setShowDownloadGate] = useState(false);
-  const [downloadPreviewUrl, setDownloadPreviewUrl] = useState<string | null>(null);
+  const [gatePageCount, setGatePageCount] = useState(1);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const pdfBytesRef = useRef<ArrayBuffer | null>(null);
   const photoCaptureInputRef = useRef<HTMLInputElement>(null);
   const fieldRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
@@ -445,14 +352,34 @@ export function MobileFiller() {
     setActiveSigFieldId(null);
   }, []);
 
+  useEffect(() => {
+    pdfBytesRef.current = pdfBytes;
+  }, [pdfBytes]);
+
   const openDownloadGate = useCallback(() => {
-    setDownloadPreviewUrl(null);
+    // Fields carry page indexes, so they give an immediate lower bound while
+    // the real page count loads; a stale async result for a replaced
+    // document is discarded via pdfBytesRef.
+    setGatePageCount(Math.max(1, pageCountFromFields(fields)));
     setShowDownloadGate(true);
     if (!pdfBytes) return;
-    void renderMobilePreviewDataUrl(pdfBytes, fields).then((url) => {
-      if (url) setDownloadPreviewUrl(url);
+    const bytes = pdfBytes;
+    void getPdfPageCount(bytes).then((count) => {
+      if (count && count > 0 && pdfBytesRef.current === bytes) {
+        setGatePageCount(count);
+      }
     });
   }, [pdfBytes, fields]);
+
+  // Locked per-page preview renderer for the download gate. Shares the
+  // desktop gate compositor; never calls /api/fill-pdf.
+  const renderGatePreviewPage = useCallback(
+    (pageIndex: number): Promise<string | null> => {
+      if (!pdfBytes) return Promise.resolve(null);
+      return renderGatePagePreview(pdfBytes, fields.map(toEditorField), pageIndex);
+    },
+    [pdfBytes, fields]
+  );
 
   const handleDownload = useCallback(async () => {
     if (!pdfBytes) return;
@@ -549,7 +476,7 @@ export function MobileFiller() {
     setFields([]);
     setHasAcroForm(false);
     setShowDownloadGate(false);
-    setDownloadPreviewUrl(null);
+    setGatePageCount(1);
     if (fileInputRef.current) fileInputRef.current.value = "";
   }, []);
 
@@ -760,8 +687,9 @@ export function MobileFiller() {
       <DownloadPreviewGate
         open={showDownloadGate}
         onClose={() => setShowDownloadGate(false)}
-        previewDataUrl={downloadPreviewUrl}
         fileName={fileName}
+        pageCount={gatePageCount}
+        renderPagePreview={renderGatePreviewPage}
         checkoutSource="download_preview_gate_mobile"
       />
 
