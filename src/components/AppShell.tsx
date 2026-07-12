@@ -6,9 +6,21 @@ import { Navbar } from "@/components/Navbar";
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const isAdminRoute = pathname === "/admin" || pathname.startsWith("/admin/");
+  // The homepage renders its own full footer; skip the site footer there to
+  // avoid two stacked footers with duplicate legal links.
+  const hasOwnFooter = pathname === "/";
 
   if (isAdminRoute) {
     return <main className="flex-1">{children}</main>;
+  }
+
+  if (hasOwnFooter) {
+    return (
+      <>
+        <Navbar />
+        <main className="flex-1">{children}</main>
+      </>
+    );
   }
 
   return (

@@ -40,15 +40,15 @@ export const metadata: Metadata = {
     shortcut: "/favicon.ico",
     apple: "/logo-mark.png",
   },
-  title: "Fill PDF Forms Online Free | QuickFill",
+  title: "Fill PDF Forms Online | QuickFill",
   description:
-    "Fill PDF forms online free. Upload any PDF form, fill it with text, signatures, checkboxes, and dates, then download your completed document instantly. No software required. Free to start.",
+    "Upload a PDF or photo, then clean, fill, sign and preview it online. No account needed to start; choose a download option when finished.",
   keywords:
-    "fill PDF online, PDF form filler, fill PDF free, online PDF editor, fill PDF form, PDF filler no download, fill tax form online, rental application PDF, government form filler, online document filler",
+    "fill PDF online, PDF form filler, online PDF editor, fill PDF form, PDF filler no download, fill tax form online, rental application PDF, government form filler, online document filler",
   openGraph: {
-    title: "Fill PDF Forms Online Free | QuickFill",
+    title: "Fill PDF Forms Online | QuickFill",
     description:
-      "Upload any PDF form, fill it with simple tools, then download your completed document in seconds.",
+      "Upload a PDF or photo, then clean, fill, sign and preview it online. Choose a download option when your document is finished.",
     url: APP_CONFIG.url,
     siteName: "QuickFill",
     type: "website",

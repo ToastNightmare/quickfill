@@ -76,17 +76,19 @@ describe("LandingUploadBox photo cleanup wiring", () => {
     expect(
       screen.getByText("Your document stays in your browser while you edit. We don't store your document file on our servers.")
     ).toBeInTheDocument();
-    expect(screen.getByText(/No account needed to start/)).toBeInTheDocument();
+    expect(screen.getByText(/Free to fill and preview\. No account needed to start\./)).toBeInTheDocument();
   });
 
-  it("shows a mobile Take photo input with rear camera capture", () => {
+  it("shows a mobile/tablet Take a photo input with rear camera capture", () => {
     render(<LandingUploadBox />);
 
-    const input = screen.getByLabelText("Take photo");
+    const input = screen.getByLabelText("Take a photo");
     expect(input).toHaveAttribute("type", "file");
     expect(input).toHaveAttribute("accept", "image/jpeg,image/png");
     expect(input).toHaveAttribute("capture", "environment");
-    expect(screen.getByRole("button", { name: "Take photo" })).toHaveClass("sm:hidden");
+    // Visible on phones and tablets, hidden only on large desktop layouts.
+    expect(screen.getByRole("button", { name: "Take a photo" })).toHaveClass("lg:hidden");
+    expect(screen.getByRole("button", { name: "Take a photo" })).not.toHaveClass("sm:hidden");
   });
 
   it("routes image uploads through the cleanup modal, then into the editor flow", async () => {
