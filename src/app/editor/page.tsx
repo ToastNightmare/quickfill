@@ -42,6 +42,7 @@ import { runEditorProfileAutofill, trackEditorAutofillShadowReport } from "@/lib
 import { createEditorFieldId, repairDuplicateEditorFieldIds, withUniqueEditorFieldId } from "@/lib/field-ids";
 import { loadPdfjsClient } from "@/lib/pdfjs-client";
 import { renderFlattenedWhiteoutPages } from "@/lib/pdf-flatten-client";
+import { renderGatePagePreview } from "@/lib/gate-preview";
 import { getTemplateBySlug, isTemplateFillable, type TemplateConfig } from "@/lib/templates-config";
 import { DOCUMENT_FILE_INPUT_ACCEPT, PDF_UPLOAD_MAX_BYTES, PDF_UPLOAD_MAX_LABEL } from "@/lib/upload-limits";
 import { appendUploadToDocument, filledDocumentFilename, removePageFromDocument, shiftFieldsAfterPageRemoval, type NormalizedDocumentUpload } from "@/lib/document-intake";
@@ -225,7 +226,6 @@ function EditorPageContent() {
   const [hasAcroForm, setHasAcroForm] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
   const [showDownloadPreviewGate, setShowDownloadPreviewGate] = useState(false);
-  const [downloadPreviewUrl, setDownloadPreviewUrl] = useState<string | null>(null);
   const [showRestoredBanner, setShowRestoredBanner] = useState(false);
   const [lastDownloadError, setLastDownloadError] = useState<string | null>(null);
   const [showSupportForm, setShowSupportForm] = useState(false);
@@ -1069,16 +1069,28 @@ function EditorPageContent() {
   }, []);
 
   const openDownloadPreviewGate = useCallback(() => {
-    setShowDownloadPreviewGate(false);
-    setDownloadPreviewUrl(null);
     setShowDownloadPreviewGate(true);
-
-    void pdfViewerRef.current?.getCompositePreviewURL()
-      .then((url) => {
-        if (url) setDownloadPreviewUrl(url);
-      })
-      .catch(() => {});
   }, []);
+
+  // Locked per-page previews for the download gate. The page the editor is
+  // currently showing reuses the exact Konva live capture (identical to the
+  // previous single-page gate); other pages render offscreen with the shared
+  // gate-preview compositor. Never calls /api/fill-pdf.
+  const renderGatePreviewPage = useCallback(
+    async (pageIndex: number): Promise<string | null> => {
+      if (pageIndex === currentPage) {
+        try {
+          const live = await pdfViewerRef.current?.getCompositePreviewURL();
+          if (live) return live;
+        } catch {
+          // Fall through to the offscreen renderer.
+        }
+      }
+      if (!pdfBytes) return null;
+      return renderGatePagePreview(pdfBytes, fields, pageIndex);
+    },
+    [currentPage, pdfBytes, fields]
+  );
 
   const handleDownload = useCallback(async () => {
     if (!pdfBytes) return;
@@ -1947,8 +1959,9 @@ function EditorPageContent() {
       <DownloadPreviewGate
         open={showDownloadPreviewGate}
         onClose={() => setShowDownloadPreviewGate(false)}
-        previewDataUrl={downloadPreviewUrl}
         fileName={fileName}
+        pageCount={Math.max(1, totalPages)}
+        renderPagePreview={renderGatePreviewPage}
       />
 
       {/* Welcome modal for first-time users */}

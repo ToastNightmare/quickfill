@@ -1,12 +1,25 @@
 "use client";
 
+import { useCallback, useEffect, useRef, useState } from "react";
 import { FileText } from "lucide-react";
 
 interface DownloadPreviewGateProps {
   open: boolean;
   onClose: () => void;
-  previewDataUrl: string | null;
+  /**
+   * Optional pre-generated preview for page 1 (index 0). Callers that
+   * provide renderPagePreview can omit this.
+   */
+  previewDataUrl?: string | null;
   fileName: string;
+  /** Total document pages. Page navigation renders only when above 1. */
+  pageCount?: number;
+  /**
+   * Lazily renders the locked preview image for one page (0-based index).
+   * Called when the user reaches a page with no cached preview. Must never
+   * call /api/fill-pdf or produce the clean unlocked document.
+   */
+  renderPagePreview?: (pageIndex: number) => Promise<string | null>;
   /**
    * Checkout attribution source carried through the checkout links.
    * Any source starting with "download_preview_gate" cancels back to
@@ -59,13 +72,83 @@ function PreviewWatermark() {
 export function DownloadPreviewGate({
   open,
   onClose,
-  previewDataUrl,
+  previewDataUrl = null,
   fileName,
+  pageCount = 1,
+  renderPagePreview,
   checkoutSource = "download_preview_gate",
 }: DownloadPreviewGateProps) {
+  const [pageIndex, setPageIndex] = useState(0);
+  // Per-gate-session cache: previously viewed pages return instantly.
+  const [previews, setPreviews] = useState<Record<number, string>>({});
+  // Monotonic id per gate opening. Async results from a previous opening
+  // (or a previous document) are discarded when they arrive late.
+  const [sessionId, setSessionId] = useState(0);
+  const sessionIdRef = useRef(sessionId);
+  const pendingPagesRef = useRef<Set<number>>(new Set());
+
+  // Fresh session on every open (render-time state adjustment): back to
+  // page 1 with an empty cache, so a changed document or edited fields
+  // never show stale previews.
+  const [wasOpen, setWasOpen] = useState(open);
+  if (open !== wasOpen) {
+    setWasOpen(open);
+    if (open) {
+      setSessionId((id) => id + 1);
+      setPageIndex(0);
+      setPreviews({});
+    }
+  }
+
+  // Keep the async-guard refs in step with the committed session.
+  useEffect(() => {
+    sessionIdRef.current = sessionId;
+    pendingPagesRef.current = new Set();
+  }, [sessionId]);
+
+  // Lazy generation: only the page being viewed is ever rendered. Page 1
+  // generates when the gate opens; later pages generate on first visit.
+  useEffect(() => {
+    if (!open || !renderPagePreview) return;
+    if (previews[pageIndex]) return;
+    if (pageIndex === 0 && previewDataUrl) return;
+    if (pendingPagesRef.current.has(pageIndex)) return;
+
+    const session = sessionId;
+    const page = pageIndex;
+    // A page is requested at most once per session. Successful pages stay
+    // marked (the cache serves them); only failures clear the mark so a
+    // revisit can retry. Deleting on success would let an intermediate
+    // commit re-request a page whose result had not rendered yet.
+    pendingPagesRef.current.add(page);
+    void renderPagePreview(page)
+      .then((url) => {
+        if (sessionIdRef.current !== session) return;
+        if (url) {
+          setPreviews((prev) => (prev[page] ? prev : { ...prev, [page]: url }));
+        } else {
+          pendingPagesRef.current.delete(page);
+        }
+      })
+      .catch(() => {
+        if (sessionIdRef.current === session) pendingPagesRef.current.delete(page);
+      });
+  }, [open, sessionId, pageIndex, previews, previewDataUrl, renderPagePreview]);
+
+  const goToPage = useCallback(
+    (delta: number) => {
+      setPageIndex((current) =>
+        Math.min(Math.max(current + delta, 0), Math.max(pageCount - 1, 0))
+      );
+    },
+    [pageCount]
+  );
+
   if (!open) return null;
 
   const sourceParam = encodeURIComponent(checkoutSource);
+  const currentPreview = previews[pageIndex] ?? (pageIndex === 0 ? previewDataUrl : null);
+  const showPageNav = pageCount > 1;
 
   return (
     <div
@@ -85,16 +168,16 @@ export function DownloadPreviewGate({
         </div>
 
         <div className="mx-6 mt-6 overflow-hidden rounded-xl border border-border">
-          <div className="relative flex min-h-56 items-center justify-center bg-white p-3 sm:min-h-80">
-            {previewDataUrl ? (
+          <div className="relative flex h-56 items-center justify-center bg-white p-3 sm:h-80">
+            {currentPreview ? (
               <img
-                src={previewDataUrl}
+                src={currentPreview}
                 alt="Document preview"
-                className="h-auto w-full max-h-56 object-contain sm:max-h-80"
+                className="max-h-full max-w-full object-contain"
               />
             ) : (
               <div
-                className="flex h-56 w-full items-center justify-center rounded-xl bg-surface-alt sm:h-80"
+                className="flex h-full w-full animate-pulse items-center justify-center rounded-xl bg-surface-alt"
                 aria-label="Document preview loading"
               >
                 <FileText className="h-10 w-10 text-text-muted" />
@@ -103,6 +186,33 @@ export function DownloadPreviewGate({
             <PreviewWatermark />
           </div>
         </div>
+
+        {showPageNav && (
+          <div className="mx-6 mt-3 flex items-center justify-between gap-2">
+            <button
+              type="button"
+              onClick={() => goToPage(-1)}
+              disabled={pageIndex === 0}
+              className="h-10 rounded-lg border border-border px-2.5 text-xs font-semibold text-text transition-colors hover:bg-surface-alt disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent sm:px-4 sm:text-sm"
+            >
+              Previous
+            </button>
+            <span
+              className="whitespace-nowrap text-xs font-medium text-text-muted sm:text-sm"
+              aria-live="polite"
+            >
+              Page {pageIndex + 1} of {pageCount}
+            </span>
+            <button
+              type="button"
+              onClick={() => goToPage(1)}
+              disabled={pageIndex >= pageCount - 1}
+              className="h-10 rounded-lg border border-border px-2.5 text-xs font-semibold text-text transition-colors hover:bg-surface-alt disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent sm:px-4 sm:text-sm"
+            >
+              Next
+            </button>
+          </div>
+        )}
 
         <p className="mx-6 mt-2 text-center text-xs text-text-muted">
           Preview only, unlock download to remove watermark.
