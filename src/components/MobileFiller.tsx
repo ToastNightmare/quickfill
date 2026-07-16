@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useAuth } from "@clerk/nextjs";
 import { useState, useCallback, useRef, useEffect } from "react";
 import {
   Upload,
@@ -41,6 +42,12 @@ import { filledDocumentFilename, normalizeDocumentUpload } from "@/lib/document-
 import { isCleanablePhoto } from "@/lib/image-cleanup";
 import { clearLocalSignature, loadLocalSignature, saveLocalSignature } from "@/lib/signature-store";
 import { PhotoCleanupModal } from "@/components/PhotoCleanupModal";
+import { createDocumentRevision } from "@/lib/field-suggestions";
+import {
+  clearFieldSuggestionIntent,
+  isFieldSuggestionReviewEnabled,
+  storeFieldSuggestionIntent,
+} from "@/lib/field-suggestion-rollout";
 
 const SIG_KEYWORDS = ["signature", "sign here", "signed", "sig", "esign", "e-sign"];
 
@@ -147,6 +154,8 @@ function pageCountFromFields(fields: MobileField[]) {
 
 
 export function MobileFiller() {
+  const makeFillableEnabled = isFieldSuggestionReviewEnabled();
+  const { isLoaded, isSignedIn, userId, sessionId } = useAuth();
   const [step, setStep] = useState<Step>("upload");
   const [fileName, setFileName] = useState("");
   const [pdfBytes, setPdfBytes] = useState<ArrayBuffer | null>(null);
@@ -166,27 +175,71 @@ export function MobileFiller() {
   const pdfBytesRef = useRef<ArrayBuffer | null>(null);
   const photoCaptureInputRef = useRef<HTMLInputElement>(null);
   const fieldRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const signatureLoadSessionKeyRef = useRef<string | null>(null);
+  const signatureActiveSessionKeyRef = useRef<string | null>(null);
+  const signatureChangedThisSessionRef = useRef(false);
+  const signatureComponentMountedRef = useRef(false);
+  const authenticatedSignatureSessionKey = isLoaded && isSignedIn && userId && sessionId
+    ? JSON.stringify([userId, sessionId])
+    : null;
+  // A resolved auth transition invalidates stale responses during this render.
+  // Temporary unresolved states preserve the last continuous session identity.
+  if (isLoaded) signatureActiveSessionKeyRef.current = authenticatedSignatureSessionKey;
 
   useEffect(() => {
-    const applyLocalFallback = () => {
-      const local = loadLocalSignature();
-      if (local) {
-        setSavedSignature(local);
-        setSavedSignatureSource("device");
-      }
+    signatureComponentMountedRef.current = true;
+    return () => {
+      signatureComponentMountedRef.current = false;
     };
+  }, []);
+
+  useEffect(() => {
+    const loadDeviceSignature = () => {
+      if (!signatureComponentMountedRef.current || signatureChangedThisSessionRef.current) return;
+      const local = loadLocalSignature();
+      setSavedSignature(local);
+      setSavedSignatureSource(local ? "device" : null);
+    };
+
+    if (!isLoaded) return;
+
+    if (!authenticatedSignatureSessionKey) {
+      signatureLoadSessionKeyRef.current = null;
+      loadDeviceSignature();
+      return;
+    }
+
+    if (signatureLoadSessionKeyRef.current === authenticatedSignatureSessionKey) return;
+    if (signatureLoadSessionKeyRef.current !== null) loadDeviceSignature();
+    signatureLoadSessionKeyRef.current = authenticatedSignatureSessionKey;
+    const requestedSessionKey = authenticatedSignatureSessionKey;
+
     fetch("/api/signature")
       .then((r) => r.ok ? r.json() : null)
-      .then((d) => {
-        if (d?.signatureDataUrl) {
-          setSavedSignature(d.signatureDataUrl);
+      .then((data) => {
+        if (
+          !signatureComponentMountedRef.current ||
+          signatureActiveSessionKeyRef.current !== requestedSessionKey ||
+          signatureLoadSessionKeyRef.current !== requestedSessionKey ||
+          signatureChangedThisSessionRef.current
+        ) return;
+        if (data?.signatureDataUrl) {
+          setSavedSignature(data.signatureDataUrl);
           setSavedSignatureSource("account");
-        } else {
-          applyLocalFallback();
+          return;
         }
+        loadDeviceSignature();
       })
-      .catch(applyLocalFallback);
-  }, []);
+      .catch(() => {
+        if (
+          !signatureComponentMountedRef.current ||
+          signatureActiveSessionKeyRef.current !== requestedSessionKey ||
+          signatureLoadSessionKeyRef.current !== requestedSessionKey ||
+          signatureChangedThisSessionRef.current
+        ) return;
+        loadDeviceSignature();
+      });
+  }, [authenticatedSignatureSessionKey, isLoaded]);
 
   useEffect(() => {
     if (!pdfBytes) return;
@@ -207,12 +260,16 @@ export function MobileFiller() {
     fieldRefs.current[next.id]?.scrollIntoView({ behavior: "smooth", block: "center" });
   }, [fields, showToast]);
 
-  const handleFile = useCallback(async (file: File) => {
+  const handleFile = useCallback(async (file: File, options?: { makeFillable?: boolean }) => {
     setIsLoading(true);
+    clearFieldSuggestionIntent();
 
     try {
       const upload = await normalizeDocumentUpload(file);
       const bytes = upload.pdfBytes;
+      const documentRevision = options?.makeFillable && makeFillableEnabled && upload.sourceType === "image"
+        ? await createDocumentRevision(bytes)
+        : null;
       setFileName(upload.fileName);
       setPdfBytes(bytes);
       await savePdfToIndexedDB(bytes);
@@ -248,19 +305,21 @@ export function MobileFiller() {
         if (upload.sourceType === "image") {
           window.sessionStorage.setItem("qf-photo-capture-source", "1");
         }
+        if (documentRevision) storeFieldSuggestionIntent(documentRevision);
         window.location.assign("/editor?advanced=1");
         return;
       }
 
       setStep("filling");
     } catch (error) {
+      clearFieldSuggestionIntent();
       setPdfBytes(null);
       const message = error instanceof Error ? error.message : "This file could not be opened. Try a different file.";
       showToast(message, 5000);
     } finally {
       setIsLoading(false);
     }
-  }, [showToast]);
+  }, [makeFillableEnabled, showToast]);
 
   const handleFilePick = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -305,6 +364,7 @@ export function MobileFiller() {
   const handleSignatureSave = useCallback(async (dataUrl: string) => {
     // Always remember on this device so anonymous users keep their
     // signature across sessions; account save stays best-effort.
+    signatureChangedThisSessionRef.current = true;
     saveLocalSignature(dataUrl);
     setSavedSignature(dataUrl);
     setSavedSignatureSource("device");
@@ -339,6 +399,7 @@ export function MobileFiller() {
   }, [activeSigFieldId, savedSignature]);
 
   const handleSignatureDelete = useCallback(async () => {
+    signatureChangedThisSessionRef.current = true;
     clearLocalSignature();
     setSavedSignature(null);
     setSavedSignatureSource(null);
@@ -469,6 +530,7 @@ export function MobileFiller() {
   }, [pdfBytes, fields, fileName, hasAcroForm, showToast, openDownloadGate]);
 
   const handleReset = useCallback(() => {
+    clearFieldSuggestionIntent();
     void clearEditorState();
     setStep("upload");
     setFileName("");
@@ -528,11 +590,19 @@ export function MobileFiller() {
         {pendingPhoto && (
           <PhotoCleanupModal
             file={pendingPhoto}
+            makeFillableEnabled={makeFillableEnabled}
             onConfirm={(cleanedFile) => {
               setPendingPhoto(null);
               void handleFile(cleanedFile);
             }}
-            onCancel={() => setPendingPhoto(null)}
+            onMakeFillable={makeFillableEnabled ? (cleanedFile) => {
+              setPendingPhoto(null);
+              void handleFile(cleanedFile, { makeFillable: true });
+            } : undefined}
+            onCancel={() => {
+              clearFieldSuggestionIntent();
+              setPendingPhoto(null);
+            }}
           />
         )}
 

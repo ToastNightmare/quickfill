@@ -2,6 +2,7 @@ import "@testing-library/jest-dom";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { UploadZone } from "@/components/UploadZone";
 import { normalizeDocumentUpload } from "@/lib/document-intake";
+import { isFieldSuggestionReviewEnabled } from "@/lib/field-suggestion-rollout";
 
 jest.mock("lucide-react", () => new Proxy({}, {
   get: () => {
@@ -18,26 +19,44 @@ jest.mock("@/lib/document-intake", () => {
   };
 });
 
+jest.mock("@/lib/field-suggestions", () => ({
+  createDocumentRevision: jest.fn().mockResolvedValue(`qf-document-v1-${"a".repeat(64)}`),
+}));
+
+jest.mock("@/lib/field-suggestion-rollout", () => ({
+  isFieldSuggestionReviewEnabled: jest.fn(() => false),
+}));
+
 jest.mock("@/components/PhotoCleanupModal", () => ({
   PhotoCleanupModal: ({
     file,
     onConfirm,
+    makeFillableEnabled,
+    onMakeFillable,
     onCancel,
   }: {
     file: File;
     onConfirm: (cleaned: File) => void;
+    makeFillableEnabled?: boolean;
+    onMakeFillable?: (cleaned: File) => void;
     onCancel: () => void;
   }) => (
     <div data-testid="photo-cleanup-modal">
       <button type="button" onClick={() => onConfirm(new File([new Uint8Array([7])], `cleaned-${file.name}`, { type: "image/jpeg" }))}>
         Mock use photo
       </button>
+      {makeFillableEnabled && onMakeFillable && (
+        <button type="button" onClick={() => onMakeFillable(new File([new Uint8Array([8])], `fillable-${file.name}`, { type: "image/jpeg" }))}>
+          Mock make fillable
+        </button>
+      )}
       <button type="button" onClick={onCancel}>Mock cancel</button>
     </div>
   ),
 }));
 
 const mockedNormalize = normalizeDocumentUpload as jest.MockedFunction<typeof normalizeDocumentUpload>;
+const mockedRolloutEnabled = isFieldSuggestionReviewEnabled as jest.MockedFunction<typeof isFieldSuggestionReviewEnabled>;
 
 function pickFile(file: File) {
   const input = screen.getByTestId("document-upload-input");
@@ -47,6 +66,7 @@ function pickFile(file: File) {
 describe("UploadZone photo cleanup wiring", () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockedRolloutEnabled.mockReturnValue(false);
     mockedNormalize.mockResolvedValue({
       fileName: "cleaned.pdf",
       pdfBytes: new ArrayBuffer(8),
@@ -74,6 +94,32 @@ describe("UploadZone photo cleanup wiring", () => {
       expect(onFileLoad).toHaveBeenCalledTimes(1);
     });
     expect(screen.queryByTestId("photo-cleanup-modal")).not.toBeInTheDocument();
+    expect(onFileLoad).toHaveBeenCalledWith(expect.objectContaining({ sourceType: "image" }));
+  });
+
+  it("keeps the local action hidden when the rollout is disabled", async () => {
+    render(<UploadZone onFileLoad={jest.fn()} />);
+    pickFile(new File([new Uint8Array([1])], "photo.png", { type: "image/png" }));
+
+    expect(await screen.findByTestId("photo-cleanup-modal")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Mock make fillable" })).not.toBeInTheDocument();
+  });
+
+  it("passes a revision-bound local suggestion request only for the gated action", async () => {
+    mockedRolloutEnabled.mockReturnValue(true);
+    const onFileLoad = jest.fn();
+    render(<UploadZone onFileLoad={onFileLoad} />);
+    pickFile(new File([new Uint8Array([1])], "photo.png", { type: "image/png" }));
+
+    fireEvent.click(await screen.findByRole("button", { name: "Mock make fillable" }));
+
+    await waitFor(() => expect(onFileLoad).toHaveBeenCalledWith(
+      expect.objectContaining({ sourceType: "image" }),
+      {
+        requestFieldSuggestions: true,
+        documentRevision: `qf-document-v1-${"a".repeat(64)}`,
+      },
+    ));
   });
 
   it("cancel aborts the photo upload entirely", async () => {

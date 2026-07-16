@@ -3,6 +3,10 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { LandingUploadBox } from "@/components/LandingUploadBox";
 import { normalizeDocumentUpload } from "@/lib/document-intake";
 import { savePdfToIndexedDB } from "@/lib/persistence";
+import {
+  isFieldSuggestionReviewEnabled,
+  storeFieldSuggestionIntent,
+} from "@/lib/field-suggestion-rollout";
 
 const pushMock = jest.fn();
 
@@ -31,20 +35,39 @@ jest.mock("@/lib/document-intake", () => {
   };
 });
 
+jest.mock("@/lib/field-suggestions", () => ({
+  createDocumentRevision: jest.fn().mockResolvedValue(`qf-document-v1-${"a".repeat(64)}`),
+}));
+
+jest.mock("@/lib/field-suggestion-rollout", () => ({
+  clearFieldSuggestionIntent: jest.fn(),
+  isFieldSuggestionReviewEnabled: jest.fn(() => false),
+  storeFieldSuggestionIntent: jest.fn(),
+}));
+
 jest.mock("@/components/PhotoCleanupModal", () => ({
   PhotoCleanupModal: ({
     file,
     onConfirm,
+    makeFillableEnabled,
+    onMakeFillable,
     onCancel,
   }: {
     file: File;
     onConfirm: (cleaned: File) => void;
+    makeFillableEnabled?: boolean;
+    onMakeFillable?: (cleaned: File) => void;
     onCancel: () => void;
   }) => (
     <div data-testid="photo-cleanup-modal">
       <button type="button" onClick={() => onConfirm(new File([new Uint8Array([7])], `cleaned-${file.name}`, { type: "image/jpeg" }))}>
         Mock use photo
       </button>
+      {makeFillableEnabled && onMakeFillable && (
+        <button type="button" onClick={() => onMakeFillable(new File([new Uint8Array([8])], `fillable-${file.name}`, { type: "image/jpeg" }))}>
+          Mock make fillable
+        </button>
+      )}
       <button type="button" onClick={onCancel}>Mock cancel</button>
     </div>
   ),
@@ -52,6 +75,8 @@ jest.mock("@/components/PhotoCleanupModal", () => ({
 
 const mockedNormalize = normalizeDocumentUpload as jest.MockedFunction<typeof normalizeDocumentUpload>;
 const mockedSavePdf = savePdfToIndexedDB as jest.MockedFunction<typeof savePdfToIndexedDB>;
+const mockedRolloutEnabled = isFieldSuggestionReviewEnabled as jest.MockedFunction<typeof isFieldSuggestionReviewEnabled>;
+const mockedStoreIntent = storeFieldSuggestionIntent as jest.MockedFunction<typeof storeFieldSuggestionIntent>;
 
 function pickFile(file: File) {
   const input = document.querySelector('input[type="file"]') as HTMLInputElement;
@@ -62,6 +87,7 @@ describe("LandingUploadBox photo cleanup wiring", () => {
   beforeEach(() => {
     jest.clearAllMocks();
     sessionStorage.clear();
+    mockedRolloutEnabled.mockReturnValue(false);
     mockedNormalize.mockResolvedValue({
       fileName: "cleaned.pdf",
       pdfBytes: new ArrayBuffer(8),
@@ -112,6 +138,26 @@ describe("LandingUploadBox photo cleanup wiring", () => {
       expect(pushMock).toHaveBeenCalledWith("/editor");
     });
     expect(sessionStorage.getItem("qf-photo-capture-source")).toBe("1");
+    expect(mockedStoreIntent).not.toHaveBeenCalled();
+  });
+
+  it("keeps Make this fillable hidden while the rollout is off", async () => {
+    render(<LandingUploadBox />);
+    pickFile(new File([new Uint8Array([1])], "photo.png", { type: "image/png" }));
+
+    expect(await screen.findByTestId("photo-cleanup-modal")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Mock make fillable" })).not.toBeInTheDocument();
+  });
+
+  it("stores a revision-only one-shot intent for the gated local action", async () => {
+    mockedRolloutEnabled.mockReturnValue(true);
+    render(<LandingUploadBox />);
+    pickFile(new File([new Uint8Array([1])], "photo.png", { type: "image/png" }));
+
+    fireEvent.click(await screen.findByRole("button", { name: "Mock make fillable" }));
+
+    await waitFor(() => expect(mockedStoreIntent).toHaveBeenCalledWith(`qf-document-v1-${"a".repeat(64)}`));
+    await waitFor(() => expect(pushMock).toHaveBeenCalledWith("/editor"));
   });
 
   it("cancel aborts the landing photo upload", async () => {

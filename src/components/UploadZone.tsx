@@ -6,6 +6,8 @@ import { LockKeyhole, ShieldCheck, Upload } from "lucide-react";
 import { normalizeDocumentUpload, type NormalizedDocumentUpload } from "@/lib/document-intake";
 import { isCleanablePhoto } from "@/lib/image-cleanup";
 import { PhotoCleanupModal } from "@/components/PhotoCleanupModal";
+import { createDocumentRevision } from "@/lib/field-suggestions";
+import { isFieldSuggestionReviewEnabled } from "@/lib/field-suggestion-rollout";
 import {
   DOCUMENT_DROPZONE_ACCEPT,
   DOCUMENT_UPLOAD_LABEL,
@@ -13,25 +15,42 @@ import {
   PDF_UPLOAD_MAX_LABEL,
 } from "@/lib/upload-limits";
 
+export interface UploadZoneLoadOptions {
+  requestFieldSuggestions: true;
+  documentRevision: string;
+}
+
 interface UploadZoneProps {
-  onFileLoad: (upload: NormalizedDocumentUpload) => void | Promise<void>;
+  onFileLoad: (
+    upload: NormalizedDocumentUpload,
+    options?: UploadZoneLoadOptions,
+  ) => void | Promise<void>;
 }
 
 export function UploadZone({ onFileLoad }: UploadZoneProps) {
+  const makeFillableEnabled = isFieldSuggestionReviewEnabled();
   const [error, setError] = useState<string | null>(null);
   const [pendingPhoto, setPendingPhoto] = useState<File | null>(null);
 
   const loadFile = useCallback(
-    async (file: File) => {
+    async (file: File, options?: { makeFillable?: boolean }) => {
       try {
-        await onFileLoad(await normalizeDocumentUpload(file));
+        const upload = await normalizeDocumentUpload(file);
+        if (options?.makeFillable && makeFillableEnabled && upload.sourceType === "image") {
+          await onFileLoad(upload, {
+            requestFieldSuggestions: true,
+            documentRevision: await createDocumentRevision(upload.pdfBytes),
+          });
+        } else {
+          await onFileLoad(upload);
+        }
       } catch (err) {
         const message = err instanceof Error ? err.message : `Please upload a ${DOCUMENT_UPLOAD_LABEL}.`;
         setError(message);
         setTimeout(() => setError(null), 5000);
       }
     },
-    [onFileLoad]
+    [makeFillableEnabled, onFileLoad]
   );
 
   const handleAcceptedFile = useCallback(
@@ -69,6 +88,14 @@ export function UploadZone({ onFileLoad }: UploadZoneProps) {
     async (cleanedFile: File) => {
       setPendingPhoto(null);
       await loadFile(cleanedFile);
+    },
+    [loadFile]
+  );
+
+  const handlePhotoMakeFillable = useCallback(
+    async (cleanedFile: File) => {
+      setPendingPhoto(null);
+      await loadFile(cleanedFile, { makeFillable: true });
     },
     [loadFile]
   );
@@ -143,7 +170,9 @@ export function UploadZone({ onFileLoad }: UploadZoneProps) {
       {pendingPhoto && (
         <PhotoCleanupModal
           file={pendingPhoto}
+          makeFillableEnabled={makeFillableEnabled}
           onConfirm={handlePhotoConfirm}
+          onMakeFillable={makeFillableEnabled ? handlePhotoMakeFillable : undefined}
           onCancel={() => setPendingPhoto(null)}
         />
       )}

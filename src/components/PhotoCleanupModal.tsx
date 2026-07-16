@@ -17,17 +17,28 @@ interface PhotoCleanupModalProps {
   file: File;
   /** Called with the cleaned JPEG file when the user confirms. */
   onConfirm: (cleanedFile: File) => void;
+  /** Enables the internal, local-only field suggestion intent. */
+  makeFillableEnabled?: boolean;
+  /** Called with the same cleaned JPEG, without accepting any fields yet. */
+  onMakeFillable?: (cleanedFile: File) => void;
   /** Called when the user cancels; the upload should be aborted. */
   onCancel: () => void;
 }
 
-export function PhotoCleanupModal({ file, onConfirm, onCancel }: PhotoCleanupModalProps) {
+export function PhotoCleanupModal({
+  file,
+  onConfirm,
+  makeFillableEnabled = false,
+  onMakeFillable,
+  onCancel,
+}: PhotoCleanupModalProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [rotateQuarterTurns, setRotateQuarterTurns] = useState(0);
   const [documentMode, setDocumentMode] = useState(true);
   const [cropRect, setCropRect] = useState<CropRect>(FULL_FRAME_CROP);
-  const [isProcessing, setIsProcessing] = useState(false);
+  const [processingAction, setProcessingAction] = useState<"use" | "make-fillable" | null>(null);
   const [previewFailed, setPreviewFailed] = useState(false);
+  const isProcessing = processingAction !== null;
 
   useEffect(() => {
     let cancelled = false;
@@ -61,19 +72,29 @@ export function PhotoCleanupModal({ file, onConfirm, onCancel }: PhotoCleanupMod
     setCropRect(FULL_FRAME_CROP);
   }, []);
 
-  const handleConfirm = useCallback(async () => {
+  const preparePhoto = useCallback(async (action: "use" | "make-fillable") => {
     if (isProcessing) return;
-    setIsProcessing(true);
+    const callback = action === "make-fillable" ? onMakeFillable : onConfirm;
+    if (!callback) return;
+    setProcessingAction(action);
     try {
       const cleaned = await cleanupPhotoFile(file, { rotateQuarterTurns, documentMode, cropRect });
-      onConfirm(cleaned);
+      callback(cleaned);
     } catch {
       // Fall back to the original photo rather than blocking the upload.
-      onConfirm(file);
+      callback(file);
     } finally {
-      setIsProcessing(false);
+      setProcessingAction(null);
     }
-  }, [file, rotateQuarterTurns, documentMode, cropRect, isProcessing, onConfirm]);
+  }, [file, rotateQuarterTurns, documentMode, cropRect, isProcessing, onConfirm, onMakeFillable]);
+
+  const handleConfirm = useCallback(() => {
+    void preparePhoto("use");
+  }, [preparePhoto]);
+
+  const handleMakeFillable = useCallback(() => {
+    void preparePhoto("make-fillable");
+  }, [preparePhoto]);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4">
@@ -149,7 +170,7 @@ export function PhotoCleanupModal({ file, onConfirm, onCancel }: PhotoCleanupMod
             disabled={isProcessing}
             className="flex-1 rounded-xl bg-accent py-2.5 text-sm font-semibold text-white transition-colors hover:bg-accent-hover disabled:opacity-60"
           >
-            {isProcessing ? "Preparing..." : "Use photo"}
+            {processingAction === "use" ? "Preparing..." : "Use photo"}
           </button>
           <button
             type="button"
@@ -160,6 +181,21 @@ export function PhotoCleanupModal({ file, onConfirm, onCancel }: PhotoCleanupMod
             Cancel
           </button>
         </div>
+        {makeFillableEnabled && onMakeFillable && (
+          <div className="mt-3 rounded-xl border border-accent/30 bg-accent/5 p-3">
+            <button
+              type="button"
+              onClick={handleMakeFillable}
+              disabled={isProcessing}
+              className="min-h-11 w-full rounded-xl border border-accent px-4 text-sm font-semibold text-accent transition-colors hover:bg-accent/10 disabled:opacity-60"
+            >
+              {processingAction === "make-fillable" ? "Preparing suggestions..." : "Make this fillable"}
+            </button>
+            <p className="mt-2 text-center text-xs leading-relaxed text-text-muted">
+              Analyse this page locally in your browser. You will review every suggestion before anything is added.
+            </p>
+          </div>
+        )}
       </div>
     </div>
   );

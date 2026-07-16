@@ -12,6 +12,12 @@ import {
 import { normalizeDocumentUpload } from "@/lib/document-intake";
 import { isCleanablePhoto } from "@/lib/image-cleanup";
 import { PhotoCleanupModal } from "@/components/PhotoCleanupModal";
+import { createDocumentRevision } from "@/lib/field-suggestions";
+import {
+  clearFieldSuggestionIntent,
+  isFieldSuggestionReviewEnabled,
+  storeFieldSuggestionIntent,
+} from "@/lib/field-suggestion-rollout";
 import {
   DOCUMENT_DROPZONE_ACCEPT,
   IMAGE_CAPTURE_ACCEPT,
@@ -29,17 +35,22 @@ import {
  */
 export function LandingUploadBox() {
   const router = useRouter();
+  const makeFillableEnabled = isFieldSuggestionReviewEnabled();
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [pendingPhoto, setPendingPhoto] = useState<File | null>(null);
   const photoCaptureInputRef = useRef<HTMLInputElement>(null);
 
   const handleFile = useCallback(
-    async (file: File) => {
+    async (file: File, options?: { makeFillable?: boolean }) => {
       setError(null);
       setLoading(true);
+      clearFieldSuggestionIntent();
       try {
         const upload = await normalizeDocumentUpload(file);
+        const documentRevision = options?.makeFillable && makeFillableEnabled && upload.sourceType === "image"
+          ? await createDocumentRevision(upload.pdfBytes)
+          : null;
         // Clear any previous editor session so the new file restores cleanly.
         await clearEditorState();
         await savePdfToIndexedDB(upload.pdfBytes);
@@ -47,13 +58,15 @@ export function LandingUploadBox() {
         if (upload.sourceType === "image" && typeof window !== "undefined") {
           window.sessionStorage.setItem("qf-photo-capture-source", "1");
         }
+        if (documentRevision) storeFieldSuggestionIntent(documentRevision);
         router.push("/editor");
       } catch (error) {
+        clearFieldSuggestionIntent();
         setError(error instanceof Error ? error.message : "That file could not be opened. Try a different file.");
         setLoading(false);
       }
     },
-    [router]
+    [makeFillableEnabled, router]
   );
 
   const onDrop = useCallback(
@@ -173,11 +186,19 @@ export function LandingUploadBox() {
       {pendingPhoto && (
         <PhotoCleanupModal
           file={pendingPhoto}
+          makeFillableEnabled={makeFillableEnabled}
           onConfirm={(cleanedFile) => {
             setPendingPhoto(null);
             void handleFile(cleanedFile);
           }}
-          onCancel={() => setPendingPhoto(null)}
+          onMakeFillable={makeFillableEnabled ? (cleanedFile) => {
+            setPendingPhoto(null);
+            void handleFile(cleanedFile, { makeFillable: true });
+          } : undefined}
+          onCancel={() => {
+            clearFieldSuggestionIntent();
+            setPendingPhoto(null);
+          }}
         />
       )}
     </div>
