@@ -8,7 +8,7 @@
     "build": "next build --webpack",
     "start": "next start",
     "lint": "eslint",
-    "qa": "jest --passWithNoTests && playwright test --reporter=list",
+    "qa": "jest --passWithNoTests && QUICKFILL_STANDARD_QA=1 PLAYWRIGHT_BASE_URL=http://localhost:3000 playwright test --reporter=list",
     "qa:clerk": "TMPDIR=/tmp TMP=/tmp TEMP=/tmp playwright test --config=playwright.clerk.config.ts",
     "qa:pdf": "playwright test tests/pdf-accuracy-pack.spec.ts --reporter=list",
     "qa:pdf:prod": "PLAYWRIGHT_BASE_URL=https://getquickfill.com playwright test tests/pdf-accuracy-pack.spec.ts --reporter=list",

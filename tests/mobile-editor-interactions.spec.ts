@@ -121,15 +121,30 @@ test.describe("mobile editor field interactions", () => {
     await expect(page.getByText("Agreements")).toBeVisible();
     await expect(page.getByText("Worksheets")).toBeVisible();
     await expect(page.getByRole("button", { name: "Choose file" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Take photo" })).toBeVisible();
     await expect(page.getByText("Drag & drop your PDF here")).toBeHidden();
-    const uploadInputs = page.locator("input[type='file']");
-    await expect(uploadInputs).toHaveCount(2);
-    await expect(uploadInputs.first()).toBeHidden();
-    await expect(uploadInputs.nth(1)).toBeHidden();
-    await expect(page.getByTestId("document-upload-input")).toBeHidden();
-    await expect(uploadInputs.first()).toHaveAttribute("accept", /application\/pdf/);
-    await expect(uploadInputs.first()).toHaveAttribute("accept", /image\/jpeg/);
-    await expect(uploadInputs.first()).toHaveAttribute("accept", /image\/png/);
+
+    const mobilePickerInput = page.locator(
+      "input[type='file']:not([capture]):not([data-testid='document-upload-input'])"
+    );
+    await expect(mobilePickerInput).toHaveCount(1);
+    await expect(mobilePickerInput).toBeHidden();
+    await expect(mobilePickerInput).toHaveAttribute("accept", /application\/pdf/);
+    await expect(mobilePickerInput).toHaveAttribute("accept", /image\/jpeg/);
+    await expect(mobilePickerInput).toHaveAttribute("accept", /image\/png/);
+
+    const photoCaptureInput = page.locator('input[type="file"][aria-label="Take photo"]');
+    await expect(photoCaptureInput).toHaveCount(1);
+    await expect(photoCaptureInput).toBeHidden();
+    await expect(photoCaptureInput).toHaveAttribute("accept", /image\/jpeg/);
+    await expect(photoCaptureInput).toHaveAttribute("accept", /image\/png/);
+    await expect(photoCaptureInput).toHaveAttribute("capture", "environment");
+
+    const fullEditorUploadInput = page.getByTestId("document-upload-input");
+    await expect(fullEditorUploadInput).toBeHidden();
+    await expect(fullEditorUploadInput).toHaveAttribute("accept", /application\/pdf/);
+    await expect(fullEditorUploadInput).toHaveAttribute("accept", /image\/jpeg/);
+    await expect(fullEditorUploadInput).toHaveAttribute("accept", /image\/png/);
     await expect(page.getByText(/detected fields/i)).toHaveCount(0);
     await expect(page.getByText(/Tax and government forms/i)).toHaveCount(0);
   });
