@@ -14,6 +14,7 @@ import { SupportForm } from "@/components/SupportForm";
 import { DownloadPreviewGate } from "@/components/DownloadPreviewGate";
 import { AddAnotherPagePrompt } from "@/components/AddAnotherPagePrompt";
 import { SaveProgressPrompt } from "@/components/SaveProgressPrompt";
+import { FieldSuggestionReview, type FieldSuggestionReviewStatus } from "@/components/FieldSuggestionReview";
 import type { PdfViewerHandle } from "@/components/PdfViewer";
 import { useHistory } from "@/lib/use-history";
 import { detectAcroFormFields } from "@/lib/pdf-utils";
@@ -50,6 +51,20 @@ import { isCleanablePhoto } from "@/lib/image-cleanup";
 import { clearLocalSignature, loadLocalSignature, saveLocalSignature } from "@/lib/signature-store";
 import { clampGestureZoom } from "@/lib/pinch-zoom";
 import { PhotoCleanupModal } from "@/components/PhotoCleanupModal";
+import {
+  createDocumentRevision,
+  fieldSuggestionsToEditorFields,
+  replaceFieldSuggestions,
+  validateFieldSuggestions,
+  withSuggestionType,
+  type FieldSuggestion,
+  type SuggestedFieldType,
+} from "@/lib/field-suggestions";
+import {
+  clearFieldSuggestionIntent,
+  consumeFieldSuggestionIntent,
+  isFieldSuggestionReviewEnabled,
+} from "@/lib/field-suggestion-rollout";
 
 const ZOOM_LEVELS = [50, 75, 100, 125, 150, 175, 200];
 const GESTURE_HINT_KEY = "quickfill_gesture_hint_seen";
@@ -59,6 +74,15 @@ const SNAP_MAX = 175;
 // SNAP_MIN so the full page fits the screen
 const isMobileDevice = () => typeof window !== "undefined" && window.innerWidth < 1024;
 type LocalSaveStatus = "idle" | "saved" | "restored";
+
+interface ActiveFieldSuggestionReview {
+  documentRevision: string;
+  status: FieldSuggestionReviewStatus;
+  suggestions: FieldSuggestion[];
+  reviewVersion: number;
+  showAddAnotherPagePromptAfter: boolean;
+  errorMessage?: string;
+}
 
 const DEFAULT_TOOL_DEFAULTS: ToolDefaultState = {
   select: {},
@@ -209,6 +233,7 @@ function LocalSaveBadge({ status }: { status: LocalSaveStatus }) {
 }
 
 function EditorPageContent() {
+  const fieldSuggestionReviewEnabled = isFieldSuggestionReviewEnabled();
   const [pdfBytes, setPdfBytes] = useState<ArrayBuffer | null>(null);
   const [fileName, setFileName] = useState<string>("");
   const [activeTool, setActiveTool] = useState<ToolType>("select");
@@ -220,6 +245,7 @@ function EditorPageContent() {
   const addPageInputRef = useRef<HTMLInputElement | null>(null);
   const [pendingAddPagePhoto, setPendingAddPagePhoto] = useState<File | null>(null);
   const [showAddAnotherPagePrompt, setShowAddAnotherPagePrompt] = useState(false);
+  const [fieldSuggestionReview, setFieldSuggestionReview] = useState<ActiveFieldSuggestionReview | null>(null);
   const [showRemovePageConfirm, setShowRemovePageConfirm] = useState(false);
   const [isRemovingPage, setIsRemovingPage] = useState(false);
   const [totalPages, setTotalPages] = useState(0);
@@ -253,12 +279,16 @@ function EditorPageContent() {
   const [showWelcomeModal, setShowWelcomeModal] = useState(false);
   const [showTour, setShowTour] = useState(false);
   const [activeTemplate, setActiveTemplate] = useState<string | null>(null);
-  const { isLoaded, isSignedIn } = useAuth();
+  const { isLoaded, isSignedIn, userId, sessionId } = useAuth();
   const { fields, set: setFields, undo, redo, reset, canUndo, canRedo } = useHistory();
   const restoredRef = useRef(false);
   const initialRestoreDoneRef = useRef(false);
   const downloadReadyFiredRef = useRef(false);
   const downloadCancelledHandledRef = useRef(false);
+  const currentDocumentRevisionRef = useRef<string | null>(null);
+  const signatureLoadSessionKeyRef = useRef<string | null>(null);
+  const signatureActiveSessionKeyRef = useRef<string | null>(null);
+  const signatureChangedThisSessionRef = useRef(false);
   const searchParams = useSearchParams();
   const advancedMobile = searchParams.get("advanced") === "1";
   const showFullEditorOnMobile = advancedMobile || Boolean(pdfBytes);
@@ -272,6 +302,12 @@ function EditorPageContent() {
   const pdfViewerRef = useRef<PdfViewerHandle>(null);
   const viewerContainerRef = useRef<HTMLDivElement>(null);
   const activePdfTool = activeTool === "mask-eraser" ? activeTool : placementToolFor(activeTool);
+  const authenticatedSignatureSessionKey = isLoaded && isSignedIn && userId && sessionId
+    ? JSON.stringify([userId, sessionId])
+    : null;
+  // A resolved auth transition invalidates stale responses during this render.
+  // Temporary unresolved states preserve the last continuous session identity.
+  if (isLoaded) signatureActiveSessionKeyRef.current = authenticatedSignatureSessionKey;
 
   const handleToolSelect = useCallback((tool: ToolType) => {
     if (tool === "mask-eraser") {
@@ -294,6 +330,21 @@ function EditorPageContent() {
     setLocalSaveStatus(status);
   }, []);
 
+  const beginFieldSuggestionReview = useCallback((
+    documentRevision: string,
+    showAddAnotherPagePromptAfter: boolean,
+  ) => {
+    setShowAddAnotherPagePrompt(false);
+    setCurrentPage(0);
+    setFieldSuggestionReview({
+      documentRevision,
+      status: "processing",
+      suggestions: [],
+      reviewVersion: 0,
+      showAddAnotherPagePromptAfter,
+    });
+  }, []);
+
   // Dynamic page title based on fileName
   useEffect(() => {
     if (fileName) {
@@ -304,31 +355,53 @@ function EditorPageContent() {
     }
   }, [fileName]);
 
-  // Load saved signature on mount: account signature wins, otherwise
-  // fall back to the signature saved on this device (anonymous users).
+  // Wait for Clerk before loading an account signature. Anonymous users use
+  // only the signature saved on this device and never call the protected API.
   useEffect(() => {
+    const loadDeviceSignature = () => {
+      if (signatureChangedThisSessionRef.current) return;
+      const local = loadLocalSignature();
+      setSavedSignature(local);
+      setSavedSignatureSource(local ? "device" : null);
+    };
+
+    if (!isLoaded) return;
+
+    if (!authenticatedSignatureSessionKey) {
+      signatureLoadSessionKeyRef.current = null;
+      loadDeviceSignature();
+      return;
+    }
+
+    if (signatureLoadSessionKeyRef.current === authenticatedSignatureSessionKey) return;
+    if (signatureLoadSessionKeyRef.current !== null) loadDeviceSignature();
+    signatureLoadSessionKeyRef.current = authenticatedSignatureSessionKey;
+    const requestedSessionKey = authenticatedSignatureSessionKey;
+
     fetch("/api/signature")
       .then((r) => r.ok ? r.json() : null)
       .then((data) => {
+        if (
+          signatureActiveSessionKeyRef.current !== requestedSessionKey ||
+          signatureLoadSessionKeyRef.current !== requestedSessionKey ||
+          signatureChangedThisSessionRef.current
+        ) return;
         if (data?.signatureDataUrl) {
           setSavedSignature(data.signatureDataUrl);
           setSavedSignatureSource("account");
           return;
         }
-        const local = loadLocalSignature();
-        if (local) {
-          setSavedSignature(local);
-          setSavedSignatureSource("device");
-        }
+        loadDeviceSignature();
       })
       .catch(() => {
-        const local = loadLocalSignature();
-        if (local) {
-          setSavedSignature(local);
-          setSavedSignatureSource("device");
-        }
+        if (
+          signatureActiveSessionKeyRef.current !== requestedSessionKey ||
+          signatureLoadSessionKeyRef.current !== requestedSessionKey ||
+          signatureChangedThisSessionRef.current
+        ) return;
+        loadDeviceSignature();
       });
-  }, []);
+  }, [authenticatedSignatureSessionKey, isLoaded]);
 
 
   // Show welcome banner for first-time users
@@ -359,16 +432,27 @@ function EditorPageContent() {
     setZoom(isMobileDevice() ? 100 : loadZoomFromLocalStorage());
 
     loadPdfFromIndexedDB().then(async (savedPdf) => {
-      if (!savedPdf) return;
+      if (!savedPdf) {
+        clearFieldSuggestionIntent();
+        return;
+      }
       const savedFields = repairDuplicateEditorFieldIds(loadFieldsFromLocalStorage());
       const savedPage = loadPageFromLocalStorage();
       const savedName = loadFileNameFromLocalStorage();
       const startedFromPhoto = window.sessionStorage.getItem("qf-photo-capture-source") === "1";
       window.sessionStorage.removeItem("qf-photo-capture-source");
+      const documentRevision = fieldSuggestionReviewEnabled
+        ? await createDocumentRevision(savedPdf)
+        : null;
+      const suggestionIntent = documentRevision && startedFromPhoto
+        ? consumeFieldSuggestionIntent(documentRevision)
+        : null;
+      if (!fieldSuggestionReviewEnabled || !startedFromPhoto) clearFieldSuggestionIntent();
+      currentDocumentRevisionRef.current = suggestionIntent ? documentRevision : null;
 
       setPdfBytes(savedPdf);
       setFileName(savedName);
-      setCurrentPage(savedPage);
+      setCurrentPage(suggestionIntent ? 0 : savedPage);
       if (savedFields.length > 0) {
         reset(savedFields);
         saveFieldsToLocalStorage(savedFields);
@@ -376,7 +460,11 @@ function EditorPageContent() {
       markLocalSave("restored");
       setShowRestoredBanner(true);
       setTimeout(() => setShowRestoredBanner(false), 3000);
-      if (startedFromPhoto) setShowAddAnotherPagePrompt(true);
+      if (suggestionIntent && documentRevision) {
+        beginFieldSuggestionReview(documentRevision, startedFromPhoto);
+      } else if (startedFromPhoto) {
+        setShowAddAnotherPagePrompt(true);
+      }
       pollCanvasForContent(pdfViewerRef, setMinimapCanvas);
 
       // Mark initial restoration as complete so persist effect can save
@@ -390,7 +478,81 @@ function EditorPageContent() {
         // silent
       }
     });
-  }, [reset, markLocalSave]);
+  }, [reset, markLocalSave, fieldSuggestionReviewEnabled, beginFieldSuggestionReview]);
+
+  useEffect(() => {
+    if (!pdfBytes || !fieldSuggestionReview || fieldSuggestionReview.status !== "processing") return;
+
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    let attempts = 0;
+    const expectedRevision = fieldSuggestionReview.documentRevision;
+
+    const fail = (message: string) => {
+      if (cancelled) return;
+      setFieldSuggestionReview((current) => current?.documentRevision === expectedRevision
+        ? { ...current, status: "error", suggestions: [], errorMessage: message }
+        : current);
+    };
+
+    const inspect = async () => {
+      if (cancelled) return;
+      if (currentDocumentRevisionRef.current !== expectedRevision || currentPage !== 0) {
+        fail("The document changed before suggestions could be reviewed.");
+        return;
+      }
+
+      const canvas = pdfViewerRef.current?.getCanvas();
+      const viewport = pdfViewerRef.current?.getViewportDims();
+      let hasRenderedContent = false;
+      if (canvas && viewport) {
+        try {
+          const sample = canvas.getContext("2d")?.getImageData(canvas.width / 2, canvas.height / 2, 1, 1);
+          hasRenderedContent = Boolean(sample && sample.data[3] > 0);
+        } catch {
+          hasRenderedContent = false;
+        }
+      }
+
+      if (canvas && viewport && hasRenderedContent) {
+        try {
+          const { detectLocalFieldSuggestions } = await import("@/lib/local-field-suggestion-provider");
+          const suggestions = detectLocalFieldSuggestions({
+            canvas,
+            viewport,
+            documentRevision: expectedRevision,
+            pageIndex: 0,
+          });
+          if (cancelled || currentDocumentRevisionRef.current !== expectedRevision) return;
+          setFieldSuggestionReview((current) => current?.documentRevision === expectedRevision
+            ? {
+                ...current,
+                status: "review",
+                suggestions: replaceFieldSuggestions(suggestions),
+                errorMessage: undefined,
+              }
+            : current);
+          return;
+        } catch {
+          fail("Field suggestions are unavailable for this page.");
+          return;
+        }
+      }
+
+      attempts += 1;
+      if (attempts > 20) {
+        fail("The page was not ready for local field detection.");
+        return;
+      }
+      timer = setTimeout(() => void inspect(), 150);
+    };
+
+    timer = setTimeout(() => void inspect(), 300);
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+    };
+  }, [pdfBytes, currentPage, fieldSuggestionReview]);
 
   // Persist fields on change (only after initial restoration is complete)
   useEffect(() => {
@@ -524,9 +686,17 @@ function EditorPageContent() {
       file: File,
       bytes: ArrayBuffer,
       source: "upload" | "template" = "upload",
-      options?: { skipAcroFormDetection?: boolean }
+      options?: {
+        skipAcroFormDetection?: boolean;
+        requestFieldSuggestions?: boolean;
+        documentRevision?: string;
+      }
     ) => {
       setIsLoading(true);
+      setFieldSuggestionReview(null);
+      setShowAddAnotherPagePrompt(false);
+      currentDocumentRevisionRef.current = null;
+      clearFieldSuggestionIntent();
       if (source === "upload") {
         trackEvent("editor_upload_started", { sizeKb: Math.round(bytes.byteLength / 1024) });
         trackMetaEvent('QF_UploadStarted', { sizeKb: Math.round(bytes.byteLength / 1024) });
@@ -537,6 +707,12 @@ function EditorPageContent() {
           setTimeout(() => setToast(null), 5000);
           setIsLoading(false);
           return;
+        }
+
+        let requestedDocumentRevision: string | null = null;
+        if (fieldSuggestionReviewEnabled && options?.requestFieldSuggestions && options.documentRevision) {
+          const currentRevision = await createDocumentRevision(bytes);
+          if (currentRevision === options.documentRevision) requestedDocumentRevision = currentRevision;
         }
 
         // BUG 1 FIX: Clear ALL state before loading new template
@@ -557,6 +733,7 @@ function EditorPageContent() {
 
         setPdfBytes(bytes);
         setFileName(file.name);
+        currentDocumentRevisionRef.current = requestedDocumentRevision;
 
         // Detect AcroForm fields
         let detectedAcroFieldCount = 0;
@@ -611,8 +788,12 @@ function EditorPageContent() {
           detectedFieldCount: detectedAcroFieldCount,
         });
         trackMetaEvent('ViewContent', { content_name: 'pdf_editor', content_type: source });
+        if (requestedDocumentRevision) beginFieldSuggestionReview(requestedDocumentRevision, false);
       } catch {
         setPdfBytes(null);
+        setFieldSuggestionReview(null);
+        currentDocumentRevisionRef.current = null;
+        clearFieldSuggestionIntent();
         setToast("This PDF could not be opened. It may be encrypted or corrupted. Try a different file.");
         setTimeout(() => setToast(null), 5000);
       } finally {
@@ -636,7 +817,7 @@ function EditorPageContent() {
         setTimeout(pollCanvas, 300);
       }
     },
-    [reset, pageScales, markLocalSave]
+    [reset, pageScales, markLocalSave, fieldSuggestionReviewEnabled, beginFieldSuggestionReview]
   );
 
   // Load template from URL param - reset state when template changes
@@ -887,6 +1068,10 @@ function EditorPageContent() {
   }, [pdfBytes, totalPages, isRemovingPage, currentPage, fields, reset, pageScales, markLocalSave]);
 
   const handleStartOver = useCallback(() => {
+    clearFieldSuggestionIntent();
+    currentDocumentRevisionRef.current = null;
+    setFieldSuggestionReview(null);
+    setShowAddAnotherPagePrompt(false);
     clearEditorState();
     setLocalSaveStatus("idle");
     setPdfBytes(null);
@@ -904,6 +1089,78 @@ function EditorPageContent() {
     setToast(msg);
     setTimeout(() => setToast(null), duration);
   }, []);
+
+  const finishFieldSuggestionReview = useCallback(() => {
+    const showAddAnotherPagePromptAfter = fieldSuggestionReview?.showAddAnotherPagePromptAfter ?? false;
+    clearFieldSuggestionIntent();
+    setFieldSuggestionReview(null);
+    if (showAddAnotherPagePromptAfter) setShowAddAnotherPagePrompt(true);
+  }, [fieldSuggestionReview]);
+
+  const handleFieldSuggestionTypeChange = useCallback((id: string, type: SuggestedFieldType) => {
+    setFieldSuggestionReview((current) => current
+      ? {
+          ...current,
+          suggestions: current.suggestions.map((suggestion) =>
+            suggestion.id === id ? withSuggestionType(suggestion, type) : suggestion),
+        }
+      : current);
+  }, []);
+
+  const handleFieldSuggestionRetry = useCallback(() => {
+    setFieldSuggestionReview((current) => current
+      ? {
+          ...current,
+          status: "processing",
+          suggestions: [],
+          errorMessage: undefined,
+          reviewVersion: current.reviewVersion + 1,
+        }
+      : current);
+  }, []);
+
+  const handleFieldSuggestionCommit = useCallback((acceptedSuggestions: readonly FieldSuggestion[]) => {
+    if (!fieldSuggestionReview || fieldSuggestionReview.status !== "review") return;
+    const viewport = pdfViewerRef.current?.getViewportDims();
+    const isCurrentDocument = currentDocumentRevisionRef.current === fieldSuggestionReview.documentRevision;
+    if (!viewport || !isCurrentDocument || currentPage !== 0) {
+      setFieldSuggestionReview((current) => current
+        ? {
+            ...current,
+            status: "error",
+            suggestions: [],
+            errorMessage: "The document changed before these fields could be added.",
+          }
+        : current);
+      return;
+    }
+
+    const validated = validateFieldSuggestions(acceptedSuggestions, {
+      documentRevision: fieldSuggestionReview.documentRevision,
+      pageIndex: 0,
+      pageWidth: viewport.width,
+      pageHeight: viewport.height,
+    });
+    if (validated.length !== acceptedSuggestions.length) {
+      setFieldSuggestionReview((current) => current
+        ? {
+            ...current,
+            status: "error",
+            suggestions: [],
+            errorMessage: "One or more suggestions were no longer valid.",
+          }
+        : current);
+      return;
+    }
+
+    if (validated.length > 0) {
+      setFields((previousFields) => [
+        ...previousFields,
+        ...fieldSuggestionsToEditorFields(validated, previousFields),
+      ]);
+    }
+    finishFieldSuggestionReview();
+  }, [currentPage, fieldSuggestionReview, finishFieldSuggestionReview, setFields]);
 
   // One-time gesture discovery hint on touch devices (PR #94). Non-intrusive:
   // a single toast the first time a document opens, never again after that.
@@ -1010,6 +1267,7 @@ function EditorPageContent() {
     async (dataUrl: string) => {
       // Always remember on this device so anonymous users keep their
       // signature across sessions; account save stays best-effort.
+      signatureChangedThisSessionRef.current = true;
       saveLocalSignature(dataUrl);
       setSavedSignature(dataUrl);
       setSavedSignatureSource("device");
@@ -1055,6 +1313,7 @@ function EditorPageContent() {
   }, [pendingSignatureField, savedSignature, setFields]);
 
   const handleSignatureDelete = useCallback(async () => {
+    signatureChangedThisSessionRef.current = true;
     clearLocalSignature();
     setSavedSignature(null);
     setSavedSignatureSource(null);
@@ -1459,12 +1718,15 @@ function EditorPageContent() {
             </div>
           )}
           <UploadZone
-            onFileLoad={(upload: NormalizedDocumentUpload) =>
+            onFileLoad={(upload: NormalizedDocumentUpload, suggestionOptions) =>
               handleFileLoad(
                 new File([upload.pdfBytes], upload.fileName, { type: "application/pdf" }),
                 upload.pdfBytes,
                 "upload",
-                { skipAcroFormDetection: upload.skipAcroFormDetection }
+                {
+                  skipAcroFormDetection: upload.skipAcroFormDetection,
+                  ...suggestionOptions,
+                }
               )
             }
           />
@@ -1676,8 +1938,21 @@ function EditorPageContent() {
         />
       )}
 
+      {fieldSuggestionReview && (
+        <FieldSuggestionReview
+          key={`${fieldSuggestionReview.documentRevision}:${fieldSuggestionReview.reviewVersion}`}
+          status={fieldSuggestionReview.status}
+          suggestions={fieldSuggestionReview.suggestions}
+          errorMessage={fieldSuggestionReview.errorMessage}
+          onTypeChange={handleFieldSuggestionTypeChange}
+          onCommit={handleFieldSuggestionCommit}
+          onRetry={handleFieldSuggestionRetry}
+          onCancel={finishFieldSuggestionReview}
+        />
+      )}
+
       <AddAnotherPagePrompt
-        open={showAddAnotherPagePrompt}
+        open={showAddAnotherPagePrompt && !fieldSuggestionReview}
         onAddAnother={() => {
           setShowAddAnotherPagePrompt(false);
           addPageInputRef.current?.click();

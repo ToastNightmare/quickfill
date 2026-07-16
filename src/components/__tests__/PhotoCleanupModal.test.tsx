@@ -74,6 +74,7 @@ describe("PhotoCleanupModal", () => {
     expect(screen.getByRole("button", { name: "Rotate right" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Use photo" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Cancel" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Make this fillable" })).not.toBeInTheDocument();
     expect(screen.getByRole("checkbox", { name: "Document mode" })).toBeChecked();
     expect(screen.queryByRole("button", { name: "Reset crop" })).not.toBeInTheDocument();
 
@@ -223,6 +224,44 @@ describe("PhotoCleanupModal", () => {
     await waitFor(() => {
       expect(onConfirm).toHaveBeenCalledWith(photo);
     });
+  });
+
+  it("shows the local-only secondary action only when explicitly enabled", () => {
+    render(
+      <PhotoCleanupModal
+        file={photo}
+        onConfirm={jest.fn()}
+        makeFillableEnabled
+        onMakeFillable={jest.fn()}
+        onCancel={jest.fn()}
+      />
+    );
+
+    expect(screen.getByRole("button", { name: "Use photo" })).toHaveClass("bg-accent");
+    expect(screen.getByRole("button", { name: "Make this fillable" })).toBeInTheDocument();
+    expect(screen.getByText(/Analyse this page locally in your browser/i)).toBeInTheDocument();
+  });
+
+  it("cleans once and passes the cleaned photo to Make this fillable", async () => {
+    const cleaned = new File([new Uint8Array([9])], "form.jpg", { type: "image/jpeg" });
+    const onConfirm = jest.fn();
+    const onMakeFillable = jest.fn();
+    mockedCleanup.mockResolvedValue(cleaned);
+
+    render(
+      <PhotoCleanupModal
+        file={photo}
+        onConfirm={onConfirm}
+        makeFillableEnabled
+        onMakeFillable={onMakeFillable}
+        onCancel={jest.fn()}
+      />
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Make this fillable" }));
+
+    await waitFor(() => expect(mockedCleanup).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(onMakeFillable).toHaveBeenCalledWith(cleaned));
+    expect(onConfirm).not.toHaveBeenCalled();
   });
 
   it("Cancel aborts without confirming", () => {

@@ -6,10 +6,23 @@ import type { EditorField, ToolType } from "@/lib/types";
 const LOCAL_KEY = "quickfill_signature";
 const LOCAL_SIGNATURE = "data:image/png;base64,bG9jYWxTaWdMb2NhbA==";
 const ACCOUNT_SIGNATURE = "data:image/png;base64,YWNjb3VudFNpZw==";
+const SECOND_ACCOUNT_SIGNATURE = "data:image/png;base64,c2Vjb25kQWNjb3VudFNpZw==";
 const DRAWN_SIGNATURE = "data:image/png;base64,ZHJhd25TaWc=";
 
+const mockAuthState: {
+  isLoaded: boolean;
+  isSignedIn: boolean | undefined;
+  userId: string | null;
+  sessionId: string | null;
+} = {
+  isLoaded: true,
+  isSignedIn: true,
+  userId: "user_signature_test",
+  sessionId: "session_signature_test",
+};
+
 jest.mock("@clerk/nextjs", () => ({
-  useAuth: () => ({ isLoaded: true, isSignedIn: true }),
+  useAuth: () => mockAuthState,
 }));
 
 jest.mock("next/navigation", () => ({
@@ -235,9 +248,10 @@ jest.mock("@/lib/pdfjs-client", () => ({
 type SignatureApiOptions = {
   getSignature?: string | null;
   authed?: boolean;
+  getError?: boolean;
 };
 
-function mockSignatureApi({ getSignature = null, authed = false }: SignatureApiOptions = {}) {
+function mockSignatureApi({ getSignature = null, authed = false, getError = false }: SignatureApiOptions = {}) {
   return jest.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     if (url === "/api/signature") {
@@ -246,6 +260,7 @@ function mockSignatureApi({ getSignature = null, authed = false }: SignatureApiO
         return { ok: false, status: 401, json: async () => ({ error: "Unauthorized" }) } as Response;
       }
       if (method === "GET") {
+        if (getError) throw new Error("Signature request failed");
         return { ok: true, status: 200, json: async () => ({ signatureDataUrl: getSignature }) } as Response;
       }
       return { ok: true, status: 200, json: async () => ({ ok: true }) } as Response;
@@ -255,11 +270,12 @@ function mockSignatureApi({ getSignature = null, authed = false }: SignatureApiO
 }
 
 async function loadEditorWithPdf() {
-  render(<EditorPage />);
+  const view = render(<EditorPage />);
   fireEvent.click(screen.getByRole("button", { name: "Mock upload" }));
   await screen.findByTestId("pdf-viewer");
   // Flush the mount-time /api/signature fetch chain
   await act(async () => {});
+  return view;
 }
 
 function fieldsJson(): { id: string; type: string; signatureDataUrl: string | null }[] {
@@ -281,6 +297,10 @@ describe("Signature reuse", () => {
     localStorage.clear();
     sessionStorage.clear();
     placedSignatureCount = 0;
+    mockAuthState.isLoaded = true;
+    mockAuthState.isSignedIn = true;
+    mockAuthState.userId = "user_signature_test";
+    mockAuthState.sessionId = "session_signature_test";
   });
 
   afterEach(() => {
@@ -288,7 +308,23 @@ describe("Signature reuse", () => {
     jest.restoreAllMocks();
   });
 
-  it("anonymous 401 falls back to the signature saved on this device", async () => {
+  it("does not request an account signature while auth is unresolved", async () => {
+    mockAuthState.isLoaded = false;
+    mockAuthState.isSignedIn = undefined;
+    mockAuthState.userId = null;
+    mockAuthState.sessionId = null;
+    global.fetch = mockSignatureApi({ authed: true, getSignature: ACCOUNT_SIGNATURE });
+
+    await loadEditorWithPdf();
+
+    expect(screen.getByTestId("pdf-viewer")).toBeInTheDocument();
+    expect(signatureApiCalls("GET")).toBe(0);
+  });
+
+  it("resolved anonymous auth uses the device signature without an account request", async () => {
+    mockAuthState.isSignedIn = false;
+    mockAuthState.userId = null;
+    mockAuthState.sessionId = null;
     localStorage.setItem(LOCAL_KEY, LOCAL_SIGNATURE);
     global.fetch = mockSignatureApi({ authed: false });
 
@@ -300,6 +336,7 @@ describe("Signature reuse", () => {
     expect(fields[0].signatureDataUrl).toBe(LOCAL_SIGNATURE);
     // Auto-applied, no modal needed
     expect(screen.queryByTestId("signature-modal")).not.toBeInTheDocument();
+    expect(signatureApiCalls("GET")).toBe(0);
   });
 
   it("account signature wins over the local one when signed in", async () => {
@@ -310,6 +347,223 @@ describe("Signature reuse", () => {
     fireEvent.click(screen.getByRole("button", { name: "Mock place signature" }));
 
     expect(fieldsJson()[0].signatureDataUrl).toBe(ACCOUNT_SIGNATURE);
+    expect(signatureApiCalls("GET")).toBe(1);
+  });
+
+  it("does not duplicate the account request when the same authenticated session rerenders", async () => {
+    global.fetch = mockSignatureApi({ authed: true, getSignature: ACCOUNT_SIGNATURE });
+
+    const { rerender } = await loadEditorWithPdf();
+    expect(signatureApiCalls("GET")).toBe(1);
+
+    rerender(<EditorPage />);
+    await act(async () => {});
+
+    expect(signatureApiCalls("GET")).toBe(1);
+  });
+
+  it("does not duplicate the account request when auth is temporarily unresolved and returns to the same session", async () => {
+    global.fetch = mockSignatureApi({ authed: true, getSignature: ACCOUNT_SIGNATURE });
+
+    const { rerender } = await loadEditorWithPdf();
+    expect(signatureApiCalls("GET")).toBe(1);
+
+    mockAuthState.isLoaded = false;
+    mockAuthState.isSignedIn = undefined;
+    mockAuthState.userId = null;
+    mockAuthState.sessionId = null;
+    rerender(<EditorPage />);
+    await act(async () => {});
+
+    mockAuthState.isLoaded = true;
+    mockAuthState.isSignedIn = true;
+    mockAuthState.userId = "user_signature_test";
+    mockAuthState.sessionId = "session_signature_test";
+    rerender(<EditorPage />);
+    await act(async () => {});
+
+    expect(signatureApiCalls("GET")).toBe(1);
+  });
+
+  it("loads again after resolved sign-out and a new session for the same user", async () => {
+    global.fetch = mockSignatureApi({ authed: true, getSignature: ACCOUNT_SIGNATURE });
+
+    const { rerender } = await loadEditorWithPdf();
+    expect(signatureApiCalls("GET")).toBe(1);
+
+    mockAuthState.isSignedIn = false;
+    mockAuthState.userId = null;
+    mockAuthState.sessionId = null;
+    rerender(<EditorPage />);
+    await act(async () => {});
+
+    mockAuthState.isSignedIn = true;
+    mockAuthState.userId = "user_signature_test";
+    mockAuthState.sessionId = "session_signature_test_new";
+    rerender(<EditorPage />);
+    await act(async () => {});
+
+    expect(signatureApiCalls("GET")).toBe(2);
+  });
+
+  it("rejects a late response from an old session for the same user", async () => {
+    const accountLoadResolvers: Array<(response: Response) => void> = [];
+    global.fetch = jest.fn((input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      const method = init?.method ?? "GET";
+      if (String(input) === "/api/signature" && method === "GET") {
+        return new Promise((resolve) => accountLoadResolvers.push(resolve));
+      }
+      return Promise.resolve({ ok: true, status: 200, json: async () => ({ ok: true }) } as Response);
+    });
+
+    const { rerender } = await loadEditorWithPdf();
+    expect(accountLoadResolvers).toHaveLength(1);
+
+    mockAuthState.sessionId = "session_signature_test_new";
+    rerender(<EditorPage />);
+    await act(async () => {});
+    expect(accountLoadResolvers).toHaveLength(2);
+
+    await act(async () => {
+      accountLoadResolvers[1]({
+        ok: true,
+        status: 200,
+        json: async () => ({ signatureDataUrl: SECOND_ACCOUNT_SIGNATURE }),
+      } as Response);
+    });
+    await act(async () => {
+      accountLoadResolvers[0]({
+        ok: true,
+        status: 200,
+        json: async () => ({ signatureDataUrl: ACCOUNT_SIGNATURE }),
+      } as Response);
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Mock place signature" }));
+    expect(fieldsJson()[0].signatureDataUrl).toBe(SECOND_ACCOUNT_SIGNATURE);
+    expect(signatureApiCalls("GET")).toBe(2);
+  });
+
+  it("keeps different signed-in users isolated", async () => {
+    const accountLoadResolvers: Array<(response: Response) => void> = [];
+    mockAuthState.userId = "user_signature_first";
+    mockAuthState.sessionId = "session_signature_first";
+    global.fetch = jest.fn((input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      const method = init?.method ?? "GET";
+      if (String(input) === "/api/signature" && method === "GET") {
+        return new Promise((resolve) => accountLoadResolvers.push(resolve));
+      }
+      return Promise.resolve({ ok: true, status: 200, json: async () => ({ ok: true }) } as Response);
+    });
+
+    const { rerender } = await loadEditorWithPdf();
+    expect(accountLoadResolvers).toHaveLength(1);
+
+    mockAuthState.userId = "user_signature_second";
+    mockAuthState.sessionId = "session_signature_second";
+    rerender(<EditorPage />);
+    await act(async () => {});
+    expect(accountLoadResolvers).toHaveLength(2);
+
+    await act(async () => {
+      accountLoadResolvers[1]({
+        ok: true,
+        status: 200,
+        json: async () => ({ signatureDataUrl: SECOND_ACCOUNT_SIGNATURE }),
+      } as Response);
+    });
+    await act(async () => {
+      accountLoadResolvers[0]({
+        ok: true,
+        status: 200,
+        json: async () => ({ signatureDataUrl: ACCOUNT_SIGNATURE }),
+      } as Response);
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Mock place signature" }));
+    expect(fieldsJson()[0].signatureDataUrl).toBe(SECOND_ACCOUNT_SIGNATURE);
+    expect(signatureApiCalls("GET")).toBe(2);
+  });
+
+  it("does not overwrite a signature drawn while the account request is pending", async () => {
+    let resolveAccountLoad: ((response: Response) => void) | null = null;
+    global.fetch = jest.fn((input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      const method = init?.method ?? "GET";
+      if (String(input) === "/api/signature" && method === "GET") {
+        return new Promise((resolve) => {
+          resolveAccountLoad = resolve;
+        });
+      }
+      return Promise.resolve({ ok: true, status: 200, json: async () => ({ ok: true }) } as Response);
+    });
+
+    await loadEditorWithPdf();
+    fireEvent.click(screen.getByRole("button", { name: "Mock place signature" }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Mock sig save" }));
+    });
+
+    const completeAccountLoad = resolveAccountLoad;
+    if (!completeAccountLoad) throw new Error("Account signature request did not start");
+    await act(async () => {
+      completeAccountLoad({
+        ok: true,
+        status: 200,
+        json: async () => ({ signatureDataUrl: ACCOUNT_SIGNATURE }),
+      } as Response);
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Mock place signature" }));
+    expect(fieldsJson()).toHaveLength(2);
+    expect(fieldsJson().every((field) => field.signatureDataUrl === DRAWN_SIGNATURE)).toBe(true);
+    expect(signatureApiCalls("GET")).toBe(1);
+  });
+
+  it("ignores a late account response after the user becomes anonymous", async () => {
+    let resolveAccountLoad: ((response: Response) => void) | null = null;
+    localStorage.setItem(LOCAL_KEY, LOCAL_SIGNATURE);
+    global.fetch = jest.fn((input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      const method = init?.method ?? "GET";
+      if (String(input) === "/api/signature" && method === "GET") {
+        return new Promise((resolve) => {
+          resolveAccountLoad = resolve;
+        });
+      }
+      return Promise.resolve({ ok: true, status: 200, json: async () => ({ ok: true }) } as Response);
+    });
+
+    const { rerender } = await loadEditorWithPdf();
+    mockAuthState.isSignedIn = false;
+    mockAuthState.userId = null;
+    mockAuthState.sessionId = null;
+    rerender(<EditorPage />);
+    await act(async () => {});
+
+    const completeAccountLoad = resolveAccountLoad;
+    if (!completeAccountLoad) throw new Error("Account signature request did not start");
+    await act(async () => {
+      completeAccountLoad({
+        ok: true,
+        status: 200,
+        json: async () => ({ signatureDataUrl: ACCOUNT_SIGNATURE }),
+      } as Response);
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Mock place signature" }));
+    expect(fieldsJson()[0].signatureDataUrl).toBe(LOCAL_SIGNATURE);
+    expect(signatureApiCalls("GET")).toBe(1);
+  });
+
+  it("keeps the editor non-blocking when a signed-in account request fails", async () => {
+    localStorage.setItem(LOCAL_KEY, LOCAL_SIGNATURE);
+    global.fetch = mockSignatureApi({ authed: true, getError: true });
+
+    await loadEditorWithPdf();
+    expect(screen.getByTestId("pdf-viewer")).toBeInTheDocument();
+    expect(signatureApiCalls("GET")).toBe(1);
+
+    fireEvent.click(screen.getByRole("button", { name: "Mock place signature" }));
+    expect(fieldsJson()[0].signatureDataUrl).toBe(LOCAL_SIGNATURE);
   });
 
   it("ignores a corrupt local value and opens the modal instead", async () => {
