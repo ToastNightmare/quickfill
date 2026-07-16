@@ -9,6 +9,7 @@
     "start": "next start",
     "lint": "eslint",
     "qa": "jest --passWithNoTests && playwright test --reporter=list",
+    "qa:clerk": "TMPDIR=/tmp TMP=/tmp TEMP=/tmp playwright test --config=playwright.clerk.config.ts",
     "qa:pdf": "playwright test tests/pdf-accuracy-pack.spec.ts --reporter=list",
     "qa:pdf:prod": "PLAYWRIGHT_BASE_URL=https://getquickfill.com playwright test tests/pdf-accuracy-pack.spec.ts --reporter=list",
     "test": "jest",
@@ -47,6 +48,7 @@
     "svix": "^1.89.0"
   },
   "devDependencies": {
+    "@clerk/testing": "2.2.8",
     "@playwright/test": "^1.59.1",
     "@tailwindcss/postcss": "^4",
     "@testing-library/jest-dom": "^6.9.1",
