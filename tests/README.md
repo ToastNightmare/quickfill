@@ -7,14 +7,14 @@ Automated QA tests for QuickFill using Playwright.
 ### Install Dependencies
 
 ```bash
-pnpm add -D @playwright/test
-npx playwright install chromium
+pnpm install --frozen-lockfile
+pnpm exec playwright install chromium
 ```
 
 ### Install System Dependencies (requires sudo)
 
 ```bash
-npx playwright install-deps chromium
+pnpm exec playwright install-deps chromium
 ```
 
 Or manually install the required packages:
@@ -29,13 +29,25 @@ sudo apt-get install -y libnss3 libnspr4 libatk1.0-0 libatk-bridge2.0-0 libcups2
 pnpm qa
 ```
 
+Standard QA runs Jest first, then the complete standard Playwright suite against
+`http://localhost:3000`. The Playwright phase validates the local Clerk
+configuration, starts a fresh production-mode Next.js server, and uses one
+worker. Build the app first with `pnpm build`.
+
+Playwright's generated results, screenshots, videos, and traces are written to
+the operating system's temporary directory. `playwright-report/` and
+`test-results/` must not be created in the repository.
+
+The only expected standard-suite skips are the 16 PDF accuracy checks gated by
+`QUICKFILL_QA_TOKEN`. Set the token to execute those checks locally.
+
 ### PDF Accuracy Pack
 
 `pnpm qa:pdf` verifies the **local/current worktree** by default (baseURL `http://localhost:3000`).
 
 Requirements before running:
 
-1. `pnpm build` has been run in this worktree (Playwright boots `pnpm start` automatically; it reuses an already-running server on port 3000 if one exists).
+1. `pnpm build` has been run in this worktree (Playwright boots a fresh `next start` server automatically and refuses to reuse a listener on port 3000).
 2. `.env.local` exists in this worktree (copy from an existing QuickFill checkout; it is gitignored).
 3. `QUICKFILL_QA_TOKEN` is exported in the shell and matches the server value in `.env.local`. Without it, most of the pack silently skips and a "pass" is meaningless.
 4. `PLAYWRIGHT_BASE_URL` is unset, otherwise it overrides localhost.
@@ -79,20 +91,21 @@ pnpm exec playwright test --ui
 
 ## Test Coverage
 
-1. **Homepage loads** - Verifies title, hero headline, CTA button, and no console errors
-2. **Templates page loads** - Checks for 10+ template cards and "Fill This Form" buttons
-3. **Editor loads** - Verifies editor interface loads correctly
-4. **Pricing page loads** - Checks for pricing information and upgrade buttons
-5. **Template opens in editor** - Tests navigation from templates to editor
-6. **Navigation links work** - Verifies internal navigation between pages
+The standard suite covers public navigation and content, templates, the editor
+upload and saved-state flows, mobile interactions, image cleanup and rendering,
+field placement and selection, Box Field/Comb keyboard input, PDF rendering, and
+the credential-gated PDF accuracy pack.
 
 ## Configuration
 
 See `playwright.config.ts` for test configuration:
 - Test directory: `./tests`
 - Timeout: 30000ms
-- Base URL: `PLAYWRIGHT_BASE_URL` if set, otherwise `http://localhost:3000`
-- Web server: auto-starts `pnpm start` for localhost runs only (reuses an existing server)
+- Standard QA base URL: enforced as `http://localhost:3000`
+- PDF smoke base URL: `PLAYWRIGHT_BASE_URL` if set, otherwise `http://localhost:3000`
+- Web server: starts a fresh local production server for localhost runs only
+- Local workers: 1
+- Generated output: a unique directory under the operating system's temporary directory
 - Headless mode: enabled
 - Screenshots: on failure only
 - Video: retained on failure

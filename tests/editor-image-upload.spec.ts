@@ -4,10 +4,9 @@ const localBaseUrl = process.env.PLAYWRIGHT_BASE_URL ?? "";
 const runsAgainstLocalApp = /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(?::\d+)?/i.test(localBaseUrl);
 
 async function prepareEditor(page: import("@playwright/test").Page) {
-  // Pre-warm the editor route so Clerk's dev-mode keyless-sync POST-303 redirect
-  // fires and settles here, not during the actual upload step.
-  await page.goto("/editor?advanced=1");
-  await page.waitForLoadState("networkidle", { timeout: 10000 }).catch(() => {});
+  await page.goto("/editor?advanced=1", { waitUntil: "domcontentloaded" });
+  await expect(page).toHaveURL(/\/editor\?advanced=1$/);
+  await expect(page.getByText("Upload a PDF, JPG, or PNG. Up to 15MB.")).toBeVisible();
   await page.evaluate(async () => {
     localStorage.clear();
     localStorage.setItem("qf_welcome_dismissed", "1");
@@ -20,20 +19,43 @@ async function prepareEditor(page: import("@playwright/test").Page) {
   });
 }
 
+async function completePhotoCleanup(page: import("@playwright/test").Page) {
+  const cleanupHeading = page.getByRole("heading", { name: "Clean up photo" });
+  await expect(cleanupHeading).toBeVisible();
+  await expect(page.getByTestId("photo-cleanup-preview")).toBeVisible();
+  await expect(page.getByRole("checkbox", { name: "Document mode" })).toBeChecked();
+
+  const usePhotoButton = page.getByRole("button", { name: "Use photo" });
+  await expect(usePhotoButton).toBeEnabled();
+  await usePhotoButton.click();
+  await expect(cleanupHeading).toHaveCount(0, { timeout: 15_000 });
+}
+
+async function expectSavedLocally(page: import("@playwright/test").Page) {
+  const saveBadge = page.getByTestId("local-save-status");
+  await expect(saveBadge).toBeVisible();
+  await expect(saveBadge).toHaveAttribute(
+    "title",
+    "Saved in this browser only. Use Save Progress for account save when available."
+  );
+  await expect(saveBadge).toContainText("Saved locally");
+}
+
 async function uploadImage(page: import("@playwright/test").Page, name: string, mimeType: string, buffer: Buffer) {
   const chooseFileButton = page.getByRole("button", { name: "Choose file" });
   if (await chooseFileButton.isVisible().catch(() => false)) {
     await page.locator("main input[type='file']").first().setInputFiles({ name, mimeType, buffer });
-    return;
+  } else {
+    const uploadZoneInput = page.getByTestId("document-upload-input");
+    await expect(uploadZoneInput).toBeAttached();
+    await uploadZoneInput.setInputFiles({
+      name,
+      mimeType,
+      buffer,
+    });
   }
 
-  const uploadZoneInput = page.getByTestId("document-upload-input");
-  await expect(uploadZoneInput).toBeAttached();
-  await uploadZoneInput.setInputFiles({
-    name,
-    mimeType,
-    buffer,
-  });
+  await completePhotoCleanup(page);
 }
 
 async function createCanvasImageFixture(page: import("@playwright/test").Page, mimeType: "image/jpeg" | "image/png") {
@@ -83,9 +105,9 @@ test.describe("editor image upload intake", () => {
     await expect(page.getByText("Upload a PDF, JPG, or PNG. Up to 15MB.")).toBeVisible();
     await uploadPng(page, "advanced-mobile-image.png");
 
-    await expect(page.getByText("advanced-mobile-image.png")).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText("advanced-mobile-image.jpg")).toBeVisible({ timeout: 15_000 });
     await expect(page.getByTestId("pdf-page")).toBeVisible({ timeout: 15_000 });
-    await expect(page.getByTestId("local-save-status")).toHaveText("Saved locally");
+    await expectSavedLocally(page);
   });
 
   test("mobile default upload accepts PNG and keeps the full editor visible", async ({ page }) => {
@@ -97,9 +119,9 @@ test.describe("editor image upload intake", () => {
     await expect(page.getByText("Upload a PDF, JPG, or PNG. Add text, ticks, signatures, and dates, then download your finished document.")).toBeVisible();
     await uploadPng(page, "mobile-image.png");
 
-    await expect(page.getByText("mobile-image.png")).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText("mobile-image.jpg")).toBeVisible({ timeout: 15_000 });
     await expect(page.getByTestId("pdf-page")).toBeVisible({ timeout: 15_000 });
-    await expect(page.getByTestId("local-save-status")).toHaveText("Saved locally");
+    await expectSavedLocally(page);
     await expect(page.getByRole("heading", { name: "Finish paperwork fast" })).toHaveCount(0);
   });
 
@@ -113,9 +135,9 @@ test.describe("editor image upload intake", () => {
 
     await expect(page.getByTestId("pdf-page")).toBeVisible({ timeout: 15_000 });
     await expect(page.getByText("Failed to render PDF. The file may be corrupted.")).toHaveCount(0);
-    await expect(page.getByTestId("local-save-status")).toHaveText("Saved locally");
+    await expectSavedLocally(page);
 
-    const textTool = page.locator('button[title="Text field: tap or drag to place"]').first();
+    const textTool = page.locator('button[title="Text field: tap or drag to place"]:visible').first();
     await textTool.click();
     await page.getByTestId("pdf-page").click({ position: { x: 80, y: 120 } });
     await expect(page.getByTestId("pdf-field-editor")).toBeVisible();
@@ -132,7 +154,7 @@ test.describe("editor image upload intake", () => {
 
     await expect(page.getByTestId("pdf-page")).toBeVisible({ timeout: 15_000 });
     await expect(page.getByText("Failed to render PDF. The file may be corrupted.")).toHaveCount(0);
-    await expect(page.getByTestId("local-save-status")).toHaveText("Saved locally");
+    await expectSavedLocally(page);
   });
 
 });
