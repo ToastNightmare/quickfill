@@ -1,5 +1,5 @@
 import "@testing-library/jest-dom";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import EditorPage from "../page";
 import {
   createDocumentRevision,
@@ -11,14 +11,34 @@ import {
   isFieldSuggestionReviewEnabled,
   storeFieldSuggestionIntent,
 } from "@/lib/field-suggestion-rollout";
-import { detectLocalFieldSuggestions } from "@/lib/local-field-suggestion-provider";
+import {
+  mapLocalFieldSuggestions,
+  type LocalFieldDetectionLifecycleEvent,
+  type LocalFieldDetectionSnapshot,
+  type LocalFieldDetectionSnapshotKey,
+} from "@/lib/local-field-suggestion-provider";
 import {
   loadPdfFromIndexedDB,
+  savePdfToIndexedDB,
   saveFieldsToLocalStorage,
 } from "@/lib/persistence";
 import type { EditorField } from "@/lib/types";
 
 const mockGetCompositePreviewURL = jest.fn().mockResolvedValue("data:image/png;base64,preview");
+let mockSnapshotMode: "auto-ready" | "manual" = "auto-ready";
+let mockViewerInstanceSequence = 0;
+let mockSnapshotPublicationCount = 0;
+let mockLatestSnapshotCallback: ((event: LocalFieldDetectionLifecycleEvent) => void) | undefined;
+let mockLatestSnapshotKey: LocalFieldDetectionSnapshotKey | null = null;
+let mockTotalPages = 1;
+let mockLatestReviewCallbacks: {
+  onTypeChange: (id: string, type: "text" | "checkbox") => void;
+  onCommit: (suggestions: readonly FieldSuggestion[]) => void;
+  onRetry: () => void;
+  onCancel: () => void;
+} | null = null;
+let mockLatestUndo: (() => void) | null = null;
+const mockReduceLocalFieldDetectionLifecycle = jest.fn();
 
 jest.mock("@clerk/nextjs", () => ({
   useAuth: () => ({ isLoaded: true, isSignedIn: true }),
@@ -116,6 +136,22 @@ jest.mock("@/components/MobileFiller", () => ({
   MobileFiller: () => null,
 }));
 
+jest.mock("@/components/FieldSuggestionReview", () => {
+  const actual = jest.requireActual("@/components/FieldSuggestionReview") as typeof import("@/components/FieldSuggestionReview");
+  return {
+    ...actual,
+    FieldSuggestionReview: (props: React.ComponentProps<typeof actual.FieldSuggestionReview>) => {
+      mockLatestReviewCallbacks = {
+        onTypeChange: props.onTypeChange,
+        onCommit: props.onCommit,
+        onRetry: props.onRetry,
+        onCancel: props.onCancel,
+      };
+      return <actual.FieldSuggestionReview {...props} />;
+    },
+  };
+});
+
 jest.mock("@/components/Toolbar", () => ({
   Toolbar: ({
     onUndo,
@@ -127,7 +163,10 @@ jest.mock("@/components/Toolbar", () => ({
     onStartOver: () => void;
   }) => (
     <div>
-      <button type="button" onClick={onUndo} disabled={!canUndo}>Mock undo</button>
+      {(() => {
+        mockLatestUndo = onUndo;
+        return <button type="button" onClick={onUndo} disabled={!canUndo}>Mock undo</button>;
+      })()}
       <button type="button" onClick={onStartOver}>Mock start over</button>
     </div>
   ),
@@ -135,36 +174,109 @@ jest.mock("@/components/Toolbar", () => ({
 
 jest.mock("@/components/PdfViewer", () => {
   const React = jest.requireActual("react") as typeof import("react");
-  const canvas = {
-    width: 1200,
-    height: 1600,
-    getContext: () => ({
-      getImageData: () => ({ data: new Uint8ClampedArray([255, 255, 255, 255]) }),
-    }),
-  } as unknown as HTMLCanvasElement;
-
   return {
     PdfViewer: React.forwardRef(function MockPdfViewer(
-      props: { fields: EditorField[]; onTotalPagesChange: (count: number) => void },
+      props: {
+        pdfBytes: ArrayBuffer;
+        currentPage: number;
+        zoom: number;
+        fields: EditorField[];
+        onTotalPagesChange: (count: number) => void;
+        onPageChange?: (page: number) => void;
+        fieldSuggestionDocumentRevision?: number;
+        onFieldSuggestionSnapshotEvent?: (event: LocalFieldDetectionLifecycleEvent) => void;
+      },
       ref: React.Ref<unknown>,
     ) {
-      const { fields, onTotalPagesChange } = props;
-      React.useEffect(() => onTotalPagesChange(1), [onTotalPagesChange]);
+      const {
+        fields,
+        onTotalPagesChange,
+        fieldSuggestionDocumentRevision,
+        onFieldSuggestionSnapshotEvent,
+      } = props;
+      const viewerInstanceId = React.useRef(0);
+      if (viewerInstanceId.current === 0) viewerInstanceId.current = ++mockViewerInstanceSequence;
+      const renderGeneration = React.useRef(0);
+      const activeKey = React.useRef<LocalFieldDetectionSnapshotKey | null>(null);
+      const [refitGeneration, setRefitGeneration] = React.useState(0);
+
+      React.useEffect(() => onTotalPagesChange(mockTotalPages), [onTotalPagesChange]);
+      React.useEffect(() => {
+        mockLatestSnapshotCallback = onFieldSuggestionSnapshotEvent;
+        if (!onFieldSuggestionSnapshotEvent || !fieldSuggestionDocumentRevision) return;
+        renderGeneration.current += 1;
+        const key: LocalFieldDetectionSnapshotKey = {
+          documentRevision: fieldSuggestionDocumentRevision,
+          viewerInstanceId: viewerInstanceId.current,
+          renderGeneration: renderGeneration.current,
+          pageIndex: props.currentPage,
+          rotation: 0,
+          viewportTransform: [2, 0, 0, -2, 0, 1600],
+          canvasWidth: 800,
+          canvasHeight: 1000,
+          viewportWidth: 600,
+          viewportHeight: 800,
+          renderedViewportWidth: 800,
+          renderedViewportHeight: 1000,
+        };
+        activeKey.current = key;
+        mockLatestSnapshotKey = key;
+        onFieldSuggestionSnapshotEvent({ status: "started", key, scanDurationMs: null });
+        if (mockSnapshotMode === "auto-ready") {
+          const snapshot: LocalFieldDetectionSnapshot = Object.freeze({
+            key: Object.freeze(key),
+            scanDurationMs: 5,
+            boxes: Object.freeze([
+              Object.freeze({ x: 160, y: 240, width: 360, height: 48 }),
+              Object.freeze({ x: 600, y: 240, width: 36, height: 36 }),
+            ]),
+          });
+          mockSnapshotPublicationCount += 1;
+          onFieldSuggestionSnapshotEvent({
+            status: "ready",
+            key,
+            scanDurationMs: 5,
+            snapshotPreparationDurationMs: 0,
+            snapshot,
+          });
+        }
+        return () => {
+          if (activeKey.current !== key) return;
+          activeKey.current = null;
+          onFieldSuggestionSnapshotEvent({ status: "cancelled", key, scanDurationMs: 5 });
+        };
+      }, [
+        fieldSuggestionDocumentRevision,
+        onFieldSuggestionSnapshotEvent,
+        props.currentPage,
+        props.pdfBytes,
+        props.zoom,
+        refitGeneration,
+      ]);
+
       React.useImperativeHandle(ref, () => ({
         getCanvasDataURL: () => "data:image/png;base64,base",
-        getCanvasDimensions: () => ({ width: 1200, height: 1600 }),
-        getCanvas: () => canvas,
+        getCanvasDimensions: () => ({ width: 800, height: 1000 }),
+        getCanvas: () => null,
         getViewportDims: () => ({ width: 600, height: 800 }),
         editField: jest.fn(),
         getCompositePreviewURL: mockGetCompositePreviewURL,
-        refit: jest.fn(),
+        refit: () => {
+          const key = activeKey.current;
+          if (key) onFieldSuggestionSnapshotEvent?.({ status: "cancelled", key, scanDurationMs: 5 });
+          activeKey.current = null;
+          setRefitGeneration((current) => current + 1);
+        },
       }));
       return (
-        <div
-          data-testid="pdf-viewer"
-          data-fields={JSON.stringify(fields)}
-          data-field-count={fields.length}
-        />
+        <div>
+          <div
+            data-testid="pdf-viewer"
+            data-fields={JSON.stringify(fields)}
+            data-field-count={fields.length}
+          />
+          <button type="button" onClick={() => props.onPageChange?.(1)}>Mock viewer page change</button>
+        </div>
       );
     }),
   };
@@ -226,14 +338,25 @@ jest.mock("@/lib/field-suggestion-rollout", () => {
   };
 });
 
-jest.mock("@/lib/local-field-suggestion-provider", () => ({
-  detectLocalFieldSuggestions: jest.fn(),
-}));
+jest.mock("@/lib/local-field-suggestion-provider", () => {
+  const actual = jest.requireActual("@/lib/local-field-suggestion-provider") as typeof import("@/lib/local-field-suggestion-provider");
+  return {
+    ...actual,
+    reduceLocalFieldDetectionLifecycle: (
+      ...args: Parameters<typeof actual.reduceLocalFieldDetectionLifecycle>
+    ) => {
+      mockReduceLocalFieldDetectionLifecycle(...args);
+      return actual.reduceLocalFieldDetectionLifecycle(...args);
+    },
+    mapLocalFieldSuggestions: jest.fn(),
+  };
+});
 
 const mockedLoadPdf = loadPdfFromIndexedDB as jest.MockedFunction<typeof loadPdfFromIndexedDB>;
+const mockedSavePdf = savePdfToIndexedDB as jest.MockedFunction<typeof savePdfToIndexedDB>;
 const mockedSaveFields = saveFieldsToLocalStorage as jest.MockedFunction<typeof saveFieldsToLocalStorage>;
 const mockedRolloutEnabled = isFieldSuggestionReviewEnabled as jest.MockedFunction<typeof isFieldSuggestionReviewEnabled>;
-const mockedDetectLocal = detectLocalFieldSuggestions as jest.MockedFunction<typeof detectLocalFieldSuggestions>;
+const mockedMapLocal = mapLocalFieldSuggestions as jest.MockedFunction<typeof mapLocalFieldSuggestions>;
 
 function suggestedFields(documentRevision: string): FieldSuggestion[] {
   const textBounds = { x: 80, y: 120, width: 180, height: 24 };
@@ -264,16 +387,78 @@ function suggestedFields(documentRevision: string): FieldSuggestion[] {
   ];
 }
 
+function publishLatestSnapshot(
+  overrides: Partial<LocalFieldDetectionSnapshotKey> = {},
+  status: "ready" | "failed" | "cancelled" = "ready",
+  snapshotPreparationDurationMs = 0,
+) {
+  if (!mockLatestSnapshotCallback || !mockLatestSnapshotKey) throw new Error("No active snapshot publisher");
+  const key = { ...mockLatestSnapshotKey, ...overrides };
+  if (status === "failed") {
+    mockLatestSnapshotCallback({ status, key, scanDurationMs: null, reason: "render-failed" });
+    return;
+  }
+  if (status === "cancelled") {
+    mockLatestSnapshotCallback({ status, key, scanDurationMs: null });
+    return;
+  }
+  const snapshot: LocalFieldDetectionSnapshot = Object.freeze({
+    key: Object.freeze(key),
+    scanDurationMs: 5,
+    boxes: Object.freeze([
+      Object.freeze({ x: 160, y: 240, width: 360, height: 48 }),
+      Object.freeze({ x: 600, y: 240, width: 36, height: 36 }),
+    ]),
+  });
+  mockSnapshotPublicationCount += 1;
+  mockLatestSnapshotCallback({
+    status,
+    key,
+    scanDurationMs: 5,
+    snapshotPreparationDurationMs,
+    snapshot,
+  });
+}
+
+function expectReleasedAndBlockedSnapshot() {
+  if (!mockLatestSnapshotCallback || !mockLatestSnapshotKey) throw new Error("No active snapshot publisher");
+  const callback = mockLatestSnapshotCallback;
+  const completedKey = mockLatestSnapshotKey;
+
+  mockReduceLocalFieldDetectionLifecycle.mockClear();
+  act(() => publishLatestSnapshot());
+  expect(mockReduceLocalFieldDetectionLifecycle).not.toHaveBeenCalled();
+
+  const nextKey = {
+    ...completedKey,
+    renderGeneration: completedKey.renderGeneration + 1,
+  };
+  act(() => callback({ status: "started", key: nextKey, scanDurationMs: null }));
+  expect(mockReduceLocalFieldDetectionLifecycle).toHaveBeenLastCalledWith(
+    null,
+    expect.objectContaining({ status: "started", key: nextKey }),
+    completedKey.documentRevision,
+  );
+}
+
 function editorFields(): EditorField[] {
   const value = screen.getByTestId("pdf-viewer").getAttribute("data-fields") ?? "[]";
   return JSON.parse(value) as EditorField[];
+}
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((resolvePromise) => {
+    resolve = resolvePromise;
+  });
+  return { promise, resolve };
 }
 
 async function renderPhotoSession(options: {
   photoSession?: boolean;
   intentRevision?: string;
   pageIndex?: number;
-  detector?: (revision: string) => FieldSuggestion[];
+  mapper?: (revision: string) => FieldSuggestion[];
 } = {}) {
   const bytes = Uint8Array.from([1, 2, 3, 4]).buffer;
   const documentRevision = await createDocumentRevision(bytes);
@@ -290,7 +475,12 @@ async function renderPhotoSession(options: {
       pageIndex: options.pageIndex,
     }));
   }
-  mockedDetectLocal.mockImplementation(() => (options.detector ?? suggestedFields)(documentRevision));
+  mockedMapLocal.mockImplementation((request) => ({
+    status: "ready",
+    suggestions: (options.mapper ?? suggestedFields)(documentRevision),
+    mappingDurationMs: 1,
+    incrementalDurationMs: request.incrementalDurationMs + 1,
+  }));
   render(<EditorPage />);
   return { bytes, documentRevision };
 }
@@ -306,13 +496,28 @@ describe("editor local field suggestion review", () => {
     localStorage.setItem("quickfill_welcomed", "1");
     localStorage.setItem("quickfill_tour_done", "1");
     mockedLoadPdf.mockResolvedValue(null);
+    mockedSavePdf.mockResolvedValue(undefined);
     mockedRolloutEnabled.mockReturnValue(true);
-    mockedDetectLocal.mockReset();
-    mockedDetectLocal.mockImplementation((request) => suggestedFields(request.documentRevision));
+    mockedMapLocal.mockReset();
+    mockedMapLocal.mockImplementation((request) => ({
+      status: "ready",
+      suggestions: suggestedFields(request.documentRevision),
+      mappingDurationMs: 1,
+      incrementalDurationMs: request.incrementalDurationMs + 1,
+    }));
+    mockSnapshotMode = "auto-ready";
+    mockViewerInstanceSequence = 0;
+    mockSnapshotPublicationCount = 0;
+    mockLatestSnapshotCallback = undefined;
+    mockLatestSnapshotKey = null;
+    mockTotalPages = 1;
+    mockLatestReviewCallbacks = null;
+    mockLatestUndo = null;
     global.fetch = jest.fn(async () => ({ ok: true, json: async () => ({}) } as Response));
   });
 
   afterEach(() => {
+    jest.useRealTimers();
     global.fetch = originalFetch;
   });
 
@@ -327,8 +532,20 @@ describe("editor local field suggestion review", () => {
 
     expect(await screen.findByRole("button", { name: "Add another page" })).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Review fillable field suggestions" })).not.toBeInTheDocument();
-    expect(mockedDetectLocal).not.toHaveBeenCalled();
+    expect(mockedMapLocal).not.toHaveBeenCalled();
+    expect(mockLatestSnapshotCallback).toBeUndefined();
     expect(sessionStorage.getItem(FIELD_SUGGESTION_INTENT_KEY)).toBeNull();
+  });
+
+  it("activates the shared local-review path only in the enabled mode", async () => {
+    await renderPhotoSession();
+
+    expect(await screen.findByRole("heading", { name: "Review fillable field suggestions" })).toBeInTheDocument();
+    expect(mockLatestSnapshotCallback).toEqual(expect.any(Function));
+    expect(mockedMapLocal).toHaveBeenCalledTimes(1);
+    const request = mockedMapLocal.mock.calls[0][0];
+    expect(request.incrementalDurationMs).toBeGreaterThanOrEqual(0);
+    expect(request.incrementalDurationMs).toBeLessThanOrEqual(10);
   });
 
   it("keeps suggestions out of fields, persistence, preview, export, and the API before acceptance", async () => {
@@ -399,34 +616,186 @@ describe("editor local field suggestion review", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
 
-    await waitFor(() => expect(mockedDetectLocal).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(mockedMapLocal).toHaveBeenCalledTimes(2));
+    expect(mockSnapshotPublicationCount).toBe(1);
     await screen.findByRole("heading", { name: "Review fillable field suggestions" }, { timeout: 3000 });
     for (const id of ids) expect(screen.getAllByTestId(`field-suggestion-${id}`)).toHaveLength(1);
     expect(editorFields()).toEqual([]);
   });
 
-  it("falls back to the normal editor with zero fields when the local detector fails", async () => {
-    await renderPhotoSession({ detector: () => { throw new Error("local detector failed"); } });
+  it("supports a waiter registered before the shared snapshot becomes ready", async () => {
+    mockSnapshotMode = "manual";
+    await renderPhotoSession();
+    expect(await screen.findByRole("heading", { name: "Finding fillable areas" })).toBeInTheDocument();
+    expect(mockedMapLocal).not.toHaveBeenCalled();
+    await waitFor(() => expect(mockLatestSnapshotKey).not.toBeNull());
 
-    expect(await screen.findByRole("heading", { name: "Couldn’t suggest fields" }, { timeout: 3000 })).toBeInTheDocument();
-    expect(screen.getByRole("alert")).toHaveTextContent("Field suggestions are unavailable");
-    expect(editorFields()).toEqual([]);
-    fireEvent.click(screen.getByRole("button", { name: "Continue in editor" }));
+    act(() => publishLatestSnapshot());
+
+    expect(await screen.findByRole("heading", { name: "Review fillable field suggestions" })).toBeInTheDocument();
+    expect(mockedMapLocal).toHaveBeenCalledTimes(1);
+  });
+
+  it("fails closed before mapping when snapshot preparation plus callback handling exceeds 10 ms", async () => {
+    mockSnapshotMode = "manual";
+    await renderPhotoSession();
+    await screen.findByRole("heading", { name: "Finding fillable areas" });
+    await waitFor(() => expect(mockLatestSnapshotKey).not.toBeNull());
+
+    act(() => publishLatestSnapshot({}, "ready", 10.001));
+
     expect(await screen.findByRole("button", { name: "Add another page" })).toBeInTheDocument();
+    expect(mockedMapLocal).not.toHaveBeenCalled();
+    expect(screen.queryByRole("heading", { name: "Review fillable field suggestions" })).not.toBeInTheDocument();
+  });
+
+  it("fails closed when final suggestion copying and state publication exceed the cumulative budget", async () => {
+    mockSnapshotMode = "manual";
+    await renderPhotoSession();
+    await screen.findByRole("heading", { name: "Finding fillable areas" });
+    await waitFor(() => expect(mockLatestSnapshotKey).not.toBeNull());
+    mockedMapLocal.mockImplementation((request) => ({
+      status: "ready",
+      suggestions: suggestedFields(request.documentRevision),
+      mappingDurationMs: 1,
+      incrementalDurationMs: 10.001,
+    }));
+
+    act(() => publishLatestSnapshot());
+
+    expect(await screen.findByRole("button", { name: "Add another page" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Review fillable field suggestions" })).not.toBeInTheDocument();
+    expect(editorFields()).toEqual([]);
+    expect(mockedMapLocal).toHaveBeenCalledTimes(1);
+    expectReleasedAndBlockedSnapshot();
+    expect(mockedMapLocal).toHaveBeenCalledTimes(1);
+  });
+
+  it("releases and blocks a waiting key at the five-second timeout and rejects its late ready event", async () => {
+    jest.useFakeTimers();
+    mockSnapshotMode = "manual";
+    await renderPhotoSession();
+    expect(await screen.findByRole("heading", { name: "Finding fillable areas" })).toBeInTheDocument();
+    await waitFor(() => expect(mockLatestSnapshotKey).not.toBeNull());
+
+    act(() => jest.advanceTimersByTime(5_000));
+
+    expect(screen.getByRole("button", { name: "Add another page" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Finding fillable areas" })).not.toBeInTheDocument();
+    expect(mockedMapLocal).not.toHaveBeenCalled();
+    expectReleasedAndBlockedSnapshot();
+    expect(mockedMapLocal).not.toHaveBeenCalled();
+  });
+
+  it("ignores a late ready result after invalidation while waiting", async () => {
+    mockSnapshotMode = "manual";
+    await renderPhotoSession();
+    await screen.findByRole("heading", { name: "Finding fillable areas" });
+    await waitFor(() => expect(mockLatestSnapshotKey).not.toBeNull());
+
+    fireEvent.click(screen.getAllByRole("button", { name: "Mock start over" })[0]);
+    act(() => publishLatestSnapshot());
+
+    expect(screen.queryByRole("heading", { name: "Review fillable field suggestions" })).not.toBeInTheDocument();
+    expect(screen.queryByTestId("pdf-viewer")).not.toBeInTheDocument();
+    expect(mockedMapLocal).not.toHaveBeenCalled();
+  });
+
+  it("settles a failed shared snapshot into the normal editor without an error state", async () => {
+    mockSnapshotMode = "manual";
+    await renderPhotoSession();
+    await screen.findByRole("heading", { name: "Finding fillable areas" });
+    await waitFor(() => expect(mockLatestSnapshotKey).not.toBeNull());
+
+    act(() => publishLatestSnapshot({}, "failed"));
+
+    expect(await screen.findByRole("button", { name: "Add another page" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Couldn’t suggest fields" })).not.toBeInTheDocument();
+    expect(editorFields()).toEqual([]);
+  });
+
+  it("coalesces rapid retries onto one immutable snapshot without another publication", async () => {
+    await renderPhotoSession();
+    await screen.findByRole("heading", { name: "Review fillable field suggestions" });
+    const callbacks = mockLatestReviewCallbacks;
+    if (!callbacks) throw new Error("Expected review callbacks");
+
+    act(() => {
+      callbacks.onRetry();
+      callbacks.onRetry();
+    });
+
+    await screen.findByRole("heading", { name: "Review fillable field suggestions" });
+    expect(mockedMapLocal).toHaveBeenCalledTimes(2);
+    expect(mockSnapshotPublicationCount).toBe(1);
+  });
+
+  it.each(["zoom", "refit", "page", "replacement"] as const)(
+    "makes captured review actions harmless after %s invalidation",
+    async (invalidation) => {
+      if (invalidation === "page") mockTotalPages = 2;
+      const { documentRevision } = await renderPhotoSession();
+      await screen.findByRole("heading", { name: "Review fillable field suggestions" });
+      const callbacks = mockLatestReviewCallbacks;
+      const staleUndo = mockLatestUndo;
+      if (!callbacks) throw new Error("Expected review callbacks");
+
+      if (invalidation === "zoom") fireEvent.click(screen.getByTitle("Zoom In"));
+      if (invalidation === "refit") fireEvent.click(screen.getByRole("button", { name: "Fit document to screen width" }));
+      if (invalidation === "page") fireEvent.click(screen.getByRole("button", { name: "Mock viewer page change" }));
+      if (invalidation === "replacement") {
+        fireEvent.click(screen.getAllByRole("button", { name: "Mock start over" })[0]);
+        fireEvent.click(await screen.findByRole("button", { name: "Mock normal upload" }));
+      }
+      await waitFor(() => {
+        expect(screen.queryByRole("heading", { name: "Review fillable field suggestions" })).not.toBeInTheDocument();
+      });
+
+      act(() => {
+        callbacks.onTypeChange(suggestedFields(documentRevision)[0].id, "checkbox");
+        callbacks.onRetry();
+        callbacks.onCommit(suggestedFields(documentRevision));
+        staleUndo?.();
+      });
+
+      await waitFor(() => expect(editorFields()).toEqual([]));
+    },
+  );
+
+  it("keeps already accepted current-document fields when a later render identity is invalidated", async () => {
+    await renderPhotoSession();
+    await screen.findByRole("heading", { name: "Review fillable field suggestions" });
+    fireEvent.click(screen.getByRole("button", { name: "Accept all" }));
+    await waitFor(() => expect(editorFields()).toHaveLength(2));
+
+    fireEvent.click(screen.getByTitle("Zoom In"));
+
+    await waitFor(() => expect(editorFields()).toHaveLength(2));
+  });
+
+  it("falls back to the normal editor with zero fields and no error when snapshot mapping fails", async () => {
+    await renderPhotoSession({ mapper: () => { throw new Error("local mapping failed"); } });
+
+    expect(await screen.findByRole("button", { name: "Add another page" }, { timeout: 3000 })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Couldn’t suggest fields" })).not.toBeInTheDocument();
+    expect(editorFields()).toEqual([]);
+    expect(mockedMapLocal).toHaveBeenCalledTimes(1);
+    expectReleasedAndBlockedSnapshot();
+    expect(mockedMapLocal).toHaveBeenCalledTimes(1);
   });
 
   it("rejects a stale-document intent", async () => {
     const staleRevision = `qf-document-v1-${"b".repeat(64)}`;
     await renderPhotoSession({ intentRevision: staleRevision });
     expect(await screen.findByRole("button", { name: "Add another page" })).toBeInTheDocument();
-    expect(mockedDetectLocal).not.toHaveBeenCalled();
+    expect(mockedMapLocal).not.toHaveBeenCalled();
     expect(sessionStorage.getItem(FIELD_SUGGESTION_INTENT_KEY)).toBeNull();
   });
 
   it("rejects a non-first-page intent", async () => {
     await renderPhotoSession({ pageIndex: 1 });
     expect(await screen.findByRole("button", { name: "Add another page" })).toBeInTheDocument();
-    expect(mockedDetectLocal).not.toHaveBeenCalled();
+    expect(mockedMapLocal).not.toHaveBeenCalled();
     expect(sessionStorage.getItem(FIELD_SUGGESTION_INTENT_KEY)).toBeNull();
   });
 
@@ -435,7 +804,7 @@ describe("editor local field suggestion review", () => {
     await screen.findByTestId("pdf-viewer");
     expect(screen.queryByRole("heading", { name: "Review fillable field suggestions" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Add another page" })).not.toBeInTheDocument();
-    expect(mockedDetectLocal).not.toHaveBeenCalled();
+    expect(mockedMapLocal).not.toHaveBeenCalled();
     expect(sessionStorage.getItem(FIELD_SUGGESTION_INTENT_KEY)).toBeNull();
   });
 
@@ -450,6 +819,29 @@ describe("editor local field suggestion review", () => {
     fireEvent.click(screen.getByRole("button", { name: "Mock normal upload" }));
     await screen.findByTestId("pdf-viewer");
     expect(screen.queryByRole("heading", { name: "Review fillable field suggestions" })).not.toBeInTheDocument();
+  });
+
+  it("lets the newest same-sized document load win when replacements overlap", async () => {
+    const firstSave = deferred<void>();
+    mockedSavePdf
+      .mockImplementationOnce(() => firstSave.promise)
+      .mockResolvedValue(undefined);
+    render(<EditorPage />);
+    const upload = await screen.findByRole("button", { name: "Mock fillable upload" });
+
+    fireEvent.click(upload);
+    await waitFor(() => expect(mockedSavePdf).toHaveBeenCalledTimes(1));
+    fireEvent.click(upload);
+    await waitFor(() => expect(mockedSavePdf).toHaveBeenCalledTimes(2));
+    expect(await screen.findByRole("heading", { name: "Review fillable field suggestions" })).toBeInTheDocument();
+    expect(mockedMapLocal).toHaveBeenCalledTimes(1);
+
+    await act(async () => firstSave.resolve());
+
+    expect(screen.getByRole("heading", { name: "Review fillable field suggestions" })).toBeInTheDocument();
+    expect(mockedMapLocal).toHaveBeenCalledTimes(1);
+    expect(mockSnapshotPublicationCount).toBe(1);
+    expect(editorFields()).toEqual([]);
   });
 
   it("accepts a direct cleaned-photo request only when its revision matches", async () => {

@@ -4,6 +4,48 @@ const localBaseUrl = process.env.PLAYWRIGHT_BASE_URL ?? "";
 const runsAgainstLocalApp = /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(?::\d+)?/i.test(localBaseUrl);
 const localFieldSuggestionReviewEnabled = process.env.NEXT_PUBLIC_QUICKFILL_FIELD_SUGGESTIONS === "local-review";
 
+async function installLocalSuggestionPerformanceProbe(page: import("@playwright/test").Page) {
+  await page.addInitScript(() => {
+    const probe = { fullCanvasReads: 0, longTasks: 0 };
+    Object.defineProperty(window, "__quickFillLocalSuggestionProbe", {
+      configurable: true,
+      value: probe,
+    });
+    const originalGetImageData = CanvasRenderingContext2D.prototype.getImageData;
+    CanvasRenderingContext2D.prototype.getImageData = function getImageData(
+      x: number,
+      y: number,
+      width: number,
+      height: number,
+      settings?: ImageDataSettings,
+    ) {
+      if (x === 0 && y === 0 && width === this.canvas.width && height === this.canvas.height) {
+        probe.fullCanvasReads += 1;
+      }
+      return originalGetImageData.call(this, x, y, width, height, settings);
+    };
+    if (typeof PerformanceObserver !== "undefined") {
+      try {
+        const observer = new PerformanceObserver((list) => {
+          probe.longTasks += list.getEntries().length;
+        });
+        observer.observe({ type: "longtask", buffered: true });
+      } catch {
+        // Older test browsers may not expose Long Tasks.
+      }
+    }
+  });
+}
+
+async function localSuggestionPerformanceProbe(page: import("@playwright/test").Page) {
+  return page.evaluate(() => {
+    const probe = (window as Window & {
+      __quickFillLocalSuggestionProbe?: { fullCanvasReads: number; longTasks: number };
+    }).__quickFillLocalSuggestionProbe;
+    return probe ?? { fullCanvasReads: -1, longTasks: -1 };
+  });
+}
+
 async function prepareEditor(page: import("@playwright/test").Page) {
   await page.goto("/editor?advanced=1", { waitUntil: "domcontentloaded" });
   await expect(page).toHaveURL(/\/editor\?advanced=1$/);
@@ -235,17 +277,31 @@ test.describe("local photo field suggestion review", () => {
   test("desktop review stays local and supports review, retry, replacement, batch accept, and undo", async ({ page }) => {
     test.skip(!localFieldSuggestionReviewEnabled, "Requires the internal local-review build flag.");
     await page.setViewportSize({ width: 1280, height: 900 });
-    await prepareEditor(page);
+    await installLocalSuggestionPerformanceProbe(page);
     const forbiddenRequests: string[] = [];
+    const signatureRequests: string[] = [];
     const pageErrors: string[] = [];
     const consoleErrors: string[] = [];
+    const requestCounts = { total: 0, local: 0, external: 0, localApi: 0 };
+    const localOrigin = new URL(localBaseUrl).origin;
     page.on("request", (request) => {
-      if (new URL(request.url()).pathname === "/api/detect-fields") forbiddenRequests.push(request.url());
+      const url = new URL(request.url());
+      const pathname = url.pathname;
+      requestCounts.total += 1;
+      if (url.origin === localOrigin) {
+        requestCounts.local += 1;
+        if (pathname.startsWith("/api/")) requestCounts.localApi += 1;
+      } else {
+        requestCounts.external += 1;
+      }
+      if (pathname === "/api/detect-fields") forbiddenRequests.push(request.url());
+      if (pathname === "/api/signature") signatureRequests.push(request.url());
     });
     page.on("pageerror", (error) => pageErrors.push(error.message));
     page.on("console", (message) => {
       if (message.type() === "error") consoleErrors.push(message.text());
     });
+    await prepareEditor(page);
 
     await uploadForLocalSuggestions(page, "desktop-local-review.png");
 
@@ -256,13 +312,20 @@ test.describe("local photo field suggestion review", () => {
     const stableIdsBeforeRetry = await suggestions.evaluateAll((items) => items.map((item) => item.getAttribute("data-testid")));
     expect(await persistedFields(page)).toEqual([]);
     expect(forbiddenRequests).toEqual([]);
+    expect(signatureRequests).toEqual([]);
     await expectNoHorizontalOverflow(page);
 
+    await page.waitForTimeout(250);
+    const performanceBeforeRetry = await localSuggestionPerformanceProbe(page);
+    expect(performanceBeforeRetry.fullCanvasReads).toBeGreaterThanOrEqual(1);
+
     await page.getByRole("button", { name: "Retry" }).click();
-    await expect(page.getByRole("heading", { name: "Finding fillable areas" })).toBeVisible();
+    // Retry reuses the immutable snapshot, so mapping may settle within one frame.
     await expect(page.getByRole("heading", { name: "Review fillable field suggestions" })).toBeVisible({ timeout: 15_000 });
     await expect.poll(() => suggestions.count()).toBe(stableIdsBeforeRetry.length);
     expect(await suggestions.evaluateAll((items) => items.map((item) => item.getAttribute("data-testid")))).toEqual(stableIdsBeforeRetry);
+    await page.waitForTimeout(250);
+    expect(await localSuggestionPerformanceProbe(page)).toEqual(performanceBeforeRetry);
 
     const firstType = page.getByRole("combobox", { name: "Field type" }).first();
     const changedType = await firstType.inputValue() === "checkbox" ? "text" : "checkbox";
@@ -275,10 +338,13 @@ test.describe("local photo field suggestion review", () => {
     expect((await persistedFields(page))[0]).toMatchObject({ type: changedType, page: 0 });
     await page.locator('button[title="Undo (Ctrl+Z)"]').click();
     await expect.poll(() => persistedFields(page)).toEqual([]);
+    expect(await localSuggestionPerformanceProbe(page)).toEqual(performanceBeforeRetry);
 
     await page.locator('button[title="Clear all fields and start fresh"]').click();
     await expect(page.getByTestId("document-upload-input")).toBeAttached();
     await uploadForLocalSuggestions(page, "desktop-replacement-local-review.png");
+    const performanceAfterReplacement = await localSuggestionPerformanceProbe(page);
+    expect(performanceAfterReplacement.fullCanvasReads).toBeGreaterThan(performanceBeforeRetry.fullCanvasReads);
     expect(await persistedFields(page)).toEqual([]);
     await page.getByRole("button", { name: "Accept all" }).click();
     await expect.poll(() => persistedFields(page)).not.toEqual([]);
@@ -286,18 +352,43 @@ test.describe("local photo field suggestion review", () => {
     await expect.poll(() => persistedFields(page)).toEqual([]);
 
     expect(forbiddenRequests).toEqual([]);
+    expect(signatureRequests).toEqual([]);
     expect(pageErrors).toEqual([]);
     expect(consoleErrors).toEqual([]);
+    console.log(JSON.stringify({
+      scenario: "local-review-desktop",
+      requestCounts,
+      forbiddenDetectApiCount: forbiddenRequests.length,
+      signatureApiCount: signatureRequests.length,
+      consoleErrorCount: consoleErrors.length,
+      pageErrorCount: pageErrors.length,
+      beforeRetryProbe: performanceBeforeRetry,
+      afterReplacementProbe: performanceAfterReplacement,
+    }));
   });
 
   test("mobile review is focused, screen-reader labelled, touch sized, and cancellable", async ({ page }) => {
     test.skip(!localFieldSuggestionReviewEnabled, "Requires the internal local-review build flag.");
     await page.setViewportSize({ width: 390, height: 844 });
+    await installLocalSuggestionPerformanceProbe(page);
     const forbiddenRequests: string[] = [];
+    const signatureRequests: string[] = [];
     const pageErrors: string[] = [];
     const consoleErrors: string[] = [];
+    const requestCounts = { total: 0, local: 0, external: 0, localApi: 0 };
+    const localOrigin = new URL(localBaseUrl).origin;
     page.on("request", (request) => {
-      if (new URL(request.url()).pathname === "/api/detect-fields") forbiddenRequests.push(request.url());
+      const url = new URL(request.url());
+      const pathname = url.pathname;
+      requestCounts.total += 1;
+      if (url.origin === localOrigin) {
+        requestCounts.local += 1;
+        if (pathname.startsWith("/api/")) requestCounts.localApi += 1;
+      } else {
+        requestCounts.external += 1;
+      }
+      if (pathname === "/api/detect-fields") forbiddenRequests.push(request.url());
+      if (pathname === "/api/signature") signatureRequests.push(request.url());
     });
     page.on("pageerror", (error) => pageErrors.push(error.message));
     page.on("console", (message) => {
@@ -321,7 +412,18 @@ test.describe("local photo field suggestion review", () => {
 
     expect(await persistedFields(page)).toEqual([]);
     expect(forbiddenRequests).toEqual([]);
+    expect(signatureRequests).toEqual([]);
     expect(pageErrors).toEqual([]);
     expect(consoleErrors).toEqual([]);
+    await page.waitForTimeout(250);
+    console.log(JSON.stringify({
+      scenario: "local-review-mobile",
+      requestCounts,
+      forbiddenDetectApiCount: forbiddenRequests.length,
+      signatureApiCount: signatureRequests.length,
+      consoleErrorCount: consoleErrors.length,
+      pageErrorCount: pageErrors.length,
+      probe: await localSuggestionPerformanceProbe(page),
+    }));
   });
 });
