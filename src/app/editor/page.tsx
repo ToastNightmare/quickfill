@@ -65,11 +65,19 @@ import {
   consumeFieldSuggestionIntent,
   isFieldSuggestionReviewEnabled,
 } from "@/lib/field-suggestion-rollout";
+import {
+  LOCAL_FIELD_SUGGESTION_MAX_INCREMENTAL_MS,
+  localFieldDetectionSnapshotKeysEqual,
+  reduceLocalFieldDetectionLifecycle,
+  type LocalFieldDetectionLifecycleEvent,
+  type LocalFieldDetectionSnapshotKey,
+} from "@/lib/local-field-suggestion-provider";
 
 const ZOOM_LEVELS = [50, 75, 100, 125, 150, 175, 200];
 const GESTURE_HINT_KEY = "quickfill_gesture_hint_seen";
 const SNAP_MIN = 125;
 const SNAP_MAX = 175;
+const FIELD_SUGGESTION_SNAPSHOT_WAIT_MS = 5_000;
 // On mobile/tablet (below the lg desktop layout) we allow zooming below
 // SNAP_MIN so the full page fits the screen
 const isMobileDevice = () => typeof window !== "undefined" && window.innerWidth < 1024;
@@ -77,12 +85,16 @@ type LocalSaveStatus = "idle" | "saved" | "restored";
 
 interface ActiveFieldSuggestionReview {
   documentRevision: string;
+  viewerDocumentRevision: number;
+  snapshotKey: Readonly<LocalFieldDetectionSnapshotKey> | null;
   status: FieldSuggestionReviewStatus;
   suggestions: FieldSuggestion[];
   reviewVersion: number;
   showAddAnotherPagePromptAfter: boolean;
   errorMessage?: string;
 }
+
+type ReadyLocalFieldDetectionEvent = Extract<LocalFieldDetectionLifecycleEvent, { status: "ready" }>;
 
 const DEFAULT_TOOL_DEFAULTS: ToolDefaultState = {
   select: {},
@@ -246,6 +258,8 @@ function EditorPageContent() {
   const [pendingAddPagePhoto, setPendingAddPagePhoto] = useState<File | null>(null);
   const [showAddAnotherPagePrompt, setShowAddAnotherPagePrompt] = useState(false);
   const [fieldSuggestionReview, setFieldSuggestionReview] = useState<ActiveFieldSuggestionReview | null>(null);
+  const [viewerDocumentRevision, setViewerDocumentRevision] = useState<number | null>(null);
+  const [fieldSuggestionSnapshotEvent, setFieldSuggestionSnapshotEvent] = useState<LocalFieldDetectionLifecycleEvent | null>(null);
   const [showRemovePageConfirm, setShowRemovePageConfirm] = useState(false);
   const [isRemovingPage, setIsRemovingPage] = useState(false);
   const [totalPages, setTotalPages] = useState(0);
@@ -286,6 +300,19 @@ function EditorPageContent() {
   const downloadReadyFiredRef = useRef(false);
   const downloadCancelledHandledRef = useRef(false);
   const currentDocumentRevisionRef = useRef<string | null>(null);
+  const viewerDocumentRevisionSequenceRef = useRef(0);
+  const activeViewerDocumentRevisionRef = useRef<number | null>(null);
+  const fieldSuggestionSnapshotEventRef = useRef<LocalFieldDetectionLifecycleEvent | null>(null);
+  const fieldSuggestionIncrementalDurationRef = useRef<{
+    event: ReadyLocalFieldDetectionEvent;
+    durationMs: number;
+  } | null>(null);
+  const blockedFieldSuggestionSnapshotRef = useRef<{
+    documentRevision: number;
+    viewerInstanceId: number;
+    renderGeneration: number;
+  } | null>(null);
+  const fieldSuggestionReviewRef = useRef<ActiveFieldSuggestionReview | null>(null);
   const signatureLoadSessionKeyRef = useRef<string | null>(null);
   const signatureActiveSessionKeyRef = useRef<string | null>(null);
   const signatureChangedThisSessionRef = useRef(false);
@@ -330,19 +357,139 @@ function EditorPageContent() {
     setLocalSaveStatus(status);
   }, []);
 
+  const releaseFieldSuggestionSnapshot = useCallback((blockCurrent = true) => {
+    const current = fieldSuggestionSnapshotEventRef.current;
+    if (blockCurrent && current) {
+      blockedFieldSuggestionSnapshotRef.current = {
+        documentRevision: current.key.documentRevision,
+        viewerInstanceId: current.key.viewerInstanceId,
+        renderGeneration: current.key.renderGeneration,
+      };
+    }
+    fieldSuggestionSnapshotEventRef.current = null;
+    fieldSuggestionIncrementalDurationRef.current = null;
+    setFieldSuggestionSnapshotEvent(null);
+  }, []);
+
+  const activateNextViewerDocumentRevision = useCallback(() => {
+    releaseFieldSuggestionSnapshot(false);
+    viewerDocumentRevisionSequenceRef.current += 1;
+    const nextRevision = viewerDocumentRevisionSequenceRef.current;
+    activeViewerDocumentRevisionRef.current = nextRevision;
+    blockedFieldSuggestionSnapshotRef.current = null;
+    setViewerDocumentRevision(nextRevision);
+    fieldSuggestionReviewRef.current = null;
+    setFieldSuggestionReview(null);
+    return nextRevision;
+  }, [releaseFieldSuggestionSnapshot]);
+
+  const deactivateViewerDocumentRevision = useCallback(() => {
+    releaseFieldSuggestionSnapshot(false);
+    viewerDocumentRevisionSequenceRef.current += 1;
+    activeViewerDocumentRevisionRef.current = null;
+    blockedFieldSuggestionSnapshotRef.current = null;
+    setViewerDocumentRevision(null);
+    fieldSuggestionReviewRef.current = null;
+    setFieldSuggestionReview(null);
+  }, [releaseFieldSuggestionSnapshot]);
+
+  const handleFieldSuggestionSnapshotEvent = useCallback((event: LocalFieldDetectionLifecycleEvent) => {
+    const callbackStartedAt = event.status === "ready" ? performance.now() : null;
+    const activeDocumentRevision = activeViewerDocumentRevisionRef.current;
+    if (activeDocumentRevision === null || event.key.documentRevision !== activeDocumentRevision) return;
+
+    const blocked = blockedFieldSuggestionSnapshotRef.current;
+    if (
+      blocked &&
+      blocked.documentRevision === event.key.documentRevision &&
+      blocked.viewerInstanceId === event.key.viewerInstanceId &&
+      event.key.renderGeneration <= blocked.renderGeneration
+    ) {
+      return;
+    }
+    if (
+      blocked &&
+      (blocked.documentRevision !== event.key.documentRevision ||
+        blocked.viewerInstanceId !== event.key.viewerInstanceId ||
+        event.key.renderGeneration > blocked.renderGeneration)
+    ) {
+      blockedFieldSuggestionSnapshotRef.current = null;
+    }
+
+    const current = fieldSuggestionSnapshotEventRef.current;
+    const next = reduceLocalFieldDetectionLifecycle(current, event, activeDocumentRevision);
+    if (next === current) return;
+    fieldSuggestionSnapshotEventRef.current = next;
+    setFieldSuggestionSnapshotEvent(next);
+
+    if (next?.status !== "ready" || callbackStartedAt === null) {
+      fieldSuggestionIncrementalDurationRef.current = null;
+      return;
+    }
+
+    const callbackDurationMs = performance.now() - callbackStartedAt;
+    const incrementalDurationMs = next.snapshotPreparationDurationMs + callbackDurationMs;
+    if (
+      !Number.isFinite(next.snapshotPreparationDurationMs) ||
+      next.snapshotPreparationDurationMs < 0 ||
+      !Number.isFinite(callbackDurationMs) ||
+      callbackDurationMs < 0 ||
+      !Number.isFinite(incrementalDurationMs) ||
+      incrementalDurationMs > LOCAL_FIELD_SUGGESTION_MAX_INCREMENTAL_MS
+    ) {
+      const failedEvent: LocalFieldDetectionLifecycleEvent = Object.freeze({
+        status: "failed",
+        key: next.key,
+        scanDurationMs: next.scanDurationMs,
+        reason: "ineligible-metadata",
+      });
+      fieldSuggestionSnapshotEventRef.current = failedEvent;
+      fieldSuggestionIncrementalDurationRef.current = null;
+      setFieldSuggestionSnapshotEvent(failedEvent);
+      return;
+    }
+
+    fieldSuggestionIncrementalDurationRef.current = {
+      event: next,
+      durationMs: incrementalDurationMs,
+    };
+  }, []);
+
+  const invalidateFieldSuggestionReviewForRenderIntent = useCallback(() => {
+    releaseFieldSuggestionSnapshot(true);
+    const currentReview = fieldSuggestionReviewRef.current;
+    fieldSuggestionReviewRef.current = null;
+    setFieldSuggestionReview(null);
+    if (currentReview?.showAddAnotherPagePromptAfter) setShowAddAnotherPagePrompt(true);
+  }, [releaseFieldSuggestionSnapshot]);
+
+  useEffect(() => () => {
+    activeViewerDocumentRevisionRef.current = null;
+    fieldSuggestionSnapshotEventRef.current = null;
+    fieldSuggestionIncrementalDurationRef.current = null;
+    blockedFieldSuggestionSnapshotRef.current = null;
+    fieldSuggestionReviewRef.current = null;
+  }, []);
+
   const beginFieldSuggestionReview = useCallback((
     documentRevision: string,
     showAddAnotherPagePromptAfter: boolean,
+    requestedViewerDocumentRevision = activeViewerDocumentRevisionRef.current,
   ) => {
+    if (requestedViewerDocumentRevision === null) return;
     setShowAddAnotherPagePrompt(false);
     setCurrentPage(0);
-    setFieldSuggestionReview({
+    const review: ActiveFieldSuggestionReview = {
       documentRevision,
+      viewerDocumentRevision: requestedViewerDocumentRevision,
+      snapshotKey: null,
       status: "processing",
       suggestions: [],
       reviewVersion: 0,
       showAddAnotherPagePromptAfter,
-    });
+    };
+    fieldSuggestionReviewRef.current = review;
+    setFieldSuggestionReview(review);
   }, []);
 
   // Dynamic page title based on fileName
@@ -431,9 +578,13 @@ function EditorPageContent() {
     // untouched. Desktop keeps its restored zoom.
     setZoom(isMobileDevice() ? 100 : loadZoomFromLocalStorage());
 
+    const restoredViewerDocumentRevision = activateNextViewerDocumentRevision();
+
     loadPdfFromIndexedDB().then(async (savedPdf) => {
+      if (activeViewerDocumentRevisionRef.current !== restoredViewerDocumentRevision) return;
       if (!savedPdf) {
         clearFieldSuggestionIntent();
+        deactivateViewerDocumentRevision();
         return;
       }
       const savedFields = repairDuplicateEditorFieldIds(loadFieldsFromLocalStorage());
@@ -444,6 +595,7 @@ function EditorPageContent() {
       const documentRevision = fieldSuggestionReviewEnabled
         ? await createDocumentRevision(savedPdf)
         : null;
+      if (activeViewerDocumentRevisionRef.current !== restoredViewerDocumentRevision) return;
       const suggestionIntent = documentRevision && startedFromPhoto
         ? consumeFieldSuggestionIntent(documentRevision)
         : null;
@@ -461,7 +613,7 @@ function EditorPageContent() {
       setShowRestoredBanner(true);
       setTimeout(() => setShowRestoredBanner(false), 3000);
       if (suggestionIntent && documentRevision) {
-        beginFieldSuggestionReview(documentRevision, startedFromPhoto);
+        beginFieldSuggestionReview(documentRevision, startedFromPhoto, restoredViewerDocumentRevision);
       } else if (startedFromPhoto) {
         setShowAddAnotherPagePrompt(true);
       }
@@ -473,86 +625,142 @@ function EditorPageContent() {
       // Detect AcroForm for progress tracking
       try {
         const acroFields = await detectAcroFormFields(savedPdf);
+        if (activeViewerDocumentRevisionRef.current !== restoredViewerDocumentRevision) return;
         if (acroFields.length > 0) setHasAcroForm(true);
       } catch {
         // silent
       }
     });
-  }, [reset, markLocalSave, fieldSuggestionReviewEnabled, beginFieldSuggestionReview]);
+  }, [
+    reset,
+    markLocalSave,
+    fieldSuggestionReviewEnabled,
+    beginFieldSuggestionReview,
+    activateNextViewerDocumentRevision,
+    deactivateViewerDocumentRevision,
+  ]);
 
   useEffect(() => {
     if (!pdfBytes || !fieldSuggestionReview || fieldSuggestionReview.status !== "processing") return;
 
     let cancelled = false;
-    let timer: ReturnType<typeof setTimeout> | null = null;
-    let attempts = 0;
-    const expectedRevision = fieldSuggestionReview.documentRevision;
+    const expectedDocumentRevision = fieldSuggestionReview.documentRevision;
+    const expectedViewerDocumentRevision = fieldSuggestionReview.viewerDocumentRevision;
+    const expectedReviewVersion = fieldSuggestionReview.reviewVersion;
 
-    const fail = (message: string) => {
+    const finishFailClosed = () => {
       if (cancelled) return;
-      setFieldSuggestionReview((current) => current?.documentRevision === expectedRevision
-        ? { ...current, status: "error", suggestions: [], errorMessage: message }
-        : current);
+      const current = fieldSuggestionReviewRef.current;
+      if (
+        !current ||
+        current.documentRevision !== expectedDocumentRevision ||
+        current.viewerDocumentRevision !== expectedViewerDocumentRevision ||
+        current.reviewVersion !== expectedReviewVersion
+      ) return;
+      releaseFieldSuggestionSnapshot(true);
+      fieldSuggestionReviewRef.current = null;
+      setFieldSuggestionReview(null);
+      if (current.showAddAnotherPagePromptAfter) setShowAddAnotherPagePrompt(true);
     };
 
-    const inspect = async () => {
-      if (cancelled) return;
-      if (currentDocumentRevisionRef.current !== expectedRevision || currentPage !== 0) {
-        fail("The document changed before suggestions could be reviewed.");
-        return;
-      }
+    const timeout = setTimeout(finishFailClosed, FIELD_SUGGESTION_SNAPSHOT_WAIT_MS);
+    const lifecycle = fieldSuggestionSnapshotEvent;
+    if (
+      currentDocumentRevisionRef.current !== expectedDocumentRevision ||
+      activeViewerDocumentRevisionRef.current !== expectedViewerDocumentRevision ||
+      currentPage !== 0
+    ) {
+      finishFailClosed();
+    } else if (
+      lifecycle &&
+      lifecycle.key.documentRevision === expectedViewerDocumentRevision &&
+      (lifecycle.status === "failed" || lifecycle.status === "cancelled")
+    ) {
+      finishFailClosed();
+    } else if (
+      lifecycle?.status === "ready" &&
+      lifecycle.key.documentRevision === expectedViewerDocumentRevision &&
+      lifecycle.key.pageIndex === 0
+    ) {
+      const readyEvent = lifecycle;
+      void import("@/lib/local-field-suggestion-provider")
+        .then(({ mapLocalFieldSuggestions }) => {
+          const incremental = fieldSuggestionIncrementalDurationRef.current;
+          if (
+            cancelled ||
+            currentDocumentRevisionRef.current !== expectedDocumentRevision ||
+            activeViewerDocumentRevisionRef.current !== expectedViewerDocumentRevision ||
+            fieldSuggestionSnapshotEventRef.current !== readyEvent ||
+            incremental?.event !== readyEvent ||
+            !localFieldDetectionSnapshotKeysEqual(fieldSuggestionSnapshotEventRef.current?.key, readyEvent.key)
+          ) {
+            return;
+          }
 
-      const canvas = pdfViewerRef.current?.getCanvas();
-      const viewport = pdfViewerRef.current?.getViewportDims();
-      let hasRenderedContent = false;
-      if (canvas && viewport) {
-        try {
-          const sample = canvas.getContext("2d")?.getImageData(canvas.width / 2, canvas.height / 2, 1, 1);
-          hasRenderedContent = Boolean(sample && sample.data[3] > 0);
-        } catch {
-          hasRenderedContent = false;
-        }
-      }
-
-      if (canvas && viewport && hasRenderedContent) {
-        try {
-          const { detectLocalFieldSuggestions } = await import("@/lib/local-field-suggestion-provider");
-          const suggestions = detectLocalFieldSuggestions({
-            canvas,
-            viewport,
-            documentRevision: expectedRevision,
-            pageIndex: 0,
+          const result = mapLocalFieldSuggestions({
+            snapshot: readyEvent.snapshot,
+            documentRevision: expectedDocumentRevision,
+            expectedDocumentRevision: expectedViewerDocumentRevision,
+            incrementalDurationMs: incremental.durationMs,
           });
-          if (cancelled || currentDocumentRevisionRef.current !== expectedRevision) return;
-          setFieldSuggestionReview((current) => current?.documentRevision === expectedRevision
-            ? {
-                ...current,
-                status: "review",
-                suggestions: replaceFieldSuggestions(suggestions),
-                errorMessage: undefined,
-              }
-            : current);
-          return;
-        } catch {
-          fail("Field suggestions are unavailable for this page.");
-          return;
-        }
-      }
+          if (
+            cancelled ||
+            result.status !== "ready" ||
+            currentDocumentRevisionRef.current !== expectedDocumentRevision ||
+            activeViewerDocumentRevisionRef.current !== expectedViewerDocumentRevision ||
+            fieldSuggestionSnapshotEventRef.current !== readyEvent
+          ) {
+            if (!cancelled && result.status !== "ready") finishFailClosed();
+            return;
+          }
 
-      attempts += 1;
-      if (attempts > 20) {
-        fail("The page was not ready for local field detection.");
-        return;
-      }
-      timer = setTimeout(() => void inspect(), 150);
-    };
+          const current = fieldSuggestionReviewRef.current;
+          if (
+            !current ||
+            current.status !== "processing" ||
+            current.documentRevision !== expectedDocumentRevision ||
+            current.viewerDocumentRevision !== expectedViewerDocumentRevision ||
+            current.reviewVersion !== expectedReviewVersion ||
+            fieldSuggestionSnapshotEventRef.current !== readyEvent
+          ) {
+            return;
+          }
 
-    timer = setTimeout(() => void inspect(), 300);
+          const stateStartedAt = performance.now();
+          const next: ActiveFieldSuggestionReview = {
+            ...current,
+            snapshotKey: readyEvent.key,
+            status: "review",
+            suggestions: replaceFieldSuggestions(result.suggestions),
+            errorMessage: undefined,
+          };
+          fieldSuggestionReviewRef.current = next;
+          setFieldSuggestionReview(next);
+          const stateDurationMs = performance.now() - stateStartedAt;
+          const completeIncrementalDurationMs = result.incrementalDurationMs + stateDurationMs;
+          if (
+            !Number.isFinite(stateDurationMs) ||
+            stateDurationMs < 0 ||
+            !Number.isFinite(completeIncrementalDurationMs) ||
+            completeIncrementalDurationMs > LOCAL_FIELD_SUGGESTION_MAX_INCREMENTAL_MS
+          ) {
+            finishFailClosed();
+          }
+        })
+        .catch(finishFailClosed);
+    }
+
     return () => {
       cancelled = true;
-      if (timer) clearTimeout(timer);
+      clearTimeout(timeout);
     };
-  }, [pdfBytes, currentPage, fieldSuggestionReview]);
+  }, [
+    pdfBytes,
+    currentPage,
+    fieldSuggestionReview,
+    fieldSuggestionSnapshotEvent,
+    releaseFieldSuggestionSnapshot,
+  ]);
 
   // Persist fields on change (only after initial restoration is complete)
   useEffect(() => {
@@ -653,22 +861,25 @@ function EditorPageContent() {
   const totalFieldCount = fields.length;
 
   const handleZoomIn = useCallback(() => {
+    invalidateFieldSuggestionReviewForRenderIntent();
     setZoom((prev) => ZOOM_LEVELS.find((z) => z > prev && z <= SNAP_MAX) ?? prev);
-  }, []);
+  }, [invalidateFieldSuggestionReviewForRenderIntent]);
 
   const handleZoomOut = useCallback(() => {
+    invalidateFieldSuggestionReviewForRenderIntent();
     const mobile = isMobileDevice();
     setZoom((prev) => [...ZOOM_LEVELS].reverse().find((z) => z < prev && (mobile || z >= SNAP_MIN)) ?? prev);
-  }, []);
+  }, [invalidateFieldSuggestionReviewForRenderIntent]);
 
   // Fit to width: reset zoom to the base fit level AND ask the viewer to
   // re-measure the viewport and recompute its fit scale, so Fit works even
   // after rotation, resize, or a restored session left the page clipped.
   const handleFitToWidth = useCallback(() => {
+    invalidateFieldSuggestionReviewForRenderIntent();
     setPinchZoomPreview(null);
     setZoom(100);
     pdfViewerRef.current?.refit?.();
-  }, []);
+  }, [invalidateFieldSuggestionReviewForRenderIntent]);
 
   // Pinch zoom (PR #94): live readout during the gesture, then a single
   // committed zoom value on release (clamped 50-200).
@@ -677,9 +888,15 @@ function EditorPageContent() {
   }, []);
 
   const handleGestureZoomCommit = useCallback((value: number) => {
+    invalidateFieldSuggestionReviewForRenderIntent();
     setPinchZoomPreview(null);
     setZoom(clampGestureZoom(Math.round(value)));
-  }, []);
+  }, [invalidateFieldSuggestionReviewForRenderIntent]);
+
+  const handleSnapZoom = useCallback(() => {
+    invalidateFieldSuggestionReviewForRenderIntent();
+    setZoom(150);
+  }, [invalidateFieldSuggestionReviewForRenderIntent]);
 
   const handleFileLoad = useCallback(
     async (
@@ -693,7 +910,10 @@ function EditorPageContent() {
       }
     ) => {
       setIsLoading(true);
-      setFieldSuggestionReview(null);
+      const requestedViewerDocumentRevision = activateNextViewerDocumentRevision();
+      const isCurrentDocumentLoad = () => (
+        activeViewerDocumentRevisionRef.current === requestedViewerDocumentRevision
+      );
       setShowAddAnotherPagePrompt(false);
       currentDocumentRevisionRef.current = null;
       clearFieldSuggestionIntent();
@@ -706,14 +926,18 @@ function EditorPageContent() {
           setToast(`This file is too large (max ${PDF_UPLOAD_MAX_LABEL})`);
           setTimeout(() => setToast(null), 5000);
           setIsLoading(false);
+          deactivateViewerDocumentRevision();
           return;
         }
 
         let requestedDocumentRevision: string | null = null;
         if (fieldSuggestionReviewEnabled && options?.requestFieldSuggestions && options.documentRevision) {
           const currentRevision = await createDocumentRevision(bytes);
+          if (!isCurrentDocumentLoad()) return;
           if (currentRevision === options.documentRevision) requestedDocumentRevision = currentRevision;
         }
+
+        if (!isCurrentDocumentLoad()) return;
 
         // BUG 1 FIX: Clear ALL state before loading new template
         // This ensures no fields from previous session bleed through
@@ -728,6 +952,7 @@ function EditorPageContent() {
 
         // Persist before showing the editor so a route refresh cannot lose the loaded PDF.
         await savePdfToIndexedDB(bytes);
+        if (!isCurrentDocumentLoad()) return;
         saveFileNameToLocalStorage(file.name);
         markLocalSave("saved");
 
@@ -743,6 +968,7 @@ function EditorPageContent() {
         } else {
           try {
             const acroFields = await detectAcroFormFields(bytes);
+            if (!isCurrentDocumentLoad()) return;
             if (acroFields.length > 0) {
               detectedAcroFieldCount = acroFields.length;
               setHasAcroForm(true);
@@ -777,10 +1003,12 @@ function EditorPageContent() {
               reset([]);
             }
           } catch {
+            if (!isCurrentDocumentLoad()) return;
             setHasAcroForm(false);
             reset([]);
           }
         }
+        if (!isCurrentDocumentLoad()) return;
         trackEvent("editor_pdf_loaded", {
           source,
           sizeKb: Math.round(bytes.byteLength / 1024),
@@ -788,15 +1016,20 @@ function EditorPageContent() {
           detectedFieldCount: detectedAcroFieldCount,
         });
         trackMetaEvent('ViewContent', { content_name: 'pdf_editor', content_type: source });
-        if (requestedDocumentRevision) beginFieldSuggestionReview(requestedDocumentRevision, false);
+        if (requestedDocumentRevision) {
+          beginFieldSuggestionReview(requestedDocumentRevision, false, requestedViewerDocumentRevision);
+        }
       } catch {
+        if (!isCurrentDocumentLoad()) return;
         setPdfBytes(null);
-        setFieldSuggestionReview(null);
+        setIsLoading(false);
+        deactivateViewerDocumentRevision();
         currentDocumentRevisionRef.current = null;
         clearFieldSuggestionIntent();
         setToast("This PDF could not be opened. It may be encrypted or corrupted. Try a different file.");
         setTimeout(() => setToast(null), 5000);
       } finally {
+        if (!isCurrentDocumentLoad()) return;
         setIsLoading(false);
         // Poll until canvas has content then update minimap
         let attempts = 0;
@@ -817,7 +1050,15 @@ function EditorPageContent() {
         setTimeout(pollCanvas, 300);
       }
     },
-    [reset, pageScales, markLocalSave, fieldSuggestionReviewEnabled, beginFieldSuggestionReview]
+    [
+      reset,
+      pageScales,
+      markLocalSave,
+      fieldSuggestionReviewEnabled,
+      beginFieldSuggestionReview,
+      activateNextViewerDocumentRevision,
+      deactivateViewerDocumentRevision,
+    ]
   );
 
   // Load template from URL param - reset state when template changes
@@ -831,6 +1072,7 @@ function EditorPageContent() {
     // New template selected - clear previous session
     clearEditorState().then(() => {
       reset([]);
+      deactivateViewerDocumentRevision();
       setPdfBytes(null);
       setFileName("");
       setCurrentPage(0);
@@ -846,7 +1088,7 @@ function EditorPageContent() {
         })
         .catch(() => {});
     });
-  }, [activeTemplate, handleFileLoad, reset, pageScales]);
+  }, [activeTemplate, handleFileLoad, reset, pageScales, deactivateViewerDocumentRevision]);
 
   const handleFieldAdd = useCallback(
     (field: EditorField) => {
@@ -982,6 +1224,8 @@ function EditorPageContent() {
 
         // Update totalPages alongside currentPage so the viewer's clamp
         // guard never resets the jump to the first appended page.
+        activateNextViewerDocumentRevision();
+        currentDocumentRevisionRef.current = null;
         setPdfBytes(result.pdfBytes);
         setTotalPages(newTotalPages);
         setCurrentPage(result.firstAddedPageIndex);
@@ -1004,7 +1248,7 @@ function EditorPageContent() {
         setIsAddingPage(false);
       }
     },
-    [pdfBytes, isAddingPage, markLocalSave]
+    [pdfBytes, isAddingPage, markLocalSave, activateNextViewerDocumentRevision]
   );
 
   const handleAddPageFile = useCallback(
@@ -1041,6 +1285,8 @@ function EditorPageContent() {
 
       // Page removal is not undoable: reset history so Ctrl+Z can never
       // restore fields that point at a page which no longer exists.
+      activateNextViewerDocumentRevision();
+      currentDocumentRevisionRef.current = null;
       setPdfBytes(result.pdfBytes);
       reset(newFields);
       setSelectedFieldId(null);
@@ -1065,12 +1311,22 @@ function EditorPageContent() {
       setIsRemovingPage(false);
       setShowRemovePageConfirm(false);
     }
-  }, [pdfBytes, totalPages, isRemovingPage, currentPage, fields, reset, pageScales, markLocalSave]);
+  }, [
+    pdfBytes,
+    totalPages,
+    isRemovingPage,
+    currentPage,
+    fields,
+    reset,
+    pageScales,
+    markLocalSave,
+    activateNextViewerDocumentRevision,
+  ]);
 
   const handleStartOver = useCallback(() => {
     clearFieldSuggestionIntent();
     currentDocumentRevisionRef.current = null;
-    setFieldSuggestionReview(null);
+    deactivateViewerDocumentRevision();
     setShowAddAnotherPagePrompt(false);
     clearEditorState();
     setLocalSaveStatus("idle");
@@ -1083,7 +1339,7 @@ function EditorPageContent() {
     setActiveTool("select");
     pageScales.clear(); // Clear old page scales for fresh coordinate calculation
     reset([]);
-  }, [reset, pageScales]);
+  }, [reset, pageScales, deactivateViewerDocumentRevision]);
 
   const showToast = useCallback((msg: string, duration = 3000) => {
     setToast(msg);
@@ -1091,76 +1347,99 @@ function EditorPageContent() {
   }, []);
 
   const finishFieldSuggestionReview = useCallback(() => {
-    const showAddAnotherPagePromptAfter = fieldSuggestionReview?.showAddAnotherPagePromptAfter ?? false;
+    const showAddAnotherPagePromptAfter = fieldSuggestionReviewRef.current?.showAddAnotherPagePromptAfter ?? false;
     clearFieldSuggestionIntent();
+    fieldSuggestionReviewRef.current = null;
     setFieldSuggestionReview(null);
+    releaseFieldSuggestionSnapshot(true);
     if (showAddAnotherPagePromptAfter) setShowAddAnotherPagePrompt(true);
-  }, [fieldSuggestionReview]);
+  }, [releaseFieldSuggestionSnapshot]);
 
   const handleFieldSuggestionTypeChange = useCallback((id: string, type: SuggestedFieldType) => {
-    setFieldSuggestionReview((current) => current
-      ? {
-          ...current,
-          suggestions: current.suggestions.map((suggestion) =>
-            suggestion.id === id ? withSuggestionType(suggestion, type) : suggestion),
-        }
-      : current);
+    setFieldSuggestionReview((current) => {
+      const lifecycle = fieldSuggestionSnapshotEventRef.current;
+      if (
+        !current ||
+        current.status !== "review" ||
+        activeViewerDocumentRevisionRef.current !== current.viewerDocumentRevision ||
+        lifecycle?.status !== "ready" ||
+        !localFieldDetectionSnapshotKeysEqual(current.snapshotKey, lifecycle.key)
+      ) {
+        return current;
+      }
+      const next = {
+        ...current,
+        suggestions: current.suggestions.map((suggestion) =>
+          suggestion.id === id ? withSuggestionType(suggestion, type) : suggestion),
+      };
+      fieldSuggestionReviewRef.current = next;
+      return next;
+    });
   }, []);
 
   const handleFieldSuggestionRetry = useCallback(() => {
-    setFieldSuggestionReview((current) => current
-      ? {
-          ...current,
-          status: "processing",
-          suggestions: [],
-          errorMessage: undefined,
-          reviewVersion: current.reviewVersion + 1,
-        }
-      : current);
+    setFieldSuggestionReview((current) => {
+      const lifecycle = fieldSuggestionSnapshotEventRef.current;
+      if (
+        !current ||
+        current.status !== "review" ||
+        activeViewerDocumentRevisionRef.current !== current.viewerDocumentRevision ||
+        lifecycle?.status !== "ready" ||
+        !localFieldDetectionSnapshotKeysEqual(current.snapshotKey, lifecycle.key)
+      ) {
+        return current;
+      }
+      const next: ActiveFieldSuggestionReview = {
+        ...current,
+        snapshotKey: null,
+        status: "processing",
+        suggestions: [],
+        errorMessage: undefined,
+        reviewVersion: current.reviewVersion + 1,
+      };
+      fieldSuggestionReviewRef.current = next;
+      return next;
+    });
   }, []);
 
   const handleFieldSuggestionCommit = useCallback((acceptedSuggestions: readonly FieldSuggestion[]) => {
-    if (!fieldSuggestionReview || fieldSuggestionReview.status !== "review") return;
-    const viewport = pdfViewerRef.current?.getViewportDims();
-    const isCurrentDocument = currentDocumentRevisionRef.current === fieldSuggestionReview.documentRevision;
-    if (!viewport || !isCurrentDocument || currentPage !== 0) {
-      setFieldSuggestionReview((current) => current
-        ? {
-            ...current,
-            status: "error",
-            suggestions: [],
-            errorMessage: "The document changed before these fields could be added.",
-          }
-        : current);
-      return;
-    }
+    const review = fieldSuggestionReviewRef.current;
+    const lifecycle = fieldSuggestionSnapshotEventRef.current;
+    if (
+      !review ||
+      review.status !== "review" ||
+      lifecycle?.status !== "ready" ||
+      currentDocumentRevisionRef.current !== review.documentRevision ||
+      activeViewerDocumentRevisionRef.current !== review.viewerDocumentRevision ||
+      currentPage !== 0 ||
+      !localFieldDetectionSnapshotKeysEqual(review.snapshotKey, lifecycle.key)
+    ) return;
 
     const validated = validateFieldSuggestions(acceptedSuggestions, {
-      documentRevision: fieldSuggestionReview.documentRevision,
+      documentRevision: review.documentRevision,
       pageIndex: 0,
-      pageWidth: viewport.width,
-      pageHeight: viewport.height,
+      pageWidth: lifecycle.key.viewportWidth,
+      pageHeight: lifecycle.key.viewportHeight,
     });
     if (validated.length !== acceptedSuggestions.length) {
-      setFieldSuggestionReview((current) => current
-        ? {
-            ...current,
-            status: "error",
-            suggestions: [],
-            errorMessage: "One or more suggestions were no longer valid.",
-          }
-        : current);
+      finishFieldSuggestionReview();
       return;
     }
 
-    if (validated.length > 0) {
-      setFields((previousFields) => [
-        ...previousFields,
-        ...fieldSuggestionsToEditorFields(validated, previousFields),
-      ]);
-    }
+    // Final identity check immediately before the single history commit.
+    if (
+      currentDocumentRevisionRef.current !== review.documentRevision ||
+      activeViewerDocumentRevisionRef.current !== review.viewerDocumentRevision ||
+      fieldSuggestionSnapshotEventRef.current !== lifecycle ||
+      !localFieldDetectionSnapshotKeysEqual(review.snapshotKey, lifecycle.key)
+    ) return;
+
+    if (validated.length > 0) setFields([
+      ...fields,
+      ...fieldSuggestionsToEditorFields(validated, fields),
+    ]);
     finishFieldSuggestionReview();
-  }, [currentPage, fieldSuggestionReview, finishFieldSuggestionReview, setFields]);
+  }, [currentPage, fields, finishFieldSuggestionReview, setFields]);
 
   // One-time gesture discovery hint on touch devices (PR #94). Non-intrusive:
   // a single toast the first time a document opens, never again after that.
@@ -1540,8 +1819,9 @@ function EditorPageContent() {
   );
 
   const handlePageChange = useCallback((page: number) => {
+    invalidateFieldSuggestionReviewForRenderIntent();
     setCurrentPage(page);
-  }, []);
+  }, [invalidateFieldSuggestionReviewForRenderIntent]);
 
   const handleDetectFields = useCallback(async () => {
     if (!pdfViewerRef.current) return;
@@ -1866,7 +2146,7 @@ function EditorPageContent() {
               Fit
             </button>
             <button
-              onClick={() => setZoom(150)}
+              onClick={handleSnapZoom}
               title="Best zoom for snap detection (150%)"
               className={`hidden sm:block rounded-md px-2 py-1 text-xs font-medium transition-colors ${zoom >= 125 && zoom <= 175 ? "text-green-600 bg-green-50 hover:bg-green-100" : "text-text-muted hover:bg-surface-alt hover:text-text"}`}
             >
@@ -1896,7 +2176,7 @@ function EditorPageContent() {
             {totalPages > 1 && (
               <div className="flex items-center gap-2">
                 <button
-                  onClick={() => setCurrentPage((p) => Math.max(0, p - 1))}
+                  onClick={() => handlePageChange(Math.max(0, currentPage - 1))}
                   disabled={currentPage === 0}
                   className="flex h-8 w-8 items-center justify-center rounded-md hover:bg-surface-alt transition-colors disabled:opacity-30"
                 >
@@ -1906,7 +2186,7 @@ function EditorPageContent() {
                   Page {Math.min(currentPage + 1, totalPages)} of {totalPages}
                 </span>
                 <button
-                  onClick={() => setCurrentPage((p) => Math.min(totalPages - 1, p + 1))}
+                  onClick={() => handlePageChange(Math.min(totalPages - 1, currentPage + 1))}
                   disabled={currentPage === totalPages - 1}
                   className="flex h-8 w-8 items-center justify-center rounded-md hover:bg-surface-alt transition-colors disabled:opacity-30"
                 >
@@ -2022,6 +2302,8 @@ function EditorPageContent() {
             totalPages={totalPages}
             onTotalPagesChange={setTotalPages}
             zoom={zoom}
+            fieldSuggestionDocumentRevision={fieldSuggestionReviewEnabled ? viewerDocumentRevision ?? undefined : undefined}
+            onFieldSuggestionSnapshotEvent={fieldSuggestionReviewEnabled ? handleFieldSuggestionSnapshotEvent : undefined}
             onGestureZoomPreview={handleGestureZoomPreview}
             onGestureZoomCommit={handleGestureZoomCommit}
             highlightFieldIds={highlightFieldIds}
@@ -2085,10 +2367,10 @@ function EditorPageContent() {
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 hidden lg:flex items-center gap-2 rounded-full bg-navy shadow-xl border border-white/10 px-4 py-2">
           <span className="text-xs text-white/70 font-medium">{Math.min(currentPage + 1, totalPages)} / {totalPages}</span>
           <div className="w-px h-4 bg-white/20" />
-          <button onClick={() => setCurrentPage(p => Math.max(0, p - 1))} disabled={currentPage === 0} className="text-white/70 hover:text-white disabled:opacity-30 transition-colors">
+          <button onClick={() => handlePageChange(Math.max(0, currentPage - 1))} disabled={currentPage === 0} className="text-white/70 hover:text-white disabled:opacity-30 transition-colors">
             <ChevronLeft className="h-4 w-4" />
           </button>
-          <button onClick={() => setCurrentPage(p => Math.min(totalPages - 1, p + 1))} disabled={currentPage >= totalPages - 1} className="text-white/70 hover:text-white disabled:opacity-30 transition-colors">
+          <button onClick={() => handlePageChange(Math.min(totalPages - 1, currentPage + 1))} disabled={currentPage >= totalPages - 1} className="text-white/70 hover:text-white disabled:opacity-30 transition-colors">
             <ChevronRight className="h-4 w-4" />
           </button>
         </div>

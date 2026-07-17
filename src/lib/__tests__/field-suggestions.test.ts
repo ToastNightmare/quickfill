@@ -9,8 +9,19 @@ import {
   type FieldSuggestionBounds,
 } from "../field-suggestions";
 import {
-  detectLocalFieldSuggestions,
+  LOCAL_FIELD_SUGGESTION_MAX_BOXES,
+  LOCAL_FIELD_SUGGESTION_MAX_INCREMENTAL_MS,
+  LOCAL_FIELD_SUGGESTION_MAX_MAPPING_MS,
+  LOCAL_FIELD_SUGGESTION_MAX_PIXELS,
+  LOCAL_FIELD_SUGGESTION_MAX_SCAN_MS,
+  localFieldDetectionSnapshotKeysEqual,
+  mapLocalFieldSuggestions,
+  prepareLocalFieldDetectionSnapshot,
+  reduceLocalFieldDetectionLifecycle,
   renderedCanvasBoxToPageBounds,
+  type LocalFieldDetectionLifecycleEvent,
+  type LocalFieldDetectionSnapshot,
+  type LocalFieldDetectionSnapshotKey,
 } from "../local-field-suggestion-provider";
 import {
   FIELD_SUGGESTION_INTENT_KEY,
@@ -20,13 +31,6 @@ import {
   isFieldSuggestionReviewEnabled,
   storeFieldSuggestionIntent,
 } from "../field-suggestion-rollout";
-import { detectAllBoxes } from "../snap-detect";
-
-jest.mock("../snap-detect", () => ({
-  detectAllBoxes: jest.fn(),
-}));
-
-const mockedDetectAllBoxes = detectAllBoxes as jest.MockedFunction<typeof detectAllBoxes>;
 const DOCUMENT_REVISION = `qf-document-v1-${"a".repeat(64)}`;
 const OTHER_DOCUMENT_REVISION = `qf-document-v1-${"b".repeat(64)}`;
 
@@ -139,11 +143,54 @@ describe("field suggestion schema", () => {
   });
 });
 
-describe("local field suggestion provider", () => {
-  beforeEach(() => {
-    mockedDetectAllBoxes.mockReset();
-  });
+function snapshotKey(overrides: Partial<LocalFieldDetectionSnapshotKey> = {}): LocalFieldDetectionSnapshotKey {
+  return {
+    documentRevision: 1,
+    viewerInstanceId: 1,
+    renderGeneration: 1,
+    pageIndex: 0,
+    rotation: 0,
+    viewportTransform: [2, 0, 0, -2, 0, 1200],
+    canvasWidth: 1000,
+    canvasHeight: 1200,
+    viewportWidth: 500,
+    viewportHeight: 600,
+    renderedViewportWidth: 1000,
+    renderedViewportHeight: 1200,
+    ...overrides,
+  };
+}
 
+function detectionSnapshot(overrides: {
+  key?: Partial<LocalFieldDetectionSnapshotKey>;
+  scanDurationMs?: number;
+  boxes?: LocalFieldDetectionSnapshot["boxes"];
+} = {}): LocalFieldDetectionSnapshot {
+  return {
+    key: snapshotKey(overrides.key),
+    scanDurationMs: overrides.scanDurationMs ?? 12,
+    boxes: overrides.boxes ?? [
+      { x: 20, y: 20, width: 30, height: 30 },
+      { x: 100, y: 80, width: 240, height: 40 },
+    ],
+  };
+}
+
+function mapSnapshot(
+  snapshot: LocalFieldDetectionSnapshot,
+  now?: () => number,
+  incrementalDurationMs = 0,
+) {
+  return mapLocalFieldSuggestions({
+    snapshot,
+    documentRevision: DOCUMENT_REVISION,
+    expectedDocumentRevision: snapshot.key.documentRevision,
+    incrementalDurationMs,
+    now,
+  });
+}
+
+describe("local field suggestion snapshot provider", () => {
   it.each([
     {
       canvas: { width: 1200, height: 1600 },
@@ -170,30 +217,35 @@ describe("local field suggestion provider", () => {
   });
 
   it("keeps landscape scale-1 geometry and IDs stable across independent backing-canvas scales", () => {
-    const viewport = { width: 792, height: 612 };
-    const firstBounds = renderedCanvasBoxToPageBounds(
-      { x: 198, y: 306, width: 792, height: 153 },
-      { width: 1584, height: 1836 },
-      viewport,
-    );
-    const secondBounds = renderedCanvasBoxToPageBounds(
-      { x: 297, y: 204, width: 1188, height: 102 },
-      { width: 2376, height: 1224 },
-      viewport,
-    );
-
-    expect(firstBounds).toEqual({ x: 99, y: 102, width: 396, height: 51 });
-    expect(secondBounds).toEqual(firstBounds);
-    if (!firstBounds || !secondBounds) throw new Error("Expected valid landscape bounds");
-    expect(createFieldSuggestionId({
-      documentRevision: DOCUMENT_REVISION,
-      pageIndex: 0,
-      boundingBox: firstBounds,
-    })).toBe(createFieldSuggestionId({
-      documentRevision: DOCUMENT_REVISION,
-      pageIndex: 0,
-      boundingBox: secondBounds,
+    const first = mapSnapshot(detectionSnapshot({
+      key: {
+        canvasWidth: 792,
+        canvasHeight: 612,
+        viewportWidth: 396,
+        viewportHeight: 306,
+        renderedViewportWidth: 792,
+        renderedViewportHeight: 612,
+      },
+      boxes: [{ x: 198, y: 306, width: 396, height: 102 }],
     }));
+    const second = mapSnapshot(detectionSnapshot({
+      key: {
+        renderGeneration: 2,
+        canvasWidth: 1188,
+        canvasHeight: 918,
+        viewportWidth: 396,
+        viewportHeight: 306,
+        renderedViewportWidth: 1188,
+        renderedViewportHeight: 918,
+      },
+      boxes: [{ x: 297, y: 459, width: 594, height: 153 }],
+    }));
+
+    expect(first.status).toBe("ready");
+    expect(second.status).toBe("ready");
+    if (first.status !== "ready" || second.status !== "ready") throw new Error("Expected eligible snapshots");
+    expect(first.suggestions[0].boundingBox).toEqual(second.suggestions[0].boundingBox);
+    expect(first.suggestions[0].id).toBe(second.suggestions[0].id);
   });
 
   it.each([
@@ -209,74 +261,276 @@ describe("local field suggestion provider", () => {
     )).toBeNull();
   });
 
-  it("returns only validated text and checkbox suggestions and makes no request", () => {
+  it("maps only validated text and checkbox suggestions without canvas or network access", () => {
     const originalFetch = globalThis.fetch;
     const fetchSpy = jest.fn();
     Object.defineProperty(globalThis, "fetch", { value: fetchSpy, configurable: true, writable: true });
-    mockedDetectAllBoxes.mockReturnValue([
-      { x: 20, y: 20, width: 30, height: 30 },
-      { x: 100, y: 80, width: 240, height: 40 },
-      { x: 799, y: 0, width: 2, height: 10 },
-    ]);
-    const canvas = document.createElement("canvas");
-    canvas.width = 800;
-    canvas.height = 1000;
+    const result = mapSnapshot(detectionSnapshot());
 
-    const result = detectLocalFieldSuggestions({
-      canvas,
-      viewport: { width: 400, height: 500 },
-      documentRevision: DOCUMENT_REVISION,
-      pageIndex: 0,
-    });
-
-    expect(result.map((item) => item.type)).toEqual(["checkbox", "text"]);
-    expect(result.every((item) => item.documentRevision === DOCUMENT_REVISION && item.pageIndex === 0)).toBe(true);
+    expect(result.status).toBe("ready");
+    if (result.status !== "ready") throw new Error("Expected eligible snapshot");
+    expect(result.suggestions.map((item) => item.type)).toEqual(["checkbox", "text"]);
+    expect(result.suggestions.every((item) => item.documentRevision === DOCUMENT_REVISION && item.pageIndex === 0)).toBe(true);
     expect(fetchSpy).not.toHaveBeenCalled();
-    if (originalFetch) {
-      globalThis.fetch = originalFetch;
-    } else {
-      Reflect.deleteProperty(globalThis, "fetch");
+    if (originalFetch) globalThis.fetch = originalFetch;
+    else Reflect.deleteProperty(globalThis, "fetch");
+  });
+
+  it.each([
+    [LOCAL_FIELD_SUGGESTION_MAX_PIXELS, true],
+    [LOCAL_FIELD_SUGGESTION_MAX_PIXELS + 1, false],
+  ])("applies the exact pixel boundary %i", (pixelCount, eligible) => {
+    const result = mapSnapshot(detectionSnapshot({
+      key: {
+        canvasWidth: 1,
+        canvasHeight: pixelCount,
+        viewportWidth: 1,
+        viewportHeight: pixelCount,
+        renderedViewportWidth: 1,
+        renderedViewportHeight: pixelCount,
+      },
+      boxes: [{ x: 0, y: 0, width: 1, height: 1 }],
+    }));
+    expect(result.status === "ready").toBe(eligible);
+  });
+
+  it.each([
+    [LOCAL_FIELD_SUGGESTION_MAX_SCAN_MS, true],
+    [LOCAL_FIELD_SUGGESTION_MAX_SCAN_MS + 0.001, false],
+  ])("applies the exact scan-duration boundary %f ms", (scanDurationMs, eligible) => {
+    expect(mapSnapshot(detectionSnapshot({ scanDurationMs })).status === "ready").toBe(eligible);
+  });
+
+  it.each([
+    [LOCAL_FIELD_SUGGESTION_MAX_BOXES, true],
+    [LOCAL_FIELD_SUGGESTION_MAX_BOXES + 1, false],
+  ])("applies the exact box-count boundary %i", (boxCount, eligible) => {
+    const boxes = Array.from({ length: boxCount }, (_, index) => ({
+      x: (index % 10) * 50,
+      y: Math.floor(index / 10) * 50,
+      width: 20,
+      height: 20,
+    }));
+    expect(mapSnapshot(detectionSnapshot({ boxes })).status === "ready").toBe(eligible);
+  });
+
+  it.each([
+    [LOCAL_FIELD_SUGGESTION_MAX_MAPPING_MS, true],
+    [LOCAL_FIELD_SUGGESTION_MAX_MAPPING_MS + 0.001, false],
+  ])("applies the exact mapping-duration boundary %f ms", (duration, eligible) => {
+    const times = [0, duration];
+    const result = mapSnapshot(detectionSnapshot(), () => times.shift() ?? duration);
+    expect(result.status === "ready").toBe(eligible);
+    expect(result.mappingDurationMs).toBe(duration);
+  });
+
+  it.each([
+    [4, 6, true],
+    [4, 6.001, false],
+  ])("applies the cumulative incremental boundary (prior=%f, mapping=%f)", (prior, mapping, eligible) => {
+    const times = [0, mapping];
+    const result = mapSnapshot(detectionSnapshot(), () => times.shift() ?? mapping, prior);
+    expect(result.status === "ready").toBe(eligible);
+    expect(result.incrementalDurationMs).toBe(prior + mapping);
+    if (!eligible) expect(result).toMatchObject({ reason: "incremental-budget-exceeded", suggestions: [] });
+  });
+
+  it.each([
+    ["zero document revision", { key: { documentRevision: 0 } }],
+    ["negative viewer id", { key: { viewerInstanceId: -1 } }],
+    ["fractional generation", { key: { renderGeneration: 1.5 } }],
+    ["wrong page", { key: { pageIndex: 1 } }],
+    ["NaN rotation", { key: { rotation: Number.NaN } }],
+    ["invalid transform", { key: { viewportTransform: [1, 0, Number.POSITIVE_INFINITY, 1, 0, 0] } }],
+    ["fractional canvas dimension", { key: { canvasWidth: 999.5 } }],
+    ["negative viewport", { key: { viewportWidth: -1 } }],
+    ["NaN scan", { scanDurationMs: Number.NaN }],
+    ["negative scan", { scanDurationMs: -1 }],
+    ["zero boxes", { boxes: [] }],
+  ])("rejects %s metadata without a partial list", (_name, overrides) => {
+    const result = mapSnapshot(detectionSnapshot(overrides as Parameters<typeof detectionSnapshot>[0]));
+    expect(result).toMatchObject({ status: "ineligible", suggestions: [] });
+  });
+
+  it("rejects the whole snapshot when any box is invalid or carries non-geometry data", () => {
+    const invalidGeometry = mapSnapshot(detectionSnapshot({
+      boxes: [
+        { x: 20, y: 20, width: 30, height: 30 },
+        { x: 999, y: 10, width: 2, height: 10 },
+      ],
+    }));
+    const contentBearing = mapSnapshot(detectionSnapshot({
+      boxes: [{ x: 20, y: 20, width: 30, height: 30, text: "private" } as never],
+    }));
+    expect(invalidGeometry).toMatchObject({ status: "ineligible", suggestions: [] });
+    expect(contentBearing).toMatchObject({ status: "ineligible", suggestions: [] });
+  });
+
+  it("does not mutate an immutable snapshot and produces identical IDs on retry", () => {
+    const immutable = Object.freeze({
+      ...detectionSnapshot(),
+      key: Object.freeze(snapshotKey()),
+      boxes: Object.freeze(detectionSnapshot().boxes.map((box) => Object.freeze({ ...box }))),
+    });
+    const before = immutable.boxes.map((box) => ({ ...box }));
+    const first = mapSnapshot(immutable);
+    const second = mapSnapshot(immutable);
+    expect(first.status).toBe("ready");
+    expect(second.status).toBe("ready");
+    if (first.status !== "ready" || second.status !== "ready") throw new Error("Expected eligible snapshot");
+    expect(first.suggestions.map((item) => item.id)).toEqual(second.suggestions.map((item) => item.id));
+    expect(immutable.boxes).toEqual(before);
+  });
+
+  it.each([101, 390, 1_000, 10_000])(
+    "rejects %i boxes before reading or copying any box",
+    (count) => {
+      const boxes = new Array(count) as LocalFieldDetectionSnapshot["boxes"];
+      const firstBoxRead = jest.fn(() => {
+        throw new Error("box data must remain unread");
+      });
+      Object.defineProperty(boxes, 0, { configurable: true, get: firstBoxRead });
+
+      const result = prepareLocalFieldDetectionSnapshot({
+        key: snapshotKey(),
+        scanDurationMs: 1,
+        boxes,
+      });
+
+      expect(result).toMatchObject({ status: "ineligible", reason: "invalid-snapshot" });
+      expect(firstBoxRead).not.toHaveBeenCalled();
+    },
+  );
+
+  it("prepares an all-or-nothing immutable numeric snapshot without mutating detector boxes", () => {
+    const boxes = Array.from({ length: LOCAL_FIELD_SUGGESTION_MAX_BOXES }, (_, index) => ({
+      x: (index % 10) * 50,
+      y: Math.floor(index / 10) * 50,
+      width: 20,
+      height: 20,
+      area: 400,
+    }));
+    const before = boxes.map((box) => ({ ...box }));
+    const result = prepareLocalFieldDetectionSnapshot({ key: snapshotKey(), scanDurationMs: 1, boxes });
+
+    expect(result.status).toBe("ready");
+    if (result.status !== "ready") throw new Error("Expected eligible snapshot");
+    expect(result.snapshot.boxes).toEqual(before.map(({ x, y, width, height }) => ({ x, y, width, height })));
+    expect(result.snapshot.boxes).not.toBe(boxes);
+    expect(Object.isFrozen(result.snapshot)).toBe(true);
+    expect(Object.isFrozen(result.snapshot.key)).toBe(true);
+    expect(Object.isFrozen(result.snapshot.key.viewportTransform)).toBe(true);
+    expect(result.snapshot.boxes.every(Object.isFrozen)).toBe(true);
+    expect(boxes).toEqual(before);
+    expect(Object.isFrozen(boxes)).toBe(false);
+  });
+
+  it("fails closed when an in-cap detector box throws while geometry is read", () => {
+    const boxes = [{ x: 10, y: 10, width: 20, height: 20 }];
+    Object.defineProperty(boxes[0], "width", {
+      configurable: true,
+      get: () => { throw new Error("malformed geometry getter"); },
+    });
+
+    expect(prepareLocalFieldDetectionSnapshot({
+      key: snapshotKey(),
+      scanDurationMs: 1,
+      boxes,
+    })).toMatchObject({ status: "ineligible", reason: "invalid-snapshot" });
+  });
+
+  it("rejects malformed in-cap input without returning a partial copy", () => {
+    const result = prepareLocalFieldDetectionSnapshot({
+      key: snapshotKey(),
+      scanDurationMs: 1,
+      boxes: [
+        { x: 10, y: 10, width: 20, height: 20 },
+        { x: 30, y: 30, width: Number.NaN, height: 20 },
+        { x: 50, y: 50, width: 20, height: 20 },
+      ],
+    });
+
+    expect(result).toEqual(expect.objectContaining({
+      status: "ineligible",
+      reason: "invalid-snapshot",
+    }));
+    expect("snapshot" in result).toBe(false);
+  });
+
+  it.each([
+    [LOCAL_FIELD_SUGGESTION_MAX_INCREMENTAL_MS, true],
+    [LOCAL_FIELD_SUGGESTION_MAX_INCREMENTAL_MS + 0.001, false],
+  ])("applies the exact snapshot-preparation budget %f ms", (duration, eligible) => {
+    const times = [0, duration];
+    const result = prepareLocalFieldDetectionSnapshot({
+      key: snapshotKey(),
+      scanDurationMs: 1,
+      boxes: [{ x: 10, y: 10, width: 20, height: 20 }],
+      now: () => times.shift() ?? duration,
+    });
+
+    expect(result.status === "ready").toBe(eligible);
+    expect(result.snapshotPreparationDurationMs).toBe(duration);
+    if (!eligible) expect(result).toMatchObject({ reason: "incremental-budget-exceeded" });
+  });
+});
+
+function lifecycleEvent(
+  status: LocalFieldDetectionLifecycleEvent["status"],
+  key: LocalFieldDetectionSnapshotKey,
+): LocalFieldDetectionLifecycleEvent {
+  if (status === "started") return { status, key, scanDurationMs: null };
+  if (status === "cancelled") return { status, key, scanDurationMs: null };
+  if (status === "failed") return { status, key, scanDurationMs: null, reason: "render-failed" };
+  const snapshot = detectionSnapshot({ key });
+  return {
+    status,
+    key,
+    scanDurationMs: snapshot.scanDurationMs,
+    snapshotPreparationDurationMs: 0,
+    snapshot,
+  };
+}
+
+describe("keyed local detection lifecycle", () => {
+  it.each(["ready", "failed", "cancelled"] as const)("keeps B when A later reports %s", (lateStatus) => {
+    const a = snapshotKey({ renderGeneration: 1 });
+    const b = snapshotKey({ renderGeneration: 2 });
+    let state: LocalFieldDetectionLifecycleEvent | null = null;
+    state = reduceLocalFieldDetectionLifecycle(state, lifecycleEvent("started", a), 1);
+    state = reduceLocalFieldDetectionLifecycle(state, lifecycleEvent("started", b), 1);
+    state = reduceLocalFieldDetectionLifecycle(state, lifecycleEvent("ready", b), 1);
+    state = reduceLocalFieldDetectionLifecycle(state, lifecycleEvent(lateStatus, a), 1);
+    expect(state?.status).toBe("ready");
+    expect(state?.key).toBe(b);
+  });
+
+  it("orders same-sized replacement, A-B-A, pages, rotation, viewport, and viewer instances by full identity", () => {
+    const identities = [
+      snapshotKey({ documentRevision: 1, viewerInstanceId: 1, renderGeneration: 1 }),
+      snapshotKey({ documentRevision: 2, viewerInstanceId: 1, renderGeneration: 1 }),
+      snapshotKey({ documentRevision: 3, viewerInstanceId: 1, renderGeneration: 1 }),
+      snapshotKey({ documentRevision: 3, viewerInstanceId: 1, renderGeneration: 2, pageIndex: 1 }),
+      snapshotKey({ documentRevision: 3, viewerInstanceId: 1, renderGeneration: 3, pageIndex: 0 }),
+      snapshotKey({ documentRevision: 3, viewerInstanceId: 1, renderGeneration: 4, rotation: 90 }),
+      snapshotKey({ documentRevision: 3, viewerInstanceId: 1, renderGeneration: 5, renderedViewportWidth: 900 }),
+      snapshotKey({ documentRevision: 3, viewerInstanceId: 2, renderGeneration: 1 }),
+    ];
+    let state: LocalFieldDetectionLifecycleEvent | null = null;
+    for (const identity of identities) {
+      state = reduceLocalFieldDetectionLifecycle(state, lifecycleEvent("started", identity), identity.documentRevision);
     }
+    expect(state?.key).toBe(identities.at(-1));
+    expect(localFieldDetectionSnapshotKeysEqual(identities[0], identities[1])).toBe(false);
+    expect(localFieldDetectionSnapshotKeysEqual(identities[3], identities[4])).toBe(false);
+    expect(localFieldDetectionSnapshotKeysEqual(identities[5], identities[6])).toBe(false);
   });
 
-  it("produces the same IDs across proportionally different render scales", () => {
-    const firstCanvas = document.createElement("canvas");
-    firstCanvas.width = 1200;
-    firstCanvas.height = 1600;
-    mockedDetectAllBoxes.mockReturnValueOnce([{ x: 200, y: 400, width: 400, height: 60 }]);
-    const first = detectLocalFieldSuggestions({
-      canvas: firstCanvas,
-      viewport: { width: 600, height: 800 },
-      documentRevision: DOCUMENT_REVISION,
-      pageIndex: 0,
-    });
-
-    const secondCanvas = document.createElement("canvas");
-    secondCanvas.width = 1800;
-    secondCanvas.height = 2400;
-    mockedDetectAllBoxes.mockReturnValueOnce([{ x: 300, y: 600, width: 600, height: 90 }]);
-    const second = detectLocalFieldSuggestions({
-      canvas: secondCanvas,
-      viewport: { width: 600, height: 800 },
-      documentRevision: DOCUMENT_REVISION,
-      pageIndex: 0,
-    });
-
-    expect(first[0]?.boundingBox).toEqual(second[0]?.boundingBox);
-    expect(first[0]?.id).toBe(second[0]?.id);
-  });
-
-  it("never scans a non-first page", () => {
-    const canvas = document.createElement("canvas");
-    canvas.width = 800;
-    canvas.height = 1000;
-    expect(detectLocalFieldSuggestions({
-      canvas,
-      viewport: { width: 400, height: 500 },
-      documentRevision: DOCUMENT_REVISION,
-      pageIndex: 1,
-    })).toEqual([]);
-    expect(mockedDetectAllBoxes).not.toHaveBeenCalled();
+  it("ignores a late start for a settled key and lets same-key cancellation release ready data", () => {
+    const key = snapshotKey();
+    const ready = lifecycleEvent("ready", key);
+    expect(reduceLocalFieldDetectionLifecycle(ready, lifecycleEvent("started", key), 1)).toBe(ready);
+    expect(reduceLocalFieldDetectionLifecycle(ready, lifecycleEvent("cancelled", key), 1)?.status).toBe("cancelled");
   });
 });
 

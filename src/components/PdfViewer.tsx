@@ -21,8 +21,15 @@ import {
   touchMidpoint,
   type GesturePoint,
 } from "@/lib/pinch-zoom";
+import {
+  prepareLocalFieldDetectionSnapshot,
+  type LocalFieldDetectionLifecycleEvent,
+  type LocalFieldDetectionSnapshotKey,
+} from "@/lib/local-field-suggestion-provider";
 
 type PdfActiveTool = PlacementToolType | "mask-eraser";
+
+let nextFieldSuggestionViewerInstanceId = 0;
 
 export interface PdfViewerHandle {
   getCanvasDataURL: () => string | null;
@@ -67,6 +74,9 @@ interface PdfViewerProps {
   onGestureZoomPreview?: (zoom: number | null) => void;
   /** Commits the final pinch zoom (clamped 50-200) when the gesture ends. */
   onGestureZoomCommit?: (zoom: number) => void;
+  /** Optional QA-only publication of the existing full-page snap scan. */
+  fieldSuggestionDocumentRevision?: number;
+  onFieldSuggestionSnapshotEvent?: (event: LocalFieldDetectionLifecycleEvent) => void;
 }
 
 interface SnapPreview {
@@ -189,6 +199,8 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
   onEditingChange,
   onGestureZoomPreview,
   onGestureZoomCommit,
+  fieldSuggestionDocumentRevision,
+  onFieldSuggestionSnapshotEvent,
 }, ref) {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -254,6 +266,31 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
     }
   };
   const precomputedBoxesRef = useRef<SnapResult[]>([]);
+  const fieldSuggestionViewerInstanceIdRef = useRef<number | null>(null);
+  const fieldSuggestionRenderGenerationRef = useRef(0);
+  const activeFieldSuggestionSnapshotRef = useRef<{
+    key: Readonly<LocalFieldDetectionSnapshotKey>;
+    scanDurationMs: number | null;
+  } | null>(null);
+  const emitFieldSuggestionSnapshotEvent = useCallback((event: LocalFieldDetectionLifecycleEvent) => {
+    try {
+      onFieldSuggestionSnapshotEvent?.(event);
+    } catch {
+      // Snapshot publication is optional and must never disturb PDF rendering.
+    }
+  }, [onFieldSuggestionSnapshotEvent]);
+  const cancelFieldSuggestionSnapshot = useCallback((
+    expectedKey?: Readonly<LocalFieldDetectionSnapshotKey> | null,
+  ) => {
+    const active = activeFieldSuggestionSnapshotRef.current;
+    if (!active || (expectedKey && active.key !== expectedKey)) return;
+    activeFieldSuggestionSnapshotRef.current = null;
+    emitFieldSuggestionSnapshotEvent({
+      status: "cancelled",
+      key: active.key,
+      scanDurationMs: active.scanDurationMs,
+    });
+  }, [emitFieldSuggestionSnapshotEvent]);
   const dragStartedRef = useRef(false);
   const mouseDownPos = useRef<{x: number, y: number} | null>(null);
   const isDragMove = useRef(false);
@@ -390,6 +427,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
     refit: () => {
       // Fit must fully reset the viewport: recompute scale, drop any stale
       // scroll/pan, and abandon in-flight gesture state.
+      cancelFieldSuggestionSnapshot();
       cancelGestureRef.current();
       pendingScrollAnchorRef.current = null;
       pendingRecenterRef.current = true;
@@ -579,6 +617,27 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
   // Render PDF page
   useEffect(() => {
     let cancelled = false;
+    let renderTask: { promise: Promise<unknown>; cancel?: () => void } | null = null;
+    let renderSnapshotKey: Readonly<LocalFieldDetectionSnapshotKey> | null = null;
+
+    const isCurrentRender = () => (
+      !cancelled &&
+      (!renderSnapshotKey || activeFieldSuggestionSnapshotRef.current?.key === renderSnapshotKey)
+    );
+
+    const failSnapshot = (
+      reason: Extract<LocalFieldDetectionLifecycleEvent, { status: "failed" }>["reason"],
+      scanDurationMs: number | null = null,
+    ) => {
+      if (!renderSnapshotKey || activeFieldSuggestionSnapshotRef.current?.key !== renderSnapshotKey) return;
+      activeFieldSuggestionSnapshotRef.current = null;
+      emitFieldSuggestionSnapshotEvent({
+        status: "failed",
+        key: renderSnapshotKey,
+        scanDurationMs,
+        reason,
+      });
+    };
 
     async function renderPage() {
       setLoading(true);
@@ -618,34 +677,136 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
         const effectiveScale = newFitScale * zoomFactor;
         const scaledViewport = page.getViewport({ scale: effectiveScale });
 
+        const canvasWidth = Math.floor(scaledViewport.width);
+        const canvasHeight = Math.floor(scaledViewport.height);
+
         setFitScale(newFitScale);
         onPageScaleSet(currentPage, newFitScale);
         setDimensions({
-          width: Math.floor(scaledViewport.width),
-          height: Math.floor(scaledViewport.height),
+          width: canvasWidth,
+          height: canvasHeight,
         });
 
-        const canvas = canvasRef.current;
-        if (!canvas || cancelled) return;
+        if (
+          onFieldSuggestionSnapshotEvent &&
+          Number.isSafeInteger(fieldSuggestionDocumentRevision) &&
+          (fieldSuggestionDocumentRevision ?? 0) > 0
+        ) {
+          if (fieldSuggestionViewerInstanceIdRef.current === null) {
+            nextFieldSuggestionViewerInstanceId += 1;
+            fieldSuggestionViewerInstanceIdRef.current = nextFieldSuggestionViewerInstanceId;
+          }
+          fieldSuggestionRenderGenerationRef.current += 1;
+          const transform = scaledViewport.transform;
+          const viewportTransform = Object.freeze([
+            transform[0],
+            transform[1],
+            transform[2],
+            transform[3],
+            transform[4],
+            transform[5],
+          ]) as Readonly<[number, number, number, number, number, number]>;
+          renderSnapshotKey = Object.freeze({
+            documentRevision: fieldSuggestionDocumentRevision as number,
+            viewerInstanceId: fieldSuggestionViewerInstanceIdRef.current,
+            renderGeneration: fieldSuggestionRenderGenerationRef.current,
+            pageIndex: currentPage,
+            rotation: scaledViewport.rotation,
+            viewportTransform,
+            canvasWidth,
+            canvasHeight,
+            viewportWidth: viewport.width,
+            viewportHeight: viewport.height,
+            renderedViewportWidth: scaledViewport.width,
+            renderedViewportHeight: scaledViewport.height,
+          });
+          activeFieldSuggestionSnapshotRef.current = { key: renderSnapshotKey, scanDurationMs: null };
+          emitFieldSuggestionSnapshotEvent({
+            status: "started",
+            key: renderSnapshotKey,
+            scanDurationMs: null,
+          });
+        }
 
-        canvas.width = Math.floor(scaledViewport.width);
-        canvas.height = Math.floor(scaledViewport.height);
+        const canvas = canvasRef.current;
+        if (!canvas || !isCurrentRender()) {
+          if (!canvas) {
+            failSnapshot("missing-canvas");
+            setLoading(false);
+          }
+          return;
+        }
+
+        canvas.width = canvasWidth;
+        canvas.height = canvasHeight;
 
         const ctx = canvas.getContext("2d");
-        if (!ctx) return;
+        if (!ctx) {
+          failSnapshot("missing-canvas-context");
+          setLoading(false);
+          return;
+        }
 
-        await page.render({
+        renderTask = page.render({
           canvasContext: ctx,
           viewport: scaledViewport,
           canvas: canvas,
-        } as Parameters<typeof page.render>[0]).promise;
+        } as Parameters<typeof page.render>[0]);
+        await renderTask.promise;
 
-        // Run batch visual detection after render for pre-computed snap targets
+        // A replacement, page/rotation/viewport change, zoom/refit, or unmount
+        // may have cancelled this render while pdf.js was working.
+        if (!isCurrentRender()) return;
+
+        // Revalidate immediately before the one existing full-page scan.
+        if (!isCurrentRender()) return;
+
+        // Run batch visual detection after render for pre-computed snap targets.
+        // The optional suggestion snapshot is derived only after the existing
+        // detector result has been published unchanged to snapping.
         try {
+          const scanStartedAt = renderSnapshotKey ? performance.now() : null;
           const boxes = detectAllBoxes(canvas);
+          const scanDurationMs = scanStartedAt === null ? null : performance.now() - scanStartedAt;
+
+          // The detector is synchronous, so cancellation cannot interrupt its
+          // inner loop; stale output is discarded at the first boundary after it.
+          if (!isCurrentRender()) return;
           precomputedBoxesRef.current = boxes;
+
+          if (renderSnapshotKey && scanDurationMs !== null) {
+            try {
+              const active = activeFieldSuggestionSnapshotRef.current;
+              if (!active || active.key !== renderSnapshotKey) return;
+              active.scanDurationMs = scanDurationMs;
+
+              const prepared = prepareLocalFieldDetectionSnapshot({
+                key: renderSnapshotKey,
+                scanDurationMs,
+                boxes,
+              });
+              if (prepared.status !== "ready") {
+                failSnapshot("ineligible-metadata", scanDurationMs);
+              } else {
+                // Revalidate once more immediately before publication.
+                if (!isCurrentRender()) return;
+                emitFieldSuggestionSnapshotEvent(Object.freeze({
+                  status: "ready",
+                  key: renderSnapshotKey,
+                  scanDurationMs,
+                  snapshotPreparationDurationMs: prepared.snapshotPreparationDurationMs,
+                  snapshot: prepared.snapshot,
+                }));
+              }
+            } catch {
+              // Snapshot preparation and callbacks are optional. Their failure
+              // must not clear or mutate the detector result used by snapping.
+              failSnapshot("ineligible-metadata", scanDurationMs);
+            }
+          }
         } catch {
           precomputedBoxesRef.current = [];
+          failSnapshot("detector-failed");
         }
 
         setLoading(false);
@@ -696,6 +857,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
         }
       } catch (err) {
         if (!cancelled) {
+          failSnapshot("render-failed");
           setError("Failed to render PDF. The file may be corrupted.");
           setLoading(false);
           console.error(err);
@@ -706,9 +868,24 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
     renderPage();
     return () => {
       cancelled = true;
+      cancelFieldSuggestionSnapshot(renderSnapshotKey);
+      try {
+        renderTask?.cancel?.();
+      } catch {
+        // The render may already have settled.
+      }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pdfBytes, currentPage, zoom, fitRequestId]);
+  }, [
+    pdfBytes,
+    currentPage,
+    zoom,
+    fitRequestId,
+    fieldSuggestionDocumentRevision,
+    onFieldSuggestionSnapshotEvent,
+    cancelFieldSuggestionSnapshot,
+    emitFieldSuggestionSnapshotEvent,
+  ]);
 
   // Refit on viewport resize and orientation change. Observes the scroll
   // viewport and bumps fitRequestId (debounced) when the available width
@@ -730,6 +907,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
         // after the refit so the page never sits half off-screen. Desktop
         // keeps its scroll position on window resizes.
         if (isMobileEditorViewport()) pendingRecenterRef.current = true;
+        cancelFieldSuggestionSnapshot();
         setFitRequestId((id) => id + 1);
       }, 150);
     });
@@ -738,7 +916,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
       if (timer) clearTimeout(timer);
       observer.disconnect();
     };
-  }, []);
+  }, [cancelFieldSuggestionSnapshot]);
 
 
 
