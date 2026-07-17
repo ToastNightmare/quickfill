@@ -40,11 +40,11 @@ Do not ask Kyle to run routine PowerShell verification. Codex must run routine l
 
 Only ask Kyle for:
 
-- approval gates;
+- approval gates not already covered by an active end-to-end approval;
 - login, MFA, password, or account access;
 - human visual judgement;
 - risky scope changes;
-- final PR/merge approval.
+- final PR/merge approval when an active end-to-end approval does not include it.
 
 Do not use GitHub connector full-file replacement for large source files unless Kyle explicitly approves it. Prefer local git operations from the active worktree. If built-in local git operations are unavailable, stop and report the blocker.
 
@@ -55,7 +55,29 @@ Before PR prep, confirm:
 - only approved files changed;
 - generated files are cleaned;
 - no unrelated files are included;
-- no commit, push, PR, deploy, or merge happens without the relevant explicit approval.
+- no commit, push, PR, deploy, or merge happens without the relevant explicit approval, including an active end-to-end approval when applicable.
+
+### End-to-end PR authorization
+
+One task, chat, branch, worktree, and PR at a time remains mandatory. A plan, an explicit scope, the expected files, and the applicable verification gates are still required before editing.
+
+When Kyle explicitly approves a named PR task end to end and identifies its source-of-truth worktree and branch, that approval authorizes the normal lifecycle for only that task:
+
+1. Preflight and implementation within the approved scope.
+2. Focused checks plus the repository build and QA gates.
+3. Intentional staging, commit, normal push, and a draft PR.
+4. Read-only review, in-scope corrections, and rerunning affected gates.
+5. Monitoring required checks and review state.
+6. Marking the approved PR ready and merging it with the repository-standard merge-commit method after every required gate is green.
+7. Verifying that the automatic production deployment matches the exact merge SHA and performing bounded read-only smoke checks.
+8. Fast-forwarding only the expressly authorized main worktree.
+9. Removing only the clean, proven-merged task worktree, deleting only its matching merged local branch normally, and deleting its exact matching remote branch with verified-head-SHA lease protection.
+
+Do not pause again for routine steps already covered by that approval. Continue to report material progress and preserve the pre-commit status and exact-diff audit.
+
+An end-to-end approval does not authorize scope expansion, unrelated changes, force-updating live branch content, branch-protection bypasses, manual production deployments, production-data mutation, credential disclosure, destructive commands against broad or unresolved paths, or changes to other worktrees. An expected-SHA lease may protect deletion of the exact verified merged remote branch during approved cleanup. The approval also does not weaken the production-SaaS safeguards, protected PDF-coordinate rules, or the requirement to use exact resolved targets for cleanup.
+
+Stop and report before continuing if there is material scope ambiguity, a security concern, destructive uncertainty, unrelated dirty state, a genuine product regression, an unexpected production mutation risk, or a required gate that remains red after safe in-scope diagnosis and correction.
 
 ## Product Contract
 
@@ -112,7 +134,7 @@ For targeted debugging, run the smallest useful Jest or Playwright test first, t
 
 ## Technical PR And Merge Workflow
 
-Codex may handle the technical PR and merge workflow only after Kyle gives explicit approval using the phrases below.
+The limited approval phrases below remain available when Kyle has not granted an end-to-end PR approval. Codex may handle only the authorized portion of the technical workflow.
 
 ### Prepare PR Approval
 
