@@ -961,6 +961,7 @@ function CombControls({
   const combField = selectedField as CombField;
   const charCount = combField.charCount ?? 9;
   const currentCellWidth = combField.cellWidth ?? Math.round(selectedField.width / charCount);
+  const filledCellCount = Math.min(combField.value?.replace(/ /g, "").length ?? 0, charCount);
 
   return (
     <>
@@ -1031,7 +1032,7 @@ function CombControls({
       />
       <Divider />
       <Section>
-        <p className="text-center text-xs text-text-muted">{combField.value?.replace(/ +$/, "").length || 0} / {charCount} characters filled</p>
+        <p className="text-center text-xs text-text-muted">{filledCellCount} / {charCount} characters filled</p>
       </Section>
     </>
   );

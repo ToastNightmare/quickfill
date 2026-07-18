@@ -201,6 +201,16 @@ test("Box Field stores Comb keyboard input, deletion, and cursor navigation", as
     charCount,
     cursorIndex: Math.min(clickedCellIndex + 1, charCount - 1),
   });
+  await expect(page.getByText(`4 / ${charCount} characters filled`).last()).toBeVisible();
+
+  await page.keyboard.press("Backspace");
+  await expect.poll(() => readCombField(page)).toEqual({
+    type: "comb",
+    value: paddedValue("AZX", charCount),
+    charCount,
+    cursorIndex: clickedCellIndex,
+  });
+  await expect(page.getByText(`3 / ${charCount} characters filled`).last()).toBeVisible();
 
   const saveBadge = page.getByTestId("local-save-status");
   await expect(saveBadge).toBeVisible();
