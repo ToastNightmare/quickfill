@@ -22,6 +22,7 @@ import {
   savePdfToIndexedDB,
   saveFieldsToLocalStorage,
 } from "@/lib/persistence";
+import { trackPrivacySafeEvent } from "@/lib/analytics";
 import type { EditorField } from "@/lib/types";
 
 const mockGetCompositePreviewURL = jest.fn().mockResolvedValue("data:image/png;base64,preview");
@@ -33,7 +34,11 @@ let mockLatestSnapshotKey: LocalFieldDetectionSnapshotKey | null = null;
 let mockTotalPages = 1;
 let mockLatestReviewCallbacks: {
   onTypeChange: (id: string, type: "text" | "checkbox") => void;
-  onCommit: (suggestions: readonly FieldSuggestion[]) => void;
+  onCommit: (
+    suggestions: readonly FieldSuggestion[],
+    action: "accept_all" | "accepted_selected",
+  ) => void;
+  onDecision?: (decision: "accepted" | "rejected") => void;
   onRetry: () => void;
   onCancel: () => void;
 } | null = null;
@@ -144,6 +149,7 @@ jest.mock("@/components/FieldSuggestionReview", () => {
       mockLatestReviewCallbacks = {
         onTypeChange: props.onTypeChange,
         onCommit: props.onCommit,
+        onDecision: props.onDecision,
         onRetry: props.onRetry,
         onCancel: props.onCancel,
       };
@@ -309,7 +315,10 @@ jest.mock("@/lib/pdf-utils", () => ({
   detectAcroFormFields: jest.fn().mockResolvedValue([]),
 }));
 
-jest.mock("@/lib/analytics", () => ({ trackEvent: jest.fn() }));
+jest.mock("@/lib/analytics", () => ({
+  trackEvent: jest.fn(),
+  trackPrivacySafeEvent: jest.fn(),
+}));
 jest.mock("@/lib/meta-pixel", () => ({ trackMetaEvent: jest.fn() }));
 jest.mock("@/lib/editor-profile-autofill", () => ({
   runEditorProfileAutofill: jest.fn(),
@@ -357,6 +366,7 @@ const mockedSavePdf = savePdfToIndexedDB as jest.MockedFunction<typeof savePdfTo
 const mockedSaveFields = saveFieldsToLocalStorage as jest.MockedFunction<typeof saveFieldsToLocalStorage>;
 const mockedRolloutEnabled = isFieldSuggestionReviewEnabled as jest.MockedFunction<typeof isFieldSuggestionReviewEnabled>;
 const mockedMapLocal = mapLocalFieldSuggestions as jest.MockedFunction<typeof mapLocalFieldSuggestions>;
+const mockedTrackPrivacySafeEvent = trackPrivacySafeEvent as jest.MockedFunction<typeof trackPrivacySafeEvent>;
 
 function suggestedFields(documentRevision: string): FieldSuggestion[] {
   const textBounds = { x: 80, y: 120, width: 180, height: 24 };
@@ -444,6 +454,12 @@ function expectReleasedAndBlockedSnapshot() {
 function editorFields(): EditorField[] {
   const value = screen.getByTestId("pdf-viewer").getAttribute("data-fields") ?? "[]";
   return JSON.parse(value) as EditorField[];
+}
+
+function fieldSuggestionTelemetry() {
+  return mockedTrackPrivacySafeEvent.mock.calls
+    .filter(([name]) => name === "field_suggestion_lifecycle")
+    .map(([, properties]) => properties);
 }
 
 function deferred<T>() {
@@ -535,6 +551,7 @@ describe("editor local field suggestion review", () => {
     expect(mockedMapLocal).not.toHaveBeenCalled();
     expect(mockLatestSnapshotCallback).toBeUndefined();
     expect(sessionStorage.getItem(FIELD_SUGGESTION_INTENT_KEY)).toBeNull();
+    expect(fieldSuggestionTelemetry()).toEqual([]);
   });
 
   it("activates the shared local-review path only in the enabled mode", async () => {
@@ -546,6 +563,82 @@ describe("editor local field suggestion review", () => {
     const request = mockedMapLocal.mock.calls[0][0];
     expect(request.incrementalDurationMs).toBeGreaterThanOrEqual(0);
     expect(request.incrementalDurationMs).toBeLessThanOrEqual(10);
+  });
+
+  it("records one allowlisted lifecycle across rerenders and Retry", async () => {
+    await renderPhotoSession();
+    await screen.findByRole("heading", { name: "Review fillable field suggestions" });
+
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    await screen.findByRole("heading", { name: "Review fillable field suggestions" });
+    fireEvent.click(screen.getByRole("button", { name: "Accept field 1" }));
+    fireEvent.click(screen.getByRole("button", { name: "Reject field 2" }));
+    fireEvent.click(screen.getByRole("button", { name: "Add accepted fields (1)" }));
+
+    await waitFor(() => expect(editorFields()).toHaveLength(1));
+    const telemetry = fieldSuggestionTelemetry();
+    expect(telemetry.map((properties) => properties.stage)).toEqual([
+      "eligibility",
+      "review_requested",
+      "snapshot_ready",
+      "review_displayed",
+      "retry",
+      "individual_accept",
+      "individual_reject",
+      "completed",
+    ]);
+    expect(telemetry.filter((properties) => properties.stage === "snapshot_ready")).toHaveLength(1);
+    expect(telemetry.filter((properties) => properties.stage === "review_displayed")).toHaveLength(1);
+    expect(telemetry.at(-1)).toEqual({
+      stage: "completed",
+      outcome: "accepted_selected",
+      count_bucket: "1",
+    });
+    for (const properties of telemetry) {
+      expect(Object.keys(properties).every((key) => [
+        "stage",
+        "eligibility",
+        "reason",
+        "outcome",
+        "count_bucket",
+        "scan_duration_bucket",
+        "incremental_duration_bucket",
+      ].includes(key))).toBe(true);
+    }
+  });
+
+  it("keeps review behavior non-blocking when telemetry throws", async () => {
+    mockedTrackPrivacySafeEvent.mockImplementation(() => {
+      throw new Error("analytics unavailable");
+    });
+    await renderPhotoSession();
+    await screen.findByRole("heading", { name: "Review fillable field suggestions" });
+
+    fireEvent.click(screen.getByRole("button", { name: "Accept all" }));
+
+    await waitFor(() => expect(editorFields()).toHaveLength(2));
+  });
+
+  it("does not let stale review callbacks complete a replacement document", async () => {
+    const { documentRevision } = await renderPhotoSession();
+    await screen.findByRole("heading", { name: "Review fillable field suggestions" });
+    const staleCallbacks = mockLatestReviewCallbacks;
+    if (!staleCallbacks) throw new Error("Expected review callbacks");
+
+    fireEvent.click(screen.getAllByRole("button", { name: "Mock start over" })[0]);
+    fireEvent.click(await screen.findByRole("button", { name: "Mock fillable upload" }));
+    await screen.findByRole("heading", { name: "Review fillable field suggestions" });
+    act(() => {
+      staleCallbacks.onDecision?.("accepted");
+      staleCallbacks.onRetry();
+      staleCallbacks.onCommit(suggestedFields(documentRevision), "accept_all");
+      staleCallbacks.onCancel();
+    });
+
+    const completions = fieldSuggestionTelemetry().filter((properties) => properties.stage === "completed");
+    expect(completions).toEqual([{ stage: "completed", outcome: "superseded" }]);
+    expect(screen.getByRole("heading", { name: "Review fillable field suggestions" })).toBeInTheDocument();
+    expect(editorFields()).toEqual([]);
   });
 
   it("keeps suggestions out of fields, persistence, preview, export, and the API before acceptance", async () => {
@@ -754,7 +847,7 @@ describe("editor local field suggestion review", () => {
       act(() => {
         callbacks.onTypeChange(suggestedFields(documentRevision)[0].id, "checkbox");
         callbacks.onRetry();
-        callbacks.onCommit(suggestedFields(documentRevision));
+        callbacks.onCommit(suggestedFields(documentRevision), "accept_all");
         staleUndo?.();
       });
 

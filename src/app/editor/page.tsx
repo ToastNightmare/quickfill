@@ -14,7 +14,12 @@ import { SupportForm } from "@/components/SupportForm";
 import { DownloadPreviewGate } from "@/components/DownloadPreviewGate";
 import { AddAnotherPagePrompt } from "@/components/AddAnotherPagePrompt";
 import { SaveProgressPrompt } from "@/components/SaveProgressPrompt";
-import { FieldSuggestionReview, type FieldSuggestionReviewStatus } from "@/components/FieldSuggestionReview";
+import {
+  FieldSuggestionReview,
+  type FieldSuggestionCommitAction,
+  type FieldSuggestionReviewDecision,
+  type FieldSuggestionReviewStatus,
+} from "@/components/FieldSuggestionReview";
 import type { PdfViewerHandle } from "@/components/PdfViewer";
 import { useHistory } from "@/lib/use-history";
 import { detectAcroFormFields } from "@/lib/pdf-utils";
@@ -72,6 +77,12 @@ import {
   type LocalFieldDetectionLifecycleEvent,
   type LocalFieldDetectionSnapshotKey,
 } from "@/lib/local-field-suggestion-provider";
+import {
+  createFieldSuggestionAnalyticsSession,
+  type FieldSuggestionAnalyticsSession,
+  type FieldSuggestionFailureReason,
+  type FieldSuggestionOutcome,
+} from "@/lib/field-suggestion-analytics";
 
 const ZOOM_LEVELS = [50, 75, 100, 125, 150, 175, 200];
 const GESTURE_HINT_KEY = "quickfill_gesture_hint_seen";
@@ -92,6 +103,12 @@ interface ActiveFieldSuggestionReview {
   reviewVersion: number;
   showAddAnotherPagePromptAfter: boolean;
   errorMessage?: string;
+}
+
+interface ActiveFieldSuggestionAnalytics {
+  documentRevision: string;
+  viewerDocumentRevision: number;
+  session: FieldSuggestionAnalyticsSession;
 }
 
 type ReadyLocalFieldDetectionEvent = Extract<LocalFieldDetectionLifecycleEvent, { status: "ready" }>;
@@ -313,6 +330,7 @@ function EditorPageContent() {
     renderGeneration: number;
   } | null>(null);
   const fieldSuggestionReviewRef = useRef<ActiveFieldSuggestionReview | null>(null);
+  const fieldSuggestionAnalyticsRef = useRef<ActiveFieldSuggestionAnalytics | null>(null);
   const signatureLoadSessionKeyRef = useRef<string | null>(null);
   const signatureActiveSessionKeyRef = useRef<string | null>(null);
   const signatureChangedThisSessionRef = useRef(false);
@@ -371,7 +389,42 @@ function EditorPageContent() {
     setFieldSuggestionSnapshotEvent(null);
   }, []);
 
+  const fieldSuggestionAnalyticsForReview = useCallback((
+    review: Pick<ActiveFieldSuggestionReview, "documentRevision" | "viewerDocumentRevision">,
+  ) => {
+    const active = fieldSuggestionAnalyticsRef.current;
+    if (
+      !active ||
+      active.documentRevision !== review.documentRevision ||
+      active.viewerDocumentRevision !== review.viewerDocumentRevision
+    ) return null;
+    return active.session;
+  }, []);
+
+  const completeActiveFieldSuggestionAnalytics = useCallback((
+    outcome: FieldSuggestionOutcome,
+    count?: number,
+    expectedReview?: Pick<ActiveFieldSuggestionReview, "documentRevision" | "viewerDocumentRevision">,
+  ) => {
+    const active = fieldSuggestionAnalyticsRef.current;
+    if (!active) return false;
+    if (
+      expectedReview &&
+      (active.documentRevision !== expectedReview.documentRevision ||
+        active.viewerDocumentRevision !== expectedReview.viewerDocumentRevision)
+    ) return false;
+    fieldSuggestionAnalyticsRef.current = null;
+    return active.session.complete(outcome, { count });
+  }, []);
+
+  const recordIneligibleFieldSuggestionAttempt = useCallback((reason: FieldSuggestionFailureReason) => {
+    const session = createFieldSuggestionAnalyticsSession(fieldSuggestionReviewEnabled);
+    session.record({ stage: "eligibility", eligibility: "ineligible", reason });
+    session.complete("ineligible");
+  }, [fieldSuggestionReviewEnabled]);
+
   const activateNextViewerDocumentRevision = useCallback(() => {
+    completeActiveFieldSuggestionAnalytics("superseded");
     releaseFieldSuggestionSnapshot(false);
     viewerDocumentRevisionSequenceRef.current += 1;
     const nextRevision = viewerDocumentRevisionSequenceRef.current;
@@ -381,9 +434,10 @@ function EditorPageContent() {
     fieldSuggestionReviewRef.current = null;
     setFieldSuggestionReview(null);
     return nextRevision;
-  }, [releaseFieldSuggestionSnapshot]);
+  }, [completeActiveFieldSuggestionAnalytics, releaseFieldSuggestionSnapshot]);
 
   const deactivateViewerDocumentRevision = useCallback(() => {
+    completeActiveFieldSuggestionAnalytics("superseded");
     releaseFieldSuggestionSnapshot(false);
     viewerDocumentRevisionSequenceRef.current += 1;
     activeViewerDocumentRevisionRef.current = null;
@@ -391,7 +445,7 @@ function EditorPageContent() {
     setViewerDocumentRevision(null);
     fieldSuggestionReviewRef.current = null;
     setFieldSuggestionReview(null);
-  }, [releaseFieldSuggestionSnapshot]);
+  }, [completeActiveFieldSuggestionAnalytics, releaseFieldSuggestionSnapshot]);
 
   const handleFieldSuggestionSnapshotEvent = useCallback((event: LocalFieldDetectionLifecycleEvent) => {
     const callbackStartedAt = event.status === "ready" ? performance.now() : null;
@@ -453,23 +507,39 @@ function EditorPageContent() {
       event: next,
       durationMs: incrementalDurationMs,
     };
-  }, []);
+    const review = fieldSuggestionReviewRef.current;
+    if (
+      review?.viewerDocumentRevision === next.key.documentRevision &&
+      review.documentRevision === currentDocumentRevisionRef.current
+    ) {
+      fieldSuggestionAnalyticsForReview(review)?.record({
+        stage: "snapshot_ready",
+        count: next.snapshot.boxes.length,
+        scanDurationMs: next.scanDurationMs,
+        incrementalDurationMs,
+      });
+    }
+  }, [fieldSuggestionAnalyticsForReview]);
 
   const invalidateFieldSuggestionReviewForRenderIntent = useCallback(() => {
     releaseFieldSuggestionSnapshot(true);
     const currentReview = fieldSuggestionReviewRef.current;
+    if (currentReview) {
+      completeActiveFieldSuggestionAnalytics("superseded", undefined, currentReview);
+    }
     fieldSuggestionReviewRef.current = null;
     setFieldSuggestionReview(null);
     if (currentReview?.showAddAnotherPagePromptAfter) setShowAddAnotherPagePrompt(true);
-  }, [releaseFieldSuggestionSnapshot]);
+  }, [completeActiveFieldSuggestionAnalytics, releaseFieldSuggestionSnapshot]);
 
   useEffect(() => () => {
+    completeActiveFieldSuggestionAnalytics("superseded");
     activeViewerDocumentRevisionRef.current = null;
     fieldSuggestionSnapshotEventRef.current = null;
     fieldSuggestionIncrementalDurationRef.current = null;
     blockedFieldSuggestionSnapshotRef.current = null;
     fieldSuggestionReviewRef.current = null;
-  }, []);
+  }, [completeActiveFieldSuggestionAnalytics]);
 
   const beginFieldSuggestionReview = useCallback((
     documentRevision: string,
@@ -477,6 +547,7 @@ function EditorPageContent() {
     requestedViewerDocumentRevision = activeViewerDocumentRevisionRef.current,
   ) => {
     if (requestedViewerDocumentRevision === null) return;
+    completeActiveFieldSuggestionAnalytics("superseded");
     setShowAddAnotherPagePrompt(false);
     setCurrentPage(0);
     const review: ActiveFieldSuggestionReview = {
@@ -488,9 +559,17 @@ function EditorPageContent() {
       reviewVersion: 0,
       showAddAnotherPagePromptAfter,
     };
+    const analyticsSession = createFieldSuggestionAnalyticsSession(fieldSuggestionReviewEnabled);
+    fieldSuggestionAnalyticsRef.current = {
+      documentRevision,
+      viewerDocumentRevision: requestedViewerDocumentRevision,
+      session: analyticsSession,
+    };
+    analyticsSession.record({ stage: "eligibility", eligibility: "eligible" });
+    analyticsSession.record({ stage: "review_requested" });
     fieldSuggestionReviewRef.current = review;
     setFieldSuggestionReview(review);
-  }, []);
+  }, [completeActiveFieldSuggestionAnalytics, fieldSuggestionReviewEnabled]);
 
   // Dynamic page title based on fileName
   useEffect(() => {
@@ -648,7 +727,10 @@ function EditorPageContent() {
     const expectedViewerDocumentRevision = fieldSuggestionReview.viewerDocumentRevision;
     const expectedReviewVersion = fieldSuggestionReview.reviewVersion;
 
-    const finishFailClosed = () => {
+    const finishFailClosed = (reason: unknown, metrics: {
+      scanDurationMs?: number | null;
+      incrementalDurationMs?: number | null;
+    } = {}) => {
       if (cancelled) return;
       const current = fieldSuggestionReviewRef.current;
       if (
@@ -657,26 +739,43 @@ function EditorPageContent() {
         current.viewerDocumentRevision !== expectedViewerDocumentRevision ||
         current.reviewVersion !== expectedReviewVersion
       ) return;
+      fieldSuggestionAnalyticsForReview(current)?.record({
+        stage: "fail_closed",
+        reason,
+        scanDurationMs: metrics.scanDurationMs,
+        incrementalDurationMs: metrics.incrementalDurationMs,
+      });
+      completeActiveFieldSuggestionAnalytics(
+        "fail_closed",
+        current.suggestions.length,
+        current,
+      );
       releaseFieldSuggestionSnapshot(true);
       fieldSuggestionReviewRef.current = null;
       setFieldSuggestionReview(null);
       if (current.showAddAnotherPagePromptAfter) setShowAddAnotherPagePrompt(true);
     };
 
-    const timeout = setTimeout(finishFailClosed, FIELD_SUGGESTION_SNAPSHOT_WAIT_MS);
+    const timeout = setTimeout(
+      () => finishFailClosed("snapshot_timeout"),
+      FIELD_SUGGESTION_SNAPSHOT_WAIT_MS,
+    );
     const lifecycle = fieldSuggestionSnapshotEvent;
     if (
       currentDocumentRevisionRef.current !== expectedDocumentRevision ||
       activeViewerDocumentRevisionRef.current !== expectedViewerDocumentRevision ||
       currentPage !== 0
     ) {
-      finishFailClosed();
+      finishFailClosed(currentPage !== 0 ? "page_changed" : "stale_document");
     } else if (
       lifecycle &&
       lifecycle.key.documentRevision === expectedViewerDocumentRevision &&
       (lifecycle.status === "failed" || lifecycle.status === "cancelled")
     ) {
-      finishFailClosed();
+      finishFailClosed(
+        lifecycle.status === "failed" ? lifecycle.reason : "snapshot_cancelled",
+        { scanDurationMs: lifecycle.scanDurationMs },
+      );
     } else if (
       lifecycle?.status === "ready" &&
       lifecycle.key.documentRevision === expectedViewerDocumentRevision &&
@@ -710,7 +809,12 @@ function EditorPageContent() {
             activeViewerDocumentRevisionRef.current !== expectedViewerDocumentRevision ||
             fieldSuggestionSnapshotEventRef.current !== readyEvent
           ) {
-            if (!cancelled && result.status !== "ready") finishFailClosed();
+            if (!cancelled && result.status !== "ready") {
+              finishFailClosed(result.reason, {
+                scanDurationMs: readyEvent.scanDurationMs,
+                incrementalDurationMs: result.incrementalDurationMs,
+              });
+            }
             return;
           }
 
@@ -744,10 +848,20 @@ function EditorPageContent() {
             !Number.isFinite(completeIncrementalDurationMs) ||
             completeIncrementalDurationMs > LOCAL_FIELD_SUGGESTION_MAX_INCREMENTAL_MS
           ) {
-            finishFailClosed();
+            finishFailClosed("incremental_budget_exceeded", {
+              scanDurationMs: readyEvent.scanDurationMs,
+              incrementalDurationMs: completeIncrementalDurationMs,
+            });
+            return;
           }
+          fieldSuggestionAnalyticsForReview(next)?.record({
+            stage: "review_displayed",
+            count: next.suggestions.length,
+            scanDurationMs: readyEvent.scanDurationMs,
+            incrementalDurationMs: completeIncrementalDurationMs,
+          });
         })
-        .catch(finishFailClosed);
+        .catch(() => finishFailClosed("mapping_failed"));
     }
 
     return () => {
@@ -759,6 +873,8 @@ function EditorPageContent() {
     currentPage,
     fieldSuggestionReview,
     fieldSuggestionSnapshotEvent,
+    completeActiveFieldSuggestionAnalytics,
+    fieldSuggestionAnalyticsForReview,
     releaseFieldSuggestionSnapshot,
   ]);
 
@@ -931,10 +1047,18 @@ function EditorPageContent() {
         }
 
         let requestedDocumentRevision: string | null = null;
-        if (fieldSuggestionReviewEnabled && options?.requestFieldSuggestions && options.documentRevision) {
-          const currentRevision = await createDocumentRevision(bytes);
-          if (!isCurrentDocumentLoad()) return;
-          if (currentRevision === options.documentRevision) requestedDocumentRevision = currentRevision;
+        if (fieldSuggestionReviewEnabled && options?.requestFieldSuggestions) {
+          if (!options.documentRevision) {
+            recordIneligibleFieldSuggestionAttempt("invalid_request");
+          } else {
+            const currentRevision = await createDocumentRevision(bytes);
+            if (!isCurrentDocumentLoad()) return;
+            if (currentRevision === options.documentRevision) {
+              requestedDocumentRevision = currentRevision;
+            } else {
+              recordIneligibleFieldSuggestionAttempt("revision_mismatch");
+            }
+          }
         }
 
         if (!isCurrentDocumentLoad()) return;
@@ -1056,6 +1180,7 @@ function EditorPageContent() {
       markLocalSave,
       fieldSuggestionReviewEnabled,
       beginFieldSuggestionReview,
+      recordIneligibleFieldSuggestionAttempt,
       activateNextViewerDocumentRevision,
       deactivateViewerDocumentRevision,
     ]
@@ -1346,67 +1471,108 @@ function EditorPageContent() {
     setTimeout(() => setToast(null), duration);
   }, []);
 
-  const finishFieldSuggestionReview = useCallback(() => {
-    const showAddAnotherPagePromptAfter = fieldSuggestionReviewRef.current?.showAddAnotherPagePromptAfter ?? false;
+  const finishFieldSuggestionReview = useCallback((
+    outcome: FieldSuggestionOutcome,
+    count?: number,
+    expectedReview = fieldSuggestionReviewRef.current,
+  ) => {
+    const showAddAnotherPagePromptAfter = expectedReview?.showAddAnotherPagePromptAfter ?? false;
+    if (expectedReview) {
+      const session = fieldSuggestionAnalyticsForReview(expectedReview);
+      if (outcome === "dismissed") session?.record({ stage: "dismissed" });
+      completeActiveFieldSuggestionAnalytics(outcome, count, expectedReview);
+    }
     clearFieldSuggestionIntent();
     fieldSuggestionReviewRef.current = null;
     setFieldSuggestionReview(null);
     releaseFieldSuggestionSnapshot(true);
     if (showAddAnotherPagePromptAfter) setShowAddAnotherPagePrompt(true);
-  }, [releaseFieldSuggestionSnapshot]);
+  }, [
+    completeActiveFieldSuggestionAnalytics,
+    fieldSuggestionAnalyticsForReview,
+    releaseFieldSuggestionSnapshot,
+  ]);
 
-  const handleFieldSuggestionTypeChange = useCallback((id: string, type: SuggestedFieldType) => {
-    setFieldSuggestionReview((current) => {
-      const lifecycle = fieldSuggestionSnapshotEventRef.current;
-      if (
-        !current ||
-        current.status !== "review" ||
-        activeViewerDocumentRevisionRef.current !== current.viewerDocumentRevision ||
-        lifecycle?.status !== "ready" ||
-        !localFieldDetectionSnapshotKeysEqual(current.snapshotKey, lifecycle.key)
-      ) {
-        return current;
-      }
-      const next = {
-        ...current,
-        suggestions: current.suggestions.map((suggestion) =>
-          suggestion.id === id ? withSuggestionType(suggestion, type) : suggestion),
-      };
-      fieldSuggestionReviewRef.current = next;
-      return next;
-    });
+  const handleFieldSuggestionDismiss = useCallback((expectedReview: ActiveFieldSuggestionReview) => {
+    if (fieldSuggestionReviewRef.current !== expectedReview) return;
+    finishFieldSuggestionReview("dismissed", undefined, expectedReview);
+  }, [finishFieldSuggestionReview]);
+
+  const handleFieldSuggestionTypeChange = useCallback((
+    expectedReview: ActiveFieldSuggestionReview,
+    id: string,
+    type: SuggestedFieldType,
+  ) => {
+    const current = fieldSuggestionReviewRef.current;
+    const lifecycle = fieldSuggestionSnapshotEventRef.current;
+    if (
+      current !== expectedReview ||
+      current.status !== "review" ||
+      activeViewerDocumentRevisionRef.current !== current.viewerDocumentRevision ||
+      lifecycle?.status !== "ready" ||
+      !localFieldDetectionSnapshotKeysEqual(current.snapshotKey, lifecycle.key)
+    ) return;
+    const next = {
+      ...current,
+      suggestions: current.suggestions.map((suggestion) =>
+        suggestion.id === id ? withSuggestionType(suggestion, type) : suggestion),
+    };
+    fieldSuggestionReviewRef.current = next;
+    setFieldSuggestionReview(next);
   }, []);
 
-  const handleFieldSuggestionRetry = useCallback(() => {
-    setFieldSuggestionReview((current) => {
-      const lifecycle = fieldSuggestionSnapshotEventRef.current;
-      if (
-        !current ||
-        current.status !== "review" ||
-        activeViewerDocumentRevisionRef.current !== current.viewerDocumentRevision ||
-        lifecycle?.status !== "ready" ||
-        !localFieldDetectionSnapshotKeysEqual(current.snapshotKey, lifecycle.key)
-      ) {
-        return current;
-      }
-      const next: ActiveFieldSuggestionReview = {
-        ...current,
-        snapshotKey: null,
-        status: "processing",
-        suggestions: [],
-        errorMessage: undefined,
-        reviewVersion: current.reviewVersion + 1,
-      };
-      fieldSuggestionReviewRef.current = next;
-      return next;
-    });
-  }, []);
-
-  const handleFieldSuggestionCommit = useCallback((acceptedSuggestions: readonly FieldSuggestion[]) => {
+  const handleFieldSuggestionDecision = useCallback((
+    expectedReview: ActiveFieldSuggestionReview,
+    decision: FieldSuggestionReviewDecision,
+  ) => {
     const review = fieldSuggestionReviewRef.current;
     const lifecycle = fieldSuggestionSnapshotEventRef.current;
     if (
-      !review ||
+      review !== expectedReview ||
+      review.status !== "review" ||
+      activeViewerDocumentRevisionRef.current !== review.viewerDocumentRevision ||
+      currentDocumentRevisionRef.current !== review.documentRevision ||
+      lifecycle?.status !== "ready" ||
+      !localFieldDetectionSnapshotKeysEqual(review.snapshotKey, lifecycle.key)
+    ) return;
+    fieldSuggestionAnalyticsForReview(review)?.record({
+      stage: decision === "accepted" ? "individual_accept" : "individual_reject",
+    });
+  }, [fieldSuggestionAnalyticsForReview]);
+
+  const handleFieldSuggestionRetry = useCallback((expectedReview: ActiveFieldSuggestionReview) => {
+    const current = fieldSuggestionReviewRef.current;
+    const lifecycle = fieldSuggestionSnapshotEventRef.current;
+    if (
+      current !== expectedReview ||
+      current.status !== "review" ||
+      activeViewerDocumentRevisionRef.current !== current.viewerDocumentRevision ||
+      currentDocumentRevisionRef.current !== current.documentRevision ||
+      lifecycle?.status !== "ready" ||
+      !localFieldDetectionSnapshotKeysEqual(current.snapshotKey, lifecycle.key)
+    ) return;
+    fieldSuggestionAnalyticsForReview(current)?.record({ stage: "retry" });
+    const next: ActiveFieldSuggestionReview = {
+      ...current,
+      snapshotKey: null,
+      status: "processing",
+      suggestions: [],
+      errorMessage: undefined,
+      reviewVersion: current.reviewVersion + 1,
+    };
+    fieldSuggestionReviewRef.current = next;
+    setFieldSuggestionReview(next);
+  }, [fieldSuggestionAnalyticsForReview]);
+
+  const handleFieldSuggestionCommit = useCallback((
+    expectedReview: ActiveFieldSuggestionReview,
+    acceptedSuggestions: readonly FieldSuggestion[],
+    action: FieldSuggestionCommitAction,
+  ) => {
+    const review = fieldSuggestionReviewRef.current;
+    const lifecycle = fieldSuggestionSnapshotEventRef.current;
+    if (
+      review !== expectedReview ||
       review.status !== "review" ||
       lifecycle?.status !== "ready" ||
       currentDocumentRevisionRef.current !== review.documentRevision ||
@@ -1422,7 +1588,11 @@ function EditorPageContent() {
       pageHeight: lifecycle.key.viewportHeight,
     });
     if (validated.length !== acceptedSuggestions.length) {
-      finishFieldSuggestionReview();
+      fieldSuggestionAnalyticsForReview(review)?.record({
+        stage: "fail_closed",
+        reason: "invalid_snapshot",
+      });
+      finishFieldSuggestionReview("fail_closed", 0, review);
       return;
     }
 
@@ -1434,12 +1604,28 @@ function EditorPageContent() {
       !localFieldDetectionSnapshotKeysEqual(review.snapshotKey, lifecycle.key)
     ) return;
 
+    if (action === "accept_all") {
+      fieldSuggestionAnalyticsForReview(review)?.record({
+        stage: "accept_all",
+        count: validated.length,
+      });
+    }
     if (validated.length > 0) setFields([
       ...fields,
       ...fieldSuggestionsToEditorFields(validated, fields),
     ]);
-    finishFieldSuggestionReview();
-  }, [currentPage, fields, finishFieldSuggestionReview, setFields]);
+    finishFieldSuggestionReview(
+      action === "accept_all" ? "accepted_all" : "accepted_selected",
+      validated.length,
+      review,
+    );
+  }, [
+    currentPage,
+    fields,
+    fieldSuggestionAnalyticsForReview,
+    finishFieldSuggestionReview,
+    setFields,
+  ]);
 
   // One-time gesture discovery hint on touch devices (PR #94). Non-intrusive:
   // a single toast the first time a document opens, never again after that.
@@ -2224,10 +2410,11 @@ function EditorPageContent() {
           status={fieldSuggestionReview.status}
           suggestions={fieldSuggestionReview.suggestions}
           errorMessage={fieldSuggestionReview.errorMessage}
-          onTypeChange={handleFieldSuggestionTypeChange}
-          onCommit={handleFieldSuggestionCommit}
-          onRetry={handleFieldSuggestionRetry}
-          onCancel={finishFieldSuggestionReview}
+          onTypeChange={(id, type) => handleFieldSuggestionTypeChange(fieldSuggestionReview, id, type)}
+          onCommit={(suggestions, action) => handleFieldSuggestionCommit(fieldSuggestionReview, suggestions, action)}
+          onDecision={(decision) => handleFieldSuggestionDecision(fieldSuggestionReview, decision)}
+          onRetry={() => handleFieldSuggestionRetry(fieldSuggestionReview)}
+          onCancel={() => handleFieldSuggestionDismiss(fieldSuggestionReview)}
         />
       )}
 

@@ -57,15 +57,17 @@ describe("FieldSuggestionReview", () => {
 
   it("stages an individual acceptance until final confirmation", () => {
     const onCommit = jest.fn();
-    renderReview({ onCommit });
+    const onDecision = jest.fn();
+    renderReview({ onCommit, onDecision });
 
     fireEvent.click(screen.getByRole("button", { name: "Accept field 1" }));
     expect(onCommit).not.toHaveBeenCalled();
+    expect(onDecision).toHaveBeenCalledWith("accepted");
     expect(screen.getByText("Accepted for review")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Add accepted fields (1)" }));
     expect(onCommit).toHaveBeenCalledTimes(1);
-    expect(onCommit).toHaveBeenCalledWith([suggestions[0]]);
+    expect(onCommit).toHaveBeenCalledWith([suggestions[0]], "accepted_selected");
   });
 
   it("rejects individually and Accept all commits remaining suggestions once", () => {
@@ -76,7 +78,18 @@ describe("FieldSuggestionReview", () => {
     fireEvent.click(screen.getByRole("button", { name: "Accept all" }));
 
     expect(onCommit).toHaveBeenCalledTimes(1);
-    expect(onCommit).toHaveBeenCalledWith([suggestions[0]]);
+    expect(onCommit).toHaveBeenCalledWith([suggestions[0]], "accept_all");
+  });
+
+  it("reports only real individual decision transitions", () => {
+    const onDecision = jest.fn();
+    renderReview({ onDecision });
+
+    fireEvent.click(screen.getByRole("button", { name: "Accept field 1" }));
+    fireEvent.click(screen.getByRole("button", { name: "Accept field 1" }));
+    fireEvent.click(screen.getByRole("button", { name: "Reject field 1" }));
+
+    expect(onDecision.mock.calls).toEqual([["accepted"], ["rejected"]]);
   });
 
   it("offers only text and checkbox type changes without changing the stable ID", () => {

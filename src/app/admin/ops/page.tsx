@@ -16,7 +16,14 @@ import {
 import { requireAdminUser } from "@/lib/admin-routing";
 import { getSupportQueueHealth } from "@/lib/admin-logs";
 import { checkDatabaseConnection, isDatabaseConfigured, query } from "@/lib/db";
-import { isRedisConfigured } from "@/lib/redis";
+import {
+  FIELD_SUGGESTION_DURATION_BUCKETS,
+  FIELD_SUGGESTION_FAILURE_REASONS,
+  summarizeFieldSuggestionAnalytics,
+  type FieldSuggestionOpsSummary,
+} from "@/lib/field-suggestion-analytics";
+import { isFieldSuggestionReviewEnabled } from "@/lib/field-suggestion-rollout";
+import { getRedis, isRedisConfigured } from "@/lib/redis";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -78,6 +85,8 @@ type StripeWebhookSnapshot = {
   lastFailureType: string | null;
   lastFailureMessage: string | null;
 };
+
+const EMPTY_FIELD_SUGGESTION_SUMMARY = summarizeFieldSuggestionAnalytics([]);
 
 function hasEnv(...keys: string[]) {
   return keys.every((key) => Boolean(process.env[key]));
@@ -244,6 +253,16 @@ async function loadLatestStripeWebhook(): Promise<StripeWebhookSnapshot | null> 
   }
 }
 
+async function loadFieldSuggestionMonitoring(): Promise<FieldSuggestionOpsSummary | null> {
+  if (!isRedisConfigured()) return null;
+  try {
+    const recent = await getRedis().lrange<unknown>("analytics:recent", 0, 499);
+    return summarizeFieldSuggestionAnalytics(recent ?? []);
+  } catch {
+    return null;
+  }
+}
+
 function statusClass(status: ServiceStatus) {
   if (status === "ok") return "border-emerald-200 bg-emerald-50 text-emerald-700";
   if (status === "warn") return "border-amber-200 bg-amber-50 text-amber-700";
@@ -295,6 +314,121 @@ function OpsCard({ service }: { service: ServiceCard }) {
   );
 }
 
+function humanizeMetric(value: string) {
+  return value
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function FieldSuggestionMonitoring({
+  enabled,
+  summary,
+}: {
+  enabled: boolean;
+  summary: FieldSuggestionOpsSummary | null;
+}) {
+  const metrics = summary ?? EMPTY_FIELD_SUGGESTION_SUMMARY;
+  const failureReasons = FIELD_SUGGESTION_FAILURE_REASONS
+    .map((reason) => ({ reason, count: metrics.failClosedReasons[reason] }))
+    .filter((item) => item.count > 0);
+  const scanBuckets = FIELD_SUGGESTION_DURATION_BUCKETS
+    .map((bucket) => ({ bucket, count: metrics.scanDurationBuckets[bucket] }))
+    .filter((item) => item.count > 0);
+  const incrementalBuckets = FIELD_SUGGESTION_DURATION_BUCKETS
+    .map((bucket) => ({ bucket, count: metrics.incrementalDurationBuckets[bucket] }))
+    .filter((item) => item.count > 0);
+
+  return (
+    <section className="mt-8 rounded-lg border border-border bg-surface p-5 shadow-sm">
+      <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-start">
+        <div>
+          <h2 className="font-semibold">Field suggestion rollout monitoring</h2>
+          <p className="mt-1 max-w-3xl text-sm leading-6 text-text-muted">
+            Aggregate, privacy-safe lifecycle signals from the latest 500 analytics events. No document or user records are shown.
+          </p>
+        </div>
+        <span className={"inline-flex w-fit rounded-full border px-2.5 py-1 text-xs font-semibold " + (
+          enabled
+            ? "border-amber-200 bg-amber-50 text-amber-700"
+            : "border-emerald-200 bg-emerald-50 text-emerald-700"
+        )}>
+          {enabled ? "Local review enabled in this build" : "Default off in this build"}
+        </span>
+      </div>
+
+      {!summary && (
+        <p className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+          The analytics sample is unavailable. Check Redis before using these metrics for a rollout decision.
+        </p>
+      )}
+
+      <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+        {[
+          { label: "Eligible sessions", value: metrics.eligibleSessions },
+          {
+            label: "Directional display ratio",
+            value: metrics.reviewDisplayRate === null ? "n/a" : String(metrics.reviewDisplayRate) + "%",
+          },
+          { label: "Accepted outcomes", value: metrics.acceptedOutcomes },
+          { label: "Dismissed outcomes", value: metrics.dismissedOutcomes },
+          { label: "Fail-closed outcomes", value: metrics.failClosedOutcomes },
+        ].map((metric) => (
+          <div key={metric.label} className="rounded-lg border border-border bg-surface-alt px-4 py-3">
+            <p className="text-xs font-semibold uppercase tracking-wide text-text-muted">{metric.label}</p>
+            <p className="mt-1 text-2xl font-bold text-text">{metric.value}</p>
+          </div>
+        ))}
+      </div>
+
+      <p className="mt-3 text-xs text-text-muted">
+        Sample: {metrics.lifecycleEvents} lifecycle event{metrics.lifecycleEvents === 1 ? "" : "s"}, {metrics.reviewRequests} review request{metrics.reviewRequests === 1 ? "" : "s"}, and {metrics.supersededOutcomes} safely superseded outcome{metrics.supersededOutcomes === 1 ? "" : "s"}.
+      </p>
+      <p className="mt-2 text-xs font-medium text-amber-700">
+        Directional only: the trailing 500-event window can split sessions, so this ratio is not cohort-safe and must not be used as rollout evidence.
+      </p>
+
+      <div className="mt-5 grid gap-4 lg:grid-cols-3">
+        <div className="rounded-lg border border-border p-4">
+          <h3 className="text-sm font-semibold">Fail-closed reasons</h3>
+          {failureReasons.length > 0 ? (
+            <ul className="mt-3 space-y-2 text-sm text-text-muted">
+              {failureReasons.map(({ reason, count }) => (
+                <li key={reason} className="flex justify-between gap-3">
+                  <span>{humanizeMetric(reason)}</span>
+                  <span className="font-semibold text-text">{count}</span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="mt-3 text-sm text-text-muted">No fail-closed reason is present in the current sample.</p>
+          )}
+        </div>
+
+        {[
+          { title: "Scan duration buckets", buckets: scanBuckets },
+          { title: "Incremental duration buckets", buckets: incrementalBuckets },
+        ].map(({ title, buckets }) => (
+          <div key={title} className="rounded-lg border border-border p-4">
+            <h3 className="text-sm font-semibold">{title}</h3>
+            {buckets.length > 0 ? (
+              <ul className="mt-3 space-y-2 text-sm text-text-muted">
+                {buckets.map(({ bucket, count }) => (
+                  <li key={bucket} className="flex justify-between gap-3">
+                    <span>{humanizeMetric(bucket)}</span>
+                    <span className="font-semibold text-text">{count}</span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="mt-3 text-sm text-text-muted">No timing sample is available yet.</p>
+            )}
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 export default async function AdminOpsPage() {
   await requireAdminUser();
 
@@ -303,6 +437,8 @@ export default async function AdminOpsPage() {
   const stripeWebhook = await loadLatestStripeWebhook();
   const supportQueue = database.ok ? await getSupportQueueHealth() : null;
   const redisReady = isRedisConfigured();
+  const fieldSuggestionMonitoring = redisReady ? await loadFieldSuggestionMonitoring() : null;
+  const fieldSuggestionReviewEnabled = isFieldSuggestionReviewEnabled();
   const cronReady = hasEnv("CRON_SECRET");
   const stripeCoreReady = hasEnv(
     "STRIPE_SECRET_KEY",
@@ -463,6 +599,11 @@ export default async function AdminOpsPage() {
             <OpsCard key={service.name} service={service} />
           ))}
         </div>
+
+        <FieldSuggestionMonitoring
+          enabled={fieldSuggestionReviewEnabled}
+          summary={fieldSuggestionMonitoring}
+        />
 
         <section className="mt-8 rounded-lg border border-border bg-surface p-5 shadow-sm">
           <h2 className="font-semibold">Release checklist</h2>

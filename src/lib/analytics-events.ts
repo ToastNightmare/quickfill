@@ -6,6 +6,7 @@ export const ANALYTICS_EVENTS = [
   "editor_pdf_loaded",
   "field_added",
   "field_detection_used",
+  "field_suggestion_lifecycle",
   "profile_autofill_used",
   "download_attempt",
   "download_success",

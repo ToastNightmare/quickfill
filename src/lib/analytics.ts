@@ -2,12 +2,15 @@ import { getStoredUtm } from "@/lib/utm";
 
 export type AnalyticsProperties = Record<string, string | number | boolean | null | undefined>;
 
-export function trackEvent(name: string, properties: AnalyticsProperties = {}) {
+function dispatchEvent(name: string, properties: AnalyticsProperties) {
   if (typeof window === "undefined") return;
 
-  const utm = getStoredUtm();
-  const mergedProperties = { ...utm, ...properties };
-  const payload = JSON.stringify({ name, properties: mergedProperties });
+  let payload: string;
+  try {
+    payload = JSON.stringify({ name, properties });
+  } catch {
+    return;
+  }
 
   try {
     const blob = new Blob([payload], { type: "application/json" });
@@ -16,10 +19,32 @@ export function trackEvent(name: string, properties: AnalyticsProperties = {}) {
     // Fall back to fetch below.
   }
 
-  fetch("/api/analytics", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: payload,
-    keepalive: true,
-  }).catch(() => {});
+  try {
+    void Promise.resolve(fetch("/api/analytics", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: payload,
+      keepalive: true,
+    })).catch(() => {});
+  } catch {
+    // Analytics must never interrupt the product flow.
+  }
+}
+
+export function trackEvent(name: string, properties: AnalyticsProperties = {}) {
+  let mergedProperties: AnalyticsProperties = { ...properties };
+  try {
+    mergedProperties = { ...getStoredUtm(), ...properties };
+  } catch {
+    // Attribution storage can be unavailable in privacy-restricted browsers.
+  }
+  dispatchEvent(name, mergedProperties);
+}
+
+/**
+ * Sends only the supplied properties. Callers must build the object from a
+ * closed allowlist; UTM attribution is deliberately omitted.
+ */
+export function trackPrivacySafeEvent(name: string, properties: AnalyticsProperties = {}) {
+  dispatchEvent(name, properties);
 }
