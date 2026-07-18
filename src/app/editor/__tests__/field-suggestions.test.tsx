@@ -22,7 +22,7 @@ import {
   savePdfToIndexedDB,
   saveFieldsToLocalStorage,
 } from "@/lib/persistence";
-import { trackPrivacySafeEvent } from "@/lib/analytics";
+import { trackEvent, trackPrivacySafeEvent } from "@/lib/analytics";
 import type { EditorField } from "@/lib/types";
 
 const mockGetCompositePreviewURL = jest.fn().mockResolvedValue("data:image/png;base64,preview");
@@ -366,6 +366,7 @@ const mockedSavePdf = savePdfToIndexedDB as jest.MockedFunction<typeof savePdfTo
 const mockedSaveFields = saveFieldsToLocalStorage as jest.MockedFunction<typeof saveFieldsToLocalStorage>;
 const mockedRolloutEnabled = isFieldSuggestionReviewEnabled as jest.MockedFunction<typeof isFieldSuggestionReviewEnabled>;
 const mockedMapLocal = mapLocalFieldSuggestions as jest.MockedFunction<typeof mapLocalFieldSuggestions>;
+const mockedTrackEvent = trackEvent as jest.MockedFunction<typeof trackEvent>;
 const mockedTrackPrivacySafeEvent = trackPrivacySafeEvent as jest.MockedFunction<typeof trackPrivacySafeEvent>;
 
 function suggestedFields(documentRevision: string): FieldSuggestion[] {
@@ -552,6 +553,39 @@ describe("editor local field suggestion review", () => {
     expect(mockLatestSnapshotCallback).toBeUndefined();
     expect(sessionStorage.getItem(FIELD_SUGGESTION_INTENT_KEY)).toBeNull();
     expect(fieldSuggestionTelemetry()).toEqual([]);
+  });
+
+  it("shows the cloud disclosure before any detection request and keeps local copy default-off", async () => {
+    mockedRolloutEnabled.mockReturnValue(false);
+    mockedLoadPdf.mockResolvedValue(Uint8Array.from([1, 2, 3]).buffer);
+
+    render(<EditorPage />);
+
+    await screen.findByTestId("pdf-viewer");
+    expect(screen.getByText(/Detect Fields sends an image of the current page/i)).toBeInTheDocument();
+    expect(screen.queryByText(/Local field suggestions reuse browser-derived geometry/i)).not.toBeInTheDocument();
+    const requests = (global.fetch as jest.Mock).mock.calls.map(([input, init]) => ({
+      url: String(input),
+      method: init?.method ?? "GET",
+    }));
+    expect(requests.some(({ url }) => url.includes("/api/detect-fields"))).toBe(false);
+    expect(requests.some(({ url }) => url.includes("/api/fill-pdf"))).toBe(false);
+    expect(requests.some(({ url }) => url.includes("/api/analytics"))).toBe(false);
+    expect(requests.some(({ url }) => url.includes("/api/signature"))).toBe(false);
+    expect(mockedTrackEvent).not.toHaveBeenCalled();
+    expect(fieldSuggestionTelemetry()).toEqual([]);
+  });
+
+  it("adds the on-device disclosure only for the exact rollout-on mode", async () => {
+    mockedRolloutEnabled.mockReturnValue(true);
+    mockedLoadPdf.mockResolvedValue(Uint8Array.from([1, 2, 3]).buffer);
+
+    render(<EditorPage />);
+
+    await screen.findByTestId("pdf-viewer");
+    expect(screen.getByText(/Local field suggestions reuse browser-derived geometry/i)).toBeInTheDocument();
+    expect(screen.getByText(/No page image is sent to an external provider for that suggestion step/i)).toBeInTheDocument();
+    expect(screen.getByText(/Detect Fields sends an image of the current page/i)).toBeInTheDocument();
   });
 
   it("activates the shared local-review path only in the enabled mode", async () => {

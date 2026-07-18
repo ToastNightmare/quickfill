@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useRef, useState, type ChangeEvent } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useDropzone, type FileRejection } from "react-dropzone";
 import { Upload, FileText, Camera, Lock } from "lucide-react";
@@ -173,9 +174,20 @@ export function LandingUploadBox() {
           </button>
         </div>
       )}
-      <p className="mt-3 flex items-center justify-center gap-1.5 text-center text-xs text-gray-400">
+      <p className="mt-3 flex items-start justify-center gap-1.5 text-center text-xs leading-relaxed text-gray-300">
         <Lock className="h-3.5 w-3.5 shrink-0 text-accent" aria-hidden="true" />
-        <span>Your document stays in your browser while you edit. We don&apos;t store your document file on our servers.</span>
+        <span>
+          Private by default. Core editing runs in your browser. Optional cloud AI detection and
+          completed-file generation process the data needed for those requests.
+        </span>
+      </p>
+      <p className="mt-1.5 text-center text-xs">
+        <Link
+          href="/privacy"
+          className="font-semibold text-accent underline decoration-accent/50 underline-offset-2 transition-colors hover:text-white focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
+        >
+          How QuickFill handles files
+        </Link>
       </p>
       <p className="mt-1.5 text-center text-xs text-gray-400">
         Free to fill and preview. No account needed to start.

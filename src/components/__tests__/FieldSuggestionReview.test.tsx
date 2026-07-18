@@ -46,7 +46,8 @@ describe("FieldSuggestionReview", () => {
     const dialog = screen.getByRole("dialog", { name: "Finding fillable areas" });
     expect(dialog).toHaveFocus();
     expect(screen.getByRole("status")).toHaveTextContent("Checking the first photo page");
-    expect(screen.getByText(/runs only in your browser/i)).toBeInTheDocument();
+    expect(screen.getByText(/reuses geometry derived in your browser/i)).toBeInTheDocument();
+    expect(screen.getByText(/No page image is sent to an external provider/i)).toBeInTheDocument();
 
     fireEvent.keyDown(dialog, { key: "Escape" });
     expect(onCancel).toHaveBeenCalledTimes(1);

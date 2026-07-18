@@ -84,7 +84,8 @@ export function FieldSuggestionReview({
                 : "Review fillable field suggestions"}
           </h2>
           <p id="field-suggestion-review-description" className="mt-1 text-sm leading-relaxed text-text-muted">
-            This check runs only in your browser. Nothing is added to your form until you confirm it here.
+            On-device: this step reuses geometry derived in your browser. No page image is sent to
+            an external provider, and nothing is added until you confirm it here.
           </p>
         </div>
 
