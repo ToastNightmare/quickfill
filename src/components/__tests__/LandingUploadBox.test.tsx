@@ -14,6 +14,14 @@ jest.mock("next/navigation", () => ({
   useRouter: () => ({ push: pushMock }),
 }));
 
+jest.mock("next/link", () => {
+  const MockLink = ({ children, href, ...props }: React.AnchorHTMLAttributes<HTMLAnchorElement> & { href: string }) => (
+    <a href={href} {...props}>{children}</a>
+  );
+  MockLink.displayName = "MockLink";
+  return MockLink;
+});
+
 jest.mock("lucide-react", () => new Proxy({}, {
   get: () => {
     const MockIcon = () => <span data-testid="icon" />;
@@ -100,8 +108,9 @@ describe("LandingUploadBox photo cleanup wiring", () => {
     render(<LandingUploadBox />);
 
     expect(
-      screen.getByText("Your document stays in your browser while you edit. We don't store your document file on our servers.")
+      screen.getByText("Private by default. Core editing runs in your browser. Optional cloud AI detection and completed-file generation process the data needed for those requests.")
     ).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "How QuickFill handles files" })).toHaveAttribute("href", "/privacy");
     expect(screen.getByText(/Free to fill and preview\. No account needed to start\./)).toBeInTheDocument();
   });
 

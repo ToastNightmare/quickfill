@@ -2176,7 +2176,7 @@ function EditorPageContent() {
               <Sparkles className="mt-0.5 h-5 w-5 shrink-0 text-accent" />
               <div className="flex-1 text-sm">
                 <span className="font-semibold text-accent">Welcome to QuickFill!</span>
-                <span className="ml-1 text-text-muted">Upload a PDF, JPG, or PNG. Your file is processed to generate your download and is not saved to our servers.</span>
+                <span className="ml-1 text-text-muted">Upload a PDF, JPG, or PNG. Core editing runs in your browser. Cloud AI and completed-file generation process the data needed for those requests.</span>
               </div>
               <button onClick={dismissWelcome} className="shrink-0 text-text-muted hover:text-text transition-colors">
                 <X className="h-4 w-4" />
@@ -2199,7 +2199,7 @@ function EditorPageContent() {
 
           <div className="mx-8 -mt-2 mb-8 grid gap-3 lg:grid-cols-3">
             {[
-              { icon: LockKeyhole, title: "No file storage", body: "Your file is used to create your download, then discarded. Never saved." },
+              { icon: LockKeyhole, title: "Browser-based editing", body: "Core editing keeps the working file and editor state in your browser." },
               { icon: ShieldCheck, title: "Edit first", body: "Fill, mark up, and sign your document before download." },
               { icon: BadgeCheck, title: "Finish online", body: "Use text, boxes, dates, lines, whiteout, and signatures in one editor." },
             ].map((item) => (
@@ -2382,6 +2382,27 @@ function EditorPageContent() {
             )}
           </div>
         </div>
+
+      <aside
+        aria-label="Document processing modes"
+        data-testid="editor-processing-disclosure"
+        className="border-b border-border bg-surface-alt px-3 py-2 text-xs leading-5 text-text-muted sm:px-4"
+      >
+        <div className={`mx-auto grid max-w-6xl gap-1.5 ${fieldSuggestionReviewEnabled ? "sm:grid-cols-2 sm:gap-4" : ""}`}>
+          {fieldSuggestionReviewEnabled && (
+            <p>
+              <strong className="font-semibold text-text">On-device:</strong>{" "}
+              Local field suggestions reuse browser-derived geometry. No page image is sent to an
+              external provider for that suggestion step.
+            </p>
+          )}
+          <p>
+            <strong className="font-semibold text-text">Cloud AI:</strong>{" "}
+            Detect Fields sends an image of the current page through QuickFill&apos;s API to its
+            configured third-party AI processor, currently OpenAI.
+          </p>
+        </div>
+      </aside>
 
       {/* Hidden picker for Add Page: native mobile pickers offer camera/photo options */}
       <input

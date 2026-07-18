@@ -303,11 +303,45 @@ async function uploadJpg(page: import("@playwright/test").Page, name = "smoke-im
   await uploadImage(page, name, "image/jpeg", await createCanvasImageFixture(page, "image/jpeg"));
 }
 
+test.describe("privacy trust communication", () => {
+  test.skip(!runsAgainstLocalApp, "Requires PLAYWRIGHT_BASE_URL pointing at a local dev server.");
+
+  for (const width of [320, 390]) {
+    test(`homepage trust copy and privacy link fit at ${width}px`, async ({ page }) => {
+      await page.setViewportSize({ width, height: 844 });
+      await page.goto("/", { waitUntil: "domcontentloaded" });
+
+      await expect(page.getByText("Private by default. Core editing runs in your browser. Optional cloud AI detection and completed-file generation process the data needed for those requests.")).toBeVisible();
+      await expect(page.getByRole("link", { name: "How QuickFill handles files" })).toHaveAttribute("href", "/privacy");
+      await expectNoHorizontalOverflow(page);
+    });
+  }
+
+  test("privacy page keeps the five processing boundaries distinct on mobile", async ({ page }) => {
+    await page.setViewportSize({ width: 320, height: 844 });
+    await page.goto("/privacy", { waitUntil: "domcontentloaded" });
+
+    await expect(page.getByRole("heading", { name: "How QuickFill handles your document" })).toBeVisible();
+    for (const heading of [
+      "Core editing and optional local suggestions",
+      "Cloud AI field detection",
+      "Creating the completed PDF",
+      "Browser-local working data",
+      "Limited operational telemetry",
+    ]) {
+      await expect(page.getByRole("heading", { name: heading })).toBeVisible();
+    }
+    await expect(page.getByText(/currently OpenAI/)).toBeVisible();
+    await expect(page.getByText(/not cohort-safe or complete rollout evidence/)).toBeVisible();
+    await expectNoHorizontalOverflow(page);
+  });
+});
+
 test.describe("editor image upload intake", () => {
   test.skip(!runsAgainstLocalApp, "Requires PLAYWRIGHT_BASE_URL pointing at a local dev server.");
 
   test("advanced mobile accepts PNG and renders the full editor", async ({ page }) => {
-    await page.setViewportSize({ width: 390, height: 844 });
+    await page.setViewportSize({ width: 320, height: 844 });
     await prepareEditor(page);
     await page.goto("/editor?advanced=1");
 
@@ -317,6 +351,13 @@ test.describe("editor image upload intake", () => {
     await expect(page.getByText("advanced-mobile-image.jpg")).toBeVisible({ timeout: 15_000 });
     await expect(page.getByTestId("pdf-page")).toBeVisible({ timeout: 15_000 });
     await expectSavedLocally(page);
+    await expect(page.getByText(/Detect Fields sends an image of the current page/)).toBeVisible();
+    if (localFieldSuggestionReviewEnabled) {
+      await expect(page.getByText(/Local field suggestions reuse browser-derived geometry/)).toBeVisible();
+    } else {
+      await expect(page.getByText(/Local field suggestions reuse browser-derived geometry/)).toHaveCount(0);
+    }
+    await expectNoHorizontalOverflow(page);
   });
 
   test("mobile default upload accepts PNG and keeps the full editor visible", async ({ page }) => {
@@ -331,6 +372,13 @@ test.describe("editor image upload intake", () => {
     await expect(page.getByText("mobile-image.jpg")).toBeVisible({ timeout: 15_000 });
     await expect(page.getByTestId("pdf-page")).toBeVisible({ timeout: 15_000 });
     await expectSavedLocally(page);
+    await expect(page.getByText(/Detect Fields sends an image of the current page/)).toBeVisible();
+    if (localFieldSuggestionReviewEnabled) {
+      await expect(page.getByText(/Local field suggestions reuse browser-derived geometry/)).toBeVisible();
+    } else {
+      await expect(page.getByText(/Local field suggestions reuse browser-derived geometry/)).toHaveCount(0);
+    }
+    await expectNoHorizontalOverflow(page);
     await expect(page.getByRole("heading", { name: "Finish paperwork fast" })).toHaveCount(0);
   });
 
@@ -374,6 +422,7 @@ test.describe("local photo field suggestion review", () => {
   for (const { label, viewport } of [
     { label: "desktop", viewport: { width: 1280, height: 900 } },
     { label: "mobile", viewport: { width: 390, height: 844 } },
+    { label: "compact mobile", viewport: { width: 320, height: 844 } },
   ]) {
     test(`feature-off Photo Cleanup is unchanged on ${label}`, async ({ page }) => {
       test.skip(localFieldSuggestionReviewEnabled, "This assertion is for the default-off server configuration.");
@@ -426,7 +475,11 @@ test.describe("local photo field suggestion review", () => {
 
     await uploadForLocalSuggestions(page, "desktop-local-review.png");
 
-    await expect(page.getByRole("dialog", { name: "Review fillable field suggestions" })).toBeFocused();
+    const reviewDialog = page.getByRole("dialog", { name: "Review fillable field suggestions" });
+    await expect(reviewDialog).toBeFocused();
+    await expect(reviewDialog.getByText(/reuses geometry derived in your browser/)).toBeVisible();
+    await expect(reviewDialog.getByText(/No page image is sent to an external provider/)).toBeVisible();
+    await expect(page.getByText(/Detect Fields sends an image of the current page/)).toBeVisible();
     await expect(page.getByRole("button", { name: "Accept all" })).toBeVisible();
     const suggestions = page.locator('[data-testid^="field-suggestion-"]');
     await expect.poll(() => suggestions.count()).toBeGreaterThanOrEqual(2);
@@ -536,6 +589,9 @@ test.describe("local photo field suggestion review", () => {
     const dialog = page.getByRole("dialog", { name: "Review fillable field suggestions" });
     await expect(dialog).toBeFocused();
     await expect(dialog).toHaveAttribute("aria-modal", "true");
+    await expect(dialog.getByText(/reuses geometry derived in your browser/)).toBeVisible();
+    await expect(dialog.getByText(/No page image is sent to an external provider/)).toBeVisible();
+    await expect(page.getByText(/Detect Fields sends an image of the current page/)).toBeVisible();
     for (const control of await dialog.locator("button, select").all()) {
       const box = await control.boundingBox();
       expect(box?.height ?? 0).toBeGreaterThanOrEqual(44);

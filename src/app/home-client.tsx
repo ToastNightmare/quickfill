@@ -317,7 +317,7 @@ const heroTrustPills = [
 const proofStats = [
   { value: "15+", label: "ready templates" },
   { value: "0", label: "payment needed to start" },
-  { value: "0", label: "stored PDF uploads" },
+  { value: "Core", label: "editing runs in your browser" },
   { value: PDF_UPLOAD_MAX_LABEL, label: "PDF upload limit" },
 ];
 
@@ -325,7 +325,7 @@ const buyerQuestions = [
   {
     icon: LockKeyhole,
     title: "Will QuickFill keep my PDF?",
-    body: "No. Your PDF is used to generate your filled download, then discarded. It is never saved to our servers.",
+    body: "Core editing keeps the working PDF in your browser. Cloud AI and completed-file generation process the data needed for those requests.",
   },
   {
     icon: ShieldCheck,
@@ -342,13 +342,13 @@ const buyerQuestions = [
 const securitySignals = [
   {
     icon: LockKeyhole,
-    title: "No PDF storage",
-    body: "Your PDF is used to create your download, then discarded. We don't save it.",
+    title: "Browser-based editing",
+    body: "Core editing keeps the working PDF and editor state in your browser.",
   },
   {
     icon: ShieldCheck,
-    title: "Private by design",
-    body: "Your PDF is not read by us, not stored on our servers, and not shared with anyone.",
+    title: "Clear processing choices",
+    body: "Cloud AI and completed-file generation process the data needed for those requests.",
   },
   {
     icon: BadgeCheck,
@@ -710,7 +710,7 @@ export default function Home() {
                 name: "Is it secure?",
                 acceptedAnswer: {
                   "@type": "Answer",
-                  text: "Your PDF is processed to generate your download and is never saved to our servers. We do not read or share the contents of your document.",
+                  text: "Core editing keeps working document data in your browser. Optional cloud AI detection and completed-file generation process the data needed for those requests.",
                 },
               },
               {
@@ -961,7 +961,7 @@ export default function Home() {
               {
                 icon: LockKeyhole,
                 title: "Private by Design",
-                description: "Your PDF is not read by us, not stored on our servers, and not shared with anyone.",
+                description: "Core editing keeps working document data in your browser. Optional cloud requests are explained before you use them.",
               },
             ].map((f) => (
               <div key={f.title} className="rounded-xl border border-border bg-surface p-6 shadow-sm">
@@ -1089,7 +1089,7 @@ export default function Home() {
             </div>
             <div className="rounded-xl border border-border bg-surface-alt p-6">
               <h3 className="font-semibold text-base">Is it secure?</h3>
-              <p className="mt-2 text-sm text-text-muted">Your PDF is processed to generate your download and is never saved to our servers. We do not read or share the contents of your document.</p>
+              <p className="mt-2 text-sm text-text-muted">Core editing keeps working document data in your browser. Optional cloud AI detection and completed-file generation process the data needed for those requests.</p>
             </div>
             <div className="rounded-xl border border-border bg-surface-alt p-6">
               <h3 className="font-semibold text-base">Does it work on my phone?</h3>
