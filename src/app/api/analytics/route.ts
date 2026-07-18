@@ -2,6 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { getRedis } from "@/lib/redis";
 import { ANALYTICS_EVENT_SET } from "@/lib/analytics-events";
+import {
+  FIELD_SUGGESTION_ANALYTICS_EVENT,
+  validateFieldSuggestionLifecycleProperties,
+} from "@/lib/field-suggestion-analytics";
 
 export const runtime = "nodejs";
 
@@ -31,6 +35,12 @@ function cleanProperties(input: unknown) {
   return output;
 }
 
+function hasExactFieldSuggestionEnvelope(input: unknown) {
+  if (!input || typeof input !== "object" || Array.isArray(input)) return false;
+  const keys = Object.keys(input).sort();
+  return keys.length === 2 && keys[0] === "name" && keys[1] === "properties";
+}
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json().catch(() => null);
@@ -40,7 +50,20 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ ok: false }, { status: 400 });
     }
 
-    const properties = cleanProperties(body?.properties);
+    if (
+      name === FIELD_SUGGESTION_ANALYTICS_EVENT &&
+      !hasExactFieldSuggestionEnvelope(body)
+    ) {
+      return NextResponse.json({ ok: false }, { status: 400 });
+    }
+
+    const properties = name === FIELD_SUGGESTION_ANALYTICS_EVENT
+      ? validateFieldSuggestionLifecycleProperties(body?.properties)
+      : cleanProperties(body?.properties);
+    if (properties === null) {
+      return NextResponse.json({ ok: false }, { status: 400 });
+    }
+
     const { userId } = await auth();
     const redis = getRedis();
     const day = dayKey();

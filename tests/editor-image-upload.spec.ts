@@ -3,6 +3,122 @@ import { expect, test } from "@playwright/test";
 const localBaseUrl = process.env.PLAYWRIGHT_BASE_URL ?? "";
 const runsAgainstLocalApp = /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(?::\d+)?/i.test(localBaseUrl);
 const localFieldSuggestionReviewEnabled = process.env.NEXT_PUBLIC_QUICKFILL_FIELD_SUGGESTIONS === "local-review";
+const fieldSuggestionPropertyKeys = new Set([
+  "stage",
+  "eligibility",
+  "reason",
+  "outcome",
+  "count_bucket",
+  "scan_duration_bucket",
+  "incremental_duration_bucket",
+]);
+
+type FieldSuggestionAnalyticsPayload = {
+  name: "field_suggestion_lifecycle";
+  properties: Record<string, string>;
+};
+
+async function installFieldSuggestionAnalyticsProbe(page: import("@playwright/test").Page) {
+  await page.addInitScript(() => {
+    const probe = {
+      payloads: [] as FieldSuggestionAnalyticsPayload[],
+      pending: 0,
+    };
+    Object.defineProperty(window, "__quickFillFieldSuggestionAnalyticsProbe", {
+      configurable: true,
+      value: probe,
+    });
+
+    const capture = (urlValue: string, body: BodyInit | null | undefined) => {
+      let pathname = "";
+      try {
+        pathname = new URL(urlValue, window.location.href).pathname;
+      } catch {
+        return;
+      }
+      if (pathname !== "/api/analytics" || !body) return;
+
+      const parse = (value: string) => {
+        try {
+          const payload = JSON.parse(value) as Partial<FieldSuggestionAnalyticsPayload>;
+          if (
+            payload.name === "field_suggestion_lifecycle" &&
+            payload.properties &&
+            typeof payload.properties === "object"
+          ) {
+            probe.payloads.push(payload as FieldSuggestionAnalyticsPayload);
+          }
+        } catch {
+          // Ignore unrelated or malformed analytics bodies.
+        }
+      };
+
+      if (typeof body === "string") {
+        parse(body);
+      } else if (body instanceof Blob) {
+        probe.pending += 1;
+        void body.text()
+          .then(parse)
+          .finally(() => {
+            probe.pending -= 1;
+          });
+      }
+    };
+
+    const originalSendBeacon = navigator.sendBeacon?.bind(navigator);
+    if (originalSendBeacon) {
+      navigator.sendBeacon = (url, data) => {
+        capture(String(url), data);
+        return originalSendBeacon(url, data);
+      };
+    }
+
+    const originalFetch = window.fetch.bind(window);
+    window.fetch = (input, init) => {
+      const url = input instanceof Request ? input.url : String(input);
+      capture(url, init?.body);
+      return originalFetch(input, init);
+    };
+  });
+}
+
+async function fieldSuggestionAnalyticsProbe(page: import("@playwright/test").Page) {
+  await page.waitForFunction(() => {
+    const probe = (window as Window & {
+      __quickFillFieldSuggestionAnalyticsProbe?: {
+        pending: number;
+      };
+    }).__quickFillFieldSuggestionAnalyticsProbe;
+    return probe?.pending === 0;
+  });
+  return page.evaluate(() => {
+    const probe = (window as Window & {
+      __quickFillFieldSuggestionAnalyticsProbe?: {
+        payloads: FieldSuggestionAnalyticsPayload[];
+      };
+    }).__quickFillFieldSuggestionAnalyticsProbe;
+    return probe?.payloads ?? [];
+  });
+}
+
+function expectPrivacySafeFieldSuggestionPayloads(payloads: FieldSuggestionAnalyticsPayload[]) {
+  expect(payloads.length).toBeGreaterThan(0);
+  for (const payload of payloads) {
+    expect(Object.keys(payload.properties).every((key) => fieldSuggestionPropertyKeys.has(key))).toBe(true);
+  }
+  const serialized = JSON.stringify(payloads);
+  for (const forbidden of [
+    ".png",
+    "data:image",
+    "documentRevision",
+    "userId",
+    "sessionId",
+    "coordinates",
+    "boundingBox",
+  ]) {
+    expect(serialized).not.toContain(forbidden);
+  }
+}
 
 async function installLocalSuggestionPerformanceProbe(page: import("@playwright/test").Page) {
   await page.addInitScript(() => {
@@ -255,10 +371,13 @@ test.describe("editor image upload intake", () => {
 test.describe("local photo field suggestion review", () => {
   test.skip(!runsAgainstLocalApp, "Requires PLAYWRIGHT_BASE_URL pointing at a local dev server.");
 
-  test("feature-off Photo Cleanup is unchanged on desktop and mobile", async ({ page }) => {
-    test.skip(localFieldSuggestionReviewEnabled, "This assertion is for the default-off server configuration.");
-
-    for (const viewport of [{ width: 1280, height: 900 }, { width: 390, height: 844 }]) {
+  for (const { label, viewport } of [
+    { label: "desktop", viewport: { width: 1280, height: 900 } },
+    { label: "mobile", viewport: { width: 390, height: 844 } },
+  ]) {
+    test(`feature-off Photo Cleanup is unchanged on ${label}`, async ({ page }) => {
+      test.skip(localFieldSuggestionReviewEnabled, "This assertion is for the default-off server configuration.");
+      await installFieldSuggestionAnalyticsProbe(page);
       await page.setViewportSize(viewport);
       await prepareEditor(page);
       await page.getByTestId("document-upload-input").setInputFiles({
@@ -271,13 +390,15 @@ test.describe("local photo field suggestion review", () => {
       await expect(page.getByRole("button", { name: "Make this fillable" })).toHaveCount(0);
       await page.getByRole("button", { name: "Cancel" }).click();
       await expectNoHorizontalOverflow(page);
-    }
-  });
+      expect(await fieldSuggestionAnalyticsProbe(page)).toEqual([]);
+    });
+  }
 
   test("desktop review stays local and supports review, retry, replacement, batch accept, and undo", async ({ page }) => {
     test.skip(!localFieldSuggestionReviewEnabled, "Requires the internal local-review build flag.");
     await page.setViewportSize({ width: 1280, height: 900 });
     await installLocalSuggestionPerformanceProbe(page);
+    await installFieldSuggestionAnalyticsProbe(page);
     const forbiddenRequests: string[] = [];
     const signatureRequests: string[] = [];
     const pageErrors: string[] = [];
@@ -355,6 +476,19 @@ test.describe("local photo field suggestion review", () => {
     expect(signatureRequests).toEqual([]);
     expect(pageErrors).toEqual([]);
     expect(consoleErrors).toEqual([]);
+    const fieldSuggestionPayloads = await fieldSuggestionAnalyticsProbe(page);
+    expectPrivacySafeFieldSuggestionPayloads(fieldSuggestionPayloads);
+    expect(fieldSuggestionPayloads.map((payload) => payload.properties.stage)).toEqual(expect.arrayContaining([
+      "eligibility",
+      "review_requested",
+      "snapshot_ready",
+      "review_displayed",
+      "retry",
+      "individual_accept",
+      "individual_reject",
+      "accept_all",
+      "completed",
+    ]));
     console.log(JSON.stringify({
       scenario: "local-review-desktop",
       requestCounts,
@@ -371,6 +505,7 @@ test.describe("local photo field suggestion review", () => {
     test.skip(!localFieldSuggestionReviewEnabled, "Requires the internal local-review build flag.");
     await page.setViewportSize({ width: 390, height: 844 });
     await installLocalSuggestionPerformanceProbe(page);
+    await installFieldSuggestionAnalyticsProbe(page);
     const forbiddenRequests: string[] = [];
     const signatureRequests: string[] = [];
     const pageErrors: string[] = [];
@@ -415,6 +550,16 @@ test.describe("local photo field suggestion review", () => {
     expect(signatureRequests).toEqual([]);
     expect(pageErrors).toEqual([]);
     expect(consoleErrors).toEqual([]);
+    const fieldSuggestionPayloads = await fieldSuggestionAnalyticsProbe(page);
+    expectPrivacySafeFieldSuggestionPayloads(fieldSuggestionPayloads);
+    expect(fieldSuggestionPayloads.map((payload) => payload.properties.stage)).toEqual(expect.arrayContaining([
+      "eligibility",
+      "review_requested",
+      "snapshot_ready",
+      "review_displayed",
+      "dismissed",
+      "completed",
+    ]));
     await page.waitForTimeout(250);
     console.log(JSON.stringify({
       scenario: "local-review-mobile",

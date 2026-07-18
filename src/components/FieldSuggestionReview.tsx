@@ -4,18 +4,22 @@ import { useEffect, useRef, useState } from "react";
 import type { FieldSuggestion, SuggestedFieldType } from "@/lib/field-suggestions";
 
 export type FieldSuggestionReviewStatus = "processing" | "review" | "error";
+export type FieldSuggestionCommitAction = "accept_all" | "accepted_selected";
+export type FieldSuggestionReviewDecision = "accepted" | "rejected";
 
 interface FieldSuggestionReviewProps {
   status: FieldSuggestionReviewStatus;
   suggestions: readonly FieldSuggestion[];
   errorMessage?: string;
   onTypeChange: (id: string, type: SuggestedFieldType) => void;
-  onCommit: (suggestions: readonly FieldSuggestion[]) => void;
+  onCommit: (
+    suggestions: readonly FieldSuggestion[],
+    action: FieldSuggestionCommitAction,
+  ) => void;
+  onDecision?: (decision: FieldSuggestionReviewDecision) => void;
   onRetry: () => void;
   onCancel: () => void;
 }
-
-type ReviewDecision = "accepted" | "rejected";
 
 export function FieldSuggestionReview({
   status,
@@ -23,11 +27,13 @@ export function FieldSuggestionReview({
   errorMessage,
   onTypeChange,
   onCommit,
+  onDecision,
   onRetry,
   onCancel,
 }: FieldSuggestionReviewProps) {
   const dialogRef = useRef<HTMLDivElement>(null);
-  const [decisions, setDecisions] = useState<Record<string, ReviewDecision>>({});
+  const decisionsRef = useRef<Record<string, FieldSuggestionReviewDecision>>({});
+  const [decisions, setDecisions] = useState<Record<string, FieldSuggestionReviewDecision>>({});
 
   useEffect(() => {
     const previouslyFocused = document.activeElement instanceof HTMLElement ? document.activeElement : null;
@@ -38,11 +44,16 @@ export function FieldSuggestionReview({
   const accepted = suggestions.filter((suggestion) => decisions[suggestion.id] === "accepted");
   const remaining = suggestions.filter((suggestion) => decisions[suggestion.id] !== "rejected");
 
-  const decide = (id: string, decision: ReviewDecision) => {
-    setDecisions((current) => ({ ...current, [id]: decision }));
+  const decide = (id: string, decision: FieldSuggestionReviewDecision) => {
+    if (decisionsRef.current[id] === decision) return;
+    const next = { ...decisionsRef.current, [id]: decision };
+    decisionsRef.current = next;
+    setDecisions(next);
+    onDecision?.(decision);
   };
 
   const handleRetry = () => {
+    decisionsRef.current = {};
     setDecisions({});
     onRetry();
   };
@@ -172,7 +183,7 @@ export function FieldSuggestionReview({
             <>
               <button
                 type="button"
-                onClick={() => onCommit(remaining)}
+                onClick={() => onCommit(remaining, "accept_all")}
                 disabled={remaining.length === 0}
                 className="min-h-11 rounded-xl bg-accent px-4 text-sm font-semibold text-white transition-colors hover:bg-accent-hover disabled:opacity-50"
               >
@@ -180,7 +191,7 @@ export function FieldSuggestionReview({
               </button>
               <button
                 type="button"
-                onClick={() => onCommit(accepted)}
+                onClick={() => onCommit(accepted, "accepted_selected")}
                 disabled={accepted.length === 0}
                 className="min-h-11 rounded-xl border border-accent px-4 text-sm font-semibold text-accent transition-colors hover:bg-accent/5 disabled:opacity-50"
               >
