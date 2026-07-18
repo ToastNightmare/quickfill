@@ -1,6 +1,6 @@
 # Profile Autofill Rollout
 
-Last updated: 2026-05-11
+Last updated: 2026-07-18
 
 ## Current production state
 
@@ -11,7 +11,13 @@ Last updated: 2026-05-11
   - `shadow`: keep legacy behavior for users, but report intelligence comparison metrics.
   - `intelligence`: apply intelligence predictions directly for auto-fill decisions.
 - Mobile auto-fill is wired through `runProfileAutofill(..., autofillModeFromFlag(...))`.
-- Desktop editor auto-fill is not yet enabled through the adapter because the desktop build path failed without readable Vercel logs.
+- Desktop editor auto-fill is wired through `runEditorProfileAutofill(...)`, which uses the same environment flag and shared autofill helper.
+
+## Change workflow
+
+The obsolete GitHub Actions and script that rewrote autofill source files have been retired. They must not be restored or used to commit changes directly to `master`.
+
+All future autofill code and rollout documentation changes must use normal pull requests with review and the required checks. Changing this workflow does not change `NEXT_PUBLIC_QUICKFILL_AUTOFILL_MODE`, its environment configuration, or any autofill behavior.
 
 ## Environment flag
 
@@ -28,9 +34,9 @@ Recommended rollout order:
 3. When reports look clean, set Production to `shadow`.
 4. Only consider `intelligence` after enough shadow reports prove it is better than legacy.
 
-## Shadow reporting
+## Shadow and intelligence reporting
 
-Shadow reports are emitted through `trackAutofillShadowReport(...)` using the existing `profile_autofill_used` analytics event with `shadowReported: true`.
+Comparison reports are emitted in `shadow` and `intelligence` modes through `trackAutofillShadowReport(...)` on mobile and `trackEditorAutofillShadowReport(...)` on desktop. Both use the existing `profile_autofill_used` analytics event with `shadowReported: true`.
 
 Watch these fields:
 
@@ -47,32 +53,7 @@ Watch these fields:
 - `surface`
 - `hasAcroForm`
 
-A healthy shadow result should show high agreement with legacy, low disagreement, and useful high-confidence matches that legacy missed.
-
-## Desktop blocker
-
-Desktop wiring should replace `handleAutoFillFromProfile` in `src/app/editor/page.tsx` with the same flow used on mobile:
-
-```ts
-const mode = autofillModeFromFlag(process.env.NEXT_PUBLIC_QUICKFILL_AUTOFILL_MODE);
-const result = runProfileAutofill(fields, profile, mode);
-setFields(result.fields);
-trackAutofillShadowReport(result, {
-  surface: "desktop",
-  hasAcroForm,
-  totalPages,
-});
-```
-
-The build failed when the adapter patched the desktop handler. Vercel logs are currently blocked by team-scope auth for `toastnightmare-6181s-projects`, so the exact TypeScript line is not visible from Codex.
-
-To unblock:
-
-1. Open the failed Vercel deployment for the desktop adapter attempt.
-2. Copy the first TypeScript error line and the file path/line number.
-3. Patch only that desktop bridge issue.
-4. Re-enable desktop adapter wiring.
-5. Confirm Vercel green.
+A healthy comparison result should show high agreement with legacy, low disagreement, and useful high-confidence matches that legacy missed.
 
 ## Safety rules
 
