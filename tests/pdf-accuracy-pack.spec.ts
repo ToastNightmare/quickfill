@@ -1,6 +1,7 @@
 import { test, expect, type APIRequestContext, type Page, type TestInfo } from "@playwright/test";
 import { PDFDict, PDFDocument, PDFName, StandardFonts, rgb } from "pdf-lib";
 import { readFile } from "node:fs/promises";
+import { createServer, type Server } from "node:http";
 import { join } from "node:path";
 import { PDF_UPLOAD_MAX_LABEL } from "../src/lib/upload-limits";
 
@@ -29,6 +30,34 @@ const visualThresholds = {
 };
 
 const qaToken = process.env.QUICKFILL_QA_TOKEN;
+const enforceQaToken = process.env.QUICKFILL_PDF_QA_ENFORCE === "1";
+const enforcedBaseUrl = "http://localhost:3000";
+const enforcedRedisUrl = "http://127.0.0.1:38079";
+
+if (enforceQaToken && !qaToken) {
+  throw new Error(
+    "QUICKFILL_QA_TOKEN is required when QUICKFILL_PDF_QA_ENFORCE=1.",
+  );
+}
+
+if (enforceQaToken && process.env.PLAYWRIGHT_BASE_URL !== enforcedBaseUrl) {
+  throw new Error(
+    `PLAYWRIGHT_BASE_URL must be ${enforcedBaseUrl} when QUICKFILL_PDF_QA_ENFORCE=1.`,
+  );
+}
+
+if (enforceQaToken && process.env.UPSTASH_REDIS_REST_URL !== enforcedRedisUrl) {
+  throw new Error(
+    `UPSTASH_REDIS_REST_URL must be ${enforcedRedisUrl} when QUICKFILL_PDF_QA_ENFORCE=1.`,
+  );
+}
+
+if (enforceQaToken && process.env.UPSTASH_REDIS_REST_TOKEN !== qaToken) {
+  throw new Error(
+    "UPSTASH_REDIS_REST_TOKEN must reuse QUICKFILL_QA_TOKEN in PDF enforcement mode.",
+  );
+}
+
 const templateDir = join(process.cwd(), "public", "templates");
 const realTemplateFiles = [
   "ato-tfn-declaration.pdf",
@@ -51,6 +80,87 @@ const visualTemplateFiles = [
   "employment-separation.pdf",
   "medicare-enrolment.pdf",
 ];
+
+function sendJson(response: import("node:http").ServerResponse, statusCode: number, body: unknown) {
+  response.writeHead(statusCode, {
+    "content-type": "application/json",
+    connection: "close",
+  });
+  response.end(JSON.stringify(body));
+}
+
+async function readJsonBody(request: import("node:http").IncomingMessage) {
+  const chunks: Buffer[] = [];
+  let size = 0;
+
+  for await (const chunk of request) {
+    const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+    size += buffer.length;
+    if (size > 1_000_000) throw new Error("Local Redis request is too large.");
+    chunks.push(buffer);
+  }
+
+  return JSON.parse(Buffer.concat(chunks).toString("utf8")) as unknown;
+}
+
+function redisCommandsFromBody(body: unknown) {
+  if (!Array.isArray(body)) throw new Error("Expected a Redis command array.");
+  if (body.every(Array.isArray)) return body as unknown[][];
+  return [body];
+}
+
+async function startEnforcedRedisStub() {
+  const expectedAuthorization = `Bearer ${qaToken}`;
+  const server = createServer(async (request, response) => {
+    try {
+      if (request.method !== "POST" || !new Set(["/", "/pipeline"]).has(request.url ?? "")) {
+        sendJson(response, 404, { error: "Not found" });
+        return;
+      }
+
+      if (request.headers.authorization !== expectedAuthorization) {
+        sendJson(response, 401, { error: "Unauthorized" });
+        return;
+      }
+
+      const body = await readJsonBody(request);
+      const results = redisCommandsFromBody(body).map((redisCommand) => {
+        const command = String(redisCommand[0] ?? "").toLowerCase();
+        const key = String(redisCommand[1] ?? "");
+        if (!new Set(["lpush", "ltrim"]).has(command) || key !== "admin:download_logs") {
+          throw new Error("Unsupported local Redis command.");
+        }
+        return { result: command === "ltrim" ? "OK" : 1 };
+      });
+
+      if (request.url === "/pipeline") {
+        sendJson(response, 200, results);
+      } else {
+        sendJson(response, 200, results[0]);
+      }
+    } catch {
+      sendJson(response, 400, { error: "Invalid local Redis request" });
+    }
+  });
+
+  await new Promise<void>((resolve, reject) => {
+    const handleError = (error: Error) => reject(error);
+    server.once("error", handleError);
+    server.listen(38079, "127.0.0.1", () => {
+      server.off("error", handleError);
+      resolve();
+    });
+  });
+
+  return server;
+}
+
+async function stopEnforcedRedisStub(server: Server | undefined) {
+  if (!server) return;
+  await new Promise<void>((resolve, reject) => {
+    server.close((error) => (error ? reject(error) : resolve()));
+  });
+}
 
 async function loadTemplatePdf(name: string): Promise<TestPdf> {
   return {
@@ -524,6 +634,16 @@ async function comparePdfVisuals(page: Page, sourceBytes: Buffer, outputBytes: B
 }
 
 test.describe("PDF accuracy pack", () => {
+  let redisStub: Server | undefined;
+
+  test.beforeAll(async () => {
+    if (enforceQaToken) redisStub = await startEnforcedRedisStub();
+  });
+
+  test.afterAll(async () => {
+    await stopEnforcedRedisStub(redisStub);
+  });
+
   test("server output is static and removes widget noise for an AcroForm", async ({ request }) => {
     const pdf = await createAcroFormPdf();
     const body = await requestFilledPdf(request, pdf);

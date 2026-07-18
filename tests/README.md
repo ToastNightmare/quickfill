@@ -38,8 +38,10 @@ Playwright's generated results, screenshots, videos, and traces are written to
 the operating system's temporary directory. `playwright-report/` and
 `test-results/` must not be created in the repository.
 
-The PDF accuracy checks gated by `QUICKFILL_QA_TOKEN` intentionally skip when
-the token is unavailable. Set the token to execute those checks locally.
+The PDF accuracy checks gated by `QUICKFILL_QA_TOKEN` intentionally skip during
+ordinary local runs when the token is unavailable. Set the token to execute
+those checks locally. Set `QUICKFILL_PDF_QA_ENFORCE=1` when a missing token must
+fail closed instead of skipping the guarded checks.
 
 ## GitHub Actions CI
 
@@ -49,7 +51,9 @@ manual dispatches. It installs the frozen pnpm lockfile with the repository's
 pinned pnpm version, builds the production application, runs the full Jest
 suite directly, and then runs the standard Playwright suite directly against a
 fresh `http://localhost:3000` server with one worker. It never runs
-`qa:pdf:prod` or targets production.
+`qa:pdf:prod` or targets production. The same required job then runs
+`pnpm qa:pdf` in enforcement mode against localhost and requires all 20 PDF
+accuracy checks to execute with none skipped.
 
 The workflow requires these matching Clerk Development credentials as GitHub
 repository Actions secrets:
@@ -66,10 +70,15 @@ credential check and require a trusted branch run instead.
 
 On failure, CI uploads only matching `/tmp/quickfill-playwright-*` output as a
 GitHub Actions artifact retained for seven days. Standard CI does not create
-tracked `playwright-report/` or `test-results/` directories. The PDF accuracy
-checks protected by `QUICKFILL_QA_TOKEN` intentionally remain skipped because
-standard CI does not receive that separate PDF token; the number of guarded
-checks may change as the accuracy pack evolves.
+tracked `playwright-report/` or `test-results/` directories. The PDF step
+generates a cryptographically random `QUICKFILL_QA_TOKEN`, registers it with
+GitHub masking before use, and passes it only to that step's Playwright process
+and local Next.js server. Enforcement mode also starts a loopback-only Redis
+facade that accepts only the route's download-log `LPUSH` and `LTRIM` commands,
+discards their payloads, and reuses the same ephemeral token for authentication.
+The ephemeral token is not a GitHub or Vercel secret and is not persisted,
+cached, uploaded, or shared with another step. No production Redis service or
+production data is accessed.
 
 Use the stable job/check name **Build, Jest, and standard Playwright** for
 `master` branch protection.
@@ -82,15 +91,26 @@ Requirements before running:
 
 1. `pnpm build` has been run in this worktree (Playwright boots a fresh `next start` server automatically and refuses to reuse a listener on port 3000).
 2. `.env.local` exists in this worktree (copy from an existing QuickFill checkout; it is gitignored).
-3. `QUICKFILL_QA_TOKEN` is exported in the shell and matches the server value in `.env.local`. Without it, most of the pack silently skips and a "pass" is meaningless.
-4. `PLAYWRIGHT_BASE_URL` is unset, otherwise it overrides localhost.
+3. `QUICKFILL_QA_TOKEN` is set for the Playwright command. Its local Next.js child process inherits the same value. Without it, most of the pack silently skips unless enforcement mode is enabled.
+4. `PLAYWRIGHT_BASE_URL` is unset or exactly `http://localhost:3000`.
 
 ```bash
 pnpm build
-QUICKFILL_QA_TOKEN="$(cat /home/kyle/.quickfill-qa-token)" pnpm qa:pdf
+pdf_qa_token="$(node -e 'process.stdout.write(require("node:crypto").randomBytes(32).toString("base64url"))')"
+QUICKFILL_QA_TOKEN="${pdf_qa_token}" \
+  QUICKFILL_PDF_QA_ENFORCE=1 \
+  PLAYWRIGHT_BASE_URL=http://localhost:3000 \
+  UPSTASH_REDIS_REST_URL=http://127.0.0.1:38079 \
+  UPSTASH_REDIS_REST_TOKEN="${pdf_qa_token}" \
+  pnpm qa:pdf
+unset pdf_qa_token
 ```
 
 This runs the focused desktop and mobile PDF checks for AcroForm downloads, flat PDF fallback, widget cleanup, page overflow, real template export coverage, and browser-rendered visual smoke checks.
+Enforcement mode fails before the pack can register tests if the token is
+missing, the test target is not exact localhost, or the Redis facade is not
+configured at its exact loopback URL with the same token. A guarded skip cannot
+be mistaken for successful CI coverage.
 
 ### Production Smoke
 

@@ -90,6 +90,21 @@ jobs:
           TEMP: /tmp
         run: pnpm exec playwright test --reporter=list
 
+      - name: Run PDF accuracy pack against localhost
+        env:
+          NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: ${{ secrets.QUICKFILL_CI_CLERK_PUBLISHABLE_KEY }}
+          CLERK_SECRET_KEY: ${{ secrets.QUICKFILL_CI_CLERK_SECRET_KEY }}
+          QUICKFILL_PDF_QA_ENFORCE: "1"
+          PLAYWRIGHT_BASE_URL: http://localhost:3000
+          UPSTASH_REDIS_REST_URL: http://127.0.0.1:38079
+          TMPDIR: /tmp
+          TMP: /tmp
+          TEMP: /tmp
+        run: |
+          pdf_qa_token="$(node -e 'process.stdout.write(require("node:crypto").randomBytes(32).toString("base64url"))')"
+          printf '::add-mask::%s\n' "${pdf_qa_token}"
+          QUICKFILL_QA_TOKEN="${pdf_qa_token}" UPSTASH_REDIS_REST_TOKEN="${pdf_qa_token}" pnpm qa:pdf
+
       - name: Upload Playwright failure artifacts
         if: ${{ failure() }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
