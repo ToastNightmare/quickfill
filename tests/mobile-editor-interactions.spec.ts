@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import type { Page } from "@playwright/test";
+import type { Locator, Page } from "@playwright/test";
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 
 const localBaseUrl = process.env.PLAYWRIGHT_BASE_URL ?? "";
@@ -33,6 +33,54 @@ async function tapPdfPoint(page: Page, xOffset: number, yOffset: number) {
   const pageBox = await page.getByTestId("pdf-page").boundingBox();
   expect(pageBox).not.toBeNull();
   await page.touchscreen.tap(pageBox!.x + xOffset, pageBox!.y + yOffset);
+}
+
+async function tapElement(page: Page, locator: Locator) {
+  const box = await locator.boundingBox();
+  expect(box).not.toBeNull();
+  await page.touchscreen.tap(box!.x + box!.width / 2, box!.y + box!.height / 2);
+}
+
+async function createMobilePhotoFixture(page: Page) {
+  const bytes = await page.evaluate(async () => {
+    const canvas = document.createElement("canvas");
+    canvas.width = 48;
+    canvas.height = 32;
+    const context = canvas.getContext("2d");
+    if (!context) throw new Error("Canvas is unavailable");
+    context.fillStyle = "#ffffff";
+    context.fillRect(0, 0, canvas.width, canvas.height);
+    context.fillStyle = "#1a6fb3";
+    context.fillRect(4, 4, 40, 24);
+
+    const blob = await new Promise<Blob>((resolve, reject) => {
+      canvas.toBlob((result) => {
+        if (result) resolve(result);
+        else reject(new Error("Image fixture generation failed"));
+      }, "image/png");
+    });
+    return Array.from(new Uint8Array(await blob.arrayBuffer()));
+  });
+  return Buffer.from(bytes);
+}
+
+async function prepareEmptyMobileEditor(page: Page) {
+  await page.goto("/editor?advanced=1", { waitUntil: "domcontentloaded" });
+  await page.evaluate(async () => {
+    localStorage.clear();
+    localStorage.setItem("qf_welcome_dismissed", "1");
+    localStorage.setItem("quickfill_welcomed", "1");
+    localStorage.setItem("quickfill_tour_done", "1");
+    await new Promise<void>((resolve) => {
+      const request = indexedDB.deleteDatabase("quickfill_db");
+      request.onsuccess = request.onerror = request.onblocked = () => resolve();
+    });
+  });
+  await page.reload({ waitUntil: "domcontentloaded" });
+}
+
+async function expectNoHorizontalOverflow(page: Page) {
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
 }
 
 async function seedRestoredEditorPdf(page: Page, name: string) {
@@ -174,4 +222,77 @@ test.describe("mobile editor field interactions", () => {
     await expect(page.getByText("PDF, JPG, or PNG, up to 15MB")).toBeHidden();
   });
 
+});
+
+test.describe("mobile editor actions", () => {
+  test.skip(!runsAgainstLocalApp, "Requires PLAYWRIGHT_BASE_URL pointing at a local dev server.");
+  test.use({ hasTouch: true });
+
+  for (const viewport of [
+    { width: 390, height: 844 },
+    { width: 320, height: 700 },
+  ]) {
+    test(`keeps Help and Start Over reachable at ${viewport.width}x${viewport.height}`, async ({ page }) => {
+      await page.setViewportSize(viewport);
+      const consoleErrors: string[] = [];
+      const pageErrors: string[] = [];
+      const unexpectedApiCalls: string[] = [];
+      const localOrigin = new URL(localBaseUrl).origin;
+      const expectedApiPaths = new Set(["/api/analytics", "/api/usage"]);
+
+      page.on("console", (message) => {
+        if (message.type() === "error") consoleErrors.push(message.text());
+      });
+      page.on("pageerror", (error) => pageErrors.push(error.message));
+      page.on("request", (request) => {
+        const url = new URL(request.url());
+        if (
+          url.origin === localOrigin &&
+          url.pathname.startsWith("/api/") &&
+          !expectedApiPaths.has(url.pathname)
+        ) {
+          unexpectedApiCalls.push(`${request.method()} ${url.pathname}`);
+        }
+      });
+
+      await prepareEmptyMobileEditor(page);
+      await expect(page.getByText("Tap to browse your file")).toBeVisible();
+      await page.getByTestId("document-upload-input").setInputFiles({
+        name: `mobile-actions-${viewport.width}.png`,
+        mimeType: "image/png",
+        buffer: await createMobilePhotoFixture(page),
+      });
+
+      await expect(page.getByRole("heading", { name: "Clean up photo" })).toBeVisible();
+      await page.getByRole("button", { name: "Use photo" }).click();
+      await expect(page.getByTestId("pdf-page")).toBeVisible({ timeout: 15_000 });
+      await expectNoHorizontalOverflow(page);
+
+      const actions = page.getByRole("button", { name: "More actions" });
+      await expect(actions).toHaveAttribute("aria-expanded", "false");
+      await tapElement(page, actions);
+      await expect(actions).toHaveAttribute("aria-expanded", "true");
+      await tapElement(page, page.getByRole("button", { name: "Help" }));
+      await expect(page.getByRole("heading", { name: "Upload or pick a template" })).toBeVisible();
+
+      await page.keyboard.press("Escape");
+      await expect(page.getByRole("heading", { name: "Upload or pick a template" })).toHaveCount(0);
+
+      await actions.focus();
+      await page.keyboard.press("Enter");
+      const startOver = page.getByRole("button", { name: "Start Over" });
+      await expect(startOver).toBeVisible();
+      await page.keyboard.press("Tab");
+      await expect(startOver).toBeFocused();
+      await page.keyboard.press("Enter");
+
+      await expect(page.getByTestId("pdf-page")).toHaveCount(0);
+      await expect(page.getByText("Tap to browse your file")).toBeVisible();
+      await expect(page.getByTestId("document-upload-input")).toBeAttached();
+      await expectNoHorizontalOverflow(page);
+      expect(unexpectedApiCalls).toEqual([]);
+      expect(pageErrors).toEqual([]);
+      expect(consoleErrors).toEqual([]);
+    });
+  }
 });

@@ -23,11 +23,12 @@ import {
   MousePointer2,
   Pencil,
   Eraser,
+  MoreHorizontal,
 } from "lucide-react";
 import type { ToolType, EditorField } from "@/lib/types";
 import { Minimap } from "@/components/Minimap";
 import type { RefObject } from "react";
-import { useState, useEffect } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 
 interface ToolbarProps {
   activeTool: ToolType;
@@ -210,7 +211,9 @@ export function Toolbar({
           ) : (
             <IconButton onClick={onClear} title="Clear fields" icon={Trash2} disabled={fieldCount === 0} danger />
           )}
-          {onShowHelp ? (
+          {onShowHelp && onStartOver ? (
+            <MobileActionsMenu onShowHelp={onShowHelp} onStartOver={onStartOver} />
+          ) : onShowHelp ? (
             <IconButton onClick={onShowHelp} title="Help" icon={HelpCircle} />
           ) : onStartOver ? (
             <IconButton onClick={onStartOver} title="Start over" icon={RotateCcw} />
@@ -432,6 +435,96 @@ function IconButton({
     >
       <Icon className="h-4 w-4" />
     </button>
+  );
+}
+
+function MobileActionsMenu({
+  onShowHelp,
+  onStartOver,
+}: {
+  onShowHelp: () => void;
+  onStartOver: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const firstActionRef = useRef<HTMLButtonElement>(null);
+  const menuId = useId();
+
+  useEffect(() => {
+    if (!open) return;
+
+    firstActionRef.current?.focus();
+
+    const handlePointerDown = (event: PointerEvent) => {
+      if (!containerRef.current?.contains(event.target as Node | null)) {
+        setOpen(false);
+      }
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      event.stopPropagation();
+      setOpen(false);
+      triggerRef.current?.focus();
+    };
+
+    document.addEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [open]);
+
+  const runAction = (action: () => void) => {
+    setOpen(false);
+    triggerRef.current?.focus();
+    action();
+  };
+
+  return (
+    <div ref={containerRef} className="relative">
+      <button
+        ref={triggerRef}
+        type="button"
+        title="More actions"
+        aria-label="More actions"
+        aria-expanded={open}
+        aria-controls={menuId}
+        onClick={() => setOpen((current) => !current)}
+        className="flex h-10 w-full items-center justify-center rounded-xl border border-border bg-surface-alt text-text-muted transition-colors hover:border-accent hover:text-accent"
+      >
+        <MoreHorizontal className="h-4 w-4" />
+      </button>
+
+      {open && (
+        <div
+          id={menuId}
+          role="group"
+          aria-label="Actions"
+          className="absolute bottom-full right-0 z-50 mb-2 w-40 overflow-hidden rounded-xl border border-border bg-surface p-1 shadow-xl"
+        >
+          <button
+            ref={firstActionRef}
+            type="button"
+            onClick={() => runAction(onShowHelp)}
+            className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm font-medium text-text-muted transition-colors hover:bg-surface-alt hover:text-text focus:bg-surface-alt focus:text-text"
+          >
+            <HelpCircle className="h-4 w-4" />
+            Help
+          </button>
+          <button
+            type="button"
+            onClick={() => runAction(onStartOver)}
+            className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm font-medium text-text-muted transition-colors hover:bg-red-50 hover:text-red-600 focus:bg-red-50 focus:text-red-600"
+          >
+            <RotateCcw className="h-4 w-4" />
+            Start Over
+          </button>
+        </div>
+      )}
+    </div>
   );
 }
 
