@@ -38,8 +38,41 @@ Playwright's generated results, screenshots, videos, and traces are written to
 the operating system's temporary directory. `playwright-report/` and
 `test-results/` must not be created in the repository.
 
-The only expected standard-suite skips are the 16 PDF accuracy checks gated by
-`QUICKFILL_QA_TOKEN`. Set the token to execute those checks locally.
+The PDF accuracy checks gated by `QUICKFILL_QA_TOKEN` intentionally skip when
+the token is unavailable. Set the token to execute those checks locally.
+
+## GitHub Actions CI
+
+`.github/workflows/ci.yml` runs the read-only **QuickFill CI** workflow for
+pull requests targeting `master`, pushes to `master`, merge queue groups, and
+manual dispatches. It installs the frozen pnpm lockfile with the repository's
+pinned pnpm version, builds the production application, runs the full Jest
+suite directly, and then runs the standard Playwright suite directly against a
+fresh `http://localhost:3000` server with one worker. It never runs
+`qa:pdf:prod` or targets production.
+
+The workflow requires these matching Clerk Development credentials as GitHub
+repository Actions secrets:
+
+- `QUICKFILL_CI_CLERK_PUBLISHABLE_KEY`
+- `QUICKFILL_CI_CLERK_SECRET_KEY`
+
+The secrets are mapped only to `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` and
+`CLERK_SECRET_KEY` for credential validation, the build, and the localhost
+Playwright run. Missing credentials fail closed before checkout without
+printing their values. GitHub does not provide repository Actions secrets to
+fork pull requests or Dependabot-triggered workflows, so those runs fail the
+credential check and require a trusted branch run instead.
+
+On failure, CI uploads only matching `/tmp/quickfill-playwright-*` output as a
+GitHub Actions artifact retained for seven days. Standard CI does not create
+tracked `playwright-report/` or `test-results/` directories. The PDF accuracy
+checks protected by `QUICKFILL_QA_TOKEN` intentionally remain skipped because
+standard CI does not receive that separate PDF token; the number of guarded
+checks may change as the accuracy pack evolves.
+
+Use the stable job/check name **Build, Jest, and standard Playwright** for
+`master` branch protection.
 
 ### PDF Accuracy Pack
 
