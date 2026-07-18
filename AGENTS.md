@@ -10,9 +10,25 @@ QuickFill is a production PDF form filler at https://getquickfill.com. Treat thi
 
 ## Codex task discipline
 
-One task = one Codex chat = one worktree = one PR.
+QuickFill uses a strict two-lane pipeline:
 
-Do not start extra Codex chats, sibling worktrees, recovery chats, background agents, or parallel attempts unless Kyle explicitly approves first.
+- Implementation lane: exactly one active implementation PR, with exactly one implementation chat, branch, and worktree. Before the draft PR exists, the single approved task that will become that PR occupies this lane.
+- Research lane: exactly one parallel, strictly read-only research chat or background agent for the immediately following PR. It has no branch or worktree and is not an implementation attempt.
+
+Two implementation PRs may never overlap. The research lane is the sole standing parallel-work exception to the prohibition on extra Codex chats and background agents; it never permits a second implementation branch, worktree, or PR. An explicitly approved independent read-only reviewer is a sequential implementation gate, not a third lane: pause the research lane while that reviewer runs, keep the implementation lane unchanged, end the review before research resumes, and do not give the reviewer a branch, worktree, or mutation authority. Outside those cases, do not start sibling worktrees, recovery chats, extra branches, background agents, or parallel attempts unless Kyle explicitly approves a recovery after the active implementation lane has stopped.
+
+The research lane may inspect the repository and other sources read-only. It must never create branches or worktrees, edit files, stage, commit, push, deploy, merge, delete, or otherwise mutate repository or external state. Its required handoff is:
+
+- problem statement;
+- evidence and source references;
+- recommended scope;
+- expected files;
+- risks and protected boundaries;
+- acceptance criteria;
+- verification plan;
+- a ready-to-paste implementation prompt.
+
+Do not promote researched work into the implementation lane until the active implementation PR is merged, its automatic production deployment is verified against the exact merge SHA, the expressly authorized `master` worktree is synchronized, and the completed task worktree plus its safely merged local and remote branches are cleaned up. Promotion still requires the applicable implementation approval and creates the new sole implementation PR, branch, and worktree. After promotion, begin read-only research for the following PR.
 
 If a task runs into tooling trouble:
 
@@ -59,7 +75,7 @@ Before PR prep, confirm:
 
 ### End-to-end PR authorization
 
-One task, chat, branch, worktree, and PR at a time remains mandatory. A plan, an explicit scope, the expected files, and the applicable verification gates are still required before editing.
+Exactly one implementation task, chat, branch, worktree, and PR at a time remains mandatory. The strictly read-only research lane described above may run in parallel, but it cannot perform or overlap implementation. A plan, an explicit scope, the expected files, and the applicable verification gates are still required before editing.
 
 When Kyle explicitly approves a named PR task end to end and identifies its source-of-truth worktree and branch, that approval authorizes the normal lifecycle for only that task:
 

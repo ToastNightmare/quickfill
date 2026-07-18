@@ -11,8 +11,18 @@ Treat `AGENTS.md` as authoritative. This skill structures an approval; it never 
 
 1. Record the approved task, source-of-truth chat, worktree, branch, base branch, intended PR, expected files, verification gates, deployment check, authorized main worktree, and cleanup targets.
 2. Confirm the approval explicitly covers the end-to-end lifecycle. Use the limited prepare-PR or merge-PR workflow in `AGENTS.md` when it does not.
-3. Keep one task, branch, worktree, and PR. Do not create recovery worktrees, parallel edit attempts, or extra branches.
+3. Keep exactly one active implementation PR, branch, and worktree. Before the PR exists, its single approved implementation task, chat, branch, and worktree occupy that lane. Do not create recovery worktrees, parallel edit attempts, or extra branches.
 4. State the plan and expected files before editing. An active end-to-end approval removes repeated routine pauses; it does not remove planning or scope control.
+
+## Maintain the two-lane pipeline
+
+1. Permit exactly one parallel lane: a strictly read-only research chat or background agent for the immediately following PR. This is the sole standing exception to the prohibition on extra chats and background agents in `AGENTS.md`; it is not a second implementation lane and has no branch or worktree.
+2. The research lane may inspect repository content and other sources read-only. It must never create branches or worktrees, edit files, stage, commit, push, deploy, merge, delete, or otherwise mutate repository or external state.
+3. Require the research handoff to contain a problem statement, evidence and source references, recommended scope, expected files, risks and protected boundaries, acceptance criteria, a verification plan, and a ready-to-paste implementation prompt.
+4. Keep researched work proposal-only until the active implementation PR is merged, its automatic production deployment is verified against the exact merge SHA, the expressly authorized `master` worktree is synchronized, and the completed task worktree plus its safely merged local and remote branches are cleaned up.
+5. Promotion still requires the applicable implementation approval. It creates the new sole implementation PR, branch, and worktree; only then begin research for the following PR. Two implementation PRs may never overlap under any circumstances.
+
+All remaining lifecycle sections apply only to the active implementation lane. The research lane must not run `git fetch`, builds, tests, dependency installs, deployment or smoke checks, synchronization, cleanup, or any other command that can mutate repository or external state; it performs only read-only inspection needed for its required handoff.
 
 ## Run preflight
 
@@ -75,7 +85,7 @@ If a check fails, identify whether the cause is the approved diff, the environme
 
 After the full gate passes:
 
-1. Run one sequential read-only independent review when approved.
+1. Run one sequential read-only independent review when approved. Pause the research lane first, keep the implementation lane unchanged while the reviewer runs, end the review before research resumes, and give the reviewer no branch, worktree, or mutation authority. This review is an implementation gate, not a third lane.
 2. Give the reviewer the raw diff, task scope, and repository instructions without suggested findings.
 3. Check correctness, security, scope, secret handling, fail-closed behavior, cleanup safety, and documentation accuracy.
 4. Correct every actionable in-scope finding and rerun affected checks.
