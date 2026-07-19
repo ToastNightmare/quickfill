@@ -33,6 +33,7 @@ import {
 } from "../field-suggestion-rollout";
 const DOCUMENT_REVISION = `qf-document-v1-${"a".repeat(64)}`;
 const OTHER_DOCUMENT_REVISION = `qf-document-v1-${"b".repeat(64)}`;
+const DETERMINISTIC_NOW = () => 0;
 
 function suggestion(overrides: Partial<FieldSuggestion> = {}): FieldSuggestion {
   const boundingBox: FieldSuggestionBounds = overrides.boundingBox ?? {
@@ -178,7 +179,7 @@ function detectionSnapshot(overrides: {
 
 function mapSnapshot(
   snapshot: LocalFieldDetectionSnapshot,
-  now?: () => number,
+  now: () => number = DETERMINISTIC_NOW,
   incrementalDurationMs = 0,
 ) {
   return mapLocalFieldSuggestions({
@@ -395,6 +396,7 @@ describe("local field suggestion snapshot provider", () => {
         key: snapshotKey(),
         scanDurationMs: 1,
         boxes,
+        now: DETERMINISTIC_NOW,
       });
 
       expect(result).toMatchObject({ status: "ineligible", reason: "invalid-snapshot" });
@@ -411,7 +413,12 @@ describe("local field suggestion snapshot provider", () => {
       area: 400,
     }));
     const before = boxes.map((box) => ({ ...box }));
-    const result = prepareLocalFieldDetectionSnapshot({ key: snapshotKey(), scanDurationMs: 1, boxes });
+    const result = prepareLocalFieldDetectionSnapshot({
+      key: snapshotKey(),
+      scanDurationMs: 1,
+      boxes,
+      now: DETERMINISTIC_NOW,
+    });
 
     expect(result.status).toBe("ready");
     if (result.status !== "ready") throw new Error("Expected eligible snapshot");
@@ -436,6 +443,7 @@ describe("local field suggestion snapshot provider", () => {
       key: snapshotKey(),
       scanDurationMs: 1,
       boxes,
+      now: DETERMINISTIC_NOW,
     })).toMatchObject({ status: "ineligible", reason: "invalid-snapshot" });
   });
 
@@ -448,6 +456,7 @@ describe("local field suggestion snapshot provider", () => {
         { x: 30, y: 30, width: Number.NaN, height: 20 },
         { x: 50, y: 50, width: 20, height: 20 },
       ],
+      now: DETERMINISTIC_NOW,
     });
 
     expect(result).toEqual(expect.objectContaining({
