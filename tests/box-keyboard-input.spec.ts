@@ -220,3 +220,107 @@ test("Box Field stores Comb keyboard input, deletion, and cursor navigation", as
   );
   await expect(saveBadge).toContainText("Saved locally");
 });
+
+test("Box Field caps the filled count for a restored legacy overlength value", async ({ page }) => {
+  const pageErrors: string[] = [];
+  page.on("pageerror", (error) => pageErrors.push(error.message));
+
+  await page.setViewportSize({ width: 1100, height: 900 });
+  await prepareEditor(page);
+
+  const boxFieldTool = page.locator('button[title="Box field: drag across character boxes"]').first();
+  await expect(boxFieldTool).toBeVisible();
+  await boxFieldTool.click();
+
+  const interactionCanvas = page
+    .getByTestId("pdf-page")
+    .locator(".konvajs-content canvas")
+    .first();
+  await expect(interactionCanvas).toBeVisible();
+  await interactionCanvas.click({ position: { x: 180, y: 240 } });
+
+  await expect.poll(() => readCombField(page)).not.toBeNull();
+  const placedField = await readCombField(page);
+  expect(placedField).not.toBeNull();
+  const charCount = placedField!.charCount;
+  const legacyValue = "X".repeat(charCount + 3);
+
+  await expect(page.getByTestId("local-save-status")).toContainText("Saved locally");
+  await page.evaluate((value) => {
+    const rawFields = localStorage.getItem("quickfill_fields");
+    if (!rawFields) throw new Error("Expected persisted Box fields before legacy-value injection");
+    const fields = JSON.parse(rawFields) as Array<Record<string, unknown>>;
+    const field = fields.find((candidate) => candidate.type === "comb");
+    if (!field) throw new Error("Expected a persisted Box field before legacy-value injection");
+    field.value = value;
+    field.cursorIndex = value.length;
+    localStorage.setItem("quickfill_fields", JSON.stringify(fields));
+  }, legacyValue);
+
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await expect(page).toHaveURL(/\/editor\?advanced=1$/);
+  await expect(page.getByTestId("pdf-page")).toBeVisible({ timeout: 15_000 });
+  await page.waitForFunction(
+    () => document.querySelectorAll('[data-testid="pdf-page"] canvas').length >= 2
+  );
+  await expect(page.getByText("Rendering PDF...", { exact: true })).toBeHidden();
+  await expect(page.getByText("1 field placed", { exact: true })).toBeVisible();
+
+  const restoredField = await readCombField(page);
+  expect(restoredField).not.toBeNull();
+  expect(restoredField!.type).toBe("comb");
+  expect(restoredField!.value).toBe(legacyValue);
+  expect(restoredField!.charCount).toBe(charCount);
+  expect(restoredField!.cursorIndex).toBe(legacyValue.length);
+  const legacyFilledCount = restoredField!.value.replace(/ /g, "").length;
+  expect(legacyFilledCount).toBeGreaterThan(charCount);
+  await expect(page.getByTestId("local-save-status")).toContainText("Saved locally");
+
+  const geometry = await readCombGeometry(page);
+  expect(geometry).not.toBeNull();
+  const pdfPage = page.getByTestId("pdf-page");
+  const pageBox = await pdfPage.boundingBox();
+  expect(pageBox).not.toBeNull();
+  const pdfScale = pageBox!.width / 612;
+  const firstCellWidth = geometry!.width / charCount;
+  const selectTool = page.locator('button[title="Select fields"]').first();
+  await expect(selectTool).toBeVisible();
+  await selectTool.click();
+  await expect(selectTool).toHaveClass(/bg-accent/);
+  await pdfPage.click({
+    position: {
+      x: (geometry!.x + firstCellWidth / 2) * pdfScale,
+      y: (geometry!.y + geometry!.height / 2) * pdfScale,
+    },
+  });
+  await expect(page.getByText("Box Field selected").last()).toBeVisible();
+  await expect.poll(async () => (await readCombField(page))?.cursorIndex).toBe(0);
+
+  const expectedCounter = `${charCount} / ${charCount} characters filled`;
+  const visibleCounter = page.getByText(expectedCounter, { exact: true }).last();
+  await expect(visibleCounter).toBeVisible();
+  await expect(visibleCounter).toHaveText(expectedCounter);
+  await expect(
+    page.getByText(`${legacyFilledCount} / ${charCount} characters filled`, { exact: true })
+  ).toHaveCount(0);
+
+  const counterMatch = (await visibleCounter.innerText()).match(
+    /^(\d+) \/ (\d+) characters filled$/
+  );
+  expect(counterMatch).not.toBeNull();
+  expect(Number(counterMatch![1])).toBe(charCount);
+  expect(Number(counterMatch![1])).toBeLessThanOrEqual(charCount);
+  expect(Number(counterMatch![2])).toBe(charCount);
+
+  await page.keyboard.press("ArrowRight");
+  await expect.poll(async () => (await readCombField(page))?.cursorIndex).toBe(1);
+  const updatedField = await readCombField(page);
+  expect(updatedField).not.toBeNull();
+  expect(updatedField!.type).toBe("comb");
+  expect(updatedField!.value).toBe(legacyValue);
+  expect(updatedField!.charCount).toBe(charCount);
+  expect(updatedField!.cursorIndex).toBe(1);
+  await expect(visibleCounter).toHaveText(expectedCounter);
+  await expect(page.getByTestId("local-save-status")).toContainText("Saved locally");
+  expect(pageErrors, `Unexpected page errors: ${pageErrors.join("\n")}`).toEqual([]);
+});
