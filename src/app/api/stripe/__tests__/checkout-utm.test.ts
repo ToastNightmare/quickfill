@@ -136,7 +136,7 @@ describe("Stripe checkout UTM attribution", () => {
     } as never);
     mockGetStoredSubscriptionSnapshot.mockResolvedValue(null);
     mockIsRedisConfigured.mockReturnValue(false);
-    mockTrackServerEvent.mockResolvedValue(undefined);
+    mockTrackServerEvent.mockResolvedValue(true);
     mockAlertAdmins.mockResolvedValue(undefined);
     stripe.checkout.sessions.create.mockResolvedValue({
       url: "https://checkout.stripe.com/test",
@@ -366,7 +366,7 @@ describe("Stripe checkout Pro offer", () => {
     mockGetStoredSubscriptionSnapshot.mockResolvedValue(null);
     mockIsRedisConfigured.mockReturnValue(false);
     mockGetRedis.mockReturnValue({ get: jest.fn(), set: jest.fn() } as never);
-    mockTrackServerEvent.mockResolvedValue(undefined as never);
+    mockTrackServerEvent.mockResolvedValue(true);
     mockAlertAdmins.mockResolvedValue(undefined as never);
     stripe.checkout.sessions.create.mockResolvedValue({ url: "https://checkout.stripe.com/test" });
   });
@@ -453,6 +453,39 @@ describe("Stripe checkout Pro offer", () => {
       plan: "pro",
       billing: "monthly",
     });
+  });
+
+  it("returns the successful checkout response when analytics returns false", async () => {
+    mockTrackServerEvent.mockResolvedValue(false);
+
+    const response = await POST(makeRequest({ plan: "pro", annual: false }));
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body).toEqual({ url: "https://checkout.stripe.com/test" });
+    expect(mockTrackServerEvent).toHaveBeenCalledWith("checkout_start", {
+      source: "checkout",
+      plan: "pro",
+      billing: "monthly",
+    });
+    expect(mockAlertAdmins).not.toHaveBeenCalled();
+  });
+
+  it("keeps a genuine Stripe checkout failure as a failure", async () => {
+    stripe.checkout.sessions.create.mockRejectedValue(new Error("Stripe unavailable"));
+
+    const response = await POST(makeRequest({ plan: "pro", annual: false }));
+    const body = await response.json();
+
+    expect(response.status).toBe(500);
+    expect(body).toEqual({
+      error: "Checkout could not be started. Please contact support if this keeps happening.",
+      code: "checkout_unexpected_failure",
+    });
+    expect(mockTrackServerEvent).not.toHaveBeenCalled();
+    expect(mockAlertAdmins).toHaveBeenCalledWith(
+      expect.objectContaining({ title: "Stripe checkout could not be started" }),
+    );
   });
 
   it("download gate checkouts cancel back to /editor?download=cancelled", async () => {
