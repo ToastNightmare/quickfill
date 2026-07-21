@@ -63,12 +63,26 @@ describe("proxy auth protection", () => {
     "/api/session",
     "/api/detect-fields",
     "/api/admin/health",
+    "/api/supporting",
+    "/api/support/extra",
+    "/api/support/attachments",
+    "/api/support/attachments?query=value",
+    "/api/support/attachments/extra",
   ])(
     "protects account route %s",
     async (path) => {
       await proxy(request(path));
 
       expect(mockProtect).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it.each(["/api/support", "/api/support?query=value"])(
+    "keeps public support submission route %s unprotected",
+    async (path) => {
+      await proxy(request(path));
+
+      expect(mockProtect).not.toHaveBeenCalled();
     },
   );
 
