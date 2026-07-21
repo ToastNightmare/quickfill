@@ -139,6 +139,12 @@ export function Toolbar({
     // A selected-field sheet or an active text edit replaces the toolbar so
     // the document keeps as much of the screen as possible.
     if (hidden) return null;
+    const pageActionCount = [onAddPage, onRemovePage].filter(Boolean).length;
+    const utilityGridColumns = pageActionCount === 2
+      ? "grid-cols-4 min-[380px]:grid-cols-7"
+      : pageActionCount === 1
+        ? "grid-cols-3 min-[328px]:grid-cols-6"
+        : "grid-cols-5";
     return (
       <div className="lg:hidden fixed bottom-0 left-0 right-0 z-40 border-t border-border bg-surface/95 px-3 pt-2 pb-[max(env(safe-area-inset-bottom),10px)] shadow-[0_-10px_30px_rgba(15,23,42,0.12)] backdrop-blur">
         {isPlacementTool(activeTool) && (
@@ -148,7 +154,7 @@ export function Toolbar({
             </p>
             <button
               onClick={() => onToolSelect("select")}
-              className="shrink-0 rounded-lg px-2 py-1 text-xs font-semibold text-text-muted hover:bg-surface hover:text-text"
+              className="flex min-h-11 shrink-0 items-center rounded-lg px-3 text-xs font-semibold text-text-muted hover:bg-surface hover:text-text"
             >
               Cancel
             </button>
@@ -175,7 +181,7 @@ export function Toolbar({
           ))}
         </div>
 
-        <div className={`mt-2 grid ${[onAddPage, onRemovePage].filter(Boolean).length === 2 ? "grid-cols-7" : onAddPage || onRemovePage ? "grid-cols-6" : "grid-cols-5"} gap-2`}>
+        <div className={`mt-2 grid ${utilityGridColumns} gap-2`}>
           <IconButton onClick={onUndo} disabled={!canUndo} title="Undo" icon={Undo2} />
           <IconButton onClick={onRedo} disabled={!canRedo} title="Redo" icon={Redo2} />
           {onAddPage && (
@@ -254,7 +260,7 @@ export function Toolbar({
             key={type}
             onClick={() => onToolSelect(type)}
             title={title}
-            className={`flex h-8 items-center gap-3 rounded-lg px-2 text-sm font-semibold shadow-sm transition-colors ${
+            className={`flex min-h-11 items-center gap-3 rounded-lg px-2 text-sm font-semibold shadow-sm transition-colors xl:min-h-8 ${
               activeTool === type
                 ? "border border-accent bg-accent text-white"
                 : "border border-border bg-surface-alt text-text-muted hover:border-accent hover:text-accent"
@@ -275,7 +281,7 @@ export function Toolbar({
         <button
           onClick={onSnapToggle}
           title="Toggle snap detection for structured forms"
-          className={`flex h-8 items-center gap-3 rounded-lg px-2 text-sm font-semibold transition-colors ${
+          className={`flex min-h-11 items-center gap-3 rounded-lg px-2 text-sm font-semibold transition-colors xl:min-h-8 ${
             snapEnabled
               ? "border border-accent bg-accent text-white shadow-sm"
               : "border border-border bg-surface-alt text-text-muted hover:border-accent hover:text-accent"
@@ -287,7 +293,7 @@ export function Toolbar({
         <button
           onClick={onClear}
           title="Clear Fields"
-          className="flex h-8 items-center gap-3 rounded-lg px-2 text-sm font-medium text-text-muted transition-colors hover:bg-red-50 hover:text-red-600"
+          className="flex min-h-11 items-center gap-3 rounded-lg px-2 text-sm font-medium text-text-muted transition-colors hover:bg-red-50 hover:text-red-600 xl:min-h-8"
         >
           <Trash2 className="h-4 w-4 shrink-0" />
           <span className="hidden sm:inline">Clear Fields</span>
@@ -306,7 +312,7 @@ export function Toolbar({
             onClick={onAddPage}
             disabled={isAddingPage}
             title="Add a page from a PDF, JPG, or PNG"
-            className="flex h-8 items-center gap-3 rounded-lg px-2 text-sm font-medium text-text-muted transition-colors hover:bg-surface-alt hover:text-text disabled:opacity-60"
+            className="flex min-h-11 items-center gap-3 rounded-lg px-2 text-sm font-medium text-text-muted transition-colors hover:bg-surface-alt hover:text-text disabled:opacity-60 xl:min-h-8"
           >
             <FilePlus2 className="h-4 w-4 shrink-0" />
             <span className="hidden sm:inline">{isAddingPage ? "Adding Page" : "Add Page"}</span>
@@ -318,7 +324,7 @@ export function Toolbar({
             onClick={onRemovePage}
             disabled={!canRemovePage}
             title={canRemovePage ? "Remove the current page" : "You can't remove the only page"}
-            className="flex h-8 items-center gap-3 rounded-lg px-2 text-sm font-medium text-text-muted transition-colors hover:bg-red-50 hover:text-red-600 disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-text-muted"
+            className="flex min-h-11 items-center gap-3 rounded-lg px-2 text-sm font-medium text-text-muted transition-colors hover:bg-red-50 hover:text-red-600 disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-text-muted xl:min-h-8"
           >
             <FileMinus2 className="h-4 w-4 shrink-0" />
             <span className="hidden sm:inline">Remove Page</span>
@@ -330,7 +336,7 @@ export function Toolbar({
             onClick={onSaveProgress}
             disabled={isSavingProgress}
             title="Save progress to your account. Local browser autosave is automatic."
-            className="flex h-8 items-center gap-3 rounded-lg px-2 text-sm font-medium text-text-muted transition-colors hover:bg-surface-alt hover:text-text"
+            className="flex min-h-11 items-center gap-3 rounded-lg px-2 text-sm font-medium text-text-muted transition-colors hover:bg-surface-alt hover:text-text xl:min-h-8"
           >
             <Save className="h-4 w-4 shrink-0" />
             <span className="hidden sm:inline">{isSavingProgress ? "Saving Progress" : "Save Progress"}</span>
@@ -341,7 +347,7 @@ export function Toolbar({
           <button
             onClick={onStartOver}
             title="Clear all fields and start fresh"
-            className="flex h-8 items-center gap-3 rounded-lg px-2 text-sm font-medium text-text-muted transition-colors hover:bg-red-50 hover:text-red-600"
+            className="flex min-h-11 items-center gap-3 rounded-lg px-2 text-sm font-medium text-text-muted transition-colors hover:bg-red-50 hover:text-red-600 xl:min-h-8"
           >
             <RotateCcw className="h-4 w-4 shrink-0" />
             <span className="hidden sm:inline">Start Over</span>
@@ -352,7 +358,7 @@ export function Toolbar({
           onClick={onDownload}
           disabled={isDownloading}
           title="Download filled PDF"
-          className="flex h-9 w-full items-center justify-center gap-2 rounded-lg bg-accent text-sm font-semibold text-white shadow-sm transition-colors hover:bg-accent-hover disabled:opacity-60"
+          className="flex min-h-11 w-full items-center justify-center gap-2 rounded-lg bg-accent text-sm font-semibold text-white shadow-sm transition-colors hover:bg-accent-hover disabled:opacity-60 xl:min-h-9"
         >
           <Download className="h-4 w-4 shrink-0" />
           <span className="hidden sm:inline">{isDownloading ? "Saving..." : "Download PDF"}</span>
@@ -374,7 +380,7 @@ export function Toolbar({
           <button
             onClick={onShowHelp}
             title="Show tutorial"
-            className="mx-auto flex h-8 w-8 items-center justify-center rounded-full text-text-muted transition-colors hover:bg-surface-alt hover:text-text"
+            className="mx-auto flex h-11 w-11 items-center justify-center rounded-full text-text-muted transition-colors hover:bg-surface-alt hover:text-text xl:h-8 xl:w-8"
           >
             <HelpCircle className="h-4 w-4" />
           </button>
@@ -425,7 +431,7 @@ function IconButton({
       disabled={disabled}
       title={title}
       aria-label={title}
-      className={`flex h-10 items-center justify-center rounded-xl border text-text-muted transition-colors disabled:opacity-30 ${
+      className={`flex min-h-11 items-center justify-center rounded-xl border text-text-muted transition-colors disabled:opacity-30 ${
         active
           ? "border-accent bg-accent text-white"
           : danger
@@ -493,7 +499,7 @@ function MobileActionsMenu({
         aria-expanded={open}
         aria-controls={menuId}
         onClick={() => setOpen((current) => !current)}
-        className="flex h-10 w-full items-center justify-center rounded-xl border border-border bg-surface-alt text-text-muted transition-colors hover:border-accent hover:text-accent"
+        className="flex min-h-11 w-full items-center justify-center rounded-xl border border-border bg-surface-alt text-text-muted transition-colors hover:border-accent hover:text-accent"
       >
         <MoreHorizontal className="h-4 w-4" />
       </button>
@@ -509,7 +515,7 @@ function MobileActionsMenu({
             ref={firstActionRef}
             type="button"
             onClick={() => runAction(onShowHelp)}
-            className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm font-medium text-text-muted transition-colors hover:bg-surface-alt hover:text-text focus:bg-surface-alt focus:text-text"
+            className="flex min-h-11 w-full items-center gap-2 rounded-lg px-3 text-left text-sm font-medium text-text-muted transition-colors hover:bg-surface-alt hover:text-text focus:bg-surface-alt focus:text-text"
           >
             <HelpCircle className="h-4 w-4" />
             Help
@@ -517,7 +523,7 @@ function MobileActionsMenu({
           <button
             type="button"
             onClick={() => runAction(onStartOver)}
-            className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm font-medium text-text-muted transition-colors hover:bg-red-50 hover:text-red-600 focus:bg-red-50 focus:text-red-600"
+            className="flex min-h-11 w-full items-center gap-2 rounded-lg px-3 text-left text-sm font-medium text-text-muted transition-colors hover:bg-red-50 hover:text-red-600 focus:bg-red-50 focus:text-red-600"
           >
             <RotateCcw className="h-4 w-4" />
             Start Over
@@ -548,7 +554,7 @@ function DesktopActionButton({
       onClick={onClick}
       disabled={disabled}
       title={title}
-      className="flex h-8 items-center gap-3 rounded-lg px-2 text-sm font-medium text-text-muted transition-colors hover:bg-surface-alt hover:text-text disabled:cursor-not-allowed disabled:opacity-30"
+      className="flex min-h-11 items-center gap-3 rounded-lg px-2 text-sm font-medium text-text-muted transition-colors hover:bg-surface-alt hover:text-text disabled:cursor-not-allowed disabled:opacity-30 xl:min-h-8"
     >
       <Icon className="h-4 w-4 shrink-0" />
       <span className="hidden flex-1 items-center justify-between sm:flex">

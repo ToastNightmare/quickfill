@@ -164,6 +164,11 @@ export function ContextPanel({
 
   if (selectedField && activeTool !== "mask-eraser") {
     const fieldType = selectedField.type;
+    const desktopEditLabel = fieldType === "date"
+      ? "Edit Date"
+      : fieldType === "text"
+        ? "Edit Text"
+        : null;
 
     return (
       <>
@@ -191,6 +196,17 @@ export function ContextPanel({
             <p className="mt-2 text-xs leading-5 text-text-muted">
               Adjust this field here. Changes autosave locally in this browser.
             </p>
+            {desktopEditLabel && onFieldEdit && (
+              <button
+                type="button"
+                onClick={() => onFieldEdit(selectedField.id)}
+                className="mt-3 flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-accent/30 bg-accent/5 text-sm font-semibold text-accent transition-colors hover:bg-accent/10"
+                data-testid="desktop-field-edit"
+              >
+                <Pencil className="h-4 w-4" />
+                {desktopEditLabel}
+              </button>
+            )}
           </Section>
 
           <Divider />
@@ -227,7 +243,7 @@ export function ContextPanel({
             {onFieldDuplicate && (
               <button
                 onClick={() => onFieldDuplicate(selectedField.id)}
-                className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-text-muted transition-colors hover:bg-surface-alt hover:text-text"
+                className="flex min-h-11 w-full items-center gap-2 rounded-lg px-3 text-sm font-medium text-text-muted transition-colors hover:bg-surface-alt hover:text-text"
               >
                 <Copy className="h-4 w-4 shrink-0" />
                 Duplicate
@@ -235,7 +251,7 @@ export function ContextPanel({
             )}
             <button
               onClick={() => { onFieldDelete(selectedField.id); onFieldDeselect(); }}
-              className="mt-2 flex w-full items-center justify-center gap-2 rounded-xl bg-red-50 py-2.5 text-sm font-semibold text-red-600 transition-colors hover:bg-red-100"
+              className="mt-2 flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-red-50 text-sm font-semibold text-red-600 transition-colors hover:bg-red-100"
             >
               <Trash2 className="h-4 w-4" />
               Delete Field
@@ -375,7 +391,7 @@ function MobileFieldSheet({
   const canEdit = (selectedField.type === "text" || selectedField.type === "date") && Boolean(onFieldEdit);
 
   const compactAction =
-    "flex h-10 flex-1 items-center justify-center gap-1.5 rounded-xl border text-xs font-semibold transition-colors";
+    "flex min-h-11 flex-1 items-center justify-center gap-1.5 rounded-xl border text-xs font-semibold transition-colors";
 
   return (
     <div
@@ -390,7 +406,7 @@ function MobileFieldSheet({
         </div>
         <button
           onClick={onFieldDeselect}
-          className="shrink-0 rounded-lg bg-surface-alt px-3 py-1.5 text-xs font-semibold text-text hover:bg-border"
+          className="flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-lg bg-surface-alt px-3 text-xs font-semibold text-text hover:bg-border"
           data-testid="mobile-field-done"
         >
           Done
@@ -493,7 +509,7 @@ function LayerButton({ label, onClick }: { label: string; onClick: () => void })
   return (
     <button
       onClick={onClick}
-      className="rounded-lg border border-border bg-surface-alt px-2 py-2 text-xs font-semibold text-text-muted transition-colors hover:border-accent hover:text-text"
+      className="min-h-11 rounded-lg border border-border bg-surface-alt px-2 text-xs font-semibold text-text-muted transition-colors hover:border-accent hover:text-text"
     >
       {label}
     </button>
@@ -927,7 +943,7 @@ function FontSizeControls({ selectedField, onFieldUpdate }: { selectedField: Edi
         <button
           onClick={() => prevSize && onFieldUpdate(selectedField.id, { fontSize: prevSize } as Partial<EditorField>)}
           disabled={!prevSize}
-          className="flex h-10 w-10 items-center justify-center rounded-lg border border-border text-text-muted transition-colors hover:bg-surface-alt disabled:opacity-30"
+          className="flex h-11 w-11 items-center justify-center rounded-lg border border-border text-text-muted transition-colors hover:bg-surface-alt disabled:opacity-30"
         >
           <Minus className="h-4 w-4" />
         </button>
@@ -937,7 +953,7 @@ function FontSizeControls({ selectedField, onFieldUpdate }: { selectedField: Edi
         <button
           onClick={() => nextSize && onFieldUpdate(selectedField.id, { fontSize: nextSize } as Partial<EditorField>)}
           disabled={!nextSize}
-          className="flex h-10 w-10 items-center justify-center rounded-lg border border-border text-text-muted transition-colors hover:bg-surface-alt disabled:opacity-30"
+          className="flex h-11 w-11 items-center justify-center rounded-lg border border-border text-text-muted transition-colors hover:bg-surface-alt disabled:opacity-30"
         >
           <Plus className="h-4 w-4" />
         </button>
@@ -968,7 +984,7 @@ function CombControls({
       <Section>
         <button
           onClick={() => onExpandedChange(!expanded)}
-          className="flex w-full items-center justify-between text-[10px] font-semibold uppercase tracking-widest text-text-muted transition-colors hover:text-text"
+          className="flex min-h-11 w-full items-center justify-between text-[10px] font-semibold uppercase tracking-widest text-text-muted transition-colors hover:text-text"
         >
           Character Count
           {expanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
@@ -1073,7 +1089,7 @@ function SizeControls({
     <Section>
       <button
         onClick={() => onExpandedChange(!expanded)}
-        className="flex w-full items-center justify-between text-[10px] font-semibold uppercase tracking-widest text-text-muted transition-colors hover:text-text"
+        className="flex min-h-11 w-full items-center justify-between text-[10px] font-semibold uppercase tracking-widest text-text-muted transition-colors hover:text-text"
       >
         Size
         {expanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
@@ -1130,7 +1146,7 @@ function SizeInput({ label, value, min, onChange }: { label: string; value: numb
 
 function Panel({ children }: { children: ReactNode }) {
   return (
-    <div className="hidden h-full w-64 flex-shrink-0 flex-col overflow-y-auto border-l border-border bg-surface lg:flex">
+    <div className="hidden h-full w-64 flex-shrink-0 flex-col overflow-y-auto border-l border-border bg-surface lg:flex" data-testid="context-panel">
       {children}
     </div>
   );

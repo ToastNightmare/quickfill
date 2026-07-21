@@ -149,6 +149,54 @@ upload and saved-state flows, mobile interactions, image cleanup and rendering,
 field placement and selection, Box Field/Comb keyboard input, PDF rendering, and
 the credential-gated PDF accuracy pack.
 
+## Manual real-device editor input checklist
+
+Run this checklist before editor layout, onboarding, or capability-detection
+changes. Record the device, operating-system version, browser version, input
+method, orientation, and result without recording document content, field text,
+signatures, or extracted information.
+
+Test on:
+
+- iPhone Safari.
+- iPadOS Safari using touch and Apple Pencil.
+- Android Chrome on a phone.
+- Android Chrome on a tablet, including a stylus where one is available.
+- A Windows touch laptop or Surface, including Surface Pen where available.
+
+On each applicable device:
+
+- Confirm the real software keyboard appears when a Text field enters edit mode
+  and dismisses without losing the field value or selection.
+- Confirm the edited field and its text remain visible above the software
+  keyboard.
+- Rotate between portrait and landscape and confirm the document refits without
+  losing placed fields or their values.
+- Exercise pinch and pan without accidental placement, selection, or state loss.
+- Check palm rejection while using a supported stylus.
+- Use the stylus to place and select fields, create signatures, and exercise any
+  available annotation behavior without duplicate actions.
+- Switch safely among touch, pen, mouse or trackpad, and keyboard input without
+  duplicate placement or lost state.
+- Confirm primary editor controls, Help, and Start Over remain reachable with a
+  screen reader and with keyboard-only navigation.
+
+### Playwright emulation limits
+
+The automated cross-device matrix establishes browser rendering, focus,
+insertion, persistence, synthetic input-event contracts, and non-overlapping
+44-by-44 CSS-pixel targets on the mobile and 1024px touch-facing editor
+controls. Playwright emulation cannot certify:
+
+- Physical software-keyboard appearance.
+- Hardware stylus precision.
+- Palm rejection.
+- Device-specific browser or operating-system bugs.
+
+The synthetic `pointerType: "pen"` check is deliberately bounded and must not be
+treated as certification of a physical stylus, Apple Pencil, Surface Pen, or
+palm-rejection behavior.
+
 ## Configuration
 
 See `playwright.config.ts` for test configuration:
