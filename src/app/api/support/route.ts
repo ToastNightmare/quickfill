@@ -59,6 +59,11 @@ function inferPriority(subject: string, message: string) {
   return "normal";
 }
 
+function hasAttachmentMetadata(value: unknown) {
+  if (Array.isArray(value)) return value.length > 0;
+  return value !== undefined && value !== null;
+}
+
 async function getRequestUser() {
   try {
     const { userId } = await auth();
@@ -164,7 +169,12 @@ export async function POST(request: NextRequest) {
     const email = clean(bodyRecord.email, 160) || user?.primaryEmailAddress?.emailAddress || "";
     const subject = clean(bodyRecord.subject, 140) || "Support request";
     const message = clean(bodyRecord.message, 2000);
-    const attachments = cleanSupportAttachments(bodyRecord.attachments);
+
+    if (!userId && hasAttachmentMetadata(bodyRecord.attachments)) {
+      return NextResponse.json({ error: "Sign in to attach screenshots." }, { status: 400 });
+    }
+
+    const attachments = userId ? cleanSupportAttachments(bodyRecord.attachments) : [];
 
     if (!email || !message) {
       return NextResponse.json({ error: "Email and message are required" }, { status: 400 });

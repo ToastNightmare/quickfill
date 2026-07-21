@@ -25,6 +25,8 @@ const isPublicRoute = createRouteMatcher([
   // mobile filler and editor hit on mount to look up a saved signature.
   "/api/signature",
   "/api/analytics",
+  // Support messages are public; attachment uploads remain protected.
+  "/api/support",
   "/not-found",
   "/robots.txt",
   "/sitemap.xml",
