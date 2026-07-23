@@ -24,9 +24,11 @@ import {
   Pencil,
   Eraser,
   MoreHorizontal,
+  ImagePlus,
 } from "lucide-react";
 import type { ToolType, EditorField } from "@/lib/types";
 import { Minimap } from "@/components/Minimap";
+import { useOptionalMediaEditor } from "@/components/MediaEditorProvider";
 import type { RefObject } from "react";
 import { useEffect, useId, useRef, useState } from "react";
 
@@ -119,6 +121,7 @@ export function Toolbar({
 }: ToolbarProps) {
   const [isPro, setIsPro] = useState<boolean | null>(null);
   const fieldCount = fields?.length ?? 0;
+  const mediaEditor = useOptionalMediaEditor();
 
   void selectedField;
   void onFontSizeChange;
@@ -179,6 +182,21 @@ export function Toolbar({
               <span className="whitespace-nowrap">{shortLabel}</span>
             </button>
           ))}
+          {mediaEditor && (
+            <button
+              type="button"
+              onClick={mediaEditor.openFilePicker}
+              aria-controls={mediaEditor.inputId}
+              title="Add a local JPEG, PNG, or static WebP"
+              data-testid="add-media-action-mobile"
+              className="flex h-12 min-w-[68px] shrink-0 flex-col items-center justify-center gap-1 rounded-xl border border-border bg-surface-alt px-2 text-[11px] font-semibold text-text-muted transition-colors hover:border-accent hover:text-accent"
+            >
+              <ImagePlus className="h-4 w-4" />
+              <span className="whitespace-nowrap">
+                {mediaEditor.isProcessing ? "Adding…" : "Add Media"}
+              </span>
+            </button>
+          )}
         </div>
 
         <div className={`mt-2 grid ${utilityGridColumns} gap-2`}>
@@ -270,6 +288,21 @@ export function Toolbar({
             <span className="hidden sm:inline">{label}</span>
           </button>
         ))}
+        {mediaEditor && (
+          <button
+            type="button"
+            onClick={mediaEditor.openFilePicker}
+            aria-controls={mediaEditor.inputId}
+            title="Add a local JPEG, PNG, or static WebP"
+            data-testid="add-media-action-desktop"
+            className="flex min-h-11 items-center gap-3 rounded-lg border border-border bg-surface-alt px-2 text-sm font-semibold text-text-muted shadow-sm transition-colors hover:border-accent hover:text-accent xl:min-h-8"
+          >
+            <ImagePlus className="h-4 w-4 shrink-0" />
+            <span className="hidden sm:inline">
+              {mediaEditor.isProcessing ? "Adding Media…" : "Add Media"}
+            </span>
+          </button>
+        )}
 
         <div className="mx-1 my-1 h-px bg-border" />
 

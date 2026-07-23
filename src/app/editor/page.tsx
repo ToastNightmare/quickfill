@@ -83,6 +83,8 @@ import {
   type FieldSuggestionFailureReason,
   type FieldSuggestionOutcome,
 } from "@/lib/field-suggestion-analytics";
+import { isAddMediaEnabled } from "@/lib/add-media-rollout";
+import { MediaEditorBoundary } from "@/components/MediaEditorProvider";
 
 const ZOOM_LEVELS = [50, 75, 100, 125, 150, 175, 200];
 const GESTURE_HINT_KEY = "quickfill_gesture_hint_seen";
@@ -263,6 +265,7 @@ function LocalSaveBadge({ status }: { status: LocalSaveStatus }) {
 
 function EditorPageContent() {
   const fieldSuggestionReviewEnabled = isFieldSuggestionReviewEnabled();
+  const addMediaEnabled = isAddMediaEnabled();
   const [pdfBytes, setPdfBytes] = useState<ArrayBuffer | null>(null);
   const [fileName, setFileName] = useState<string>("");
   const [activeTool, setActiveTool] = useState<ToolType>("select");
@@ -346,6 +349,15 @@ function EditorPageContent() {
 
   const pdfViewerRef = useRef<PdfViewerHandle>(null);
   const viewerContainerRef = useRef<HTMLDivElement>(null);
+  const getMediaPageBounds = useCallback((pageIndex: number) => {
+    const dimensions = pdfViewerRef.current?.getViewportDims() ?? null;
+    return dimensions?.pageIndex === pageIndex
+      ? {
+          widthPts: dimensions.width,
+          heightPts: dimensions.height,
+        }
+      : null;
+  }, []);
   const activePdfTool = activeTool === "mask-eraser" ? activeTool : placementToolFor(activeTool);
   const authenticatedSignatureSessionKey = isLoaded && isSignedIn && userId && sessionId
     ? JSON.stringify([userId, sessionId])
@@ -2249,6 +2261,13 @@ function EditorPageContent() {
   }
 
   return (
+    <MediaEditorBoundary
+      enabled={addMediaEnabled}
+      documentRevision={viewerDocumentRevision ?? 0}
+      currentPage={currentPage}
+      getPageBounds={getMediaPageBounds}
+      onMessage={showToast}
+    >
     <>
     {/* Keep loaded PDFs in the full editor on mobile so restored work stays visible. */}
     <div className={fullEditorCanvasClassName}>
@@ -2271,7 +2290,10 @@ function EditorPageContent() {
 
       {/* Toast notification */}
       {toast && (
-        <div className="fixed left-1/2 top-16 z-50 -translate-x-1/2 rounded-lg bg-gray-900/90 px-4 py-2 text-sm font-medium text-white shadow-lg animate-fade-in max-w-md text-center">
+        <div
+          data-testid="editor-toast"
+          className="fixed left-1/2 top-16 z-50 -translate-x-1/2 rounded-lg bg-gray-900/90 px-4 py-2 text-sm font-medium text-white shadow-lg animate-fade-in max-w-md text-center"
+        >
           {toast}
         </div>
       )}
@@ -2741,6 +2763,7 @@ function EditorPageContent() {
 
     </div>
     </>
+    </MediaEditorBoundary>
   );
 }
 
