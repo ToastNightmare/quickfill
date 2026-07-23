@@ -26,6 +26,7 @@ import {
   type LocalFieldDetectionLifecycleEvent,
   type LocalFieldDetectionSnapshotKey,
 } from "@/lib/local-field-suggestion-provider";
+import { MediaOverlayLayer } from "@/components/MediaOverlayLayer";
 
 type PdfActiveTool = PlacementToolType | "mask-eraser";
 
@@ -35,7 +36,11 @@ export interface PdfViewerHandle {
   getCanvasDataURL: () => string | null;
   getCanvasDimensions: () => { width: number; height: number };
   getCanvas: () => HTMLCanvasElement | null;
-  getViewportDims: () => { width: number; height: number } | null;
+  getViewportDims: () => {
+    width: number;
+    height: number;
+    pageIndex?: number;
+  } | null;
   editField: (fieldId: string) => void;
   getCompositePreviewURL: () => Promise<string | null>;
   /** Recompute the fit-to-width scale from the current viewport size. */
@@ -212,7 +217,11 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   // Store viewport dimensions at scale 1 for coordinate transformation
-  const [viewportAtScale1, setViewportAtScale1] = useState<{ width: number; height: number } | null>(null);
+  const [viewportAtScale1, setViewportAtScale1] = useState<{
+    width: number;
+    height: number;
+    pageIndex: number;
+  } | null>(null);
   const [editingFieldId, setEditingFieldId] = useState<string | null>(null);
   // While capturing the download-gate preview, editor chrome (selection
   // outlines, transformer handles, mobile field borders) is suppressed so the
@@ -671,7 +680,11 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
         const viewport = page.getViewport({ scale: 1 });
         
         // Store viewport dimensions at scale 1 for coordinate transformation
-        setViewportAtScale1({ width: viewport.width, height: viewport.height });
+        setViewportAtScale1({
+          width: viewport.width,
+          height: viewport.height,
+          pageIndex: currentPage,
+        });
         
         const newFitScale = Math.min((containerWidth - 32) / viewport.width, 1.5);
         const effectiveScale = newFitScale * zoomFactor;
@@ -2467,6 +2480,21 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
           ref={canvasRef}
           className="absolute inset-0"
           style={{ width: dimensions.width, height: dimensions.height }}
+        />
+
+        <MediaOverlayLayer
+          currentPage={currentPage}
+          renderedPageSize={dimensions}
+          pageBounds={
+            viewportAtScale1?.pageIndex === currentPage
+              ? {
+                  widthPts: viewportAtScale1.width,
+                  heightPts: viewportAtScale1.height,
+                }
+              : null
+          }
+          interactionEnabled={!activeTool && !isGesturing && !isCapturingPreview}
+          hidden={loading || isCapturingPreview}
         />
 
         {/* Strong snap preview overlay */}
