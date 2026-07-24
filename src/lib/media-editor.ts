@@ -10,9 +10,11 @@ import {
 import type {
   AffineMatrix,
   LocalMediaAssetId,
+  LocalMediaResourceId,
   MediaAssetDescriptor,
   MediaPlacement,
   MediaTransform,
+  SanitizedMediaMimeType,
 } from "./media-types";
 import {
   MEDIA_MAX_SANITIZED_EDGE_PX,
@@ -20,12 +22,16 @@ import {
 } from "./media-limits";
 
 export const MEDIA_EDITOR_MAX_ASSETS = 12;
+export const MEDIA_EDITOR_MAX_RESOURCES = 12;
+export const MEDIA_EDITOR_MAX_AGGREGATE_BYTES = 64 * 1024 * 1024;
 export const MEDIA_EDITOR_MIN_SIZE_PTS = 24;
 export const MEDIA_FILE_INPUT_ACCEPT =
   "image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp";
 
 const MAX_MEDIA_FILE_NAME_LENGTH = 120;
 const LOCAL_MEDIA_ASSET_ID_PATTERN = /^media-[a-z0-9][a-z0-9-]{0,95}$/;
+const LOCAL_MEDIA_RESOURCE_ID_PATTERN =
+  /^(?:sha256-[0-9a-f]{64}|ephemeral-[a-z0-9][a-z0-9-]{0,95})$/;
 
 export interface MediaPageBounds {
   readonly widthPts: number;
@@ -33,7 +39,19 @@ export interface MediaPageBounds {
 }
 
 export interface LocalMediaAssetRecord {
-  readonly descriptor: Readonly<MediaAssetDescriptor>;
+  readonly descriptor: Readonly<
+    MediaAssetDescriptor & { readonly resourceId: LocalMediaResourceId }
+  >;
+  readonly blob: Blob;
+  readonly objectUrl: string;
+}
+
+export interface LocalMediaResourceRecord {
+  readonly resourceId: LocalMediaResourceId;
+  readonly mimeType: SanitizedMediaMimeType;
+  readonly intrinsicWidthPx: number;
+  readonly intrinsicHeightPx: number;
+  readonly byteLength: number;
   readonly blob: Blob;
   readonly objectUrl: string;
 }
@@ -41,6 +59,10 @@ export interface LocalMediaAssetRecord {
 interface ObjectUrlApi {
   createObjectURL(blob: Blob): string;
   revokeObjectURL(url: string): void;
+}
+
+interface MutableMediaResourceRecord extends LocalMediaResourceRecord {
+  referenceCount: number;
 }
 
 function assertPositiveFinite(value: unknown, label: string): asserts value is number {
@@ -65,6 +87,15 @@ export function localMediaAssetIdFromString(value: string): LocalMediaAssetId {
     throw new TypeError("local media asset id is invalid");
   }
   return value as LocalMediaAssetId;
+}
+
+export function runtimeMediaResourceIdFromString(
+  value: string,
+): LocalMediaResourceId {
+  if (!LOCAL_MEDIA_RESOURCE_ID_PATTERN.test(value)) {
+    throw new TypeError("local media resource id is invalid");
+  }
+  return value as LocalMediaResourceId;
 }
 
 function sanitizedOutputExtension(mimeType: string): "jpg" | "png" {
@@ -92,13 +123,17 @@ export function sanitizedMediaFileName(
 
 export function createMediaAssetDescriptor(input: {
   readonly id: LocalMediaAssetId;
+  readonly resourceId: LocalMediaResourceId;
   readonly sourceFileName: string;
-  readonly mimeType: "image/jpeg" | "image/png";
+  readonly mimeType: SanitizedMediaMimeType;
   readonly width: number;
   readonly height: number;
-}): Readonly<MediaAssetDescriptor> {
+}): Readonly<
+  MediaAssetDescriptor & { readonly resourceId: LocalMediaResourceId }
+> {
   const descriptor = Object.freeze({
     id: localMediaAssetIdFromString(input.id),
+    resourceId: runtimeMediaResourceIdFromString(input.resourceId),
     kind: "image" as const,
     fileName: sanitizedMediaFileName(input.sourceFileName, input.mimeType),
     mimeType: input.mimeType,
@@ -111,7 +146,9 @@ export function createMediaAssetDescriptor(input: {
 
 export function assertValidMediaAssetDescriptor(
   value: unknown,
-): asserts value is MediaAssetDescriptor {
+): asserts value is MediaAssetDescriptor & {
+  readonly resourceId: LocalMediaResourceId;
+} {
   if (!value || typeof value !== "object") {
     throw new TypeError("media asset descriptor must be an object");
   }
@@ -120,6 +157,10 @@ export function assertValidMediaAssetDescriptor(
     throw new TypeError("media asset descriptor id is invalid");
   }
   localMediaAssetIdFromString(descriptor.id);
+  if (typeof descriptor.resourceId !== "string") {
+    throw new TypeError("media asset descriptor resource id is invalid");
+  }
+  runtimeMediaResourceIdFromString(descriptor.resourceId);
   if (descriptor.kind !== "image") {
     throw new TypeError("media asset descriptor kind is invalid");
   }
@@ -149,19 +190,43 @@ export function assertValidMediaAssetDescriptor(
 }
 
 export class LocalMediaAssetRegistry {
-  private readonly records = new Map<LocalMediaAssetId, Readonly<LocalMediaAssetRecord>>();
+  private readonly records = new Map<
+    LocalMediaAssetId,
+    Readonly<LocalMediaAssetRecord>
+  >();
+  private readonly resources = new Map<
+    LocalMediaResourceId,
+    MutableMediaResourceRecord
+  >();
   private readonly objectUrlApi: ObjectUrlApi;
   private readonly maxAssets: number;
+  private readonly maxResources: number;
+  private readonly maxAggregateBytes: number;
+  private aggregateBytes = 0;
 
   constructor(
     objectUrlApi: ObjectUrlApi = URL,
     maxAssets = MEDIA_EDITOR_MAX_ASSETS,
+    maxResources = MEDIA_EDITOR_MAX_RESOURCES,
+    maxAggregateBytes = MEDIA_EDITOR_MAX_AGGREGATE_BYTES,
   ) {
     if (!Number.isSafeInteger(maxAssets) || maxAssets <= 0) {
       throw new RangeError("media registry capacity must be a positive safe integer");
     }
+    if (!Number.isSafeInteger(maxResources) || maxResources <= 0) {
+      throw new RangeError(
+        "media resource capacity must be a positive safe integer",
+      );
+    }
+    if (!Number.isSafeInteger(maxAggregateBytes) || maxAggregateBytes <= 0) {
+      throw new RangeError(
+        "media byte capacity must be a positive safe integer",
+      );
+    }
     this.objectUrlApi = objectUrlApi;
     this.maxAssets = maxAssets;
+    this.maxResources = maxResources;
+    this.maxAggregateBytes = maxAggregateBytes;
   }
 
   get size(): number {
@@ -172,6 +237,22 @@ export class LocalMediaAssetRegistry {
     return this.maxAssets;
   }
 
+  get resourceCount(): number {
+    return this.resources.size;
+  }
+
+  get resourceCapacity(): number {
+    return this.maxResources;
+  }
+
+  get totalBytes(): number {
+    return this.aggregateBytes;
+  }
+
+  get byteCapacity(): number {
+    return this.maxAggregateBytes;
+  }
+
   has(id: LocalMediaAssetId): boolean {
     return this.records.has(id);
   }
@@ -180,8 +261,16 @@ export class LocalMediaAssetRegistry {
     return this.records.get(id) ?? null;
   }
 
+  getResource(
+    resourceId: LocalMediaResourceId,
+  ): Readonly<LocalMediaResourceRecord> | null {
+    return this.resources.get(resourceId) ?? null;
+  }
+
   add(
-    descriptor: Readonly<MediaAssetDescriptor>,
+    descriptor: Readonly<
+      MediaAssetDescriptor & { readonly resourceId: LocalMediaResourceId }
+    >,
     blob: Blob,
   ): Readonly<LocalMediaAssetRecord> {
     assertValidMediaAssetDescriptor(descriptor);
@@ -198,11 +287,47 @@ export class LocalMediaAssetRegistry {
       throw new RangeError("local media asset registry is full");
     }
 
-    const objectUrl = this.objectUrlApi.createObjectURL(blob);
-    if (typeof objectUrl !== "string" || objectUrl.length === 0) {
-      throw new Error("sanitized media object URL could not be created");
+    let resource = this.resources.get(descriptor.resourceId);
+    if (resource) {
+      if (
+        resource.mimeType !== descriptor.mimeType ||
+        resource.intrinsicWidthPx !== descriptor.intrinsicWidthPx ||
+        resource.intrinsicHeightPx !== descriptor.intrinsicHeightPx ||
+        resource.byteLength !== blob.size
+      ) {
+        throw new Error("shared sanitized media resource is inconsistent");
+      }
+      resource.referenceCount += 1;
+    } else {
+      if (this.resources.size >= this.maxResources) {
+        throw new RangeError("local media resource registry is full");
+      }
+      if (this.aggregateBytes + blob.size > this.maxAggregateBytes) {
+        throw new RangeError("local media byte capacity is exceeded");
+      }
+      const objectUrl = this.objectUrlApi.createObjectURL(blob);
+      if (typeof objectUrl !== "string" || objectUrl.length === 0) {
+        throw new Error("sanitized media object URL could not be created");
+      }
+      resource = {
+        resourceId: descriptor.resourceId,
+        mimeType: descriptor.mimeType,
+        intrinsicWidthPx: descriptor.intrinsicWidthPx,
+        intrinsicHeightPx: descriptor.intrinsicHeightPx,
+        byteLength: blob.size,
+        blob,
+        objectUrl,
+        referenceCount: 1,
+      };
+      this.resources.set(descriptor.resourceId, resource);
+      this.aggregateBytes += blob.size;
     }
-    const record = Object.freeze({ descriptor, blob, objectUrl });
+
+    const record = Object.freeze({
+      descriptor,
+      blob: resource.blob,
+      objectUrl: resource.objectUrl,
+    });
     this.records.set(descriptor.id, record);
     return record;
   }
@@ -211,15 +336,26 @@ export class LocalMediaAssetRegistry {
     const record = this.records.get(id);
     if (!record) return false;
     this.records.delete(id);
-    this.objectUrlApi.revokeObjectURL(record.objectUrl);
+    const resource = this.resources.get(record.descriptor.resourceId);
+    if (!resource) {
+      throw new Error("local media resource registry is inconsistent");
+    }
+    resource.referenceCount -= 1;
+    if (resource.referenceCount === 0) {
+      this.resources.delete(record.descriptor.resourceId);
+      this.aggregateBytes -= resource.byteLength;
+      this.objectUrlApi.revokeObjectURL(resource.objectUrl);
+    }
     return true;
   }
 
   clear(): void {
-    for (const record of this.records.values()) {
-      this.objectUrlApi.revokeObjectURL(record.objectUrl);
+    for (const resource of this.resources.values()) {
+      this.objectUrlApi.revokeObjectURL(resource.objectUrl);
     }
     this.records.clear();
+    this.resources.clear();
+    this.aggregateBytes = 0;
   }
 }
 

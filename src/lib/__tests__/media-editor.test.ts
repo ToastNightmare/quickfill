@@ -8,6 +8,7 @@ import {
   mediaPlacementsEqual,
   pageDeltaFromViewportDelta,
   resizeMediaPlacementFromCenter,
+  runtimeMediaResourceIdFromString,
   sanitizedMediaFileName,
 } from "@/lib/media-editor";
 import {
@@ -22,9 +23,13 @@ import type {
   MediaOverlayState,
 } from "@/lib/media-types";
 
-function descriptor(id = "media-test-1") {
+function descriptor(
+  id = "media-test-1",
+  resourceId = `ephemeral-${id}`,
+) {
   return createMediaAssetDescriptor({
     id: localMediaAssetIdFromString(id),
+    resourceId: runtimeMediaResourceIdFromString(resourceId),
     sourceFileName: "../holiday.webp",
     mimeType: "image/png",
     width: 400,
@@ -38,6 +43,7 @@ function overlay(
 ): Readonly<MediaOverlayState> {
   return freezeMediaOverlay({
     assetId: localMediaAssetIdFromString(id),
+    resourceId: runtimeMediaResourceIdFromString(`ephemeral-${id}`),
     placement: {
       pageIndex: 0,
       xPts,
@@ -128,6 +134,29 @@ describe("local media descriptors and registry", () => {
     });
     expect(registry.capacity).toBe(MEDIA_EDITOR_MAX_ASSETS);
   });
+
+  it("shares one Blob and object URL across logical aliases", () => {
+    const urlApi = {
+      createObjectURL: jest.fn(() => "blob:shared"),
+      revokeObjectURL: jest.fn(),
+    };
+    const registry = new LocalMediaAssetRegistry(urlApi);
+    const blob = new Blob(["shared"], { type: "image/png" });
+    const first = descriptor("media-first", "ephemeral-shared");
+    const second = descriptor("media-second", "ephemeral-shared");
+
+    expect(registry.add(first, blob).objectUrl).toBe("blob:shared");
+    expect(registry.add(second, blob).objectUrl).toBe("blob:shared");
+    expect(registry.size).toBe(2);
+    expect(registry.resourceCount).toBe(1);
+    expect(urlApi.createObjectURL).toHaveBeenCalledTimes(1);
+
+    expect(registry.release(first.id)).toBe(true);
+    expect(urlApi.revokeObjectURL).not.toHaveBeenCalled();
+    expect(registry.release(second.id)).toBe(true);
+    expect(urlApi.revokeObjectURL).toHaveBeenCalledTimes(1);
+    expect(registry.resourceCount).toBe(0);
+  });
 });
 
 describe("media placement geometry", () => {
@@ -208,6 +237,27 @@ describe("media placement geometry", () => {
 });
 
 describe("bounded media transform history", () => {
+  it("hydrates one immutable snapshot without replaying intake history", () => {
+    let state = mediaEditorHistoryReducer(createMediaEditorHistoryState(), {
+      type: "ADD",
+      overlay: overlay("media-old"),
+    });
+    state = mediaEditorHistoryReducer(state, {
+      type: "COMMIT",
+      overlay: overlay("media-old", 40),
+    });
+
+    const hydrated = mediaEditorHistoryReducer(state, {
+      type: "HYDRATE",
+      overlays: [overlay("media-restored", 75)],
+    });
+
+    expect(hydrated.present).toEqual([overlay("media-restored", 75)]);
+    expect(hydrated.past).toEqual([]);
+    expect(hydrated.future).toEqual([]);
+    expect(hydrated.selectedAssetId).toBeNull();
+  });
+
   it("undoes and redoes transform commits without treating intake as undoable", () => {
     const added = mediaEditorHistoryReducer(createMediaEditorHistoryState(), {
       type: "ADD",

@@ -24,7 +24,6 @@ import type { PdfViewerHandle } from "@/components/PdfViewer";
 import { useHistory } from "@/lib/use-history";
 import { detectAcroFormFields } from "@/lib/pdf-utils";
 import {
-  savePdfToIndexedDB,
   loadPdfFromIndexedDB,
   saveFieldsToLocalStorage,
   loadFieldsFromLocalStorage,
@@ -85,6 +84,15 @@ import {
 } from "@/lib/field-suggestion-analytics";
 import { isAddMediaEnabled } from "@/lib/add-media-rollout";
 import { MediaEditorBoundary } from "@/components/MediaEditorProvider";
+import {
+  cleanupMediaPersistence,
+  persistPdfForEditorMediaSession,
+  prepareCurrentMediaDocument,
+} from "@/lib/media-persistence";
+import type {
+  MediaDocumentPersistenceSession,
+} from "@/lib/media-types";
+import type { MediaPageBounds } from "@/lib/media-editor";
 
 const ZOOM_LEVELS = [50, 75, 100, 125, 150, 175, 200];
 const GESTURE_HINT_KEY = "quickfill_gesture_hint_seen";
@@ -279,6 +287,12 @@ function EditorPageContent() {
   const [showAddAnotherPagePrompt, setShowAddAnotherPagePrompt] = useState(false);
   const [fieldSuggestionReview, setFieldSuggestionReview] = useState<ActiveFieldSuggestionReview | null>(null);
   const [viewerDocumentRevision, setViewerDocumentRevision] = useState<number | null>(null);
+  const [mediaPersistenceSession, setMediaPersistenceSession] =
+    useState<Readonly<MediaDocumentPersistenceSession>>(
+      addMediaEnabled
+        ? Object.freeze({ status: "loading" as const })
+        : Object.freeze({ status: "unavailable" as const }),
+    );
   const [fieldSuggestionSnapshotEvent, setFieldSuggestionSnapshotEvent] = useState<LocalFieldDetectionLifecycleEvent | null>(null);
   const [showRemovePageConfirm, setShowRemovePageConfirm] = useState(false);
   const [isRemovingPage, setIsRemovingPage] = useState(false);
@@ -358,6 +372,36 @@ function EditorPageContent() {
         }
       : null;
   }, []);
+  const loadMediaDocumentPageBounds = useCallback(async () => {
+    if (!pdfBytes) throw new Error("PDF bytes are unavailable");
+    const pdfjs = await loadPdfjsClient();
+    const loadingTask = pdfjs.getDocument({
+      data: new Uint8Array(pdfBytes.slice(0)),
+      isEvalSupported: false,
+    });
+    try {
+      const document = await loadingTask.promise;
+      const bounds: Readonly<MediaPageBounds>[] = [];
+      for (let pageNumber = 1; pageNumber <= document.numPages; pageNumber += 1) {
+        const page = await document.getPage(pageNumber);
+        const viewport = page.getViewport({ scale: 1 });
+        bounds.push(
+          Object.freeze({
+            widthPts: viewport.width,
+            heightPts: viewport.height,
+          }),
+        );
+      }
+      return Object.freeze(bounds);
+    } finally {
+      await loadingTask.destroy();
+    }
+  }, [pdfBytes]);
+  const persistPdfForMediaSession = useCallback(
+    (bytes: ArrayBuffer, isCurrent: () => boolean = () => true) =>
+      persistPdfForEditorMediaSession(bytes, addMediaEnabled, isCurrent),
+    [addMediaEnabled],
+  );
   const activePdfTool = activeTool === "mask-eraser" ? activeTool : placementToolFor(activeTool);
   const authenticatedSignatureSessionKey = isLoaded && isSignedIn && userId && sessionId
     ? JSON.stringify([userId, sessionId])
@@ -650,8 +694,14 @@ function EditorPageContent() {
 
   // Cleanup old IndexedDB sessions on mount (fire and forget)
   useEffect(() => {
-    cleanupOldIndexedDBSessions();
-  }, []);
+    if (addMediaEnabled) {
+      void cleanupMediaPersistence().catch(() => {
+        // Media cleanup is best effort and must not block core PDF loading.
+      });
+      return;
+    }
+    void cleanupOldIndexedDBSessions();
+  }, [addMediaEnabled]);
 
   const dismissWelcome = useCallback(() => {
     localStorage.setItem("qf_welcome_dismissed", "1");
@@ -670,10 +720,20 @@ function EditorPageContent() {
     setZoom(isMobileDevice() ? 100 : loadZoomFromLocalStorage());
 
     const restoredViewerDocumentRevision = activateNextViewerDocumentRevision();
+    if (addMediaEnabled) {
+      setMediaPersistenceSession(
+        Object.freeze({ status: "loading" as const }),
+      );
+    }
 
     loadPdfFromIndexedDB().then(async (savedPdf) => {
       if (activeViewerDocumentRevisionRef.current !== restoredViewerDocumentRevision) return;
       if (!savedPdf) {
+        if (addMediaEnabled) {
+          setMediaPersistenceSession(
+            Object.freeze({ status: "unavailable" as const }),
+          );
+        }
         clearFieldSuggestionIntent();
         deactivateViewerDocumentRevision();
         return;
@@ -710,6 +770,36 @@ function EditorPageContent() {
       }
       pollCanvasForContent(pdfViewerRef, setMinimapCanvas);
 
+      if (addMediaEnabled) {
+        void prepareCurrentMediaDocument(
+          savedPdf,
+          () =>
+            activeViewerDocumentRevisionRef.current ===
+            restoredViewerDocumentRevision,
+        ).then(
+          (session) => {
+            if (
+              activeViewerDocumentRevisionRef.current !==
+              restoredViewerDocumentRevision
+            ) {
+              return;
+            }
+            setMediaPersistenceSession(session);
+          },
+          () => {
+            if (
+              activeViewerDocumentRevisionRef.current !==
+              restoredViewerDocumentRevision
+            ) {
+              return;
+            }
+            setMediaPersistenceSession(
+              Object.freeze({ status: "unavailable" as const }),
+            );
+          },
+        );
+      }
+
       // Mark initial restoration as complete so persist effect can save
       initialRestoreDoneRef.current = true;
 
@@ -725,6 +815,7 @@ function EditorPageContent() {
   }, [
     reset,
     markLocalSave,
+    addMediaEnabled,
     fieldSuggestionReviewEnabled,
     beginFieldSuggestionReview,
     activateNextViewerDocumentRevision,
@@ -1057,6 +1148,11 @@ function EditorPageContent() {
           deactivateViewerDocumentRevision();
           return;
         }
+        if (addMediaEnabled) {
+          setMediaPersistenceSession(
+            Object.freeze({ status: "loading" as const }),
+          );
+        }
 
         let requestedDocumentRevision: string | null = null;
         if (fieldSuggestionReviewEnabled && options?.requestFieldSuggestions) {
@@ -1086,9 +1182,13 @@ function EditorPageContent() {
         // Mark as ready for field persistence
         initialRestoreDoneRef.current = true;
 
-        // Persist before showing the editor so a route refresh cannot lose the loaded PDF.
-        await savePdfToIndexedDB(bytes);
+        // Persist before showing the editor so a route refresh cannot lose the
+        // loaded PDF. Feature-on replacement also rotates the local media
+        // incarnation and invalidates older overlays atomically.
+        const nextMediaPersistenceSession =
+          await persistPdfForMediaSession(bytes, isCurrentDocumentLoad);
         if (!isCurrentDocumentLoad()) return;
+        setMediaPersistenceSession(nextMediaPersistenceSession);
         saveFileNameToLocalStorage(file.name);
         markLocalSave("saved");
 
@@ -1158,6 +1258,11 @@ function EditorPageContent() {
       } catch {
         if (!isCurrentDocumentLoad()) return;
         setPdfBytes(null);
+        if (addMediaEnabled) {
+          setMediaPersistenceSession(
+            Object.freeze({ status: "unavailable" as const }),
+          );
+        }
         setIsLoading(false);
         deactivateViewerDocumentRevision();
         currentDocumentRevisionRef.current = null;
@@ -1193,6 +1298,8 @@ function EditorPageContent() {
       fieldSuggestionReviewEnabled,
       beginFieldSuggestionReview,
       recordIneligibleFieldSuggestionAttempt,
+      addMediaEnabled,
+      persistPdfForMediaSession,
       activateNextViewerDocumentRevision,
       deactivateViewerDocumentRevision,
     ]
@@ -1207,7 +1314,12 @@ function EditorPageContent() {
     trackEvent("template_start", { source: "url", template: templateParam });
 
     // New template selected - clear previous session
-    clearEditorState().then(() => {
+    if (addMediaEnabled) {
+      setMediaPersistenceSession(
+        Object.freeze({ status: "loading" as const }),
+      );
+    }
+    clearEditorState({ includeMedia: addMediaEnabled }).then(() => {
       reset([]);
       deactivateViewerDocumentRevision();
       setPdfBytes(null);
@@ -1225,7 +1337,14 @@ function EditorPageContent() {
         })
         .catch(() => {});
     });
-  }, [activeTemplate, handleFileLoad, reset, pageScales, deactivateViewerDocumentRevision]);
+  }, [
+    activeTemplate,
+    addMediaEnabled,
+    handleFileLoad,
+    reset,
+    pageScales,
+    deactivateViewerDocumentRevision,
+  ]);
 
   const handleFieldAdd = useCallback(
     (field: EditorField) => {
@@ -1350,18 +1469,36 @@ function EditorPageContent() {
   const appendPageFile = useCallback(
     async (file: File, options?: { showPrompt?: boolean }) => {
       if (!pdfBytes || isAddingPage) return;
+      const sourceViewerDocumentRevision =
+        activeViewerDocumentRevisionRef.current;
+      if (sourceViewerDocumentRevision === null) return;
+      const isCurrentDocument = () =>
+        activeViewerDocumentRevisionRef.current ===
+        sourceViewerDocumentRevision;
       setIsAddingPage(true);
       try {
         const result = await appendUploadToDocument(pdfBytes, file);
+        if (!isCurrentDocument()) return;
         const newTotalPages = result.firstAddedPageIndex + result.addedPageCount;
 
         // Persist first so a refresh cannot lose the appended pages.
-        await savePdfToIndexedDB(result.pdfBytes);
+        if (addMediaEnabled) {
+          setMediaPersistenceSession(
+            Object.freeze({ status: "loading" as const }),
+          );
+        }
+        const nextMediaPersistenceSession =
+          await persistPdfForMediaSession(
+            result.pdfBytes,
+            isCurrentDocument,
+          );
+        if (!isCurrentDocument()) return;
         markLocalSave("saved");
 
         // Update totalPages alongside currentPage so the viewer's clamp
         // guard never resets the jump to the first appended page.
         activateNextViewerDocumentRevision();
+        setMediaPersistenceSession(nextMediaPersistenceSession);
         currentDocumentRevisionRef.current = null;
         setPdfBytes(result.pdfBytes);
         setTotalPages(newTotalPages);
@@ -1385,7 +1522,14 @@ function EditorPageContent() {
         setIsAddingPage(false);
       }
     },
-    [pdfBytes, isAddingPage, markLocalSave, activateNextViewerDocumentRevision]
+    [
+      pdfBytes,
+      isAddingPage,
+      addMediaEnabled,
+      markLocalSave,
+      persistPdfForMediaSession,
+      activateNextViewerDocumentRevision,
+    ]
   );
 
   const handleAddPageFile = useCallback(
@@ -1410,19 +1554,37 @@ function EditorPageContent() {
 
   const confirmRemovePage = useCallback(async () => {
     if (!pdfBytes || totalPages <= 1 || isRemovingPage) return;
+    const sourceViewerDocumentRevision =
+      activeViewerDocumentRevisionRef.current;
+    if (sourceViewerDocumentRevision === null) return;
+    const isCurrentDocument = () =>
+      activeViewerDocumentRevisionRef.current ===
+      sourceViewerDocumentRevision;
     setIsRemovingPage(true);
     try {
       const result = await removePageFromDocument(pdfBytes, currentPage);
+      if (!isCurrentDocument()) return;
       const newFields = shiftFieldsAfterPageRemoval(fields, currentPage);
 
       // Persist first so a refresh cannot restore the removed page.
-      await savePdfToIndexedDB(result.pdfBytes);
+      if (addMediaEnabled) {
+        setMediaPersistenceSession(
+          Object.freeze({ status: "loading" as const }),
+        );
+      }
+      const nextMediaPersistenceSession =
+        await persistPdfForMediaSession(
+          result.pdfBytes,
+          isCurrentDocument,
+        );
+      if (!isCurrentDocument()) return;
       saveFieldsToLocalStorage(newFields);
       markLocalSave("saved");
 
       // Page removal is not undoable: reset history so Ctrl+Z can never
       // restore fields that point at a page which no longer exists.
       activateNextViewerDocumentRevision();
+      setMediaPersistenceSession(nextMediaPersistenceSession);
       currentDocumentRevisionRef.current = null;
       setPdfBytes(result.pdfBytes);
       reset(newFields);
@@ -1456,7 +1618,9 @@ function EditorPageContent() {
     fields,
     reset,
     pageScales,
+    addMediaEnabled,
     markLocalSave,
+    persistPdfForMediaSession,
     activateNextViewerDocumentRevision,
   ]);
 
@@ -1465,7 +1629,10 @@ function EditorPageContent() {
     currentDocumentRevisionRef.current = null;
     deactivateViewerDocumentRevision();
     setShowAddAnotherPagePrompt(false);
-    clearEditorState();
+    void clearEditorState({ includeMedia: addMediaEnabled });
+    setMediaPersistenceSession(
+      Object.freeze({ status: "unavailable" as const }),
+    );
     setLocalSaveStatus("idle");
     setPdfBytes(null);
     setFileName("");
@@ -1476,7 +1643,12 @@ function EditorPageContent() {
     setActiveTool("select");
     pageScales.clear(); // Clear old page scales for fresh coordinate calculation
     reset([]);
-  }, [reset, pageScales, deactivateViewerDocumentRevision]);
+  }, [
+    reset,
+    pageScales,
+    addMediaEnabled,
+    deactivateViewerDocumentRevision,
+  ]);
 
   const showToast = useCallback((msg: string, duration = 3000) => {
     setToast(msg);
@@ -2267,6 +2439,8 @@ function EditorPageContent() {
       currentPage={currentPage}
       getPageBounds={getMediaPageBounds}
       onMessage={showToast}
+      persistenceSession={mediaPersistenceSession}
+      loadDocumentPageBounds={loadMediaDocumentPageBounds}
     >
     <>
     {/* Keep loaded PDFs in the full editor on mobile so restored work stays visible. */}
