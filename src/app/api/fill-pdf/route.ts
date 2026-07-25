@@ -12,6 +12,7 @@ import {
   PDFName,
   PDFArray,
   PDFDict,
+  concatTransformationMatrix,
   pushGraphicsState,
   popGraphicsState,
   moveTo,
@@ -578,179 +579,235 @@ function preparePageForDrawing(page: PDFPage, pdfDoc: PDFDocument) {
   node.set(PDFName.of("Contents"), newArray);
 }
 
+type PageDrawTransform = {
+  matrix: [number, number, number, number, number, number] | null;
+  viewportHeight: number;
+};
+
+function pageDrawTransform(page: PDFPage): PageDrawTransform {
+  const { width, height } = page.getSize();
+  if (
+    process.env.NEXT_PUBLIC_QUICKFILL_ROTATION_SAFE_DOWNLOAD !== "local-v1"
+  ) {
+    return { matrix: null, viewportHeight: height };
+  }
+
+  const rotation = ((page.getRotation().angle % 360) + 360) % 360;
+  if (rotation === 90) {
+    return {
+      matrix: [0, 1, -1, 0, width, 0],
+      viewportHeight: width,
+    };
+  }
+  if (rotation === 180) {
+    return {
+      matrix: [-1, 0, 0, -1, width, height],
+      viewportHeight: height,
+    };
+  }
+  if (rotation === 270) {
+    return {
+      matrix: [0, -1, 1, 0, 0, height],
+      viewportHeight: width,
+    };
+  }
+
+  return { matrix: null, viewportHeight: height };
+}
+
 async function drawFieldOnPage(pdfDoc: PDFDocument, field: EditorField, _pageScales: Map<number, number>, font: PDFFont, signatureFont: PDFFont, _viewportDims: Map<number, { width: number; height: number }> | null = null) {
   const page = pdfDoc.getPages()[field.page];
   if (!page) return;
 
-  // Field coordinates are now in clean PDF page coordinate space
-  // No scaling needed - the graphics state isolation handles any transforms
+  const { matrix, viewportHeight } = pageDrawTransform(page);
+
+  // Field coordinates are in the displayed pdf.js viewport's PDF-point space.
+  // A rotated page needs the inverse display transform while drawing so its
+  // retained /Rotate entry restores the field to the editor's orientation.
   const pdfX = field.x;
   const pdfY = field.y;
   const pdfW = field.width;
   const pdfH = field.height;
+  const finalPdfY = viewportHeight - pdfY - pdfH;
 
-  // Flip Y axis (PDF origin is bottom-left, viewport origin is top-left)
-  const finalPdfY = page.getHeight() - pdfY - pdfH;
-
-  if (field.type === "line" && field.eraseMasks?.length) {
-    const lineField = field as import("@/lib/types").LineField;
-    const lineColor = hexToRgbPdf(lineField.color ?? "#000000");
-    const lw = lineField.strokeWidth ?? 1;
-    const segments = lineMaskSegments(lineField, field.eraseMasks);
-
-    for (const [segStart, segEnd] of segments) {
-      if (lineField.orientation === "horizontal") {
-        page.drawLine({
-          start: { x: segStart, y: finalPdfY + pdfH / 2 },
-          end: { x: segEnd, y: finalPdfY + pdfH / 2 },
-          thickness: lw,
-          color: lineColor,
-        });
-      } else {
-        const lineX = pdfX + pdfW / 2;
-        page.drawLine({
-          start: { x: lineX, y: page.getHeight() - segStart },
-          end: { x: lineX, y: page.getHeight() - segEnd },
-          thickness: lw,
-          color: lineColor,
-        });
-      }
-    }
-    return;
-  }
-
-  if (field.type === "comb" && field.eraseMasks?.length) {
-    console.warn("Ignoring eraseMasks on comb field:", field.id);
-  }
-
-  const shouldClipMasks = Boolean(field.eraseMasks?.length && fieldSupportsMaskClip(field));
-
-  if (shouldClipMasks) {
-    const pdfMasks = field.eraseMasks!.map((mask) => maskToPdfRect(mask, page.getHeight()));
+  if (matrix) {
     page.pushOperators(
       pushGraphicsState(),
-      ...pdfRectOps(pdfX, finalPdfY, pdfW, pdfH),
-      ...pdfMasks.flatMap((mask) => pdfRectOps(mask.x, mask.y, mask.width, mask.height)),
-      clipEvenOdd(),
-      endPath(),
+      concatTransformationMatrix(...matrix),
     );
   }
 
   try {
-  if (field.type === "whiteout") {
-    // Draw a filled rectangle with the sampled background color
-    const whiteoutField = field as import("@/lib/types").WhiteoutField;
-    // Parse hex color to RGB (0-1 range for pdf-lib)
-    let r = 1, g = 1, b = 1;
-    const hex = whiteoutField.fillColor.replace("#", "");
-    if (hex.length === 6) {
-      r = parseInt(hex.slice(0, 2), 16) / 255;
-      g = parseInt(hex.slice(2, 4), 16) / 255;
-      b = parseInt(hex.slice(4, 6), 16) / 255;
-    }
-    page.drawRectangle({
-      x: pdfX,
-      y: finalPdfY,
-      width: pdfW,
-      height: pdfH,
-      color: rgb(r, g, b),
-    });
-  } else if (field.type === "signature" && field.signatureDataUrl) {
-    const sigField = field as import("@/lib/types").SignatureField;
-    await drawSignatureImage(pdfDoc, page, field.signatureDataUrl, pdfX, finalPdfY, pdfW, pdfH, field.value, signatureFont, field.fontSize ?? 16, {
-      opacity: sigField.opacity,
-      rotation: sigField.rotation,
-      flipH: sigField.flipH,
-    });
-  } else if (field.type === "text" || field.type === "date" || field.type === "signature") {
-    if (field.value) {
-      const fontSize = field.type === "signature" ? 16 : field.fontSize ?? 14;
-      const activeFont = field.type === "signature" ? signatureFont : font;
-      // Vertically center text in the field box (matching editor's verticalAlign: "middle")
-      const textY = finalPdfY + (pdfH - fontSize) / 2;
-      page.drawText(sanitize(field.value), {
-        x: pdfX + 2,
-        y: textY,
-        size: fontSize,
-        font: activeFont,
-        color: rgb(0, 0, 0),
-      });
-    }
-  } else if (field.type === "checkbox" && field.checked) {
-    const stamp = (field as { stamp?: string }).stamp ?? "tick";
-    drawCheckmark(page, pdfX, finalPdfY, pdfW, pdfH, stamp);
-  } else if (field.type === "line") {
-    const lineField = field as import("@/lib/types").LineField;
-    const lineColor = hexToRgbPdf(lineField.color ?? "#000000");
-    const lw = lineField.strokeWidth ?? 1;
-    if (lineField.orientation === "horizontal") {
-      page.drawLine({
-        start: { x: pdfX, y: finalPdfY + pdfH / 2 },
-        end: { x: pdfX + pdfW, y: finalPdfY + pdfH / 2 },
-        thickness: lw,
-        color: lineColor,
-      });
-    } else {
-      page.drawLine({
-        start: { x: pdfX + pdfW / 2, y: finalPdfY },
-        end: { x: pdfX + pdfW / 2, y: finalPdfY - pdfH },
-        thickness: lw,
-        color: lineColor,
-      });
-    }
-  } else if (field.type === "comb") {
-    const combField = field as import("@/lib/types").CombField;
-    const value = combField.value ?? "";
-    if (!value) return;
+    if (field.type === "line" && field.eraseMasks?.length) {
+      const lineField = field as import("@/lib/types").LineField;
+      const lineColor = hexToRgbPdf(lineField.color ?? "#000000");
+      const lw = lineField.strokeWidth ?? 1;
+      const segments = lineMaskSegments(lineField, field.eraseMasks);
 
-    const fontSize = (combField as unknown as { fontSize?: number }).fontSize ?? pdfH * 0.6;
-    const charCount = combField.charCount || 1;
-    const offsetX = combField.offsetX ?? 0;
-    const charOffsetX = combField.charOffsetX ?? 0;
-
-    // Use non-uniform cell positions/widths if available, otherwise uniform spacing
-    const cellPositions = combField.cellPositions;
-    const cellWidths = combField.cellWidths;
-    const uniformCellWidth = combField.cellWidth ?? (field.width / charCount);
-
-    // Draw each character centered in its cell
-    for (let i = 0; i < value.length && i < charCount; i++) {
-      const char = value[i];
-      // Skip space characters (gaps between groups)
-      if (char === " ") continue;
-
-      let cellCenterX: number;
-      let cellW: number;
-
-      if (cellPositions && cellPositions[i] !== undefined) {
-        // Non-uniform: cellPositions are cell centers in PDF points, relative to field.x
-        // cellPositions[i] is the center of cell i relative to field.x
-        cellCenterX = pdfX + offsetX + cellPositions[i];
-        cellW = (cellWidths && cellWidths[i] !== undefined) ? cellWidths[i] : uniformCellWidth;
-      } else {
-        // Uniform spacing: divide field width by charCount
-        cellW = uniformCellWidth;
-        cellCenterX = pdfX + offsetX + (i + 0.5) * cellW;
+      for (const [segStart, segEnd] of segments) {
+        if (lineField.orientation === "horizontal") {
+          page.drawLine({
+            start: { x: segStart, y: finalPdfY + pdfH / 2 },
+            end: { x: segEnd, y: finalPdfY + pdfH / 2 },
+            thickness: lw,
+            color: lineColor,
+          });
+        } else {
+          const lineX = pdfX + pdfW / 2;
+          page.drawLine({
+            start: { x: lineX, y: viewportHeight - segStart },
+            end: { x: lineX, y: viewportHeight - segEnd },
+            thickness: lw,
+            color: lineColor,
+          });
+        }
       }
-
-      // Measure character width for centering
-      const charWidth = font.widthOfTextAtSize(char, fontSize);
-      const charX = cellCenterX - charWidth / 2 + charOffsetX;
-
-      // Vertically center the character
-      const charY = finalPdfY + (pdfH - fontSize) / 2;
-
-      page.drawText(char, {
-        x: charX,
-        y: charY,
-        size: fontSize,
-        font: font,
-        color: rgb(0, 0, 0),
-      });
+      return;
     }
-  }
-  } finally {
+
+    if (field.type === "comb" && field.eraseMasks?.length) {
+      console.warn("Ignoring eraseMasks on comb field:", field.id);
+    }
+
+    const shouldClipMasks = Boolean(
+      field.eraseMasks?.length && fieldSupportsMaskClip(field),
+    );
+
     if (shouldClipMasks) {
+      const pdfMasks = field.eraseMasks!.map((mask) =>
+        maskToPdfRect(mask, viewportHeight),
+      );
+      page.pushOperators(
+        pushGraphicsState(),
+        ...pdfRectOps(pdfX, finalPdfY, pdfW, pdfH),
+        ...pdfMasks.flatMap((mask) =>
+          pdfRectOps(mask.x, mask.y, mask.width, mask.height),
+        ),
+        clipEvenOdd(),
+        endPath(),
+      );
+    }
+
+    try {
+      if (field.type === "whiteout") {
+        // Draw a filled rectangle with the sampled background color
+        const whiteoutField = field as import("@/lib/types").WhiteoutField;
+        // Parse hex color to RGB (0-1 range for pdf-lib)
+        let r = 1, g = 1, b = 1;
+        const hex = whiteoutField.fillColor.replace("#", "");
+        if (hex.length === 6) {
+          r = parseInt(hex.slice(0, 2), 16) / 255;
+          g = parseInt(hex.slice(2, 4), 16) / 255;
+          b = parseInt(hex.slice(4, 6), 16) / 255;
+        }
+        page.drawRectangle({
+          x: pdfX,
+          y: finalPdfY,
+          width: pdfW,
+          height: pdfH,
+          color: rgb(r, g, b),
+        });
+      } else if (field.type === "signature" && field.signatureDataUrl) {
+        const sigField = field as import("@/lib/types").SignatureField;
+        await drawSignatureImage(pdfDoc, page, field.signatureDataUrl, pdfX, finalPdfY, pdfW, pdfH, field.value, signatureFont, field.fontSize ?? 16, {
+          opacity: sigField.opacity,
+          rotation: sigField.rotation,
+          flipH: sigField.flipH,
+        });
+      } else if (field.type === "text" || field.type === "date" || field.type === "signature") {
+        if (field.value) {
+          const fontSize = field.type === "signature" ? 16 : field.fontSize ?? 14;
+          const activeFont = field.type === "signature" ? signatureFont : font;
+          // Vertically center text in the field box (matching editor's verticalAlign: "middle")
+          const textY = finalPdfY + (pdfH - fontSize) / 2;
+          page.drawText(sanitize(field.value), {
+            x: pdfX + 2,
+            y: textY,
+            size: fontSize,
+            font: activeFont,
+            color: rgb(0, 0, 0),
+          });
+        }
+      } else if (field.type === "checkbox" && field.checked) {
+        const stamp = (field as { stamp?: string }).stamp ?? "tick";
+        drawCheckmark(page, pdfX, finalPdfY, pdfW, pdfH, stamp);
+      } else if (field.type === "line") {
+        const lineField = field as import("@/lib/types").LineField;
+        const lineColor = hexToRgbPdf(lineField.color ?? "#000000");
+        const lw = lineField.strokeWidth ?? 1;
+        if (lineField.orientation === "horizontal") {
+          page.drawLine({
+            start: { x: pdfX, y: finalPdfY + pdfH / 2 },
+            end: { x: pdfX + pdfW, y: finalPdfY + pdfH / 2 },
+            thickness: lw,
+            color: lineColor,
+          });
+        } else {
+          page.drawLine({
+            start: { x: pdfX + pdfW / 2, y: finalPdfY },
+            end: { x: pdfX + pdfW / 2, y: finalPdfY - pdfH },
+            thickness: lw,
+            color: lineColor,
+          });
+        }
+      } else if (field.type === "comb") {
+        const combField = field as import("@/lib/types").CombField;
+        const value = combField.value ?? "";
+        if (!value) return;
+
+        const fontSize = (combField as unknown as { fontSize?: number }).fontSize ?? pdfH * 0.6;
+        const charCount = combField.charCount || 1;
+        const offsetX = combField.offsetX ?? 0;
+        const charOffsetX = combField.charOffsetX ?? 0;
+
+        // Use non-uniform cell positions/widths if available, otherwise uniform spacing
+        const cellPositions = combField.cellPositions;
+        const cellWidths = combField.cellWidths;
+        const uniformCellWidth = combField.cellWidth ?? (field.width / charCount);
+
+        // Draw each character centered in its cell
+        for (let i = 0; i < value.length && i < charCount; i++) {
+          const char = value[i];
+          // Skip space characters (gaps between groups)
+          if (char === " ") continue;
+
+          let cellCenterX: number;
+          let cellW: number;
+
+          if (cellPositions && cellPositions[i] !== undefined) {
+            // Non-uniform: cellPositions are cell centers in PDF points, relative to field.x
+            // cellPositions[i] is the center of cell i relative to field.x
+            cellCenterX = pdfX + offsetX + cellPositions[i];
+            cellW = (cellWidths && cellWidths[i] !== undefined) ? cellWidths[i] : uniformCellWidth;
+          } else {
+            // Uniform spacing: divide field width by charCount
+            cellW = uniformCellWidth;
+            cellCenterX = pdfX + offsetX + (i + 0.5) * cellW;
+          }
+
+          // Measure character width for centering
+          const charWidth = font.widthOfTextAtSize(char, fontSize);
+          const charX = cellCenterX - charWidth / 2 + charOffsetX;
+
+          // Vertically center the character
+          const charY = finalPdfY + (pdfH - fontSize) / 2;
+
+          page.drawText(char, {
+            x: charX,
+            y: charY,
+            size: fontSize,
+            font: font,
+            color: rgb(0, 0, 0),
+          });
+        }
+      }
+    } finally {
+      if (shouldClipMasks) {
+        page.pushOperators(popGraphicsState());
+      }
+    }
+  } finally {
+    if (matrix) {
       page.pushOperators(popGraphicsState());
     }
   }

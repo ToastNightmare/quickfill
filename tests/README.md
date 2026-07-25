@@ -42,6 +42,13 @@ build created with the exact
 `NEXT_PUBLIC_QUICKFILL_ADD_MEDIA=local-v1` value. See
 `docs/add-media-rollout.md` for the two-build verification sequence.
 
+Rotation-safe downloads also remain default-off. Their enabled cases require a
+production build made with the exact
+`NEXT_PUBLIC_QUICKFILL_ROTATION_SAFE_DOWNLOAD=local-v1` value. The six rotated
+fixtures exercise 0°/90°/180°/270° landmarks, mixed rotations and raw sizes,
+field and mask placement, free/Pro watermark behavior, and responsive upload
+layout. See `docs/rotation-safe-download.md` for the boundary and rollback.
+
 Playwright's generated results, screenshots, videos, and traces are written to
 the operating system's temporary directory. `playwright-report/` and
 `test-results/` must not be created in the repository.
@@ -60,7 +67,7 @@ pinned pnpm version, builds the production application, runs the full Jest
 suite directly, and then runs the standard Playwright suite directly against a
 fresh `http://localhost:3000` server with one worker. It never runs
 `qa:pdf:prod` or targets production. The same required job then runs
-`pnpm qa:pdf` in enforcement mode against localhost and requires all 20 PDF
+`pnpm qa:pdf` in enforcement mode against localhost and requires all 26 PDF
 accuracy checks to execute with none skipped.
 
 The workflow requires these matching Clerk Development credentials as GitHub
@@ -119,6 +126,23 @@ Enforcement mode fails before the pack can register tests if the token is
 missing, the test target is not exact localhost, or the Redis facade is not
 configured at its exact loopback URL with the same token. A guarded skip cannot
 be mistaken for successful CI coverage.
+
+For the exact flag-on rotation run, build and execute the same enforced pack
+with the flag present in both commands:
+
+```bash
+NEXT_PUBLIC_QUICKFILL_ROTATION_SAFE_DOWNLOAD=local-v1 pnpm build
+NEXT_PUBLIC_QUICKFILL_ROTATION_SAFE_DOWNLOAD=local-v1 \
+  QUICKFILL_QA_TOKEN="${pdf_qa_token}" \
+  QUICKFILL_PDF_QA_ENFORCE=1 \
+  PLAYWRIGHT_BASE_URL=http://localhost:3000 \
+  UPSTASH_REDIS_REST_URL=http://127.0.0.1:38079 \
+  UPSTASH_REDIS_REST_TOKEN="${pdf_qa_token}" \
+  pnpm qa:pdf
+```
+
+Rebuild without `NEXT_PUBLIC_QUICKFILL_ROTATION_SAFE_DOWNLOAD` before running
+the default-off repository-wide gates.
 
 ### Production Smoke
 

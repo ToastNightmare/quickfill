@@ -22,6 +22,8 @@ function ensurePageContentStreams(pdfDoc: PDFDocument) {
 export async function createViewerSafePdfDocument(sourceDoc: PDFDocument) {
   cleanupEditedDocumentArtifacts(sourceDoc);
   ensurePageContentStreams(sourceDoc);
+  const preservePageRotation =
+    process.env.NEXT_PUBLIC_QUICKFILL_ROTATION_SAFE_DOWNLOAD === "local-v1";
 
   // pdf-lib only writes newly embedded image/font resources to the document context
   // when the document is flushed/saved. The viewer-safe copy embeds source pages
@@ -36,6 +38,9 @@ export async function createViewerSafePdfDocument(sourceDoc: PDFDocument) {
     const sourcePage = sourcePages[index];
     const page = outputDoc.addPage();
     page.setSize(sourcePage.getWidth(), sourcePage.getHeight());
+    if (preservePageRotation) {
+      page.setRotation(sourcePage.getRotation());
+    }
     page.drawPage(embeddedPages[index], {
       x: 0,
       y: 0,
