@@ -19,6 +19,7 @@ import {
   keepMediaPlacementWithinPage,
   localMediaAssetIdFromString,
   MEDIA_FILE_INPUT_ACCEPT,
+  runtimeMediaResourceIdFromString,
   type LocalMediaAssetRecord,
   type MediaPageBounds,
 } from "@/lib/media-editor";
@@ -34,9 +35,18 @@ import {
   MediaSanitizationError,
   RasterSanitizationCoordinator,
 } from "@/lib/media-sanitize";
+import {
+  MediaPersistenceWriter,
+  hashSanitizedMediaBytes,
+  hydrateCurrentMediaSnapshot,
+  type MediaPersistenceResource,
+  type MediaPersistenceSaveSnapshot,
+} from "@/lib/media-persistence";
 import { normalizeMediaRotation } from "@/lib/media-transform";
 import type {
   LocalMediaAssetId,
+  LocalMediaResourceId,
+  MediaDocumentPersistenceSession,
   MediaOverlayState,
   MediaPlacement,
 } from "@/lib/media-types";
@@ -48,6 +58,10 @@ interface MediaEditorProviderProps {
     pageIndex: number,
   ) => Readonly<MediaPageBounds> | null;
   readonly onMessage: (message: string, duration?: number) => void;
+  readonly persistenceSession?: Readonly<MediaDocumentPersistenceSession>;
+  readonly loadDocumentPageBounds?: () => Promise<
+    readonly Readonly<MediaPageBounds>[]
+  >;
 }
 
 interface MediaEditorBoundaryProps extends MediaEditorProviderProps {
@@ -144,11 +158,76 @@ async function waitForRenderedPageBounds(
   return null;
 }
 
+const IN_MEMORY_MEDIA_SESSION = Object.freeze({
+  status: "unavailable" as const,
+});
+
+const LOCAL_MEDIA_STORAGE_WARNING =
+  "Media couldn’t be saved in this browser. Your PDF and regular fields are still available.";
+
+function mediaSnapshotSignature(
+  overlays: readonly Readonly<MediaOverlayState>[],
+): string {
+  return JSON.stringify(
+    overlays.map((overlay) => ({
+      assetId: overlay.assetId,
+      resourceId: overlay.resourceId,
+      pageIndex: overlay.placement.pageIndex,
+      x: overlay.placement.xPts,
+      y: overlay.placement.yPts,
+      width: overlay.placement.widthPts,
+      height: overlay.placement.heightPts,
+      rotation: overlay.transform.rotationDeg,
+      flipX: overlay.transform.flipX,
+      flipY: overlay.transform.flipY,
+    })),
+  );
+}
+
+function persistenceSnapshot(
+  overlays: readonly Readonly<MediaOverlayState>[],
+  registry: LocalMediaAssetRegistry,
+): Readonly<MediaPersistenceSaveSnapshot> {
+  const resources = new Map<string, Readonly<MediaPersistenceResource>>();
+  for (const overlay of overlays) {
+    const asset = registry.get(overlay.assetId);
+    if (
+      !asset ||
+      asset.descriptor.resourceId !== overlay.resourceId
+    ) {
+      throw new Error("media registry snapshot is inconsistent");
+    }
+    if (!resources.has(overlay.resourceId)) {
+      const resource = registry.getResource(overlay.resourceId);
+      if (!resource) {
+        throw new Error("media resource snapshot is inconsistent");
+      }
+      resources.set(
+        overlay.resourceId,
+        Object.freeze({
+          resourceId: resource.resourceId,
+          mimeType: resource.mimeType,
+          width: resource.intrinsicWidthPx,
+          height: resource.intrinsicHeightPx,
+          byteLength: resource.byteLength,
+          blob: resource.blob,
+        }),
+      );
+    }
+  }
+  return Object.freeze({
+    overlays: Object.freeze([...overlays]),
+    resources: Object.freeze([...resources.values()]),
+  });
+}
+
 function EnabledMediaEditorProvider({
   children,
   currentPage,
   getPageBounds,
   onMessage,
+  persistenceSession = IN_MEMORY_MEDIA_SESSION,
+  loadDocumentPageBounds,
 }: MediaEditorProviderProps) {
   const [history, dispatch] = useReducer(
     mediaEditorHistoryReducer,
@@ -156,14 +235,26 @@ function EnabledMediaEditorProvider({
     createMediaEditorHistoryState,
   );
   const [isProcessing, setIsProcessing] = useState(false);
+  const [hydrationStatus, setHydrationStatus] = useState<"loading" | "ready">(
+    persistenceSession.status === "loading" ||
+      (persistenceSession.status === "ready" &&
+        persistenceSession.mediaState.kind === "hydrate")
+      ? "loading"
+      : "ready",
+  );
   const inputRef = useRef<HTMLInputElement>(null);
   const registryRef = useRef<LocalMediaAssetRegistry | null>(null);
   const coordinatorRef = useRef<RasterSanitizationCoordinator | null>(null);
+  const writerRef = useRef<MediaPersistenceWriter | null>(null);
   const mountedRef = useRef(false);
   const selectionGenerationRef = useRef(0);
+  const hydrationGenerationRef = useRef(0);
   const assetSequenceRef = useRef(0);
   const historyRef = useRef(history);
   const currentPageRef = useRef(currentPage);
+  const lastDurableSignatureRef = useRef<string | null>(null);
+  const storageWarningShownRef = useRef(false);
+  const persistenceDisabledRef = useRef(false);
   const inputId = useId();
 
   historyRef.current = history;
@@ -178,6 +269,9 @@ function EnabledMediaEditorProvider({
     return () => {
       mountedRef.current = false;
       selectionGenerationRef.current += 1;
+      hydrationGenerationRef.current += 1;
+      writerRef.current?.dispose();
+      writerRef.current = null;
       coordinator.dispose();
       registry.clear();
       if (registryRef.current === registry) registryRef.current = null;
@@ -185,9 +279,158 @@ function EnabledMediaEditorProvider({
     };
   }, []);
 
+  const warnStorageOnce = useCallback(() => {
+    if (storageWarningShownRef.current) return;
+    storageWarningShownRef.current = true;
+    onMessage(LOCAL_MEDIA_STORAGE_WARNING, 5000);
+  }, [onMessage]);
+
   const openFilePicker = useCallback(() => {
+    if (hydrationStatus !== "ready") return;
     inputRef.current?.click();
-  }, []);
+  }, [hydrationStatus]);
+
+  useEffect(() => {
+    hydrationGenerationRef.current += 1;
+    const generation = hydrationGenerationRef.current;
+    const registry = registryRef.current;
+    writerRef.current?.dispose();
+    writerRef.current = null;
+    lastDurableSignatureRef.current = null;
+    persistenceDisabledRef.current = false;
+
+    const isCurrent = () =>
+      mountedRef.current &&
+      hydrationGenerationRef.current === generation &&
+      registryRef.current === registry;
+
+    if (!registry) return;
+    registry.clear();
+    if (persistenceSession.status === "loading") {
+      setHydrationStatus("loading");
+      return () => {
+        if (hydrationGenerationRef.current === generation) {
+          hydrationGenerationRef.current += 1;
+        }
+      };
+    }
+    if (persistenceSession.status === "unavailable") {
+      persistenceDisabledRef.current = true;
+      dispatch({ type: "HYDRATE", overlays: Object.freeze([]) });
+      setHydrationStatus("ready");
+      if (loadDocumentPageBounds) warnStorageOnce();
+      return () => {
+        if (hydrationGenerationRef.current === generation) {
+          hydrationGenerationRef.current += 1;
+        }
+      };
+    }
+    if (persistenceSession.mediaState.kind === "empty") {
+      dispatch({ type: "HYDRATE", overlays: Object.freeze([]) });
+      lastDurableSignatureRef.current = mediaSnapshotSignature([]);
+      writerRef.current = new MediaPersistenceWriter({
+        binding: persistenceSession.binding,
+        initialWriteSequence: persistenceSession.mediaState.writeSequence,
+        onFailure: () => {
+          persistenceDisabledRef.current = true;
+          warnStorageOnce();
+        },
+      });
+      setHydrationStatus("ready");
+      return () => {
+        if (hydrationGenerationRef.current === generation) {
+          hydrationGenerationRef.current += 1;
+        }
+        writerRef.current?.dispose();
+        writerRef.current = null;
+      };
+    }
+
+    setHydrationStatus("loading");
+    void (async () => {
+      try {
+        if (!loadDocumentPageBounds) {
+          throw new Error("media page bounds loader is unavailable");
+        }
+        const pageBounds = await loadDocumentPageBounds();
+        if (!isCurrent()) return;
+        const snapshot = await hydrateCurrentMediaSnapshot({
+          binding: persistenceSession.binding,
+          pageBounds,
+          isCurrent,
+        });
+        if (!isCurrent()) return;
+        const resources = new Map(
+          snapshot.resources.map((resource) => [
+            resource.resourceId,
+            resource,
+          ]),
+        );
+        try {
+          for (const overlay of snapshot.overlays) {
+            const resource = resources.get(overlay.resourceId);
+            if (!resource) {
+              throw new Error("hydrated media resource is unavailable");
+            }
+            registry.add(
+              createMediaAssetDescriptor({
+                id: overlay.assetId,
+                resourceId: resource.resourceId,
+                sourceFileName:
+                  resource.mimeType === "image/jpeg"
+                    ? "restored-media.jpg"
+                    : "restored-media.png",
+                mimeType: resource.mimeType,
+                width: resource.width,
+                height: resource.height,
+              }),
+              resource.blob,
+            );
+          }
+        } catch (error) {
+          registry.clear();
+          throw error;
+        }
+        if (!isCurrent()) {
+          registry.clear();
+          return;
+        }
+        dispatch({ type: "HYDRATE", overlays: snapshot.overlays });
+        lastDurableSignatureRef.current = mediaSnapshotSignature(
+          snapshot.overlays,
+        );
+        writerRef.current = new MediaPersistenceWriter({
+          binding: persistenceSession.binding,
+          initialWriteSequence: snapshot.writeSequence,
+          onFailure: () => {
+            persistenceDisabledRef.current = true;
+            warnStorageOnce();
+          },
+        });
+        if (snapshot.recoveredFromInvalid) warnStorageOnce();
+        setHydrationStatus("ready");
+      } catch {
+        if (!isCurrent()) return;
+        registry.clear();
+        persistenceDisabledRef.current = true;
+        dispatch({ type: "HYDRATE", overlays: Object.freeze([]) });
+        setHydrationStatus("ready");
+        warnStorageOnce();
+      }
+    })();
+
+    return () => {
+      if (hydrationGenerationRef.current === generation) {
+        hydrationGenerationRef.current += 1;
+      }
+      writerRef.current?.dispose();
+      writerRef.current = null;
+    };
+  }, [
+    loadDocumentPageBounds,
+    persistenceSession,
+    warnStorageOnce,
+  ]);
 
   const getAsset = useCallback((assetId: LocalMediaAssetId) => {
     return registryRef.current?.get(assetId) ?? null;
@@ -289,7 +532,14 @@ function EnabledMediaEditorProvider({
   const handleFile = useCallback(async (file: File) => {
     const registry = registryRef.current;
     const coordinator = coordinatorRef.current;
-    if (!registry || !coordinator || !mountedRef.current) return;
+    if (
+      !registry ||
+      !coordinator ||
+      !mountedRef.current ||
+      hydrationStatus !== "ready"
+    ) {
+      return;
+    }
     if (registry.size >= registry.capacity) {
       onMessage(
         `You can add up to ${registry.capacity} media items in one editing session.`,
@@ -328,8 +578,35 @@ function EnabledMediaEditorProvider({
       }
 
       assetSequenceRef.current += 1;
+      const assetId = createAssetId(assetSequenceRef.current);
+      let resourceId: LocalMediaResourceId;
+      try {
+        resourceId = await hashSanitizedMediaBytes(sanitized.bytes);
+      } catch {
+        if (!isCurrentSelection()) return;
+        persistenceDisabledRef.current = true;
+        writerRef.current?.dispose();
+        writerRef.current = null;
+        resourceId = runtimeMediaResourceIdFromString(
+          `ephemeral-${assetId}`,
+        );
+        if (loadDocumentPageBounds) warnStorageOnce();
+      }
+      if (!isCurrentSelection()) return;
+      if (
+        !registry.getResource(resourceId) &&
+        (registry.resourceCount >= registry.resourceCapacity ||
+          registry.totalBytes + sanitized.blob.size > registry.byteCapacity)
+      ) {
+        onMessage(
+          "This document has reached its local media storage limit.",
+          5000,
+        );
+        return;
+      }
       const descriptor = createMediaAssetDescriptor({
-        id: createAssetId(assetSequenceRef.current),
+        id: assetId,
+        resourceId,
         sourceFileName: file.name,
         mimeType: sanitized.mimeType,
         width: sanitized.width,
@@ -345,6 +622,7 @@ function EnabledMediaEditorProvider({
         type: "ADD",
         overlay: freezeMediaOverlay({
           assetId: descriptor.id,
+          resourceId: descriptor.resourceId,
           placement,
           transform: {
             rotationDeg: 0,
@@ -363,7 +641,13 @@ function EnabledMediaEditorProvider({
         setIsProcessing(false);
       }
     }
-  }, [getPageBounds, onMessage]);
+  }, [
+    getPageBounds,
+    hydrationStatus,
+    loadDocumentPageBounds,
+    onMessage,
+    warnStorageOnce,
+  ]);
 
   const handleFileInputChange = useCallback((
     event: React.ChangeEvent<HTMLInputElement>,
@@ -373,11 +657,35 @@ function EnabledMediaEditorProvider({
     if (file) void handleFile(file);
   }, [handleFile]);
 
+  useEffect(() => {
+    if (
+      hydrationStatus !== "ready" ||
+      persistenceDisabledRef.current ||
+      !writerRef.current
+    ) {
+      return;
+    }
+    const signature = mediaSnapshotSignature(history.present);
+    if (lastDurableSignatureRef.current === signature) return;
+    const registry = registryRef.current;
+    if (!registry) return;
+    try {
+      const snapshot = persistenceSnapshot(history.present, registry);
+      lastDurableSignatureRef.current = signature;
+      writerRef.current.schedule(snapshot);
+    } catch {
+      persistenceDisabledRef.current = true;
+      writerRef.current.dispose();
+      writerRef.current = null;
+      warnStorageOnce();
+    }
+  }, [history.present, hydrationStatus, warnStorageOnce]);
+
   const value = useMemo<MediaEditorContextValue>(() => ({
     overlays: history.present,
     selectedAssetId: history.selectedAssetId,
     inputId,
-    isProcessing,
+    isProcessing: isProcessing || hydrationStatus === "loading",
     canUndo: history.past.length > 0,
     canRedo: history.future.length > 0,
     openFilePicker,
@@ -392,6 +700,7 @@ function EnabledMediaEditorProvider({
     redo: () => dispatch({ type: "REDO" }),
   }), [
     history,
+    hydrationStatus,
     inputId,
     isProcessing,
     openFilePicker,
@@ -414,10 +723,15 @@ function EnabledMediaEditorProvider({
         className="sr-only"
         aria-label="Choose a JPEG, PNG, or static WebP to add to the PDF"
         data-testid="add-media-input"
+        disabled={hydrationStatus !== "ready"}
         onChange={handleFileInputChange}
       />
       <span className="sr-only" role="status" aria-live="polite">
-        {isProcessing ? "Sanitizing selected media locally" : ""}
+        {hydrationStatus === "loading"
+          ? "Restoring media saved in this browser"
+          : isProcessing
+            ? "Sanitizing selected media locally"
+            : ""}
       </span>
       {children}
     </MediaEditorContext.Provider>

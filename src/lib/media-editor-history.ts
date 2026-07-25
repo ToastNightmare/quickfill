@@ -20,6 +20,10 @@ export interface MediaEditorHistoryState {
 }
 
 export type MediaEditorHistoryAction =
+  | {
+      readonly type: "HYDRATE";
+      readonly overlays: readonly Readonly<MediaOverlayState>[];
+    }
   | { readonly type: "ADD"; readonly overlay: Readonly<MediaOverlayState> }
   | { readonly type: "COMMIT"; readonly overlay: Readonly<MediaOverlayState> }
   | { readonly type: "DELETE"; readonly assetId: LocalMediaAssetId }
@@ -51,11 +55,17 @@ function freezeTransform(value: Readonly<MediaTransform>): Readonly<MediaTransfo
 export function freezeMediaOverlay(
   value: Readonly<MediaOverlayState>,
 ): Readonly<MediaOverlayState> {
-  if (!value || typeof value !== "object" || typeof value.assetId !== "string") {
+  if (
+    !value ||
+    typeof value !== "object" ||
+    typeof value.assetId !== "string" ||
+    typeof value.resourceId !== "string"
+  ) {
     throw new TypeError("media overlay is invalid");
   }
   return Object.freeze({
     assetId: value.assetId,
+    resourceId: value.resourceId,
     placement: freezePlacement(value.placement),
     transform: freezeTransform(value.transform),
   });
@@ -91,6 +101,7 @@ function overlayEqual(
 ): boolean {
   return (
     left.assetId === right.assetId &&
+    left.resourceId === right.resourceId &&
     left.placement.pageIndex === right.placement.pageIndex &&
     left.placement.xPts === right.placement.xPts &&
     left.placement.yPts === right.placement.yPts &&
@@ -191,6 +202,13 @@ export function mediaEditorHistoryReducer(
   action: MediaEditorHistoryAction,
 ): MediaEditorHistoryState {
   switch (action.type) {
+    case "HYDRATE":
+      return Object.freeze({
+        past: Object.freeze([]),
+        present: freezeSnapshot(action.overlays),
+        future: Object.freeze([]),
+        selectedAssetId: null,
+      });
     case "ADD": {
       const overlay = freezeMediaOverlay(action.overlay);
       return Object.freeze({

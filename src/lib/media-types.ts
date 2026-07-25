@@ -1,16 +1,49 @@
 declare const localMediaAssetIdBrand: unique symbol;
+declare const localMediaResourceIdBrand: unique symbol;
 
 /** A local-only identifier. ID generation belongs to a later intake layer. */
 export type LocalMediaAssetId = string & {
   readonly [localMediaAssetIdBrand]: "LocalMediaAssetId";
 };
 
+/** A local-only content identifier for one sanitized JPEG or PNG binary. */
+export type LocalMediaResourceId = string & {
+  readonly [localMediaResourceIdBrand]: "LocalMediaResourceId";
+};
+
+export type SanitizedMediaMimeType = "image/jpeg" | "image/png";
+
+export interface MediaDocumentBinding {
+  readonly schemaVersion: 1;
+  readonly pdfDigest: string;
+  readonly incarnation: string;
+}
+
+export type MediaDocumentPersistenceSession =
+  | Readonly<{ status: "loading" }>
+  | Readonly<{
+      status: "ready";
+      binding: Readonly<MediaDocumentBinding>;
+      mediaState:
+        | Readonly<{
+            kind: "empty";
+            writeSequence: number;
+          }>
+        | Readonly<{ kind: "hydrate" }>;
+    }>
+  | Readonly<{ status: "unavailable" }>;
+
 /** Serializable metadata only; binary media remains outside this contract. */
 export interface MediaAssetDescriptor {
   readonly id: LocalMediaAssetId;
+  /**
+   * Required for registry-backed overlays. Optional only so geometry-only
+   * callers can continue using descriptors without a binary resource.
+   */
+  readonly resourceId?: LocalMediaResourceId;
   readonly kind: "image";
   readonly fileName: string;
-  readonly mimeType: string;
+  readonly mimeType: SanitizedMediaMimeType;
   readonly intrinsicWidthPx: number;
   readonly intrinsicHeightPx: number;
 }
@@ -39,6 +72,7 @@ export interface MediaTransform {
 /** Serializable state for one placed overlay; no binary asset data is stored. */
 export interface MediaOverlayState {
   readonly assetId: LocalMediaAssetId;
+  readonly resourceId: LocalMediaResourceId;
   readonly placement: Readonly<MediaPlacement>;
   readonly transform: Readonly<MediaTransform>;
 }

@@ -16,6 +16,10 @@ import {
   RasterSanitizationCoordinator,
   type SanitizedRaster,
 } from "@/lib/media-sanitize";
+import * as mediaPersistence from "@/lib/media-persistence";
+import type {
+  MediaDocumentPersistenceSession,
+} from "@/lib/media-types";
 
 const mockSanitize = jest.fn();
 const mockDispose = jest.fn();
@@ -91,12 +95,18 @@ function renderBoundary({
   onMessage = jest.fn(),
   withOverlay = false,
   strict = false,
+  persistenceSession,
+  loadDocumentPageBounds,
 }: {
   enabled?: boolean;
   documentRevision?: number;
   onMessage?: jest.Mock;
   withOverlay?: boolean;
   strict?: boolean;
+  persistenceSession?: Readonly<MediaDocumentPersistenceSession>;
+  loadDocumentPageBounds?: () => Promise<
+    readonly Readonly<{ widthPts: number; heightPts: number }>[]
+  >;
 } = {}) {
   const boundary = (
     <MediaEditorBoundary
@@ -107,6 +117,8 @@ function renderBoundary({
         pageIndex === 0 ? { widthPts: 600, heightPts: 800 } : null
       }
       onMessage={onMessage}
+      persistenceSession={persistenceSession}
+      loadDocumentPageBounds={loadDocumentPageBounds}
     >
       <ContextProbe />
       {withOverlay && (
@@ -162,6 +174,7 @@ describe("MediaEditorBoundary", () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    jest.restoreAllMocks();
   });
 
   it("creates no media provider, input, coordinator, or URL while default-off", () => {
@@ -185,6 +198,48 @@ describe("MediaEditorBoundary", () => {
       "Choose a JPEG, PNG, or static WebP to add to the PDF",
     );
     expect(RasterSanitizationCoordinator).toHaveBeenCalledTimes(1);
+  });
+
+  it("publishes a transactionally known-empty session immediately without a hydration race", async () => {
+    const resourceId = mediaPersistence.localMediaResourceIdFromString(
+      `sha256-${"1".repeat(64)}`,
+    );
+    jest
+      .spyOn(mediaPersistence, "hashSanitizedMediaBytes")
+      .mockResolvedValue(resourceId);
+    const hydrate = jest.spyOn(
+      mediaPersistence,
+      "hydrateCurrentMediaSnapshot",
+    );
+    const loadDocumentPageBounds = jest.fn(async () => {
+      throw new Error("known-empty media must not load all PDF page bounds");
+    });
+    mockSanitize.mockResolvedValueOnce(sanitizedRaster("known-empty"));
+    const { unmount } = renderBoundary({
+      persistenceSession: Object.freeze({
+        status: "ready",
+        binding: Object.freeze({
+          schemaVersion: 1,
+          pdfDigest: `pdf-sha256-v1-${"2".repeat(64)}`,
+          incarnation:
+            "incarnation-v1-00000000-0000-4000-8000-000000000002",
+        }),
+        mediaState: Object.freeze({
+          kind: "empty" as const,
+          writeSequence: 0,
+        }),
+      }),
+      loadDocumentPageBounds,
+    });
+
+    expect(screen.getByTestId("add-media-input")).toBeEnabled();
+    await chooseFile("immediate.png", "image/png");
+    await waitFor(() =>
+      expect(screen.getByTestId("media-count")).toHaveTextContent("1"),
+    );
+    expect(hydrate).not.toHaveBeenCalled();
+    expect(loadDocumentPageBounds).not.toHaveBeenCalled();
+    unmount();
   });
 
   it("recreates local resources during Strict Mode effect replay", async () => {
@@ -331,5 +386,98 @@ describe("MediaEditorBoundary", () => {
     expect(screen.queryByTestId("media-overlay")).not.toBeInTheDocument();
     expect(revokeObjectURL).toHaveBeenCalledWith("blob:sanitized-test");
     expect(overlay).not.toBeInTheDocument();
+  });
+
+  it("hydrates one validated snapshot before enabling persistence writes", async () => {
+    const resourceId = mediaPersistence.localMediaResourceIdFromString(
+      `sha256-${"a".repeat(64)}`,
+    );
+    const binding = Object.freeze({
+      schemaVersion: 1 as const,
+      pdfDigest: `pdf-sha256-v1-${"b".repeat(64)}`,
+      incarnation: "incarnation-v1-00000000-0000-4000-8000-000000000001",
+    });
+    jest.spyOn(mediaPersistence, "hydrateCurrentMediaSnapshot").mockResolvedValue(
+      Object.freeze({
+        overlays: Object.freeze([
+          Object.freeze({
+            assetId: "media-restored" as never,
+            resourceId,
+            placement: Object.freeze({
+              pageIndex: 0,
+              xPts: 100,
+              yPts: 200,
+              widthPts: 200,
+              heightPts: 100,
+            }),
+            transform: Object.freeze({
+              rotationDeg: 90,
+              flipX: true,
+              flipY: false,
+            }),
+          }),
+        ]),
+        resources: Object.freeze([
+          Object.freeze({
+            resourceId,
+            mimeType: "image/png" as const,
+            width: 400,
+            height: 200,
+            byteLength: 4,
+            blob: new Blob(["safe"], { type: "image/png" }),
+          }),
+        ]),
+        writeSequence: 7,
+        recoveredFromInvalid: false,
+      }),
+    );
+
+    renderBoundary({
+      persistenceSession: Object.freeze({
+        status: "ready",
+        binding,
+        mediaState: Object.freeze({ kind: "hydrate" as const }),
+      }),
+      loadDocumentPageBounds: async () =>
+        Object.freeze([
+          Object.freeze({ widthPts: 600, heightPts: 800 }),
+        ]),
+      withOverlay: true,
+    });
+
+    await waitFor(() =>
+      expect(screen.getByTestId("media-count")).toHaveTextContent("1"),
+    );
+    expect(screen.getByTestId("media-overlay")).toHaveAttribute(
+      "data-media-rotation",
+      "90",
+    );
+    expect(screen.getByTestId("media-overlay")).toHaveAttribute(
+      "data-media-flip-x",
+      "true",
+    );
+    expect(createObjectURL).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps in-session editing available when durable media storage is unavailable", async () => {
+    const onMessage = jest.fn();
+    mockSanitize.mockResolvedValueOnce(sanitizedRaster("memory-only"));
+    renderBoundary({
+      onMessage,
+      persistenceSession: Object.freeze({ status: "unavailable" }),
+      loadDocumentPageBounds: async () =>
+        Object.freeze([
+          Object.freeze({ widthPts: 600, heightPts: 800 }),
+        ]),
+    });
+
+    await chooseFile("memory-only.png", "image/png");
+    await waitFor(() =>
+      expect(screen.getByTestId("media-count")).toHaveTextContent("1"),
+    );
+    expect(onMessage).toHaveBeenCalledWith(
+      expect.stringContaining("couldn’t be saved"),
+      5000,
+    );
   });
 });

@@ -34,6 +34,14 @@ Standard QA runs Jest first, then the complete standard Playwright suite against
 configuration, starts a fresh production-mode Next.js server, and uses one
 worker. Build the app first with `pnpm build`.
 
+Add Media remains default-off. `tests/add-media-persistence.spec.ts` verifies
+that preseeded version-3 media data causes no media-store, hash, object-URL,
+network, or UI work in the default build. Its enabled persistence, reload,
+deduplication, corruption, quota, and mobile cases run only against a production
+build created with the exact
+`NEXT_PUBLIC_QUICKFILL_ADD_MEDIA=local-v1` value. See
+`docs/add-media-rollout.md` for the two-build verification sequence.
+
 Playwright's generated results, screenshots, videos, and traces are written to
 the operating system's temporary directory. `playwright-report/` and
 `test-results/` must not be created in the repository.
