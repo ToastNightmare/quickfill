@@ -829,6 +829,14 @@ async function uploadMobilePdf(page: Page, pdf: TestPdf) {
   await uploadPdf(page, pdf, 0);
 }
 
+async function resetEditorStorage(page: Page) {
+  await page.evaluate(() => {
+    localStorage.clear();
+    localStorage.setItem("quickfill_welcomed", "true");
+    localStorage.setItem("quickfill_tour_done", "true");
+  });
+}
+
 async function verifyStaticPdf(bytes: Buffer) {
   const pdfDoc = await PDFDocument.load(bytes);
   const acroForm = pdfDoc.catalog.get(PDFName.of("AcroForm"));
@@ -1298,11 +1306,10 @@ test.describe("PDF accuracy pack", () => {
   });
 
   test("mixed-rotation upload stays overflow-free on desktop and mobile", async ({
+    browser,
     page,
   }) => {
     const pageErrors: string[] = [];
-    page.on("pageerror", (error) => pageErrors.push(error.message));
-    await installQaHeaders(page);
     const pdf = await createRotationLandmarkPdf(
       "quickfill-qa-responsive-rotations.pdf",
       [
@@ -1311,26 +1318,40 @@ test.describe("PDF accuracy pack", () => {
       ],
     );
 
-    await page.setViewportSize({ width: 1365, height: 900 });
-    await page.goto("/editor?advanced=1");
-    await page.evaluate(() => localStorage.clear());
-    await uploadPdf(page, pdf, 1);
-    await expect(page.getByText(pdf.name)).toBeVisible({ timeout: 15000 });
-    await expect(page.locator("canvas").first()).toBeVisible();
-    let overflow = await page
-      .locator("body")
-      .evaluate((body) => body.scrollWidth - body.clientWidth);
-    expect(overflow).toBeLessThanOrEqual(2);
+    const desktopContext = await browser.newContext({
+      baseURL: configuredPdfQaOrigin,
+      viewport: { width: 1365, height: 900 },
+    });
+    try {
+      const desktopPage = await desktopContext.newPage();
+      desktopPage.on("pageerror", (error) => pageErrors.push(error.message));
+      await installQaHeaders(desktopPage);
+      await desktopPage.goto("/editor?advanced=1");
+      await resetEditorStorage(desktopPage);
+      await uploadPdf(desktopPage, pdf, 1);
+      await expect(desktopPage.getByText(pdf.name)).toBeVisible({
+        timeout: 15000,
+      });
+      await expect(desktopPage.locator("canvas").first()).toBeVisible();
+      const desktopOverflow = await desktopPage
+        .locator("body")
+        .evaluate((body) => body.scrollWidth - body.clientWidth);
+      expect(desktopOverflow).toBeLessThanOrEqual(2);
+    } finally {
+      await desktopContext.close();
+    }
 
+    page.on("pageerror", (error) => pageErrors.push(error.message));
+    await installQaHeaders(page);
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto("/editor");
-    await page.evaluate(() => localStorage.clear());
+    await resetEditorStorage(page);
     await uploadMobilePdf(page, pdf);
     await expect(page.getByText(pdf.name)).toBeVisible({ timeout: 15000 });
-    overflow = await page
+    const mobileOverflow = await page
       .locator("body")
       .evaluate((body) => body.scrollWidth - body.clientWidth);
-    expect(overflow).toBeLessThanOrEqual(2);
+    expect(mobileOverflow).toBeLessThanOrEqual(2);
     expect(pageErrors, "Unexpected responsive-flow page errors").toEqual([]);
   });
 
