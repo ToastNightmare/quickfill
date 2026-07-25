@@ -511,12 +511,12 @@ describe("fill-pdf rotated page placement", () => {
   });
 
   it.each([
-    [90, "0 1 -1 0 300 0 cm"],
-    [180, "-1 0 0 -1 300 200 cm"],
-    [270, "0 -1 1 0 0 200 cm"],
+    [90, "0 1 -1 0 300 0 cm", "1 0 0 1 20 126 cm"],
+    [180, "-1 0 0 -1 300 200 cm", "1 0 0 1 20 26 cm"],
+    [270, "0 -1 1 0 0 200 cm", "1 0 0 1 20 126 cm"],
   ])(
     "maps text, checkbox, signature, whiteout, and mask geometry through a %i° page",
-    async (rotation, expectedTransform) => {
+    async (rotation, expectedTransform, expectedWhiteoutPosition) => {
       const response = await POST(await makeRotatedFieldRequest(rotation));
       const bytes = new Uint8Array(await response.arrayBuffer());
       const resultDoc = await PDFDocument.load(bytes);
@@ -530,6 +530,7 @@ describe("fill-pdf rotated page placement", () => {
       await expect(hasTextEvidence(bytes, "ROTATEDROUTETEXT")).resolves.toBe(true);
       expect(Buffer.from(bytes).toString("latin1")).toContain("/Subtype /Image");
       expect(decodedStreams).toContain(expectedTransform);
+      expect(decodedStreams.includes(expectedWhiteoutPosition)).toBe(true);
       expect(decodedStreams).toContain("W*");
       expect(decodedStreams).toMatch(/\nf\n/);
       expect(recordDownloadLog).toHaveBeenCalledWith(

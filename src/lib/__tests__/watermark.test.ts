@@ -14,34 +14,6 @@ const ROTATION_SAFE_DOWNLOAD_FLAG = "NEXT_PUBLIC_QUICKFILL_ROTATION_SAFE_DOWNLOA
 const originalRotationSafeDownloadFlag =
   process.env[ROTATION_SAFE_DOWNLOAD_FLAG];
 
-function transformDisplayRect(
-  rect: [number, number, number, number],
-  rotation: number,
-  rawWidth: number,
-  rawHeight: number,
-) {
-  const [left, bottom, right, top] = rect;
-  const transformPoint = (x: number, y: number): [number, number] => {
-    if (rotation === 90) return [rawWidth - y, x];
-    if (rotation === 180) return [rawWidth - x, rawHeight - y];
-    if (rotation === 270) return [y, rawHeight - x];
-    return [x, y];
-  };
-  const points = [
-    transformPoint(left, bottom),
-    transformPoint(left, top),
-    transformPoint(right, bottom),
-    transformPoint(right, top),
-  ];
-
-  return [
-    Math.min(...points.map(([x]) => x)),
-    Math.min(...points.map(([, y]) => y)),
-    Math.max(...points.map(([x]) => x)),
-    Math.max(...points.map(([, y]) => y)),
-  ];
-}
-
 describe("applyBorderWatermark", () => {
   let pdfDoc: PDFDocument;
   let pages: ReturnType<PDFDocument["getPages"]>;
@@ -197,6 +169,7 @@ describe("applyBorderWatermark", () => {
       const page = pages[0];
       page.setRotation(degrees(rotation));
       const drawTextSpy = jest.spyOn(page, "drawText");
+      const pushOperatorsSpy = jest.spyOn(page, "pushOperators");
       const { width: rawWidth, height: rawHeight } = page.getSize();
       const swapsDimensions = rotation === 90 || rotation === 270;
       const displayWidth = swapsDimensions ? rawHeight : rawWidth;
@@ -208,6 +181,19 @@ describe("applyBorderWatermark", () => {
 
       applyBorderWatermark([page], font, false);
 
+      const expectedTransform =
+        rotation === 90
+          ? "0 1 -1 0 595 0 cm"
+          : rotation === 180
+            ? "-1 0 0 -1 595 842 cm"
+            : "0 -1 1 0 0 842 cm";
+      const pushedOperators = pushOperatorsSpy.mock.calls
+        .flat()
+        .map((operator) => operator.toString());
+      expect(pushedOperators).toEqual(
+        expect.arrayContaining(["q", expectedTransform, "Q"]),
+      );
+
       expect(drawTextSpy).toHaveBeenCalledTimes(2);
       for (let index = 0; index < displayYs.length; index++) {
         expect(drawTextSpy.mock.calls[index][1]?.x).toBeCloseTo(textX);
@@ -217,27 +203,39 @@ describe("applyBorderWatermark", () => {
       const annotations = page.node.Annots();
       expect(annotations).toBeDefined();
       expect(annotations!.size()).toBe(2);
+      const centeredStart = textX - 2;
+      const centeredEnd = textX + textWidth + 2;
+      const expectedRects =
+        rotation === 90
+          ? [
+              [3, centeredStart, 16, centeredEnd],
+              [576, centeredStart, 589, centeredEnd],
+            ]
+          : rotation === 180
+            ? [
+                [centeredStart, 3, centeredEnd, 16],
+                [centeredStart, 823, centeredEnd, 836],
+              ]
+            : [
+                [579, centeredStart, 592, centeredEnd],
+                [6, centeredStart, 19, centeredEnd],
+              ];
+
       for (let index = 0; index < displayYs.length; index++) {
         const annotation = pdfDoc.context.lookup(
           annotations!.get(index),
           PDFDict,
-        );
-        const displayY = displayYs[index];
-        const expectedRect = transformDisplayRect(
-          [textX - 2, displayY - 2, textX + textWidth + 2, displayY + fontSize + 3],
-          rotation,
-          rawWidth,
-          rawHeight,
         );
         const actualRect = annotationRect(annotation);
 
         expect(annotationUri(annotation)).toBe(WATERMARK_URL);
         expect(actualRect).toHaveLength(4);
         actualRect.forEach((value, rectIndex) => {
-          expect(value).toBeCloseTo(expectedRect[rectIndex]);
+          expect(value).toBeCloseTo(expectedRects[index][rectIndex]);
         });
       }
 
+      pushOperatorsSpy.mockRestore();
       drawTextSpy.mockRestore();
     },
   );

@@ -42,8 +42,8 @@ The six added cases cover:
 - desktop/mobile upload layout without horizontal overflow.
 
 Run both the default-off and exact flag-on production builds. The flag-off
-finalizer regression also compares its SHA-256 output with the byte-for-byte
-master baseline.
+finalizer regression compares complete Pro and free output bytes with fixtures
+generated directly by master commit `7beb21965fa6143482388d0da5cc04b020f0987f`.
 
 ## Known CropBox boundary
 

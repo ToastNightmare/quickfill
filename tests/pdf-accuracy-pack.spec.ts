@@ -39,6 +39,16 @@ type PdfVisualMetrics = {
   outputPng: string;
 };
 
+type PdfColorBounds = {
+  canvasWidth: number;
+  canvasHeight: number;
+  matchedPixels: number;
+  minX: number;
+  minY: number;
+  maxX: number;
+  maxY: number;
+};
+
 const visualThresholds = {
   minWidth: 300,
   minHeight: 500,
@@ -53,6 +63,15 @@ const rotationSafeDownloadEnabled =
   process.env.NEXT_PUBLIC_QUICKFILL_ROTATION_SAFE_DOWNLOAD === "local-v1";
 const enforcedBaseUrl = "http://localhost:3000";
 const enforcedRedisUrl = "http://127.0.0.1:38079";
+const expectedEnforcedPdfTestCount = 26;
+const fieldPositionLandmark = {
+  x: 73,
+  y: 91,
+  width: 84,
+  height: 46,
+  fillColor: "#ff00ff",
+  rgb: [255, 0, 255] as const,
+};
 const configuredPdfQaOrigin = new URL(
   process.env.PLAYWRIGHT_BASE_URL ?? enforcedBaseUrl,
 ).origin;
@@ -311,6 +330,26 @@ async function createRotationLandmarkPdf(
   };
 }
 
+async function createFilledRotatedPdf(
+  rotation: 90 | 180,
+): Promise<TestPdf> {
+  const pdfDoc = await PDFDocument.create();
+  const page = pdfDoc.addPage([620, 420]);
+  page.drawRectangle({
+    x: 0,
+    y: 0,
+    width: 620,
+    height: 420,
+    color: rgb(0.9, 0.92, 0.95),
+  });
+  page.setRotation(degrees(rotation));
+
+  return {
+    name: `quickfill-qa-field-position-${rotation}.pdf`,
+    bytes: Buffer.from(await pdfDoc.save()),
+  };
+}
+
 async function decodedPdfStreams(bytes: Uint8Array): Promise<string> {
   const pdfDoc = await PDFDocument.load(bytes);
   let decoded = "";
@@ -323,6 +362,46 @@ async function decodedPdfStreams(bytes: Uint8Array): Promise<string> {
     }
   }
   return decoded;
+}
+
+async function requestRotatedPositionExport(
+  request: APIRequestContext,
+  rotation: 90 | 180,
+): Promise<Buffer> {
+  test.skip(!qaToken, "Set QUICKFILL_QA_TOKEN to run rotated position checks.");
+  const source = await createFilledRotatedPdf(rotation);
+  const displayWidth = rotation === 90 ? 420 : 620;
+  const displayHeight = rotation === 90 ? 620 : 420;
+  const response = await request.post("/api/fill-pdf", {
+    headers: qaToken ? { "x-quickfill-qa-token": qaToken } : undefined,
+    multipart: {
+      pdf: {
+        name: source.name,
+        mimeType: "application/pdf",
+        buffer: source.bytes,
+      },
+      fields: JSON.stringify([
+        {
+          id: `position-landmark-${rotation}`,
+          type: "whiteout",
+          x: fieldPositionLandmark.x,
+          y: fieldPositionLandmark.y,
+          width: fieldPositionLandmark.width,
+          height: fieldPositionLandmark.height,
+          page: 0,
+          fillColor: fieldPositionLandmark.fillColor,
+        },
+      ]),
+      pageScales: JSON.stringify([[0, 1]]),
+      viewportDims: JSON.stringify([
+        [0, { width: displayWidth, height: displayHeight }],
+      ]),
+      hasAcroForm: "false",
+    },
+  });
+
+  expect(response.status()).toBe(200);
+  return Buffer.from(await response.body());
 }
 
 async function requestRotatedFieldExport(
@@ -551,11 +630,63 @@ async function installPdfVisualRenderer(page: Page) {
               outputPng: output.canvas.toDataURL("image/png"),
             };
           };
+
+          window.locatePdfColor = async (
+            outputBase64,
+            targetRgb,
+            pageNumber = 1,
+            tolerance = 6,
+          ) => {
+            const output = await renderToCanvas("output", outputBase64, pageNumber);
+            const data = output.imageData.data;
+            let matchedPixels = 0;
+            let minX = output.canvas.width;
+            let minY = output.canvas.height;
+            let maxX = -1;
+            let maxY = -1;
+
+            for (let y = 0; y < output.canvas.height; y++) {
+              for (let x = 0; x < output.canvas.width; x++) {
+                const index = (y * output.canvas.width + x) * 4;
+                const matches =
+                  Math.abs(data[index] - targetRgb[0]) <= tolerance &&
+                  Math.abs(data[index + 1] - targetRgb[1]) <= tolerance &&
+                  Math.abs(data[index + 2] - targetRgb[2]) <= tolerance;
+                if (!matches) continue;
+
+                matchedPixels++;
+                minX = Math.min(minX, x);
+                minY = Math.min(minY, y);
+                maxX = Math.max(maxX, x);
+                maxY = Math.max(maxY, y);
+              }
+            }
+
+            if (matchedPixels === 0) return null;
+            return {
+              canvasWidth: output.canvas.width,
+              canvasHeight: output.canvas.height,
+              matchedPixels,
+              minX,
+              minY,
+              maxX,
+              maxY,
+            };
+          };
         </script>
       </body>
     </html>
   `);
-  await page.waitForFunction(() => typeof (window as any).comparePdfVisuals === "function");
+  await page.waitForFunction(() => {
+    const renderer = window as unknown as {
+      comparePdfVisuals?: unknown;
+      locatePdfColor?: unknown;
+    };
+    return (
+      typeof renderer.comparePdfVisuals === "function" &&
+      typeof renderer.locatePdfColor === "function"
+    );
+  });
 }
 
 async function installPdfTextExtractor(page: Page) {
@@ -884,15 +1015,58 @@ async function comparePdfVisuals(
   );
 }
 
+async function locatePdfColor(
+  page: Page,
+  outputBytes: Buffer,
+  targetRgb: readonly [number, number, number],
+): Promise<PdfColorBounds | null> {
+  return page.evaluate(
+    ({ outputBase64, rgbTarget }) => {
+      return (window as unknown as {
+        locatePdfColor: (
+          outputBase64: string,
+          targetRgb: readonly [number, number, number],
+        ) => Promise<PdfColorBounds | null>;
+      }).locatePdfColor(outputBase64, rgbTarget);
+    },
+    {
+      outputBase64: outputBytes.toString("base64"),
+      rgbTarget: targetRgb,
+    },
+  );
+}
+
 test.describe("PDF accuracy pack", () => {
   let redisStub: Server | undefined;
+  let executedPdfTests = 0;
+  let skippedPdfTests = 0;
 
   test.beforeAll(async () => {
+    executedPdfTests = 0;
+    skippedPdfTests = 0;
     if (enforceQaToken) redisStub = await startEnforcedRedisStub();
+  });
+
+  test.afterEach(({}, testInfo) => {
+    executedPdfTests++;
+    if (testInfo.status === "skipped") skippedPdfTests++;
   });
 
   test.afterAll(async () => {
     await stopEnforcedRedisStub(redisStub);
+    if (enforceQaToken) {
+      console.log(
+        `PDF accuracy enforcement: executed=${executedPdfTests}, skipped=${skippedPdfTests}`,
+      );
+      expect(
+        executedPdfTests,
+        "Enforced PDF QA must execute the deliberate 26-test pack",
+      ).toBe(expectedEnforcedPdfTestCount);
+      expect(
+        skippedPdfTests,
+        "Enforced PDF QA must not skip any PDF accuracy test",
+      ).toBe(0);
+    }
   });
 
   test("rotation landmark corpus preserves rendered parity at 0, 90, 180, and 270 degrees", async ({
@@ -987,7 +1161,8 @@ test.describe("PDF accuracy pack", () => {
     }
   });
 
-  test("rotated API placement covers text, checkbox, signature, whiteout, and masks", async ({
+  test("rotated API placement covers field types and rendered 90/180 positions", async ({
+    page,
     request,
   }) => {
     const { output } = await requestRotatedFieldExport(request);
@@ -1009,6 +1184,58 @@ test.describe("PDF accuracy pack", () => {
       expect(decodedStreams).toContain("0 1 -1 0 620 0 cm");
     } else {
       expect(decodedStreams).not.toContain("0 1 -1 0 620 0 cm");
+    }
+
+    if (rotationSafeDownloadEnabled) {
+      await installPdfVisualRenderer(page);
+      for (const rotation of [90, 180] as const) {
+        const positionedOutput = await requestRotatedPositionExport(
+          request,
+          rotation,
+        );
+        const positionedDoc = await PDFDocument.load(positionedOutput);
+        expect(positionedDoc.getPages()[0].getRotation().angle).toBe(rotation);
+
+        const bounds = await locatePdfColor(
+          page,
+          positionedOutput,
+          fieldPositionLandmark.rgb,
+        );
+        expect(bounds, `${rotation}° field color should render`).not.toBeNull();
+        const located = bounds!;
+        const expectedCanvas =
+          rotation === 90
+            ? { width: 420, height: 620 }
+            : { width: 620, height: 420 };
+        expect(located.canvasWidth).toBe(expectedCanvas.width);
+        expect(located.canvasHeight).toBe(expectedCanvas.height);
+        expect(
+          Math.abs(located.minX - fieldPositionLandmark.x),
+          `${rotation}° field left edge`,
+        ).toBeLessThanOrEqual(2);
+        expect(
+          Math.abs(located.minY - fieldPositionLandmark.y),
+          `${rotation}° field top edge`,
+        ).toBeLessThanOrEqual(2);
+        expect(
+          Math.abs(
+            located.maxX -
+              (fieldPositionLandmark.x + fieldPositionLandmark.width - 1),
+          ),
+          `${rotation}° field right edge`,
+        ).toBeLessThanOrEqual(2);
+        expect(
+          Math.abs(
+            located.maxY -
+              (fieldPositionLandmark.y + fieldPositionLandmark.height - 1),
+          ),
+          `${rotation}° field bottom edge`,
+        ).toBeLessThanOrEqual(2);
+        expect(located.matchedPixels).toBeGreaterThan(
+          (fieldPositionLandmark.width - 4) *
+            (fieldPositionLandmark.height - 4),
+        );
+      }
     }
   });
 

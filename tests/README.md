@@ -68,7 +68,8 @@ suite directly, and then runs the standard Playwright suite directly against a
 fresh `http://localhost:3000` server with one worker. It never runs
 `qa:pdf:prod` or targets production. The same required job then runs
 `pnpm qa:pdf` in enforcement mode against localhost and requires all 26 PDF
-accuracy checks to execute with none skipped.
+accuracy checks to execute with none skipped. The pack's enforcement hook
+fails the run unless it records exactly `executed=26, skipped=0`.
 
 The workflow requires these matching Clerk Development credentials as GitHub
 repository Actions secrets:

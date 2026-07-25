@@ -2,10 +2,10 @@
  * @jest-environment node
  */
 
-import { createHash } from "node:crypto";
 import { degrees, PDFArray, PDFDict, PDFDocument, PDFName, PDFString } from "pdf-lib";
 import { finalizePdfForDownload } from "../pdf-finalize";
 import { WATERMARK_URL } from "../watermark";
+import { MASTER_PDF_FINALIZE_OUTPUT } from "./fixtures/pdf-finalize-master-output";
 
 const ONE_PIXEL_PNG = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAFgwJ/l3hT2wAAAABJRU5ErkJggg==";
 const ROTATION_SAFE_DOWNLOAD_FLAG = "NEXT_PUBLIC_QUICKFILL_ROTATION_SAFE_DOWNLOAD";
@@ -124,18 +124,22 @@ describe("finalizePdfForDownload", () => {
     expect(resultDoc.getPages()[0].node.Annots()).toBeUndefined();
   });
 
-  it("keeps default-off output byte-identical to the master baseline", async () => {
-    jest.useFakeTimers({ now: FIXED_PDF_DATE });
-    delete process.env[ROTATION_SAFE_DOWNLOAD_FLAG];
+  it.each([
+    ["Pro", true, MASTER_PDF_FINALIZE_OUTPUT.pro],
+    ["free", false, MASTER_PDF_FINALIZE_OUTPUT.free],
+  ])(
+    "keeps default-off %s output byte-identical to actual master output",
+    async (_label, isPro, masterOutputBase64) => {
+      jest.useFakeTimers({ now: FIXED_PDF_DATE });
+      delete process.env[ROTATION_SAFE_DOWNLOAD_FLAG];
 
-    const sourceDoc = await createDeterministicSource(90);
-    const resultBytes = await finalizePdfForDownload(sourceDoc, true);
-    const resultHash = createHash("sha256").update(resultBytes).digest("hex");
+      const sourceDoc = await createDeterministicSource(90);
+      const resultBytes = await finalizePdfForDownload(sourceDoc, isPro);
+      const masterBytes = Buffer.from(masterOutputBase64, "base64");
 
-    expect(resultHash).toBe(
-      "0dd5f2159094936b0a98620bea1b4f5fe78ca970cdabd08fe3decb1cf032fc25",
-    );
-  });
+      expect(Buffer.from(resultBytes)).toEqual(masterBytes);
+    },
+  );
 
   it("enables rotation preservation only for the exact local-v1 flag", async () => {
     for (const disabledValue of [undefined, "true", "local-v1 ", "LOCAL-V1"]) {
