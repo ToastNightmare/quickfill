@@ -2,7 +2,12 @@ import "@testing-library/jest-dom";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MobileFiller } from "@/components/MobileFiller";
 import { normalizeDocumentUpload } from "@/lib/document-intake";
-import { savePdfToIndexedDB } from "@/lib/persistence";
+import {
+  loadFieldsFromLocalStorage,
+  loadFileNameFromLocalStorage,
+  loadPdfFromIndexedDB,
+  savePdfToIndexedDB,
+} from "@/lib/persistence";
 import { detectAcroFormFields } from "@/lib/pdf-utils";
 import { trackEvent } from "@/lib/analytics";
 import { loadPdfjsClient } from "@/lib/pdfjs-client";
@@ -121,6 +126,9 @@ jest.mock("@/components/PhotoCleanupModal", () => ({
 
 jest.mock("@/lib/persistence", () => ({
   clearEditorState: jest.fn().mockResolvedValue(undefined),
+  loadFieldsFromLocalStorage: jest.fn(() => []),
+  loadFileNameFromLocalStorage: jest.fn(() => ""),
+  loadPdfFromIndexedDB: jest.fn().mockResolvedValue(null),
   saveFieldsToLocalStorage: jest.fn(),
   saveFileNameToLocalStorage: jest.fn(),
   savePageToLocalStorage: jest.fn(),
@@ -176,6 +184,9 @@ jest.mock("@/lib/profile-autofill", () => ({
 
 const mockedNormalize = normalizeDocumentUpload as jest.MockedFunction<typeof normalizeDocumentUpload>;
 const mockedSavePdf = savePdfToIndexedDB as jest.MockedFunction<typeof savePdfToIndexedDB>;
+const mockedLoadPdf = loadPdfFromIndexedDB as jest.MockedFunction<typeof loadPdfFromIndexedDB>;
+const mockedLoadFields = loadFieldsFromLocalStorage as jest.MockedFunction<typeof loadFieldsFromLocalStorage>;
+const mockedLoadFileName = loadFileNameFromLocalStorage as jest.MockedFunction<typeof loadFileNameFromLocalStorage>;
 const mockedDetect = detectAcroFormFields as jest.MockedFunction<typeof detectAcroFormFields>;
 const mockedRolloutEnabled = isFieldSuggestionReviewEnabled as jest.MockedFunction<typeof isFieldSuggestionReviewEnabled>;
 const mockedStoreIntent = storeFieldSuggestionIntent as jest.MockedFunction<typeof storeFieldSuggestionIntent>;
@@ -220,6 +231,9 @@ beforeEach(() => {
   mockAuthState.isSignedIn = false;
   mockAuthState.userId = null;
   mockAuthState.sessionId = null;
+  mockedLoadPdf.mockReset().mockResolvedValue(null);
+  mockedLoadFields.mockReset().mockReturnValue([]);
+  mockedLoadFileName.mockReset().mockReturnValue("");
   localStorage.clear();
 });
 
@@ -324,6 +338,52 @@ describe("MobileFiller photo cleanup wiring", () => {
     });
     expect(screen.queryByTestId("photo-cleanup-modal")).not.toBeInTheDocument();
     expect(sessionStorage.getItem("qf-photo-capture-source")).toBeNull();
+  });
+});
+
+describe("MobileFiller AcroForm fields", () => {
+  const originalFetch = global.fetch;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    global.fetch = jest.fn(async () => ({ ok: true, json: async () => ({}) } as Response));
+  });
+
+  afterEach(() => {
+    global.fetch = originalFetch;
+  });
+
+  it("repairs duplicate widget IDs so same-name fields fill independently", async () => {
+    mockedNormalize.mockResolvedValueOnce({
+      fileName: "duplicate-fields.pdf",
+      pdfBytes: new ArrayBuffer(8),
+      sourceType: "pdf",
+      skipAcroFormDetection: false,
+    });
+    mockedDetect.mockResolvedValueOnce([
+      { name: "full_name", type: "text", x: 10, y: 10, width: 120, height: 20, page: 0, value: "" },
+      { name: "full_name", type: "text", x: 10, y: 50, width: 120, height: 20, page: 0, value: "" },
+    ]);
+
+    render(<MobileFiller />);
+    pickUploadFile(new File([new Uint8Array([1])], "duplicate-fields.pdf", {
+      type: "application/pdf",
+    }));
+
+    const inputs = await screen.findAllByPlaceholderText("Type here");
+    expect(inputs).toHaveLength(2);
+    expect(screen.getByRole("link", { name: "Open full editor" })).toHaveAttribute(
+      "href",
+      "/editor?advanced=1"
+    );
+
+    fireEvent.change(inputs[0], { target: { value: "First widget" } });
+    expect(inputs[0]).toHaveValue("First widget");
+    expect(inputs[1]).toHaveValue("");
+
+    fireEvent.change(inputs[1], { target: { value: "Second widget" } });
+    expect(inputs[0]).toHaveValue("First widget");
+    expect(inputs[1]).toHaveValue("Second widget");
   });
 });
 
@@ -674,6 +734,7 @@ describe("MobileFiller download gate", () => {
   const originalFetch = global.fetch;
   const originalCreateObjectURL = global.URL.createObjectURL;
   const originalRevokeObjectURL = global.URL.revokeObjectURL;
+  const originalInnerWidth = window.innerWidth;
   const mockedTrackEvent = trackEvent as jest.MockedFunction<typeof trackEvent>;
 
   const fillPdfCalls: string[] = [];
@@ -734,6 +795,11 @@ describe("MobileFiller download gate", () => {
     global.fetch = originalFetch;
     global.URL.createObjectURL = originalCreateObjectURL;
     global.URL.revokeObjectURL = originalRevokeObjectURL;
+    Object.defineProperty(window, "innerWidth", {
+      configurable: true,
+      value: originalInnerWidth,
+    });
+    window.history.replaceState(null, "", "/");
   });
 
   it("non-Pro download opens the gate and never calls fill-pdf", async () => {
@@ -814,6 +880,50 @@ describe("MobileFiller download gate", () => {
     expect(mockedTrackEvent).not.toHaveBeenCalledWith(
       "download_gate_shown",
       expect.anything()
+    );
+  });
+
+  it("restores the simple session and completes a paid return download", async () => {
+    Object.defineProperty(window, "innerWidth", {
+      configurable: true,
+      value: 390,
+    });
+    window.history.replaceState(null, "", "/editor?download=ready");
+    localStorage.setItem("quickfill_mobile_filler_session", "v1");
+    mockAuthState.isSignedIn = true;
+    mockAuthState.userId = "user_paid_return";
+    mockAuthState.sessionId = "session_paid_return";
+    mockedLoadPdf.mockResolvedValueOnce(new ArrayBuffer(8));
+    mockedLoadFileName.mockReturnValueOnce("paid-return.pdf");
+    mockedLoadFields.mockReturnValueOnce([
+      {
+        id: "full_name",
+        type: "text",
+        x: 10,
+        y: 10,
+        width: 120,
+        height: 20,
+        page: 0,
+        value: "Kyle",
+        fontSize: 12,
+      },
+    ]);
+    mockedDetect.mockResolvedValueOnce([
+      { name: "full_name", type: "text", x: 10, y: 10, width: 120, height: 20, page: 0, value: "" },
+    ]);
+    mockFetchWithUsage({ isPro: true, tier: "pro", guest: false });
+
+    render(<MobileFiller restorePersistedSession />);
+
+    expect(await screen.findByRole("heading", { name: "All done!" })).toBeInTheDocument();
+    expect(fillPdfCalls).toHaveLength(1);
+    expect(fillPdfBodies).toHaveLength(1);
+    expect(JSON.parse(String(fillPdfBodies[0].get("fields")))).toEqual([
+      expect.objectContaining({ id: "full_name", type: "text", value: "Kyle" }),
+    ]);
+    expect(mockedTrackEvent).toHaveBeenCalledWith(
+      "download_success",
+      expect.objectContaining({ surface: "mobile", pro: true }),
     );
   });
 

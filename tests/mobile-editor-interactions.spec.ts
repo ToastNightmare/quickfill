@@ -1,9 +1,11 @@
-import { expect, test } from "@playwright/test";
+import { devices, expect, test } from "@playwright/test";
 import type { Locator, Page } from "@playwright/test";
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 
 const localBaseUrl = process.env.PLAYWRIGHT_BASE_URL ?? "";
 const runsAgainstLocalApp = /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(?::\d+)?/i.test(localBaseUrl);
+const mobileSimpleDefaultEnabled =
+  process.env.NEXT_PUBLIC_QUICKFILL_MOBILE_SIMPLE_DEFAULT === "v1";
 
 test.beforeEach(async ({ page }) => {
   await page.route(
@@ -13,7 +15,7 @@ test.beforeEach(async ({ page }) => {
   );
 });
 
-async function createMobileEditorPdf() {
+async function createMobileEditorPdf(includeAcroFormField = false) {
   const pdfDoc = await PDFDocument.create();
   const page = pdfDoc.addPage([612, 792]);
   const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
@@ -33,6 +35,11 @@ async function createMobileEditorPdf() {
     borderWidth: 1,
     borderColor: rgb(0.1, 0.1, 0.1),
   });
+
+  if (includeAcroFormField) {
+    const fullName = pdfDoc.getForm().createTextField("fullName");
+    fullName.addToPage(page, { x: 48, y: 650, width: 240, height: 28 });
+  }
 
   return Buffer.from(await pdfDoc.save());
 }
@@ -129,6 +136,62 @@ async function seedRestoredEditorPdf(page: Page, name: string) {
     { bytes: pdfBytes, fileName: name }
   );
 }
+
+test.describe("mobile simple default routing", () => {
+  test.skip(!runsAgainstLocalApp, "Requires PLAYWRIGHT_BASE_URL pointing at a local dev server.");
+  test.use({
+    userAgent: devices["iPhone 13"].userAgent,
+    viewport: devices["iPhone 13"].viewport,
+    deviceScaleFactor: devices["iPhone 13"].deviceScaleFactor,
+    isMobile: devices["iPhone 13"].isMobile,
+    hasTouch: devices["iPhone 13"].hasTouch,
+  });
+
+  test("honors the flag and keeps both view escapes working", async ({ page }) => {
+    await prepareEmptyMobileEditor(page);
+    await page.goto("/editor", { waitUntil: "domcontentloaded" });
+
+    if (!mobileSimpleDefaultEnabled) {
+      await expect(page).toHaveURL(/\/editor\?advanced=1$/);
+      await expect(page.getByText("Tap to browse your file")).toBeVisible();
+      await expect(page.getByRole("heading", { name: "Finish paperwork fast" })).toBeHidden();
+      return;
+    }
+
+    await expect(page).toHaveURL(/\/editor$/);
+    await expect(page.getByRole("heading", { name: "Finish paperwork fast" })).toBeVisible();
+    await expect(page.getByText("Tap to browse your file")).toBeHidden();
+
+    const mobilePickerInput = page.locator(
+      "input[type='file']:not([capture]):not([data-testid='document-upload-input'])"
+    );
+    await mobilePickerInput.setInputFiles({
+      name: "mobile-simple-escape.pdf",
+      mimeType: "application/pdf",
+      buffer: await createMobileEditorPdf(true),
+    });
+
+    await expect(page.getByText(/0 of 1 filled/i)).toBeVisible();
+    const openFullEditor = page.getByRole("link", { name: "Open full editor" });
+    await expect(openFullEditor).toBeVisible();
+    await openFullEditor.click();
+
+    await expect(page).toHaveURL(/\/editor\?advanced=1$/);
+    await expect(page.getByTestId("pdf-page")).toBeVisible({ timeout: 15_000 });
+    const switchToSimple = page.getByRole("link", { name: "Switch to simple view" });
+    await expect(switchToSimple).toBeVisible();
+    await switchToSimple.click();
+
+    await expect(page).toHaveURL(/\/editor$/);
+    await expect(page.getByText(/0 of 1 filled/i)).toBeVisible({
+      timeout: 15_000,
+    });
+    await expect(page.getByRole("link", { name: "Open full editor" })).toBeVisible({
+      timeout: 15_000,
+    });
+    await expect(page.getByTestId("pdf-page")).toHaveCount(0);
+  });
+});
 
 test.describe("mobile editor field interactions", () => {
   test.skip(!runsAgainstLocalApp, "Requires PLAYWRIGHT_BASE_URL pointing at a local dev server.");

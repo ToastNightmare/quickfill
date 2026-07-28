@@ -27,12 +27,16 @@ import { trackAutofillShadowReport } from "@/lib/autofill-shadow-reporting";
 import { autofillModeFromFlag, runProfileAutofill } from "@/lib/profile-autofill";
 import {
   clearEditorState,
+  loadFieldsFromLocalStorage,
+  loadFileNameFromLocalStorage,
+  loadPdfFromIndexedDB,
   saveFieldsToLocalStorage,
   saveFileNameToLocalStorage,
   savePageToLocalStorage,
   savePdfToIndexedDB,
 } from "@/lib/persistence";
 import type { EditorField } from "@/lib/types";
+import { repairDuplicateEditorFieldIds } from "@/lib/field-ids";
 import {
   DOCUMENT_FILE_INPUT_ACCEPT,
   IMAGE_CAPTURE_ACCEPT,
@@ -56,6 +60,36 @@ import {
 } from "@/lib/field-suggestion-rollout";
 
 const SIG_KEYWORDS = ["signature", "sign here", "signed", "sig", "esign", "e-sign"];
+const MOBILE_FILLER_SESSION_KEY = "quickfill_mobile_filler_session";
+const MOBILE_FILLER_SESSION_VALUE = "v1";
+
+function isPhoneSimpleViewport() {
+  return typeof window !== "undefined" && window.innerWidth < 640;
+}
+
+function hasMobileFillerSession() {
+  try {
+    return localStorage.getItem(MOBILE_FILLER_SESSION_KEY) === MOBILE_FILLER_SESSION_VALUE;
+  } catch {
+    return false;
+  }
+}
+
+function markMobileFillerSession() {
+  try {
+    localStorage.setItem(MOBILE_FILLER_SESSION_KEY, MOBILE_FILLER_SESSION_VALUE);
+  } catch {
+    // The in-memory flow still works when browser storage is unavailable.
+  }
+}
+
+function clearMobileFillerSession() {
+  try {
+    localStorage.removeItem(MOBILE_FILLER_SESSION_KEY);
+  } catch {
+    // Nothing else to clear when browser storage is unavailable.
+  }
+}
 
 function isSignatureField(name: string): boolean {
   const lower = name.toLowerCase().replace(/[_\-.]/g, " ");
@@ -167,6 +201,71 @@ function toEditorField(field: MobileField): EditorField {
   };
 }
 
+function repairMobileFieldIds(fields: MobileField[]): MobileField[] {
+  const repaired = repairDuplicateEditorFieldIds(fields.map(toEditorField));
+  return fields.map((field, index) => (
+    repaired[index].id === field.id ? field : { ...field, id: repaired[index].id }
+  ));
+}
+
+function mobileFieldsFromDetected(
+  detected: Awaited<ReturnType<typeof detectAcroFormFields>>,
+): MobileField[] {
+  return repairMobileFieldIds(detected.map((field) => ({
+    id: field.name,
+    name: field.name,
+    type: isSignatureField(field.name) ? "signature" as const : field.type,
+    value: field.value ?? "",
+    checked: false,
+    page: field.page,
+    x: field.x,
+    y: field.y,
+    width: field.width,
+    height: field.height,
+  })));
+}
+
+function mobileFieldFromSavedEditorField(
+  field: EditorField,
+  name: string,
+): MobileField | null {
+  const base = {
+    id: field.id,
+    name,
+    page: field.page,
+    x: field.x,
+    y: field.y,
+    width: field.width,
+    height: field.height,
+  };
+
+  if (field.type === "checkbox") {
+    return { ...base, type: "checkbox", value: "", checked: field.checked };
+  }
+  if (field.type === "signature") {
+    return {
+      ...base,
+      type: "signature",
+      value: field.value,
+      checked: false,
+      signatureDataUrl: field.signatureDataUrl,
+    };
+  }
+  if (field.type === "text") {
+    return { ...base, type: "text", value: field.value, checked: false };
+  }
+  if (field.type === "whiteout") {
+    return {
+      ...base,
+      type: "whiteout",
+      value: "",
+      checked: false,
+      fillColor: field.fillColor,
+    };
+  }
+  return null;
+}
+
 function pageCountFromFields(fields: MobileField[]) {
   if (fields.length === 0) return 1;
   return Math.max(...fields.map((field) => field.page)) + 1;
@@ -174,7 +273,11 @@ function pageCountFromFields(fields: MobileField[]) {
 
 
 
-export function MobileFiller() {
+export function MobileFiller({
+  restorePersistedSession = false,
+}: {
+  restorePersistedSession?: boolean;
+}) {
   const makeFillableEnabled = isFieldSuggestionReviewEnabled();
   const { isLoaded, isSignedIn, userId, sessionId } = useAuth();
   const [step, setStep] = useState<Step>("upload");
@@ -200,6 +303,9 @@ export function MobileFiller() {
   const signatureActiveSessionKeyRef = useRef<string | null>(null);
   const signatureChangedThisSessionRef = useRef(false);
   const signatureComponentMountedRef = useRef(false);
+  const restoreStartedRef = useRef(false);
+  const downloadReadyFiredRef = useRef(false);
+  const downloadCancelledHandledRef = useRef(false);
   const authenticatedSignatureSessionKey = isLoaded && isSignedIn && userId && sessionId
     ? JSON.stringify([userId, sessionId])
     : null;
@@ -263,6 +369,60 @@ export function MobileFiller() {
   }, [authenticatedSignatureSessionKey, isLoaded]);
 
   useEffect(() => {
+    if (!restorePersistedSession || !isPhoneSimpleViewport() || !hasMobileFillerSession()) return;
+    if (restoreStartedRef.current) return;
+    restoreStartedRef.current = true;
+
+    let cancelled = false;
+    setIsLoading(true);
+
+    void loadPdfFromIndexedDB()
+      .then(async (savedPdf) => {
+        if (cancelled) return;
+        if (!savedPdf) {
+          clearMobileFillerSession();
+          return;
+        }
+
+        const detected = await detectAcroFormFields(savedPdf).catch(() => []);
+        if (cancelled) return;
+
+        const savedFields = repairDuplicateEditorFieldIds(loadFieldsFromLocalStorage());
+        const restoredFields = savedFields.length > 0
+          ? savedFields.map((field, index) =>
+              mobileFieldFromSavedEditorField(field, detected[index]?.name ?? field.id)
+            )
+          : mobileFieldsFromDetected(detected);
+
+        if (restoredFields.some((field) => field === null)) {
+          clearMobileFillerSession();
+          window.location.assign("/editor?advanced=1");
+          return;
+        }
+
+        const nextFields = restoredFields as MobileField[];
+        setFileName(loadFileNameFromLocalStorage());
+        setPdfBytes(savedPdf);
+        setFields(nextFields);
+        setHasAcroForm(detected.length > 0 || nextFields.length > 0);
+        setStep("filling");
+      })
+      .catch(() => {
+        if (cancelled) return;
+        clearMobileFillerSession();
+        setToast("Your saved document could not be restored. Please choose it again.");
+        setTimeout(() => setToast(null), 5000);
+      })
+      .finally(() => {
+        if (!cancelled) setIsLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [restorePersistedSession]);
+
+  useEffect(() => {
     if (!pdfBytes) return;
     saveFieldsToLocalStorage(fields.map(toEditorField));
   }, [fields, pdfBytes]);
@@ -291,6 +451,7 @@ export function MobileFiller() {
       const documentRevision = options?.makeFillable && makeFillableEnabled && upload.sourceType === "image"
         ? await createDocumentRevision(bytes)
         : null;
+      markMobileFillerSession();
       setFileName(upload.fileName);
       setPdfBytes(bytes);
       await savePdfToIndexedDB(bytes);
@@ -301,18 +462,7 @@ export function MobileFiller() {
         ? []
         : await detectAcroFormFields(bytes).catch(() => []);
       if (detected.length > 0) {
-        const nextFields = detected.map((f) => ({
-          id: f.name,
-          name: f.name,
-          type: isSignatureField(f.name) ? "signature" as const : f.type,
-          value: f.value ?? "",
-          checked: false,
-          page: f.page,
-          x: f.x,
-          y: f.y,
-          width: f.width,
-          height: f.height,
-        }));
+        const nextFields = mobileFieldsFromDetected(detected);
         setHasAcroForm(true);
         setFields(nextFields);
         saveFieldsToLocalStorage(nextFields.map(toEditorField));
@@ -327,6 +477,7 @@ export function MobileFiller() {
           window.sessionStorage.setItem("qf-photo-capture-source", "1");
         }
         if (documentRevision) storeFieldSuggestionIntent(documentRevision);
+        clearMobileFillerSession();
         window.location.assign("/editor?advanced=1");
         return;
       }
@@ -334,6 +485,7 @@ export function MobileFiller() {
       setStep("filling");
     } catch (error) {
       clearFieldSuggestionIntent();
+      clearMobileFillerSession();
       setPdfBytes(null);
       const message = error instanceof Error ? error.message : "This file could not be opened. Try a different file.";
       showToast(message, 5000);
@@ -582,8 +734,37 @@ export function MobileFiller() {
     }
   }, [pdfBytes, fields, fileName, hasAcroForm, showToast, openDownloadGate]);
 
+  useEffect(() => {
+    if (!restorePersistedSession || !isPhoneSimpleViewport() || !hasMobileFillerSession()) return;
+    if (!pdfBytes || downloadCancelledHandledRef.current) return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("download") !== "cancelled") return;
+    downloadCancelledHandledRef.current = true;
+
+    trackEvent("checkout_cancelled", { source: "download_preview_gate_mobile" });
+    openDownloadGate();
+
+    params.delete("download");
+    const query = params.toString();
+    window.history.replaceState(
+      null,
+      "",
+      query ? `${window.location.pathname}?${query}` : window.location.pathname,
+    );
+  }, [restorePersistedSession, pdfBytes, openDownloadGate]);
+
+  useEffect(() => {
+    if (!restorePersistedSession || !isPhoneSimpleViewport() || !hasMobileFillerSession()) return;
+    if (!isLoaded || !isSignedIn || !pdfBytes || downloadReadyFiredRef.current) return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("download") !== "ready") return;
+    downloadReadyFiredRef.current = true;
+    void handleDownload();
+  }, [restorePersistedSession, isLoaded, isSignedIn, pdfBytes, handleDownload]);
+
   const handleReset = useCallback(() => {
     clearFieldSuggestionIntent();
+    clearMobileFillerSession();
     void clearEditorState();
     setStep("upload");
     setFileName("");
@@ -705,7 +886,16 @@ export function MobileFiller() {
           <div className="min-w-0 flex-1">
             <p className="truncate text-sm font-semibold text-text">{fileName}</p>
             {fields.length > 0 && (
-              <p className="text-xs text-text-muted">{filledCount} of {fields.length} filled</p>
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5">
+                <p className="text-xs text-text-muted">{filledCount} of {fields.length} filled</p>
+                <a
+                  href="/editor?advanced=1"
+                  onClick={clearMobileFillerSession}
+                  className="text-xs font-semibold text-accent hover:underline"
+                >
+                  Open full editor
+                </a>
+              </div>
             )}
           </div>
           {fields.length > 0 && (
@@ -754,6 +944,7 @@ export function MobileFiller() {
             <div className="mt-5 grid gap-2">
               <a
                 href="/editor?advanced=1"
+                onClick={clearMobileFillerSession}
                 className="flex h-11 items-center justify-center rounded-xl bg-accent px-4 text-sm font-semibold text-white transition-colors hover:bg-accent-hover"
               >
                 Open full editor

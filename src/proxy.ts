@@ -46,6 +46,7 @@ function mobileEditorRedirect(req: NextRequest) {
   if (url.searchParams.get("mobile") === "simple") return null;
   if (url.searchParams.get("simple") === "1") return null;
   if (url.searchParams.get("advanced") === "1") return null;
+  if (process.env.NEXT_PUBLIC_QUICKFILL_MOBILE_SIMPLE_DEFAULT === "v1") return null;
 
   const nextUrl = url.clone();
   nextUrl.searchParams.set("advanced", "1");
