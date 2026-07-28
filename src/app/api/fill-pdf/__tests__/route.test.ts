@@ -3,12 +3,21 @@
  */
 
 import { NextRequest } from "next/server";
-import { PDFDocument, PDFRawStream, decodePDFRawStream } from "pdf-lib";
+import {
+  decodePDFRawStream,
+  degrees,
+  PDFDocument,
+  PDFRawStream,
+} from "pdf-lib";
 
 import { POST } from "../route";
 import { recordDownloadLog } from "@/lib/admin-logs";
 import { PDF_UPLOAD_MAX_BYTES, PDF_UPLOAD_MAX_LABEL } from "@/lib/upload-limits";
 import { maskToPdfRect } from "@/lib/pdf-mask-transform";
+
+const ROTATION_SAFE_DOWNLOAD_FLAG = "NEXT_PUBLIC_QUICKFILL_ROTATION_SAFE_DOWNLOAD";
+const originalRotationSafeDownloadFlag =
+  process.env[ROTATION_SAFE_DOWNLOAD_FLAG];
 
 jest.mock("@/lib/admin-logs", () => ({
   recordDownloadLog: jest.fn().mockResolvedValue(undefined),
@@ -168,6 +177,20 @@ async function hasTextEvidence(bytes: Uint8Array, marker: string): Promise<boole
   const literal = marker.toLowerCase();
   const hex = Buffer.from(marker, "latin1").toString("hex").toLowerCase();
   return haystack.includes(literal) || haystack.includes(hex);
+}
+
+async function decodedPdfStreams(bytes: Uint8Array): Promise<string> {
+  const doc = await PDFDocument.load(bytes);
+  let decoded = "";
+  for (const [, obj] of doc.context.enumerateIndirectObjects()) {
+    if (!(obj instanceof PDFRawStream)) continue;
+    try {
+      decoded += Buffer.from(decodePDFRawStream(obj).decode()).toString("latin1");
+    } catch {
+      decoded += Buffer.from(obj.getContents()).toString("latin1");
+    }
+  }
+  return decoded;
 }
 
 interface FlattenRequestOptions {
@@ -385,6 +408,136 @@ describe("fill-pdf signature adjustments", () => {
       PDFDocument.load(new Uint8Array(await response.arrayBuffer())),
     ).resolves.toBeDefined();
   });
+});
+
+async function createRotatedSourcePdf(rotation: number) {
+  const pdfDoc = await PDFDocument.create();
+  const page = pdfDoc.addPage([300, 200]);
+  page.setRotation(degrees(rotation));
+  return await pdfDoc.save();
+}
+
+async function makeRotatedFieldRequest(rotation: number) {
+  const sourceBytes = await createRotatedSourcePdf(rotation);
+  const displayWidth = rotation === 90 || rotation === 270 ? 200 : 300;
+  const displayHeight = rotation === 90 || rotation === 270 ? 300 : 200;
+  const formData = new FormData();
+
+  formData.set(
+    "pdf",
+    new Blob([sourceBytes], { type: "application/pdf" }),
+    `rotation-${rotation}.pdf`,
+  );
+  formData.set(
+    "fields",
+    JSON.stringify([
+      {
+        id: "rotated-text",
+        type: "text",
+        x: 20,
+        y: 20,
+        width: 120,
+        height: 28,
+        page: 0,
+        value: "ROTATEDROUTETEXT",
+        fontSize: 12,
+        eraseMasks: [{ x: 72, y: 20, width: 24, height: 28 }],
+      },
+      {
+        id: "rotated-checkbox",
+        type: "checkbox",
+        x: 20,
+        y: 60,
+        width: 24,
+        height: 24,
+        page: 0,
+        checked: true,
+      },
+      {
+        id: "rotated-signature",
+        type: "signature",
+        x: 20,
+        y: 100,
+        width: 100,
+        height: 30,
+        page: 0,
+        value: "Signature fallback",
+        fontSize: 16,
+        signatureDataUrl: TINY_PNG_DATA_URL,
+      },
+      {
+        id: "rotated-whiteout",
+        type: "whiteout",
+        x: 20,
+        y: 150,
+        width: 100,
+        height: 24,
+        page: 0,
+        fillColor: "#f7f7f7",
+      },
+    ]),
+  );
+  formData.set("pageScales", JSON.stringify([[0, 1]]));
+  formData.set(
+    "viewportDims",
+    JSON.stringify([[0, { width: displayWidth, height: displayHeight }]]),
+  );
+  formData.set("hasAcroForm", "false");
+
+  return new NextRequest("https://getquickfill.com/api/fill-pdf", {
+    method: "POST",
+    body: formData,
+    headers: {
+      "x-quickfill-qa-token": "test-token",
+    },
+  });
+}
+
+describe("fill-pdf rotated page placement", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    process.env.QUICKFILL_QA_TOKEN = "test-token";
+    process.env[ROTATION_SAFE_DOWNLOAD_FLAG] = "local-v1";
+  });
+
+  afterEach(() => {
+    delete process.env.QUICKFILL_QA_TOKEN;
+    if (originalRotationSafeDownloadFlag === undefined) {
+      delete process.env[ROTATION_SAFE_DOWNLOAD_FLAG];
+    } else {
+      process.env[ROTATION_SAFE_DOWNLOAD_FLAG] =
+        originalRotationSafeDownloadFlag;
+    }
+  });
+
+  it.each([
+    [90, "0 1 -1 0 300 0 cm", "1 0 0 1 20 126 cm"],
+    [180, "-1 0 0 -1 300 200 cm", "1 0 0 1 20 26 cm"],
+    [270, "0 -1 1 0 0 200 cm", "1 0 0 1 20 126 cm"],
+  ])(
+    "maps text, checkbox, signature, whiteout, and mask geometry through a %i° page",
+    async (rotation, expectedTransform, expectedWhiteoutPosition) => {
+      const response = await POST(await makeRotatedFieldRequest(rotation));
+      const bytes = new Uint8Array(await response.arrayBuffer());
+      const resultDoc = await PDFDocument.load(bytes);
+      const resultPage = resultDoc.getPages()[0];
+      const decodedStreams = await decodedPdfStreams(bytes);
+
+      expect(response.status).toBe(200);
+      expect(resultPage.getRotation().angle).toBe(rotation);
+      expect(resultPage.getWidth()).toBe(300);
+      expect(resultPage.getHeight()).toBe(200);
+      await expect(hasTextEvidence(bytes, "ROTATEDROUTETEXT")).resolves.toBe(true);
+      expect(Buffer.from(bytes).toString("latin1")).toContain("/Subtype /Image");
+      expect(decodedStreams).toContain(expectedTransform);
+      expect(decodedStreams.includes(expectedWhiteoutPosition)).toBe(true);
+      expect(decodedStreams).toContain("W*");
+      expect(decodedStreams).toMatch(/\nf\n/);
+      expect(recordDownloadLog).toHaveBeenCalledWith(
+        expect.objectContaining({ status: "success" }),
+      );
+    },
+  );
 });
 
 describe("maskToPdfRect", () => {
