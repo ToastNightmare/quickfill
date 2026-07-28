@@ -8,6 +8,14 @@ import {
 const addMediaEnabled =
   process.env.NEXT_PUBLIC_QUICKFILL_ADD_MEDIA === "local-v1";
 
+test.beforeEach(async ({ page }) => {
+  await page.route(
+    "http://localhost:3000/_vercel/insights/script.js",
+    (route) =>
+      route.fulfill({ status: 200, contentType: "application/javascript", body: "" }),
+  );
+});
+
 type BrowserProbe = {
   trackRequests: boolean;
   requests: string[];
