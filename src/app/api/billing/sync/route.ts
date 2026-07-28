@@ -30,10 +30,14 @@ function requesterId(req: NextRequest, userId: string) {
 }
 
 function safeReturnTo(req: NextRequest) {
-  const returnTo = req.nextUrl.searchParams.get("returnTo") ?? "/dashboard?upgraded=true";
-  if (!returnTo.startsWith("/") || returnTo.startsWith("//")) return "/dashboard?upgraded=true";
+  const fallback = "/dashboard?upgraded=true";
+  const returnTo = req.nextUrl.searchParams.get("returnTo") ?? fallback;
+  if (!returnTo.startsWith("/") || returnTo.startsWith("//")) return fallback;
+  if (/[\\\u0000-\u001f\u007f-\u009f]/.test(returnTo)) return fallback;
 
-  const url = new URL(returnTo, req.url);
+  const requestUrl = new URL(req.url);
+  const url = new URL(returnTo, requestUrl);
+  if (url.origin !== requestUrl.origin) return fallback;
   if (url.pathname === "/dashboard" && url.searchParams.get("upgraded") === "true") {
     const successUrl = new URL("/checkout/success", req.url);
     successUrl.searchParams.set("synced", "true");

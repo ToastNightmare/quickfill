@@ -110,7 +110,13 @@ describe("proxy auth protection", () => {
     },
   );
 
-  it.each(["/api/stripe/webhook", "/api/webhooks/clerk", "/api/analytics", "/api/signature"])(
+  it.each([
+    "/api/stripe/webhook",
+    "/api/webhooks/clerk",
+    "/api/cron/reconcile-billing",
+    "/api/analytics",
+    "/api/signature",
+  ])(
     "keeps self-authenticating route %s unprotected",
     async (path) => {
       await proxy(request(path));

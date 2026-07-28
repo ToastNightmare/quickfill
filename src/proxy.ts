@@ -18,6 +18,7 @@ const isPublicRoute = createRouteMatcher([
   "/api/webhook(.*)",
   "/api/webhooks(.*)",
   "/api/stripe/webhook",
+  "/api/cron(.*)",
   "/api/fill-pdf",
   "/api/usage",
   // The signature route enforces its own auth (401 for anonymous users).

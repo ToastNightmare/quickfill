@@ -99,6 +99,27 @@ function makeOversizeFillPdfRequest() {
   });
 }
 
+function makeUnreadableFillPdfRequest() {
+  const formData = new FormData();
+
+  formData.set(
+    "pdf",
+    new Blob([new Uint8Array([0, 1, 2, 3])], { type: "application/pdf" }),
+    "unreadable.pdf",
+  );
+  formData.set("fields", JSON.stringify([]));
+  formData.set("pageScales", JSON.stringify([[0, 1]]));
+  formData.set("hasAcroForm", "false");
+
+  return new NextRequest("https://getquickfill.com/api/fill-pdf", {
+    method: "POST",
+    body: formData,
+    headers: {
+      "x-quickfill-qa-token": "test-token",
+    },
+  });
+}
+
 describe("fill-pdf route", () => {
   beforeEach(() => {
     jest.clearAllMocks();
@@ -138,6 +159,23 @@ describe("fill-pdf route", () => {
       reason: "file_too_large",
       status: "blocked",
     }));
+  });
+
+  it("keeps catch-all failure details in logs and returns a generic error", async () => {
+    const error = jest.spyOn(console, "error").mockImplementation(() => undefined);
+
+    const response = await POST(makeUnreadableFillPdfRequest());
+
+    expect(response.status).toBe(500);
+    await expect(response.json()).resolves.toEqual({
+      error: "We couldn't generate your PDF. Please try again.",
+    });
+    expect(recordDownloadLog).toHaveBeenCalledWith(expect.objectContaining({
+      message: expect.any(String),
+      reason: "server_error",
+      status: "failed",
+    }));
+    error.mockRestore();
   });
 });
 

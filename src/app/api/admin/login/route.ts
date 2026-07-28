@@ -27,7 +27,7 @@ function missingPasscodeResponse() {
 }
 
 export async function POST(req: NextRequest) {
-  const limited = await checkRateLimit(`admin-login:${requesterId(req)}`);
+  const limited = await checkRateLimit(`admin-login:${requesterId(req)}`, "adminLogin");
   if (!limited.success) {
     return NextResponse.json({ error: "Too many attempts. Try again shortly." }, { status: 429 });
   }

@@ -64,14 +64,23 @@ describe("getAdminUser", () => {
     expect(mockCurrentUser).toHaveBeenCalledTimes(1);
   });
 
-  it("keeps passcode sessions authorized when Clerk lookup fails", async () => {
+  it("rejects a valid admin session when the Clerk user is not an admin", async () => {
+    mockCookieValue("d7f4b0888e6b71a9fbec5b768e3737d6b176fd15c3f37ad5dce95d8078d60215");
+    mockCurrentUser.mockResolvedValue({
+      primaryEmailAddress: { emailAddress: "member@getquickfill.com" },
+    } as never);
+
+    await expect(getAdminUser()).resolves.toBeNull();
+
+    expect(mockCurrentUser).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects a valid admin session when Clerk lookup fails", async () => {
     mockCookieValue("d7f4b0888e6b71a9fbec5b768e3737d6b176fd15c3f37ad5dce95d8078d60215");
     mockCurrentUser.mockRejectedValue(new Error("Clerk is unavailable"));
     const warn = jest.spyOn(console, "warn").mockImplementation(() => undefined);
 
-    await expect(getAdminUser()).resolves.toEqual({
-      primaryEmailAddress: { emailAddress: "admin-session" },
-    });
+    await expect(getAdminUser()).resolves.toBeNull();
 
     expect(mockCurrentUser).toHaveBeenCalledTimes(1);
     warn.mockRestore();

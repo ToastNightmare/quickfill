@@ -103,13 +103,12 @@ export async function getAdminUser() {
 
   try {
     const user = await currentUser();
-    if (isAdminUser(user)) return user;
+    return isAdminUser(user) ? user : null;
   } catch (error) {
     console.warn(
       "Admin session is valid, but Clerk user lookup failed.",
       error instanceof Error ? error.message : String(error),
     );
+    return null;
   }
-
-  return { primaryEmailAddress: { emailAddress: "admin-session" } };
 }
