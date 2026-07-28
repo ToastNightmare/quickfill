@@ -312,7 +312,10 @@ export async function POST(request: NextRequest) {
       reason: "server_error",
       message,
     }).catch(() => {});
-    return NextResponse.json({ error: message }, { status: 500 });
+    return NextResponse.json(
+      { error: "We couldn't generate your PDF. Please try again." },
+      { status: 500 },
+    );
   }
 }
 
