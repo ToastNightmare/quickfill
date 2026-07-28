@@ -103,9 +103,29 @@ const GESTURE_HINT_KEY = "quickfill_gesture_hint_seen";
 const SNAP_MIN = 125;
 const SNAP_MAX = 175;
 const FIELD_SUGGESTION_SNAPSHOT_WAIT_MS = 5_000;
+const MOBILE_FILLER_SESSION_KEY = "quickfill_mobile_filler_session";
+const MOBILE_FILLER_SESSION_VALUE = "v1";
 // On mobile/tablet (below the lg desktop layout) we allow zooming below
 // SNAP_MIN so the full page fits the screen
 const isMobileDevice = () => typeof window !== "undefined" && window.innerWidth < 1024;
+const isPhoneSimpleViewport = () => typeof window !== "undefined" && window.innerWidth < 640;
+
+function hasMobileFillerSession() {
+  try {
+    return localStorage.getItem(MOBILE_FILLER_SESSION_KEY) === MOBILE_FILLER_SESSION_VALUE;
+  } catch {
+    return false;
+  }
+}
+
+function markMobileFillerSession() {
+  try {
+    localStorage.setItem(MOBILE_FILLER_SESSION_KEY, MOBILE_FILLER_SESSION_VALUE);
+  } catch {
+    // Navigation still works when browser storage is unavailable.
+  }
+}
+
 type LocalSaveStatus = "idle" | "saved" | "restored";
 
 interface ActiveFieldSuggestionReview {
@@ -356,6 +376,8 @@ function EditorPageContent() {
   const signatureActiveSessionKeyRef = useRef<string | null>(null);
   const signatureChangedThisSessionRef = useRef(false);
   const searchParams = useSearchParams();
+  const mobileSimpleDefaultEnabled =
+    process.env.NEXT_PUBLIC_QUICKFILL_MOBILE_SIMPLE_DEFAULT === "v1";
   const advancedMobile = searchParams.get("advanced") === "1";
   const showFullEditorOnMobile = advancedMobile || Boolean(pdfBytes);
   const fullEditorUploadClassName = showFullEditorOnMobile
@@ -742,6 +764,20 @@ function EditorPageContent() {
         deactivateViewerDocumentRevision();
         return;
       }
+      if (
+        mobileSimpleDefaultEnabled &&
+        !advancedMobile &&
+        isPhoneSimpleViewport() &&
+        hasMobileFillerSession()
+      ) {
+        if (addMediaEnabled) {
+          setMediaPersistenceSession(
+            Object.freeze({ status: "unavailable" as const }),
+          );
+        }
+        deactivateViewerDocumentRevision();
+        return;
+      }
       const savedFields = repairDuplicateEditorFieldIds(loadFieldsFromLocalStorage());
       const savedPage = loadPageFromLocalStorage();
       const savedName = loadFileNameFromLocalStorage();
@@ -824,6 +860,8 @@ function EditorPageContent() {
     beginFieldSuggestionReview,
     activateNextViewerDocumentRevision,
     deactivateViewerDocumentRevision,
+    advancedMobile,
+    mobileSimpleDefaultEnabled,
   ]);
 
   useEffect(() => {
@@ -2355,10 +2393,23 @@ function EditorPageContent() {
       <>
         {/* Mobile, dedicated filler flow */}
         <div className={advancedMobile ? "hidden" : "sm:hidden"}>
-          <MobileFiller />
+          <MobileFiller
+            restorePersistedSession={mobileSimpleDefaultEnabled && !advancedMobile}
+          />
         </div>
         {/* Desktop and advanced mobile full editor upload */}
         <div className={fullEditorUploadClassName}>
+          {mobileSimpleDefaultEnabled && (
+            <div className="flex justify-end border-b border-border px-4 py-2 sm:hidden">
+              <a
+                href="/editor"
+                onClick={markMobileFillerSession}
+                className="text-xs font-medium text-text-muted underline underline-offset-2 transition-colors hover:text-text"
+              >
+                Switch to simple view
+              </a>
+            </div>
+          )}
           {isLoading && (
             <div className="fixed inset-0 z-[100] flex items-center justify-center bg-surface/80">
               <div className="flex flex-col items-center gap-3">
@@ -2457,6 +2508,17 @@ function EditorPageContent() {
     <>
     {/* Keep loaded PDFs in the full editor on mobile so restored work stays visible. */}
     <div className={fullEditorCanvasClassName}>
+      {mobileSimpleDefaultEnabled && (
+        <div className="flex justify-end border-b border-border bg-surface px-4 py-2 sm:hidden">
+          <a
+            href="/editor"
+            onClick={markMobileFillerSession}
+            className="text-xs font-medium text-text-muted underline underline-offset-2 transition-colors hover:text-text"
+          >
+            Switch to simple view
+          </a>
+        </div>
+      )}
       {/* Loading overlay */}
       {isLoading && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-surface/80">

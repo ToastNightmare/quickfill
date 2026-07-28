@@ -1,6 +1,8 @@
 import proxy from "../proxy";
 
 const mockProtect = jest.fn();
+const MOBILE_SIMPLE_DEFAULT_FLAG = "NEXT_PUBLIC_QUICKFILL_MOBILE_SIMPLE_DEFAULT";
+const originalMobileSimpleDefaultFlag = process.env[MOBILE_SIMPLE_DEFAULT_FLAG];
 
 jest.mock("next/server", () => ({
   NextResponse: {
@@ -51,6 +53,15 @@ function request(path: string, userAgent = "Mozilla/5.0") {
 describe("proxy auth protection", () => {
   beforeEach(() => {
     mockProtect.mockReset();
+    delete process.env[MOBILE_SIMPLE_DEFAULT_FLAG];
+  });
+
+  afterAll(() => {
+    if (originalMobileSimpleDefaultFlag === undefined) {
+      delete process.env[MOBILE_SIMPLE_DEFAULT_FLAG];
+    } else {
+      process.env[MOBILE_SIMPLE_DEFAULT_FLAG] = originalMobileSimpleDefaultFlag;
+    }
   });
 
   it.each([
@@ -125,17 +136,82 @@ describe("proxy auth protection", () => {
     },
   );
 
-  it("preserves mobile editor redirect", async () => {
+  it("preserves the mobile editor redirect when the simple default flag is off", async () => {
     const response = await proxy(request("/editor", "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X)"));
 
     expect(mockProtect).not.toHaveBeenCalled();
     expect(response?.headers.get("location")).toBe("https://getquickfill.com/editor?advanced=1");
   });
 
+  it.each(["", "true", "V1", "local-v1"])(
+    "keeps the mobile editor redirect for non-v1 flag value %j",
+    async (value) => {
+      process.env[MOBILE_SIMPLE_DEFAULT_FLAG] = value;
+
+      const response = await proxy(request("/editor", "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X)"));
+
+      expect(response?.headers.get("location")).toBe("https://getquickfill.com/editor?advanced=1");
+    },
+  );
+
+  it("does not redirect a phone from the simple default when the flag is v1", async () => {
+    process.env[MOBILE_SIMPLE_DEFAULT_FLAG] = "v1";
+
+    const response = await proxy(request("/editor", "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X)"));
+
+    expect(mockProtect).not.toHaveBeenCalled();
+    expect(response).toBeUndefined();
+  });
+
+  it("keeps the paid-return query on the legacy advanced redirect when the flag is off", async () => {
+    const response = await proxy(request(
+      "/editor?download=ready",
+      "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X)",
+    ));
+
+    expect(response?.headers.get("location")).toBe(
+      "https://getquickfill.com/editor?download=ready&advanced=1",
+    );
+  });
+
+  it("keeps the paid return in the simple flow when the flag is v1", async () => {
+    process.env[MOBILE_SIMPLE_DEFAULT_FLAG] = "v1";
+
+    const response = await proxy(request(
+      "/editor?download=ready",
+      "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X)",
+    ));
+
+    expect(response).toBeUndefined();
+  });
+
   it("does not redirect mobile editor when advanced mode is already requested", async () => {
+    process.env[MOBILE_SIMPLE_DEFAULT_FLAG] = "v1";
+
     const response = await proxy(request("/editor?advanced=1", "Mozilla/5.0 (Android 14; Mobile)"));
 
     expect(mockProtect).not.toHaveBeenCalled();
     expect(response).toBeUndefined();
   });
+
+  it.each(["/editor?mobile=simple", "/editor?simple=1"])(
+    "continues to honor the explicit simple escape %s",
+    async (path) => {
+      const response = await proxy(request(path, "Mozilla/5.0 (Android 14; Mobile)"));
+
+      expect(response).toBeUndefined();
+    },
+  );
+
+  it.each([undefined, "v1"])(
+    "leaves desktop editor requests unchanged when the flag is %s",
+    async (value) => {
+      if (value === undefined) delete process.env[MOBILE_SIMPLE_DEFAULT_FLAG];
+      else process.env[MOBILE_SIMPLE_DEFAULT_FLAG] = value;
+
+      const response = await proxy(request("/editor", "Mozilla/5.0 (X11; Linux x86_64)"));
+
+      expect(response).toBeUndefined();
+    },
+  );
 });
