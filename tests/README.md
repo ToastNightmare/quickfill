@@ -67,9 +67,12 @@ pinned pnpm version, builds the production application, runs the full Jest
 suite directly, and then runs the standard Playwright suite directly against a
 fresh `http://localhost:3000` server with one worker. It never runs
 `qa:pdf:prod` or targets production. The same required job then runs
-`pnpm qa:pdf` in enforcement mode against localhost and requires all 26 PDF
+`pnpm qa:pdf` in enforcement mode against localhost and requires all 28 PDF
 accuracy checks to execute with none skipped. The pack's enforcement hook
-fails the run unless it records exactly `executed=26, skipped=0`.
+fails the run unless it records exactly `executed=28, skipped=0`. The two
+additional checks extend secure whiteout coverage to a 90-degree page and a
+mobile-editor download; together with the unrotated case, they assert through
+pdf.js that covered source text is no longer extractable.
 
 The workflow requires these matching Clerk Development credentials as GitHub
 repository Actions secrets:

@@ -12,8 +12,13 @@ import {
 
 import { POST } from "../route";
 import { recordDownloadLog } from "@/lib/admin-logs";
+import { getRequestEntitlement } from "@/lib/entitlements";
 import { PDF_UPLOAD_MAX_BYTES, PDF_UPLOAD_MAX_LABEL } from "@/lib/upload-limits";
 import { maskToPdfRect } from "@/lib/pdf-mask-transform";
+import {
+  WHITEOUT_REDACTION_ERROR_CODE,
+  WHITEOUT_REDACTION_ERROR_MESSAGE,
+} from "@/lib/pdf-flatten";
 
 const ROTATION_SAFE_DOWNLOAD_FLAG = "NEXT_PUBLIC_QUICKFILL_ROTATION_SAFE_DOWNLOAD";
 const originalRotationSafeDownloadFlag =
@@ -31,13 +36,20 @@ jest.mock("@/lib/rate-limit", () => ({
   checkRateLimit: jest.fn().mockResolvedValue({ success: true }),
 }));
 
+const mockRedisExpire = jest.fn();
+const mockRedisGet = jest.fn();
+const mockRedisIncr = jest.fn();
+
 jest.mock("@/lib/redis", () => ({
   getRedis: jest.fn(() => ({
-    expire: jest.fn(),
-    get: jest.fn(),
-    incr: jest.fn(),
+    expire: mockRedisExpire,
+    get: mockRedisGet,
+    incr: mockRedisIncr,
   })),
 }));
+
+const mockedGetRequestEntitlement =
+  getRequestEntitlement as jest.MockedFunction<typeof getRequestEntitlement>;
 
 async function createSourcePdf() {
   const pdfDoc = await PDFDocument.create();
@@ -183,11 +195,12 @@ describe("fill-pdf route", () => {
 const TINY_PNG_DATA_URL =
   "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
 
-async function createTwoPageTextPdf() {
+async function createTwoPageTextPdf(rotation = 0) {
   const pdfDoc = await PDFDocument.create();
   const font = await pdfDoc.embedFont("Helvetica");
   const pageOne = pdfDoc.addPage([300, 200]);
   pageOne.drawText("SECRETCOVEREDTEXT", { x: 24, y: 120, size: 12, font });
+  if (rotation !== 0) pageOne.setRotation(degrees(rotation));
   const pageTwo = pdfDoc.addPage([300, 200]);
   pageTwo.drawText("KEEPPAGETWOTEXT", { x: 24, y: 120, size: 12, font });
   return await pdfDoc.save();
@@ -234,10 +247,12 @@ async function decodedPdfStreams(bytes: Uint8Array): Promise<string> {
 interface FlattenRequestOptions {
   flattenedPages?: [number, string][] | string;
   includeWhiteout?: boolean;
+  qaBypass?: boolean;
+  rotation?: number;
 }
 
 async function makeFlattenRequest(options: FlattenRequestOptions = {}) {
-  const sourceBytes = await createTwoPageTextPdf();
+  const sourceBytes = await createTwoPageTextPdf(options.rotation);
   const formData = new FormData();
 
   const fields: Record<string, unknown>[] = [
@@ -282,9 +297,9 @@ async function makeFlattenRequest(options: FlattenRequestOptions = {}) {
   return new NextRequest("https://getquickfill.com/api/fill-pdf", {
     method: "POST",
     body: formData,
-    headers: {
-      "x-quickfill-qa-token": "test-token",
-    },
+    headers: options.qaBypass === false
+      ? undefined
+      : { "x-quickfill-qa-token": "test-token" },
   });
 }
 
@@ -298,14 +313,34 @@ describe("fill-pdf flattened whiteout export", () => {
     delete process.env.QUICKFILL_QA_TOKEN;
   });
 
-  it("keeps covered text evidence when no flattened image is sent (current behaviour)", async () => {
-    const response = await POST(await makeFlattenRequest());
-    const bytes = new Uint8Array(await response.arrayBuffer());
+  it("fails closed with no PDF or quota use when a whiteout page is not flattened", async () => {
+    mockedGetRequestEntitlement.mockResolvedValue({
+      userId: "free-user",
+      anonymousId: null,
+      tier: "free",
+      limit: 3,
+      isPaid: false,
+      qa: false,
+    });
+    mockRedisGet.mockResolvedValue(0);
 
-    expect(response.status).toBe(200);
-    await expect(PDFDocument.load(bytes)).resolves.toBeDefined();
-    // Vector whiteout only covers visually; original text operators remain.
-    await expect(hasTextEvidence(bytes, "SECRETCOVEREDTEXT")).resolves.toBe(true);
+    const response = await POST(await makeFlattenRequest({ qaBypass: false }));
+
+    expect(response.status).toBe(422);
+    await expect(response.json()).resolves.toEqual({
+      error: WHITEOUT_REDACTION_ERROR_MESSAGE,
+      code: WHITEOUT_REDACTION_ERROR_CODE,
+    });
+    expect(mockRedisIncr).not.toHaveBeenCalled();
+    expect(recordDownloadLog).toHaveBeenCalledWith(
+      expect.objectContaining({
+        reason: WHITEOUT_REDACTION_ERROR_CODE,
+        status: "failed",
+      }),
+    );
+    expect(recordDownloadLog).not.toHaveBeenCalledWith(
+      expect.objectContaining({ status: "success" }),
+    );
   });
 
   it("removes covered original text from flattened whiteout pages", async () => {
@@ -328,7 +363,10 @@ describe("fill-pdf flattened whiteout export", () => {
 
   it("ignores flattened images for pages without whiteout fields", async () => {
     const response = await POST(
-      await makeFlattenRequest({ flattenedPages: [[1, TINY_PNG_DATA_URL]] }),
+      await makeFlattenRequest({
+        flattenedPages: [[1, TINY_PNG_DATA_URL]],
+        includeWhiteout: false,
+      }),
     );
     const bytes = new Uint8Array(await response.arrayBuffer());
 
@@ -337,25 +375,44 @@ describe("fill-pdf flattened whiteout export", () => {
     await expect(hasTextEvidence(bytes, "KEEPPAGETWOTEXT")).resolves.toBe(true);
   });
 
-  it("falls back to a valid PDF when flattenedPages is malformed", async () => {
+  it("fails closed when flattenedPages is malformed", async () => {
     const response = await POST(await makeFlattenRequest({ flattenedPages: "{not-json" }));
-    const bytes = new Uint8Array(await response.arrayBuffer());
 
-    expect(response.status).toBe(200);
-    await expect(PDFDocument.load(bytes)).resolves.toBeDefined();
-    await expect(hasTextEvidence(bytes, "SECRETCOVEREDTEXT")).resolves.toBe(true);
+    expect(response.status).toBe(422);
+    await expect(response.json()).resolves.toEqual({
+      error: WHITEOUT_REDACTION_ERROR_MESSAGE,
+      code: WHITEOUT_REDACTION_ERROR_CODE,
+    });
   });
 
-  it("falls back to a valid PDF when the flattened image bytes are invalid", async () => {
+  it("fails closed when the flattened image bytes are invalid", async () => {
     const response = await POST(
       await makeFlattenRequest({ flattenedPages: [[0, "data:image/png;base64,bm90LWEtcG5n"]] }),
     );
+
+    expect(response.status).toBe(422);
+    await expect(response.json()).resolves.toEqual({
+      error: WHITEOUT_REDACTION_ERROR_MESSAGE,
+      code: WHITEOUT_REDACTION_ERROR_CODE,
+    });
+  });
+
+  it("flattens a rotated whiteout page upright at its display dimensions", async () => {
+    const response = await POST(
+      await makeFlattenRequest({
+        flattenedPages: [[0, TINY_PNG_DATA_URL]],
+        rotation: 90,
+      }),
+    );
     const bytes = new Uint8Array(await response.arrayBuffer());
+    const resultDoc = await PDFDocument.load(bytes);
+    const page = resultDoc.getPages()[0];
 
     expect(response.status).toBe(200);
-    await expect(PDFDocument.load(bytes)).resolves.toBeDefined();
-    // Embed failed, so the vector whiteout fallback keeps the page intact.
-    await expect(hasTextEvidence(bytes, "SECRETCOVEREDTEXT")).resolves.toBe(true);
+    expect(page.getRotation().angle).toBe(0);
+    expect(page.getWidth()).toBe(200);
+    expect(page.getHeight()).toBe(300);
+    await expect(hasTextEvidence(bytes, "SECRETCOVEREDTEXT")).resolves.toBe(false);
   });
 });
 
@@ -503,16 +560,6 @@ async function makeRotatedFieldRequest(rotation: number) {
         fontSize: 16,
         signatureDataUrl: TINY_PNG_DATA_URL,
       },
-      {
-        id: "rotated-whiteout",
-        type: "whiteout",
-        x: 20,
-        y: 150,
-        width: 100,
-        height: 24,
-        page: 0,
-        fillColor: "#f7f7f7",
-      },
     ]),
   );
   formData.set("pageScales", JSON.stringify([[0, 1]]));
@@ -549,12 +596,12 @@ describe("fill-pdf rotated page placement", () => {
   });
 
   it.each([
-    [90, "0 1 -1 0 300 0 cm", "1 0 0 1 20 126 cm"],
-    [180, "-1 0 0 -1 300 200 cm", "1 0 0 1 20 26 cm"],
-    [270, "0 -1 1 0 0 200 cm", "1 0 0 1 20 126 cm"],
+    [90, "0 1 -1 0 300 0 cm"],
+    [180, "-1 0 0 -1 300 200 cm"],
+    [270, "0 -1 1 0 0 200 cm"],
   ])(
-    "maps text, checkbox, signature, whiteout, and mask geometry through a %i° page",
-    async (rotation, expectedTransform, expectedWhiteoutPosition) => {
+    "maps text, checkbox, signature, and mask geometry through a %i° page",
+    async (rotation, expectedTransform) => {
       const response = await POST(await makeRotatedFieldRequest(rotation));
       const bytes = new Uint8Array(await response.arrayBuffer());
       const resultDoc = await PDFDocument.load(bytes);
@@ -568,9 +615,7 @@ describe("fill-pdf rotated page placement", () => {
       await expect(hasTextEvidence(bytes, "ROTATEDROUTETEXT")).resolves.toBe(true);
       expect(Buffer.from(bytes).toString("latin1")).toContain("/Subtype /Image");
       expect(decodedStreams).toContain(expectedTransform);
-      expect(decodedStreams.includes(expectedWhiteoutPosition)).toBe(true);
       expect(decodedStreams).toContain("W*");
-      expect(decodedStreams).toMatch(/\nf\n/);
       expect(recordDownloadLog).toHaveBeenCalledWith(
         expect.objectContaining({ status: "success" }),
       );

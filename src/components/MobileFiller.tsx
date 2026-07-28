@@ -43,6 +43,12 @@ import { isCleanablePhoto } from "@/lib/image-cleanup";
 import { clearLocalSignature, loadLocalSignature, saveLocalSignature } from "@/lib/signature-store";
 import { PhotoCleanupModal } from "@/components/PhotoCleanupModal";
 import { createDocumentRevision } from "@/lib/field-suggestions";
+import { loadPdfjsClient } from "@/lib/pdfjs-client";
+import {
+  renderFlattenedWhiteoutPages,
+  WHITEOUT_REDACTION_ERROR_CODE,
+  WHITEOUT_REDACTION_ERROR_MESSAGE,
+} from "@/lib/pdf-flatten-client";
 import {
   clearFieldSuggestionIntent,
   isFieldSuggestionReviewEnabled,
@@ -56,7 +62,7 @@ function isSignatureField(name: string): boolean {
   return SIG_KEYWORDS.some((kw) => lower.includes(kw));
 }
 
-type FieldType = "text" | "checkbox" | "signature";
+type FieldType = "text" | "checkbox" | "signature" | "whiteout";
 
 type MobileField = {
   id: string;
@@ -70,11 +76,13 @@ type MobileField = {
   y: number;
   width: number;
   height: number;
+  fillColor?: string;
 };
 
 type Step = "upload" | "filling" | "done";
 
 function fieldIsFilled(field: MobileField) {
+  if (field.type === "whiteout") return true;
   if (field.type === "checkbox") return field.checked;
   if (field.type === "signature") return Boolean(field.signatureDataUrl);
   return field.value.trim() !== "";
@@ -105,6 +113,19 @@ function inputModeFor(label: string): "text" | "email" | "tel" | "numeric" {
 }
 
 function toEditorField(field: MobileField): EditorField {
+  if (field.type === "whiteout") {
+    return {
+      id: field.id,
+      type: "whiteout",
+      x: field.x,
+      y: field.y,
+      width: field.width,
+      height: field.height,
+      page: field.page,
+      fillColor: field.fillColor || "#ffffff",
+    };
+  }
+
   if (field.type === "checkbox") {
     return {
       id: field.id,
@@ -481,6 +502,29 @@ export function MobileFiller() {
       fd.append("pageScales", JSON.stringify([]));
       fd.append("hasAcroForm", String(hasAcroForm));
 
+      if (editorFields.some((field) => field.type === "whiteout")) {
+        try {
+          const pdfjsLib = await loadPdfjsClient();
+          const loadingTask = pdfjsLib.getDocument({
+            data: new Uint8Array(pdfBytes.slice(0)),
+            isEvalSupported: false,
+          });
+          try {
+            const pdf = await loadingTask.promise;
+            const flattenedPages = await renderFlattenedWhiteoutPages(pdf, editorFields);
+            if (flattenedPages.length > 0) {
+              fd.append("flattenedPages", JSON.stringify(flattenedPages));
+            }
+          } finally {
+            await loadingTask.destroy();
+          }
+        } catch (error) {
+          // The server remains authoritative and returns a fail-closed error
+          // when any whiteout page is absent.
+          console.warn("Mobile flattened whiteout rendering failed:", error);
+        }
+      }
+
       const fillRes = await fetch("/api/fill-pdf", { method: "POST", body: fd });
       if (!fillRes.ok) {
         if (fillRes.status === 402) {
@@ -489,7 +533,13 @@ export function MobileFiller() {
           openDownloadGate();
           return;
         }
-        const errBody = await fillRes.json().catch(() => ({ error: "Server error" }));
+        const errBody = await fillRes.json().catch(() => ({ error: "Server error" })) as {
+          error?: string;
+          code?: string;
+        };
+        if (errBody.code === WHITEOUT_REDACTION_ERROR_CODE) {
+          throw new Error(WHITEOUT_REDACTION_ERROR_MESSAGE);
+        }
         throw new Error(errBody.error || `Server error ${fillRes.status}`);
       }
 
@@ -523,7 +573,10 @@ export function MobileFiller() {
       setStep("done");
     } catch (error) {
       const message = error instanceof Error ? error.message : "Download failed";
-      showToast(`Download failed: ${message}`, 5000);
+      showToast(
+        message === WHITEOUT_REDACTION_ERROR_MESSAGE ? message : `Download failed: ${message}`,
+        5000,
+      );
     } finally {
       setIsDownloading(false);
     }
@@ -854,6 +907,12 @@ function FieldCard({
             </>
           )}
         </button>
+      )}
+
+      {field.type === "whiteout" && (
+        <p className="rounded-xl border border-border bg-surface-alt px-3 py-3 text-sm text-text-muted">
+          This area will be securely removed in the downloaded PDF.
+        </p>
       )}
     </div>
   );

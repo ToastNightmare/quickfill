@@ -39,7 +39,13 @@ import {
   signaturePdfDrawTransform,
   type SignatureAdjustments,
 } from "@/lib/signature-transform";
-import { applyFlattenedPages, parseFlattenedPages, whiteoutPageSet } from "@/lib/pdf-flatten";
+import {
+  applyFlattenedPages,
+  parseFlattenedPages,
+  whiteoutPageSet,
+  WHITEOUT_REDACTION_ERROR_CODE,
+  WHITEOUT_REDACTION_ERROR_MESSAGE,
+} from "@/lib/pdf-flatten";
 
 /** Replace control characters (including newlines) with a space */
 function sanitize(text: string): string {
@@ -253,16 +259,41 @@ export async function POST(request: NextRequest) {
       cleanupAcroFormArtifacts(pdfDoc);
     }
 
-    // Flattened Whiteout: pages with whiteout may arrive with a client-rendered
-    // image that already has the whiteout burned in. Replacing the page content
-    // with that image removes the covered original text from the download.
-    // Any invalid/missing image falls back to the vector whiteout below.
+    // Flattened Whiteout: every page containing whiteout must arrive as a
+    // client-rendered image with the whiteout burned in, and every image must
+    // be applied successfully. Missing/invalid pages fail closed below.
+    const whiteoutPages = whiteoutPageSet(editorFields);
     const flattenedEntries = parseFlattenedPages(
       flattenedPagesJson,
       pdfDoc.getPageCount(),
-      whiteoutPageSet(editorFields),
+      whiteoutPages,
     );
     const flattenedPageSet = await applyFlattenedPages(pdfDoc, flattenedEntries);
+    const unflattenedWhiteoutPages = Array.from(whiteoutPages)
+      .filter((pageIndex) => !flattenedPageSet.has(pageIndex))
+      .sort((left, right) => left - right);
+
+    if (unflattenedWhiteoutPages.length > 0) {
+      await recordDownloadLog({
+        status: "failed",
+        userId: access.userId,
+        guest: access.guest,
+        filename: fileForLog?.name,
+        fileSizeKb: Math.round((fileForLog?.size ?? 0) / 1024),
+        fieldCount: editorFields.length,
+        pageCount: pageCountForLog,
+        hasAcroForm,
+        reason: WHITEOUT_REDACTION_ERROR_CODE,
+        message: `Secure whiteout flattening failed for page indexes: ${unflattenedWhiteoutPages.join(", ")}`,
+      }).catch(() => {});
+      return NextResponse.json(
+        {
+          error: WHITEOUT_REDACTION_ERROR_MESSAGE,
+          code: WHITEOUT_REDACTION_ERROR_CODE,
+        },
+        { status: 422 },
+      );
+    }
 
     // Track which pages have been wrapped to avoid duplicate wrapping
     const wrappedPages = new Set<number>();

@@ -5,6 +5,12 @@ import { normalizeDocumentUpload } from "@/lib/document-intake";
 import { savePdfToIndexedDB } from "@/lib/persistence";
 import { detectAcroFormFields } from "@/lib/pdf-utils";
 import { trackEvent } from "@/lib/analytics";
+import { loadPdfjsClient } from "@/lib/pdfjs-client";
+import {
+  renderFlattenedWhiteoutPages,
+  WHITEOUT_REDACTION_ERROR_CODE,
+  WHITEOUT_REDACTION_ERROR_MESSAGE,
+} from "@/lib/pdf-flatten-client";
 import {
   isFieldSuggestionReviewEnabled,
   storeFieldSuggestionIntent,
@@ -155,6 +161,14 @@ jest.mock("@/lib/pdfjs-client", () => ({
   loadPdfjsClient: jest.fn().mockRejectedValue(new Error("pdfjs disabled in tests")),
 }));
 
+jest.mock("@/lib/pdf-flatten-client", () => {
+  const actual = jest.requireActual("@/lib/pdf-flatten-client");
+  return {
+    ...actual,
+    renderFlattenedWhiteoutPages: jest.fn().mockResolvedValue([]),
+  };
+});
+
 jest.mock("@/lib/profile-autofill", () => ({
   autofillModeFromFlag: jest.fn(() => "off"),
   runProfileAutofill: jest.fn(),
@@ -165,6 +179,9 @@ const mockedSavePdf = savePdfToIndexedDB as jest.MockedFunction<typeof savePdfTo
 const mockedDetect = detectAcroFormFields as jest.MockedFunction<typeof detectAcroFormFields>;
 const mockedRolloutEnabled = isFieldSuggestionReviewEnabled as jest.MockedFunction<typeof isFieldSuggestionReviewEnabled>;
 const mockedStoreIntent = storeFieldSuggestionIntent as jest.MockedFunction<typeof storeFieldSuggestionIntent>;
+const mockedLoadPdfjsClient = loadPdfjsClient as jest.MockedFunction<typeof loadPdfjsClient>;
+const mockedRenderFlattenedWhiteoutPages =
+  renderFlattenedWhiteoutPages as jest.MockedFunction<typeof renderFlattenedWhiteoutPages>;
 
 function pickUploadFile(file: File) {
   const input = document.querySelector('input[accept*="application/pdf"]') as HTMLInputElement;
@@ -660,9 +677,13 @@ describe("MobileFiller download gate", () => {
   const mockedTrackEvent = trackEvent as jest.MockedFunction<typeof trackEvent>;
 
   const fillPdfCalls: string[] = [];
+  const fillPdfBodies: FormData[] = [];
 
-  function mockFetchWithUsage(usage: Record<string, unknown>) {
-    global.fetch = jest.fn(async (input: RequestInfo | URL) => {
+  function mockFetchWithUsage(
+    usage: Record<string, unknown>,
+    fillPdfResponse?: Partial<Response> & Pick<Response, "ok">,
+  ) {
+    global.fetch = jest.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       if (url.includes("/api/signature")) {
         return { ok: true, json: async () => ({}) } as Response;
@@ -672,7 +693,8 @@ describe("MobileFiller download gate", () => {
       }
       if (url.includes("/api/fill-pdf")) {
         fillPdfCalls.push(url);
-        return {
+        if (init?.body instanceof FormData) fillPdfBodies.push(init.body);
+        return fillPdfResponse ?? {
           ok: true,
           status: 200,
           arrayBuffer: async () => new ArrayBuffer(8),
@@ -703,6 +725,7 @@ describe("MobileFiller download gate", () => {
     jest.clearAllMocks();
     sessionStorage.clear();
     fillPdfCalls.length = 0;
+    fillPdfBodies.length = 0;
     global.URL.createObjectURL = jest.fn(() => "blob:mock");
     global.URL.revokeObjectURL = jest.fn();
   });
@@ -791,6 +814,80 @@ describe("MobileFiller download gate", () => {
     expect(mockedTrackEvent).not.toHaveBeenCalledWith(
       "download_gate_shown",
       expect.anything()
+    );
+  });
+
+  it("renders and sends flattened whiteout pages before a mobile download", async () => {
+    const flattenedDataUrl = "data:image/png;base64,c2VjdXJlLXdoaXRlb3V0";
+    const pdfProxy = { numPages: 1, getPage: jest.fn() };
+    const destroy = jest.fn().mockResolvedValue(undefined);
+
+    mockFetchWithUsage({ isPro: true, tier: "pro", guest: false });
+    mockedNormalize.mockResolvedValueOnce({
+      fileName: "whiteout-form.pdf",
+      pdfBytes: new ArrayBuffer(8),
+      sourceType: "pdf",
+      skipAcroFormDetection: false,
+    });
+    mockedDetect.mockResolvedValueOnce([
+      {
+        name: "secure_area",
+        type: "whiteout",
+        x: 10,
+        y: 20,
+        width: 120,
+        height: 30,
+        page: 0,
+        value: "",
+      },
+    ] as never);
+    mockedLoadPdfjsClient.mockResolvedValueOnce({
+      getDocument: () => ({
+        promise: Promise.resolve(pdfProxy),
+        destroy,
+      }),
+    } as never);
+    mockedRenderFlattenedWhiteoutPages.mockResolvedValueOnce([[0, flattenedDataUrl]]);
+
+    render(<MobileFiller />);
+    pickUploadFile(new File([new Uint8Array([1])], "whiteout-form.pdf", {
+      type: "application/pdf",
+    }));
+    fireEvent.click(await screen.findByRole("button", { name: /Download PDF/i }));
+
+    expect(await screen.findByRole("heading", { name: "All done!" })).toBeInTheDocument();
+    expect(mockedRenderFlattenedWhiteoutPages).toHaveBeenCalledWith(
+      pdfProxy,
+      [expect.objectContaining({ type: "whiteout", fillColor: "#ffffff" })],
+    );
+    expect(fillPdfBodies).toHaveLength(1);
+    expect(fillPdfBodies[0].get("flattenedPages")).toBe(
+      JSON.stringify([[0, flattenedDataUrl]]),
+    );
+    expect(destroy).toHaveBeenCalledTimes(1);
+  });
+
+  it("maps the fail-closed whiteout code to the secure mobile message", async () => {
+    mockFetchWithUsage(
+      { isPro: true, tier: "pro", guest: false },
+      {
+        ok: false,
+        status: 422,
+        json: async () => ({
+          error: "Server wording should not override the secure client message.",
+          code: WHITEOUT_REDACTION_ERROR_CODE,
+        }),
+      } as Response,
+    );
+
+    const downloadButton = await uploadAcroFormPdf();
+    fireEvent.click(downloadButton);
+
+    expect(await screen.findByText(WHITEOUT_REDACTION_ERROR_MESSAGE)).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "All done!" })).not.toBeInTheDocument();
+    expect(mockedTrackEvent).not.toHaveBeenCalledWith(
+      "download_success",
+      expect.anything(),
     );
   });
 });

@@ -14,9 +14,11 @@ import {
 } from "@/lib/pdf-flatten";
 import {
   burnWhiteoutIntoCanvas,
+  flattenScaleAttemptsFor,
   flattenScaleFor,
   whiteoutPageIndexes,
   FLATTEN_MAX_DIMENSION_PX,
+  FLATTEN_MIN_RENDER_SCALE,
   FLATTEN_RENDER_SCALE,
 } from "@/lib/pdf-flatten-client";
 import type { EditorField } from "@/lib/types";
@@ -159,7 +161,7 @@ describe("applyFlattenedPages", () => {
     expect(resources).toBeDefined();
   });
 
-  it("skips rotated pages and reports nothing for them", async () => {
+  it("replaces a 90-degree page in display orientation and neutralises its rotation", async () => {
     const pdfDoc = await PDFDocument.create();
     const page = pdfDoc.addPage([300, 200]);
     page.setRotation(degrees(90));
@@ -167,7 +169,11 @@ describe("applyFlattenedPages", () => {
     const applied = await applyFlattenedPages(pdfDoc, [
       { pageIndex: 0, dataUrl: TINY_PNG_DATA_URL, kind: "png" },
     ]);
-    expect(applied.size).toBe(0);
+
+    expect(Array.from(applied)).toEqual([0]);
+    expect(page.getRotation().angle).toBe(0);
+    expect(page.getWidth()).toBe(200);
+    expect(page.getHeight()).toBe(300);
   });
 
   it("survives invalid image bytes without throwing", async () => {
@@ -195,6 +201,18 @@ describe("flattenScaleFor", () => {
 
   it("falls back to the preferred scale for degenerate sizes", () => {
     expect(flattenScaleFor(0, 0)).toBe(FLATTEN_RENDER_SCALE);
+  });
+
+  it("retries progressively down to scale 1 for normal pages", () => {
+    const attempts = flattenScaleAttemptsFor(612, 792);
+    expect(attempts[0]).toBe(FLATTEN_RENDER_SCALE);
+    expect(attempts.at(-1)).toBe(FLATTEN_MIN_RENDER_SCALE);
+    expect(attempts).toEqual([...attempts].sort((left, right) => right - left));
+  });
+
+  it("keeps a dimension-capped sub-1 scale as the only safe attempt", () => {
+    const attempts = flattenScaleAttemptsFor(6000, 3000);
+    expect(attempts).toEqual([FLATTEN_MAX_DIMENSION_PX / 6000]);
   });
 });
 
