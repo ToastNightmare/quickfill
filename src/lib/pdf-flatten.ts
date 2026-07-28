@@ -8,8 +8,12 @@
 // This is QuickFill's "Flattened Whiteout" behaviour. It is not legal
 // redaction and must never be described as such.
 
-import { PDFDocument, PDFName } from "pdf-lib";
+import { degrees, PDFDocument, PDFName } from "pdf-lib";
 import type { EditorField } from "@/lib/types";
+
+export const WHITEOUT_REDACTION_ERROR_CODE = "whiteout_redaction_failed";
+export const WHITEOUT_REDACTION_ERROR_MESSAGE =
+  "We couldn't securely remove the whited-out areas. Please try again, or contact support.";
 
 /** Max decoded bytes for a single flattened page image. */
 export const FLATTENED_IMAGE_MAX_BYTES = 8 * 1024 * 1024;
@@ -56,8 +60,9 @@ export function estimateDataUrlBytes(dataUrl: string): number {
  * Parse and validate the flattenedPages form value.
  *
  * Expected JSON shape: Array of [pageIndex, dataUrl] tuples.
- * Invalid input never throws; anything that fails validation is dropped so
- * the export falls back to the existing vector whiteout behaviour.
+ * Invalid input never throws; anything that fails validation is dropped. The
+ * route compares the accepted/applied pages with its authoritative whiteout
+ * page set and fails closed when anything is missing.
  */
 export function parseFlattenedPages(
   json: string | null,
@@ -70,12 +75,12 @@ export function parseFlattenedPages(
   try {
     raw = JSON.parse(json);
   } catch {
-    console.warn("flattenedPages: invalid JSON, falling back to vector whiteout");
+    console.warn("flattenedPages: invalid JSON");
     return [];
   }
 
   if (!Array.isArray(raw)) {
-    console.warn("flattenedPages: expected an array, falling back to vector whiteout");
+    console.warn("flattenedPages: expected an array");
     return [];
   }
 
@@ -126,8 +131,8 @@ function dataUrlToBytes(dataUrl: string): Uint8Array {
  * Replace the content of each flattened page with its burned-in image.
  *
  * The image is embedded first; only after a successful embed is the page's
- * original content stream replaced. Any failure leaves the page untouched so
- * the caller falls back to drawing the vector whiteout rectangle.
+ * original content stream replaced. Any failure leaves the page unapplied so
+ * the route can fail closed without returning a PDF.
  *
  * Returns the set of page indexes that were successfully flattened.
  */
@@ -143,12 +148,17 @@ export async function applyFlattenedPages(
       if (!page) continue;
 
       const rotation = ((page.getRotation().angle % 360) + 360) % 360;
-      if (rotation !== 0) {
+      if (rotation !== 0 && rotation !== 90 && rotation !== 180 && rotation !== 270) {
         console.warn(
-          `flattenedPages: page ${entry.pageIndex} is rotated (${rotation}deg), falling back to vector whiteout`,
+          `flattenedPages: page ${entry.pageIndex} has unsupported rotation ${rotation}deg`,
         );
         continue;
       }
+      const sourceWidth = page.getWidth();
+      const sourceHeight = page.getHeight();
+      const swapsDimensions = rotation === 90 || rotation === 270;
+      const displayWidth = swapsDimensions ? sourceHeight : sourceWidth;
+      const displayHeight = swapsDimensions ? sourceWidth : sourceHeight;
 
       const imageBytes = dataUrlToBytes(entry.dataUrl);
       if (!imageBytes.length) continue;
@@ -157,21 +167,25 @@ export async function applyFlattenedPages(
         entry.kind === "png" ? await pdfDoc.embedPng(imageBytes) : await pdfDoc.embedJpg(imageBytes);
 
       // Swap in an empty content stream, dropping the original page content
-      // (including its text operators), then draw the flattened image
-      // full-bleed. User-added fields are drawn on top afterwards.
+      // (including its text operators). pdf.js already rendered the image in
+      // display orientation, so neutralise /Rotate and use display dimensions
+      // before drawing it full-bleed. User-added fields are drawn on top in
+      // that same upright display space.
       const emptyStreamRef = pdfDoc.context.register(pdfDoc.context.stream(new Uint8Array()));
       page.node.set(PDFName.of("Contents"), emptyStreamRef);
+      page.setRotation(degrees(0));
+      page.setSize(displayWidth, displayHeight);
       page.drawImage(image, {
         x: 0,
         y: 0,
-        width: page.getWidth(),
-        height: page.getHeight(),
+        width: displayWidth,
+        height: displayHeight,
       });
 
       applied.add(entry.pageIndex);
     } catch (err) {
       console.warn(
-        `flattenedPages: embedding failed for page ${entry.pageIndex}, falling back to vector whiteout:`,
+        `flattenedPages: embedding failed for page ${entry.pageIndex}:`,
         err instanceof Error ? err.message : err,
       );
     }

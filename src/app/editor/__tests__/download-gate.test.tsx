@@ -2,6 +2,10 @@ import "@testing-library/jest-dom";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import EditorPage from "../page";
 import { trackEvent } from "@/lib/analytics";
+import {
+  WHITEOUT_REDACTION_ERROR_CODE,
+  WHITEOUT_REDACTION_ERROR_MESSAGE,
+} from "@/lib/pdf-flatten-client";
 
 jest.mock("@clerk/nextjs", () => ({
   useAuth: () => ({ isLoaded: true, isSignedIn: true }),
@@ -164,6 +168,32 @@ function mockFetchForUsage(usage: Record<string, unknown>) {
   });
 }
 
+function mockFetchWithWhiteoutFailure() {
+  global.fetch = jest.fn(async (input: RequestInfo | URL) => {
+    const url = typeof input === "string" ? input : input.toString();
+    if (url === "/api/signature") {
+      return { ok: false, json: async () => ({}) } as Response;
+    }
+    if (url === "/api/usage") {
+      return {
+        ok: true,
+        json: async () => ({ isPro: true, tier: "pro", used: 0, limit: 3 }),
+      } as Response;
+    }
+    if (url === "/api/fill-pdf") {
+      return {
+        ok: false,
+        status: 422,
+        json: async () => ({
+          error: "Server wording should not override the secure client message.",
+          code: WHITEOUT_REDACTION_ERROR_CODE,
+        }),
+      } as Response;
+    }
+    return { ok: true, json: async () => ({}) } as Response;
+  });
+}
+
 describe("Editor download gate", () => {
   const originalFetch = global.fetch;
 
@@ -239,5 +269,22 @@ describe("Editor download gate", () => {
       expect(global.fetch).toHaveBeenCalledWith("/api/fill-pdf", expect.objectContaining({ method: "POST" }));
     });
     expect(screen.queryByRole("heading", { name: "Your document is ready" })).not.toBeInTheDocument();
+  });
+
+  it("maps the fail-closed whiteout code to the secure user message without a download", async () => {
+    mockFetchWithWhiteoutFailure();
+    render(<EditorPage />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Mock upload" }));
+    fireEvent.click((await screen.findAllByRole("button", { name: "Mock download" }))[0]);
+
+    expect(await screen.findByTestId("editor-toast")).toHaveTextContent(
+      WHITEOUT_REDACTION_ERROR_MESSAGE,
+    );
+    expect(URL.createObjectURL).not.toHaveBeenCalled();
+    expect(trackEvent).toHaveBeenCalledWith("download_failed", {
+      message: WHITEOUT_REDACTION_ERROR_MESSAGE.slice(0, 120),
+    });
+    expect(trackEvent).not.toHaveBeenCalledWith("download_success", expect.anything());
   });
 });

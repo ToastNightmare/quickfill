@@ -46,7 +46,11 @@ import { trackMetaEvent } from "@/lib/meta-pixel";
 import { runEditorProfileAutofill, trackEditorAutofillShadowReport } from "@/lib/editor-profile-autofill";
 import { createEditorFieldId, repairDuplicateEditorFieldIds, withUniqueEditorFieldId } from "@/lib/field-ids";
 import { loadPdfjsClient } from "@/lib/pdfjs-client";
-import { renderFlattenedWhiteoutPages } from "@/lib/pdf-flatten-client";
+import {
+  renderFlattenedWhiteoutPages,
+  WHITEOUT_REDACTION_ERROR_CODE,
+  WHITEOUT_REDACTION_ERROR_MESSAGE,
+} from "@/lib/pdf-flatten-client";
 import { renderGatePagePreview } from "@/lib/gate-preview";
 import { getTemplateBySlug, isTemplateFillable, type TemplateConfig } from "@/lib/templates-config";
 import { DOCUMENT_FILE_INPUT_ACCEPT, PDF_UPLOAD_MAX_BYTES, PDF_UPLOAD_MAX_LABEL } from "@/lib/upload-limits";
@@ -2053,14 +2057,14 @@ function EditorPageContent() {
 
           // Flattened Whiteout: render pages that contain whiteout fields and
           // burn the whiteout into the page image before it leaves the client.
-          // Fails open: on any error the server keeps the vector whiteout.
+          // The server fails closed if any expected page is absent or invalid.
           try {
             const flattenedPages = await renderFlattenedWhiteoutPages(pdf, fields);
             if (flattenedPages.length > 0) {
               fd.append("flattenedPages", JSON.stringify(flattenedPages));
             }
           } catch (err) {
-            console.warn("Flattened whiteout rendering failed, keeping vector whiteout:", err);
+            console.warn("Flattened whiteout rendering failed:", err);
           }
         } catch (err) {
           console.error("Failed to get viewport dimensions:", err);
@@ -2071,12 +2075,18 @@ function EditorPageContent() {
       fd.append("hasAcroForm", String(hasAcroForm));
       const fillRes = await fetch("/api/fill-pdf", { method: "POST", body: fd });
       if (!fillRes.ok) {
-        const errBody = await fillRes.json().catch(() => ({ error: "Server error" }));
+        const errBody = await fillRes.json().catch(() => ({ error: "Server error" })) as {
+          error?: string;
+          code?: string;
+        };
         if (fillRes.status === 402) {
           trackEvent("download_gate_shown", { source: "api_402_safety" });
           openDownloadPreviewGate();
           setIsDownloading(false);
           return;
+        }
+        if (errBody.code === WHITEOUT_REDACTION_ERROR_CODE) {
+          throw new Error(WHITEOUT_REDACTION_ERROR_MESSAGE);
         }
         throw new Error(errBody.error || `Server responded ${fillRes.status}`);
       }
@@ -2126,7 +2136,9 @@ function EditorPageContent() {
       trackEvent("download_failed", { message: msg.slice(0, 120) });
       setLastDownloadError(msg);
       setShowSupportForm(true);
-      showToast(`Failed to generate PDF: ${msg}`);
+      showToast(
+        msg === WHITEOUT_REDACTION_ERROR_MESSAGE ? msg : `Failed to generate PDF: ${msg}`,
+      );
     } finally {
       setIsDownloading(false);
     }

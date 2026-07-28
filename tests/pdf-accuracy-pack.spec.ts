@@ -63,7 +63,7 @@ const rotationSafeDownloadEnabled =
   process.env.NEXT_PUBLIC_QUICKFILL_ROTATION_SAFE_DOWNLOAD === "local-v1";
 const enforcedBaseUrl = "http://localhost:3000";
 const enforcedRedisUrl = "http://127.0.0.1:38079";
-const expectedEnforcedPdfTestCount = 26;
+const expectedEnforcedPdfTestCount = 28;
 const fieldPositionLandmark = {
   x: 73,
   y: 91,
@@ -366,12 +366,24 @@ async function decodedPdfStreams(bytes: Uint8Array): Promise<string> {
 
 async function requestRotatedPositionExport(
   request: APIRequestContext,
+  page: Page,
   rotation: 90 | 180,
 ): Promise<Buffer> {
   test.skip(!qaToken, "Set QUICKFILL_QA_TOKEN to run rotated position checks.");
   const source = await createFilledRotatedPdf(rotation);
   const displayWidth = rotation === 90 ? 420 : 620;
   const displayHeight = rotation === 90 ? 620 : 420;
+  const flattenedDataUrl = await renderFlattenedPdfPage(
+    page,
+    source.bytes,
+    {
+      x: fieldPositionLandmark.x,
+      y: fieldPositionLandmark.y,
+      width: fieldPositionLandmark.width,
+      height: fieldPositionLandmark.height,
+      fillColor: fieldPositionLandmark.fillColor,
+    },
+  );
   const response = await request.post("/api/fill-pdf", {
     headers: qaToken ? { "x-quickfill-qa-token": qaToken } : undefined,
     multipart: {
@@ -396,6 +408,7 @@ async function requestRotatedPositionExport(
       viewportDims: JSON.stringify([
         [0, { width: displayWidth, height: displayHeight }],
       ]),
+      flattenedPages: JSON.stringify([[0, flattenedDataUrl]]),
       hasAcroForm: "false",
     },
   });
@@ -446,16 +459,6 @@ async function requestRotatedFieldExport(
       value: "Rotated signature",
       fontSize: 16,
       signatureDataUrl: FLATTENED_WHITE_PNG,
-    },
-    {
-      id: "rotation-whiteout",
-      type: "whiteout",
-      x: 28,
-      y: 230,
-      width: 150,
-      height: 38,
-      page: 0,
-      fillColor: "#ffffff",
     },
   ];
 
@@ -673,6 +676,22 @@ async function installPdfVisualRenderer(page: Page) {
               maxY,
             };
           };
+
+          window.renderFlattenedPdfPage = async (
+            sourceBase64,
+            pageNumber,
+            whiteout,
+          ) => {
+            const rendered = await renderToCanvas("source", sourceBase64, pageNumber);
+            rendered.context.fillStyle = whiteout.fillColor;
+            rendered.context.fillRect(
+              whiteout.x,
+              whiteout.y,
+              whiteout.width,
+              whiteout.height,
+            );
+            return rendered.canvas.toDataURL("image/png");
+          };
         </script>
       </body>
     </html>
@@ -681,10 +700,12 @@ async function installPdfVisualRenderer(page: Page) {
     const renderer = window as unknown as {
       comparePdfVisuals?: unknown;
       locatePdfColor?: unknown;
+      renderFlattenedPdfPage?: unknown;
     };
     return (
       typeof renderer.comparePdfVisuals === "function" &&
-      typeof renderer.locatePdfColor === "function"
+      typeof renderer.locatePdfColor === "function" &&
+      typeof renderer.renderFlattenedPdfPage === "function"
     );
   });
 }
@@ -694,7 +715,13 @@ async function installPdfTextExtractor(page: Page) {
   await page.route("**/__quickfill-qa/pdf.mjs", (route) => {
     route.fulfill({ path: pdfjsBrowserPath, contentType: "text/javascript" });
   });
-  await page.goto("/");
+  await page.route("**/__quickfill-qa/text-extractor", (route) => {
+    route.fulfill({
+      body: "<!doctype html><html><body></body></html>",
+      contentType: "text/html",
+    });
+  });
+  await page.goto("/__quickfill-qa/text-extractor");
   await page.setContent(`
     <html>
       <body>
@@ -720,44 +747,67 @@ async function installPdfTextExtractor(page: Page) {
       </body>
     </html>
   `);
-  await page.waitForFunction(() => typeof (window as any).extractPdfPageTexts === "function");
+  await page.waitForFunction(
+    () => typeof (window as unknown as { extractPdfPageTexts?: unknown })
+      .extractPdfPageTexts === "function",
+  );
+}
+
+async function extractPdfPageTexts(page: Page, bytes: Buffer): Promise<string[]> {
+  return page.evaluate(
+    (base64) => (window as unknown as {
+      extractPdfPageTexts: (b64: string) => Promise<string[]>;
+    }).extractPdfPageTexts(base64),
+    bytes.toString("base64"),
+  );
 }
 
 // Two-page source PDF with known extractable text on both pages.
-async function createWhiteoutSourcePdf(): Promise<TestPdf> {
+async function createWhiteoutSourcePdf(rotation: 0 | 90 = 0): Promise<TestPdf> {
   const pdfDoc = await PDFDocument.create();
   const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
 
   const pageOne = pdfDoc.addPage([612, 792]);
   pageOne.drawText("SECRETCOVEREDTEXT", { x: 48, y: 700, size: 14, font });
   pageOne.drawText("Visible page one context", { x: 48, y: 660, size: 12, font });
+  if (rotation !== 0) pageOne.setRotation(degrees(rotation));
 
   const pageTwo = pdfDoc.addPage([612, 792]);
   pageTwo.drawText("KEEPPAGETWOTEXT", { x: 48, y: 700, size: 14, font });
 
   const bytes = await pdfDoc.save();
-  return { name: "quickfill-qa-whiteout.pdf", bytes: Buffer.from(bytes) };
+  return {
+    name: `quickfill-qa-whiteout-${rotation}.pdf`,
+    bytes: Buffer.from(bytes),
+  };
 }
 
 // 1x1 white PNG stand-in for a client-rendered flattened page image.
 const FLATTENED_WHITE_PNG =
   "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
 
+function whiteoutRectForRotation(rotation: 0 | 90): WhiteoutRect {
+  return rotation === 90
+    ? { x: 650, y: 35, width: 142, height: 60, fillColor: "#ffffff" }
+    : { x: 40, y: 70, width: 260, height: 40, fillColor: "#ffffff" };
+}
+
 async function requestWhiteoutExport(
   request: APIRequestContext,
   pdf: TestPdf,
-  options: { flattened: boolean },
+  whiteout: WhiteoutRect,
+  flattenedDataUrl: string,
 ) {
   const fields = [
     {
       id: "whiteout-1",
       type: "whiteout",
-      x: 40,
-      y: 80,
-      width: 260,
-      height: 30,
+      x: whiteout.x,
+      y: whiteout.y,
+      width: whiteout.width,
+      height: whiteout.height,
       page: 0,
-      fillColor: "#ffffff",
+      fillColor: whiteout.fillColor,
     },
     {
       id: "overlay-1",
@@ -780,11 +830,9 @@ async function requestWhiteoutExport(
     },
     fields: JSON.stringify(fields),
     pageScales: JSON.stringify([[0, 1], [1, 1]]),
+    flattenedPages: JSON.stringify([[0, flattenedDataUrl]]),
     hasAcroForm: "false",
   };
-  if (options.flattened) {
-    multipart.flattenedPages = JSON.stringify([[0, FLATTENED_WHITE_PNG]]);
-  }
 
   const response = await request.post("/api/fill-pdf", {
     headers: qaToken ? { "x-quickfill-qa-token": qaToken } : undefined,
@@ -1023,6 +1071,84 @@ async function comparePdfVisuals(
   );
 }
 
+type WhiteoutRect = {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  fillColor: string;
+};
+
+async function renderFlattenedPdfPage(
+  page: Page,
+  sourceBytes: Buffer,
+  whiteout: WhiteoutRect,
+  pageNumber = 1,
+): Promise<string> {
+  return page.evaluate(
+    ({ sourceBase64, targetPageNumber, rect }) => {
+      return (window as unknown as {
+        renderFlattenedPdfPage: (
+          sourceBase64: string,
+          pageNumber: number,
+          whiteout: WhiteoutRect,
+        ) => Promise<string>;
+      }).renderFlattenedPdfPage(sourceBase64, targetPageNumber, rect);
+    },
+    {
+      sourceBase64: sourceBytes.toString("base64"),
+      targetPageNumber: pageNumber,
+      rect: whiteout,
+    },
+  );
+}
+
+async function downloadWhiteoutFromMobileEditor(
+  page: Page,
+  pdf: TestPdf,
+  whiteout: WhiteoutRect,
+): Promise<Buffer> {
+  await installQaHeaders(page);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/editor?advanced=1", { waitUntil: "domcontentloaded" });
+  await resetEditorStorage(page);
+
+  const uploadInput = page.getByTestId("document-upload-input");
+  await expect(uploadInput).toBeAttached();
+  await uploadInput.setInputFiles({
+    name: pdf.name,
+    mimeType: "application/pdf",
+    buffer: pdf.bytes,
+  });
+  await expect(page.getByTestId("pdf-page")).toBeVisible({ timeout: 15_000 });
+
+  await page.evaluate((field) => {
+    localStorage.setItem("quickfill_fields", JSON.stringify([
+      {
+        id: "mobile-whiteout-1",
+        type: "whiteout",
+        page: 0,
+        ...field,
+      },
+    ]));
+  }, whiteout);
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await expect(page.getByTestId("pdf-page")).toBeVisible({ timeout: 15_000 });
+  await expect.poll(() => page.evaluate(() => {
+    const fields = JSON.parse(localStorage.getItem("quickfill_fields") ?? "[]") as Array<{
+      type?: string;
+    }>;
+    return fields.some((field) => field.type === "whiteout");
+  })).toBe(true);
+
+  const downloadPromise = page.waitForEvent("download");
+  await page.locator('button[title="Download PDF"]:visible').click();
+  const download = await downloadPromise;
+  const downloadPath = await download.path();
+  expect(downloadPath).toBeTruthy();
+  return Buffer.from(await readFile(downloadPath!));
+}
+
 async function locatePdfColor(
   page: Page,
   outputBytes: Buffer,
@@ -1068,7 +1194,7 @@ test.describe("PDF accuracy pack", () => {
       );
       expect(
         executedPdfTests,
-        "Enforced PDF QA must execute the deliberate 26-test pack",
+        "Enforced PDF QA must execute the deliberate 28-test pack",
       ).toBe(expectedEnforcedPdfTestCount);
       expect(
         skippedPdfTests,
@@ -1169,7 +1295,7 @@ test.describe("PDF accuracy pack", () => {
     }
   });
 
-  test("rotated API placement covers field types and rendered 90/180 positions", async ({
+  test("rotated API placement covers overlay fields and flattened 90/180 whiteout positions", async ({
     page,
     request,
   }) => {
@@ -1199,10 +1325,11 @@ test.describe("PDF accuracy pack", () => {
       for (const rotation of [90, 180] as const) {
         const positionedOutput = await requestRotatedPositionExport(
           request,
+          page,
           rotation,
         );
         const positionedDoc = await PDFDocument.load(positionedOutput);
-        expect(positionedDoc.getPages()[0].getRotation().angle).toBe(rotation);
+        expect(positionedDoc.getPages()[0].getRotation().angle).toBe(0);
 
         const bounds = await locatePdfColor(
           page,
@@ -1361,33 +1488,22 @@ test.describe("PDF accuracy pack", () => {
     await verifyStaticPdf(body);
   });
 
-  test("flattened whiteout removes covered text from pdf.js extraction", async ({ page, request }) => {
+  test("unrotated whiteout removes covered text from pdf.js extraction", async ({ page, request }) => {
     test.skip(!qaToken, "Set QUICKFILL_QA_TOKEN to run download accuracy checks.");
 
-    const pdf = await createWhiteoutSourcePdf();
-
-    // Control export (no flattened image): extractor must still see the text,
-    // proving the extraction harness works and the vector fallback keeps it.
-    const controlBytes = await requestWhiteoutExport(request, pdf, { flattened: false });
-    // Flattened export: page one content is replaced with the burned-in image.
-    const flattenedBytes = await requestWhiteoutExport(request, pdf, { flattened: true });
+    const pdf = await createWhiteoutSourcePdf(0);
+    const whiteout = whiteoutRectForRotation(0);
+    await installPdfVisualRenderer(page);
+    const flattenedDataUrl = await renderFlattenedPdfPage(page, pdf.bytes, whiteout);
+    const flattenedBytes = await requestWhiteoutExport(
+      request,
+      pdf,
+      whiteout,
+      flattenedDataUrl,
+    );
 
     await installPdfTextExtractor(page);
-
-    const controlTexts = await page.evaluate(
-      (base64) => (window as unknown as {
-        extractPdfPageTexts: (b64: string) => Promise<string[]>;
-      }).extractPdfPageTexts(base64),
-      controlBytes.toString("base64"),
-    );
-    expect(controlTexts[0]).toContain("SECRETCOVEREDTEXT");
-
-    const flattenedTexts = await page.evaluate(
-      (base64) => (window as unknown as {
-        extractPdfPageTexts: (b64: string) => Promise<string[]>;
-      }).extractPdfPageTexts(base64),
-      flattenedBytes.toString("base64"),
-    );
+    const flattenedTexts = await extractPdfPageTexts(page, flattenedBytes);
 
     // Covered original text must no longer be extractable on the flattened page.
     expect(flattenedTexts[0]).not.toContain("SECRETCOVEREDTEXT");
@@ -1398,6 +1514,48 @@ test.describe("PDF accuracy pack", () => {
 
     // Output must still be a valid, static PDF.
     await verifyStaticPdf(flattenedBytes);
+  });
+
+  test("90-degree whiteout downloads upright with covered text removed", async ({ page, request }) => {
+    test.skip(!qaToken, "Set QUICKFILL_QA_TOKEN to run download accuracy checks.");
+
+    const pdf = await createWhiteoutSourcePdf(90);
+    const whiteout = whiteoutRectForRotation(90);
+    await installPdfVisualRenderer(page);
+    const flattenedDataUrl = await renderFlattenedPdfPage(page, pdf.bytes, whiteout);
+    const flattenedBytes = await requestWhiteoutExport(
+      request,
+      pdf,
+      whiteout,
+      flattenedDataUrl,
+    );
+    const resultDoc = await PDFDocument.load(flattenedBytes);
+    const flattenedPage = resultDoc.getPages()[0];
+
+    expect(flattenedPage.getRotation().angle).toBe(0);
+    expect(flattenedPage.getWidth()).toBe(792);
+    expect(flattenedPage.getHeight()).toBe(612);
+
+    await installPdfTextExtractor(page);
+    const flattenedTexts = await extractPdfPageTexts(page, flattenedBytes);
+    expect(flattenedTexts[0]).not.toContain("SECRETCOVEREDTEXT");
+    expect(flattenedTexts[0]).toContain("OVERLAYVISIBLETEXT");
+    expect(flattenedTexts[1]).toContain("KEEPPAGETWOTEXT");
+    await verifyStaticPdf(flattenedBytes);
+  });
+
+  test("mobile editor whiteout download removes covered text", async ({ page }) => {
+    test.skip(!qaToken, "Set QUICKFILL_QA_TOKEN to run mobile download checks.");
+
+    const pdf = await createWhiteoutSourcePdf(0);
+    const whiteout = whiteoutRectForRotation(0);
+    const downloadedBytes = await downloadWhiteoutFromMobileEditor(page, pdf, whiteout);
+
+    await installPdfTextExtractor(page);
+    const downloadedTexts = await extractPdfPageTexts(page, downloadedBytes);
+    expect(downloadedTexts[0]).not.toContain("SECRETCOVEREDTEXT");
+    expect(downloadedTexts[1]).toContain("KEEPPAGETWOTEXT");
+    await verifyStaticPdf(downloadedBytes);
   });
 
   test("mobile AcroForm flow can fill and download", async ({ page }) => {
