@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { ClerkProvider } from "@clerk/nextjs";
+import { Analytics } from "@vercel/analytics/next";
 import "./globals.css";
 import { AppShell } from "@/components/AppShell";
 import { MetaPixel } from "@/components/MetaPixel";
@@ -74,6 +75,7 @@ export default function RootLayout({
           <MetaPixel />
           <GoogleAdsTag />
           <AppShell>{children}</AppShell>
+          <Analytics />
         </body>
       </html>
     </ClerkProvider>

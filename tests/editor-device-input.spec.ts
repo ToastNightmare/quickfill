@@ -22,6 +22,14 @@ const runsAgainstLocalApp = isLoopbackBaseUrl(localBaseUrl);
 const PDF_WIDTH = 612;
 const MINIMUM_TOUCH_TARGET = 44;
 
+test.beforeEach(async ({ page }) => {
+  await page.route(
+    "http://localhost:3000/_vercel/insights/script.js",
+    (route) =>
+      route.fulfill({ status: 200, contentType: "application/javascript", body: "" }),
+  );
+});
+
 type Interaction = "mouse" | "touch";
 
 type PersistedField = {

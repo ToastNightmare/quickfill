@@ -5,6 +5,14 @@ import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 const localBaseUrl = process.env.PLAYWRIGHT_BASE_URL ?? "";
 const runsAgainstLocalApp = /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(?::\d+)?/i.test(localBaseUrl);
 
+test.beforeEach(async ({ page }) => {
+  await page.route(
+    "http://localhost:3000/_vercel/insights/script.js",
+    (route) =>
+      route.fulfill({ status: 200, contentType: "application/javascript", body: "" }),
+  );
+});
+
 async function createMobileEditorPdf() {
   const pdfDoc = await PDFDocument.create();
   const page = pdfDoc.addPage([612, 792]);
