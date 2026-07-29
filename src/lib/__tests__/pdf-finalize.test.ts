@@ -9,9 +9,12 @@ import { MASTER_PDF_FINALIZE_OUTPUT } from "./fixtures/pdf-finalize-master-outpu
 
 const ONE_PIXEL_PNG = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAFgwJ/l3hT2wAAAABJRU5ErkJggg==";
 const ROTATION_SAFE_DOWNLOAD_FLAG = "NEXT_PUBLIC_QUICKFILL_ROTATION_SAFE_DOWNLOAD";
+const DOWNLOAD_PRESERVE_FLAG = "NEXT_PUBLIC_QUICKFILL_DOWNLOAD_PRESERVE";
 const FIXED_PDF_DATE = new Date("2026-01-02T03:04:05.000Z");
 const originalRotationSafeDownloadFlag =
   process.env[ROTATION_SAFE_DOWNLOAD_FLAG];
+const originalDownloadPreserveFlag =
+  process.env[DOWNLOAD_PRESERVE_FLAG];
 
 function latin1(bytes: Uint8Array) {
   return Buffer.from(bytes).toString("latin1");
@@ -74,6 +77,12 @@ describe("finalizePdfForDownload", () => {
     } else {
       process.env[ROTATION_SAFE_DOWNLOAD_FLAG] =
         originalRotationSafeDownloadFlag;
+    }
+    if (originalDownloadPreserveFlag === undefined) {
+      delete process.env[DOWNLOAD_PRESERVE_FLAG];
+    } else {
+      process.env[DOWNLOAD_PRESERVE_FLAG] =
+        originalDownloadPreserveFlag;
     }
   });
 
@@ -138,6 +147,26 @@ describe("finalizePdfForDownload", () => {
       const masterBytes = Buffer.from(masterOutputBase64, "base64");
 
       expect(Buffer.from(resultBytes)).toEqual(masterBytes);
+    },
+  );
+
+  it.each([undefined, "", "true", "V1", "v1 "])(
+    "keeps output byte-identical for non-matching preserve flag %p",
+    async (disabledValue) => {
+      jest.useFakeTimers({ now: FIXED_PDF_DATE });
+      delete process.env[ROTATION_SAFE_DOWNLOAD_FLAG];
+      if (disabledValue === undefined) {
+        delete process.env[DOWNLOAD_PRESERVE_FLAG];
+      } else {
+        process.env[DOWNLOAD_PRESERVE_FLAG] = disabledValue;
+      }
+
+      const sourceDoc = await createDeterministicSource(90);
+      const resultBytes = await finalizePdfForDownload(sourceDoc, true);
+
+      expect(Buffer.from(resultBytes)).toEqual(
+        Buffer.from(MASTER_PDF_FINALIZE_OUTPUT.pro, "base64"),
+      );
     },
   );
 

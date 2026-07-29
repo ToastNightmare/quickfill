@@ -211,12 +211,17 @@ function repairMobileFieldIds(fields: MobileField[]): MobileField[] {
 function mobileFieldsFromDetected(
   detected: Awaited<ReturnType<typeof detectAcroFormFields>>,
 ): MobileField[] {
+  const preserveDownloadContent =
+    process.env.NEXT_PUBLIC_QUICKFILL_DOWNLOAD_PRESERVE === "v1";
   return repairMobileFieldIds(detected.map((field) => ({
     id: field.name,
     name: field.name,
     type: isSignatureField(field.name) ? "signature" as const : field.type,
-    value: field.value ?? "",
-    checked: false,
+    value:
+      !preserveDownloadContent && field.valueSource === "choice"
+        ? ""
+        : field.value ?? "",
+    checked: preserveDownloadContent ? field.checked ?? false : false,
     page: field.page,
     x: field.x,
     y: field.y,

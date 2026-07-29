@@ -6,8 +6,13 @@ import { NextRequest } from "next/server";
 import {
   decodePDFRawStream,
   degrees,
+  PDFArray,
+  PDFBool,
+  PDFDict,
   PDFDocument,
+  PDFName,
   PDFRawStream,
+  StandardFonts,
 } from "pdf-lib";
 
 import { POST } from "../route";
@@ -15,14 +20,21 @@ import { recordDownloadLog } from "@/lib/admin-logs";
 import { getRequestEntitlement } from "@/lib/entitlements";
 import { PDF_UPLOAD_MAX_BYTES, PDF_UPLOAD_MAX_LABEL } from "@/lib/upload-limits";
 import { maskToPdfRect } from "@/lib/pdf-mask-transform";
+import { overlayTextBaseline } from "@/lib/pdf-utils";
 import {
   WHITEOUT_REDACTION_ERROR_CODE,
   WHITEOUT_REDACTION_ERROR_MESSAGE,
 } from "@/lib/pdf-flatten";
+import {
+  CONTENT_PRESERVE_ERROR_CODE,
+  CONTENT_PRESERVE_ERROR_MESSAGE,
+} from "@/lib/pdf-annot-flatten";
 
 const ROTATION_SAFE_DOWNLOAD_FLAG = "NEXT_PUBLIC_QUICKFILL_ROTATION_SAFE_DOWNLOAD";
+const DOWNLOAD_PRESERVE_FLAG = "NEXT_PUBLIC_QUICKFILL_DOWNLOAD_PRESERVE";
 const originalRotationSafeDownloadFlag =
   process.env[ROTATION_SAFE_DOWNLOAD_FLAG];
+const originalDownloadPreserveFlag = process.env[DOWNLOAD_PRESERVE_FLAG];
 
 jest.mock("@/lib/admin-logs", () => ({
   recordDownloadLog: jest.fn().mockResolvedValue(undefined),
@@ -632,4 +644,353 @@ describe("maskToPdfRect", () => {
       height: 30,
     });
   });
+});
+
+async function makeDownloadPreserveRequest(
+  sourceBytes: Uint8Array,
+  fields: Record<string, unknown>[],
+  hasAcroForm: boolean,
+) {
+  const formData = new FormData();
+  formData.set(
+    "pdf",
+    new Blob(
+      [
+        sourceBytes.buffer.slice(
+          sourceBytes.byteOffset,
+          sourceBytes.byteOffset + sourceBytes.byteLength,
+        ) as ArrayBuffer,
+      ],
+      { type: "application/pdf" },
+    ),
+    "preserve-source.pdf",
+  );
+  formData.set("fields", JSON.stringify(fields));
+  formData.set("pageScales", JSON.stringify([[0, 1]]));
+  formData.set("hasAcroForm", String(hasAcroForm));
+
+  return new NextRequest("https://getquickfill.com/api/fill-pdf", {
+    method: "POST",
+    body: formData,
+    headers: { "x-quickfill-qa-token": "test-token" },
+  });
+}
+
+function markerOccurrences(decoded: string, marker: string) {
+  const normalized = decoded.toLowerCase();
+  const literal = marker.toLowerCase();
+  const hex = Buffer.from(marker, "latin1").toString("hex").toLowerCase();
+  const count = (needle: string) =>
+    normalized.split(needle).length - 1;
+  return count(literal) + count(hex);
+}
+
+async function createPrefilledTextForm() {
+  const pdfDoc = await PDFDocument.create();
+  const page = pdfDoc.addPage([300, 200]);
+  const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+  const textField = pdfDoc.getForm().createTextField("fullName");
+  textField.setText("PREFILLEDONCE");
+  textField.addToPage(page, {
+    x: 20,
+    y: 140,
+    width: 180,
+    height: 24,
+    font,
+  });
+  return pdfDoc.save({ updateFieldAppearances: false });
+}
+
+async function createNeedAppearancesForm() {
+  const pdfDoc = await PDFDocument.create();
+  const page = pdfDoc.addPage([300, 240]);
+  const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+  const form = pdfDoc.getForm();
+
+  const textField = form.createTextField("needsText");
+  textField.setText("NEEDSTEXT");
+  textField.addToPage(page, {
+    x: 20,
+    y: 180,
+    width: 160,
+    height: 24,
+    font,
+  });
+  for (const widget of textField.acroField.getWidgets()) {
+    widget.dict.delete(PDFName.of("AP"));
+  }
+
+  const checkbox = form.createCheckBox("confirmed");
+  checkbox.check();
+  checkbox.addToPage(page, {
+    x: 20,
+    y: 135,
+    width: 20,
+    height: 20,
+  });
+
+  const dropdown = form.createDropdown("region");
+  dropdown.setOptions(["East", "West"]);
+  dropdown.select("West");
+  dropdown.addToPage(page, {
+    x: 20,
+    y: 90,
+    width: 120,
+    height: 24,
+    font,
+  });
+
+  const acroForm = pdfDoc.catalog.lookup(
+    PDFName.of("AcroForm"),
+    PDFDict,
+  );
+  acroForm.set(PDFName.of("NeedAppearances"), PDFBool.True);
+  return pdfDoc.save({ updateFieldAppearances: false });
+}
+
+async function createSelectedDropdownForm() {
+  const pdfDoc = await PDFDocument.create();
+  const page = pdfDoc.addPage([300, 200]);
+  const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+  const dropdown = pdfDoc.getForm().createDropdown("region");
+  dropdown.setOptions(["CHOICE_A", "CHOICE_B"]);
+  dropdown.select("CHOICE_B");
+  dropdown.addToPage(page, {
+    x: 20,
+    y: 140,
+    width: 120,
+    height: 24,
+    font,
+  });
+  return pdfDoc.save({ updateFieldAppearances: false });
+}
+
+async function createMissingAppearanceAnnotationPdf() {
+  const pdfDoc = await PDFDocument.create();
+  const page = pdfDoc.addPage([300, 200]);
+  const annotation = pdfDoc.context.obj({
+    Type: "Annot",
+    Subtype: "FreeText",
+    Rect: [20, 30, 220, 70],
+  });
+  const annotations = PDFArray.withContext(pdfDoc.context);
+  annotations.push(pdfDoc.context.register(annotation));
+  page.node.set(PDFName.of("Annots"), annotations);
+  return pdfDoc.save();
+}
+
+describe("fill-pdf download content preservation", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    process.env.QUICKFILL_QA_TOKEN = "test-token";
+    process.env[DOWNLOAD_PRESERVE_FLAG] = "v1";
+  });
+
+  afterEach(() => {
+    delete process.env.QUICKFILL_QA_TOKEN;
+    if (originalDownloadPreserveFlag === undefined) {
+      delete process.env[DOWNLOAD_PRESERVE_FLAG];
+    } else {
+      process.env[DOWNLOAD_PRESERVE_FLAG] =
+        originalDownloadPreserveFlag;
+    }
+  });
+
+  it("writes a matched prefilled text field into the form and burns it once", async () => {
+    const response = await POST(
+      await makeDownloadPreserveRequest(
+        await createPrefilledTextForm(),
+        [
+          {
+            id: "fullName",
+            type: "text",
+            x: 20,
+            y: 36,
+            width: 180,
+            height: 24,
+            page: 0,
+            value: "PREFILLEDONCE",
+            fontSize: 12,
+          },
+        ],
+        true,
+      ),
+    );
+    const bytes = new Uint8Array(await response.arrayBuffer());
+
+    expect(response.status).toBe(200);
+    expect(markerOccurrences(await decodedPdfStreams(bytes), "PREFILLEDONCE")).toBe(1);
+  });
+
+  it("keeps the master encoded stream structure for a non-matching flag value", async () => {
+    process.env[DOWNLOAD_PRESERVE_FLAG] = "true";
+    const response = await POST(
+      await makeDownloadPreserveRequest(
+        await createPrefilledTextForm(),
+        [
+          {
+            id: "fullName",
+            type: "text",
+            x: 20,
+            y: 36,
+            width: 180,
+            height: 24,
+            page: 0,
+            value: "PREFILLEDONCE",
+            fontSize: 12,
+          },
+        ],
+        true,
+      ),
+    );
+    const bytes = new Uint8Array(await response.arrayBuffer());
+
+    expect(response.status).toBe(200);
+    // Master retains one stale appearance stream in addition to the two
+    // rendered copies. Browser-level QA below asserts the visible double draw.
+    expect(markerOccurrences(await decodedPdfStreams(bytes), "PREFILLEDONCE")).toBe(3);
+  });
+
+  it("regenerates missing appearances and preserves checked and untouched choice values", async () => {
+    const response = await POST(
+      await makeDownloadPreserveRequest(
+        await createNeedAppearancesForm(),
+        [
+          {
+            id: "needsText",
+            type: "text",
+            x: 20,
+            y: 36,
+            width: 160,
+            height: 24,
+            page: 0,
+            value: "NEEDSTEXT",
+            fontSize: 12,
+          },
+          {
+            id: "confirmed",
+            type: "checkbox",
+            x: 20,
+            y: 85,
+            width: 20,
+            height: 20,
+            page: 0,
+            checked: true,
+          },
+          {
+            id: "region",
+            type: "text",
+            x: 20,
+            y: 126,
+            width: 120,
+            height: 24,
+            page: 0,
+            value: "West",
+            fontSize: 12,
+          },
+        ],
+        true,
+      ),
+    );
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    const streams = await decodedPdfStreams(bytes);
+
+    expect(response.status).toBe(200);
+    expect(markerOccurrences(streams, "NEEDSTEXT")).toBe(1);
+    expect(markerOccurrences(streams, "West")).toBe(1);
+    expect(streams).toContain("-2.5 -4.9 l");
+    expect(streams).toContain("6.8999999999999995 4.75 l");
+  });
+
+  it.each([
+    ["changed", "CHOICE_C", "CHOICE_C"],
+    ["unchanged", "CHOICE_B", "CHOICE_B"],
+    ["empty", "", "CHOICE_B"],
+  ])(
+    "overlay-draws a %s submitted dropdown value only when it differs from the current selection",
+    async (_case, submittedValue, expectedMarker) => {
+      const response = await POST(
+        await makeDownloadPreserveRequest(
+          await createSelectedDropdownForm(),
+          [
+            {
+              id: "region",
+              type: "text",
+              x: 20,
+              y: 36,
+              width: 120,
+              height: 24,
+              page: 0,
+              value: submittedValue,
+              fontSize: 12,
+            },
+          ],
+          true,
+        ),
+      );
+      const bytes = new Uint8Array(await response.arrayBuffer());
+      const streams = await decodedPdfStreams(bytes);
+
+      expect(response.status).toBe(200);
+      if (submittedValue === "CHOICE_C") {
+        expect(markerOccurrences(streams, expectedMarker)).toBeGreaterThan(0);
+        expect(markerOccurrences(streams, "CHOICE_B")).toBe(1);
+      } else {
+        expect(markerOccurrences(streams, expectedMarker)).toBe(1);
+      }
+    },
+  );
+
+  it("returns the typed 422 without quota use when visible content cannot be preserved", async () => {
+    jest.spyOn(console, "warn").mockImplementation(() => undefined);
+    const response = await POST(
+      await makeDownloadPreserveRequest(
+        await createMissingAppearanceAnnotationPdf(),
+        [],
+        false,
+      ),
+    );
+
+    expect(response.status).toBe(422);
+    await expect(response.json()).resolves.toEqual({
+      error: CONTENT_PRESERVE_ERROR_MESSAGE,
+      code: CONTENT_PRESERVE_ERROR_CODE,
+    });
+    expect(mockRedisIncr).not.toHaveBeenCalled();
+    expect(recordDownloadLog).toHaveBeenCalledWith(
+      expect.objectContaining({
+        reason: CONTENT_PRESERVE_ERROR_CODE,
+        status: "failed",
+      }),
+    );
+    expect(recordDownloadLog).not.toHaveBeenCalledWith(
+      expect.objectContaining({ status: "success" }),
+    );
+  });
+});
+
+describe("overlayTextBaseline", () => {
+  it.each([10, 12, 14, 18, 24])(
+    "matches Konva middle alignment within 0.5pt at %ipt",
+    async (fontSize) => {
+      const pdfDoc = await PDFDocument.create();
+      const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+      const fieldBottom = 100;
+      const fieldHeight = 36;
+      const ascent = font.heightAtSize(fontSize, { descender: false });
+      const fullHeight = font.heightAtSize(fontSize);
+      const descent = fullHeight - ascent;
+      const konvaBaselineFromTop =
+        fieldHeight / 2 + (ascent - descent) / 2;
+      const konvaBaselineFromBottom =
+        fieldBottom + fieldHeight - konvaBaselineFromTop;
+
+      expect(
+        Math.abs(
+          overlayTextBaseline(fieldBottom, fieldHeight, fontSize, font) -
+            konvaBaselineFromBottom,
+        ),
+      ).toBeLessThanOrEqual(0.5);
+    },
+  );
 });

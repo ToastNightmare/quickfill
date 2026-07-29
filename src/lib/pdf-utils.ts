@@ -1,10 +1,35 @@
-import { PDFDocument, rgb, StandardFonts, PDFName, type RGB } from "pdf-lib";
+import {
+  PDFCheckBox,
+  PDFDocument,
+  PDFDropdown,
+  PDFName,
+  PDFOptionList,
+  PDFRadioGroup,
+  PDFTextField,
+  rgb,
+  StandardFonts,
+  type RGB,
+} from "pdf-lib";
 import type { EditorField } from "./types";
 import { APP_CONFIG } from "./config";
+
+type PDFFont = Awaited<ReturnType<PDFDocument["embedFont"]>>;
 
 /** Replace control characters (including newlines) with a space, keeps text WinAnsi-safe */
 function sanitize(text: string): string {
   return text.replace(/[\x00-\x09\x0b-\x1f\x7f\n\r]/g, " ");
+}
+
+export function overlayTextBaseline(
+  fieldBottom: number,
+  fieldHeight: number,
+  fontSize: number,
+  activeFont: PDFFont,
+) {
+  const ascent = activeFont.heightAtSize(fontSize, { descender: false });
+  const fullHeight = activeFont.heightAtSize(fontSize);
+  const descent = fullHeight - ascent;
+  return fieldBottom + (fieldHeight - fullHeight) / 2 + descent;
 }
 
 /**
@@ -58,6 +83,8 @@ export async function detectAcroFormFields(pdfBytes: ArrayBuffer) {
   const pdfDoc = await PDFDocument.load(pdfBytes, { ignoreEncryption: true });
   const form = pdfDoc.getForm();
   const fields = form.getFields();
+  const downloadPreserveEnabled =
+    process.env.NEXT_PUBLIC_QUICKFILL_DOWNLOAD_PRESERVE === "v1";
   const result: {
     name: string;
     type: "text" | "checkbox";
@@ -67,6 +94,8 @@ export async function detectAcroFormFields(pdfBytes: ArrayBuffer) {
     height: number;
     page: number;
     value: string;
+    checked?: boolean;
+    valueSource?: "text" | "choice" | "none";
   }[] = [];
 
   for (const field of fields) {
@@ -92,8 +121,49 @@ export async function detectAcroFormFields(pdfBytes: ArrayBuffer) {
       const fieldType = field.constructor.name;
       let type: "text" | "checkbox" = "text";
       let value = "";
+      let checked = false;
+      let valueSource: "text" | "choice" | "none" = "none";
 
-      if (fieldType === "PDFCheckBox") {
+      if (downloadPreserveEnabled) {
+        if (field instanceof PDFCheckBox) {
+          type = "checkbox";
+          try {
+            checked = form.getCheckBox(field.getName()).isChecked();
+          } catch {
+            /* unchecked */
+          }
+        } else if (field instanceof PDFTextField) {
+          type = "text";
+          valueSource = "text";
+          try {
+            const tf = form.getTextField(field.getName());
+            value = tf.getText() ?? "";
+          } catch {
+            /* empty */
+          }
+        } else if (field instanceof PDFDropdown) {
+          valueSource = "choice";
+          try {
+            value = form.getDropdown(field.getName()).getSelected().join(", ");
+          } catch {
+            /* empty */
+          }
+        } else if (field instanceof PDFRadioGroup) {
+          valueSource = "choice";
+          try {
+            value = form.getRadioGroup(field.getName()).getSelected() ?? "";
+          } catch {
+            /* empty */
+          }
+        } else if (field instanceof PDFOptionList) {
+          valueSource = "choice";
+          try {
+            value = form.getOptionList(field.getName()).getSelected().join(", ");
+          } catch {
+            /* empty */
+          }
+        }
+      } else if (fieldType === "PDFCheckBox") {
         type = "checkbox";
       } else if (fieldType === "PDFTextField") {
         type = "text";
@@ -114,6 +184,7 @@ export async function detectAcroFormFields(pdfBytes: ArrayBuffer) {
         height: rect.height,
         page: pageIndex,
         value,
+        ...(downloadPreserveEnabled ? { checked, valueSource } : {}),
       });
     }
   }

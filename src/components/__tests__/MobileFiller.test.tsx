@@ -25,6 +25,10 @@ const LOCAL_SIGNATURE = "data:image/png;base64,bG9jYWxTaWdMb2NhbA==";
 const ACCOUNT_SIGNATURE = "data:image/png;base64,YWNjb3VudFNpZw==";
 const SECOND_ACCOUNT_SIGNATURE = "data:image/png;base64,c2Vjb25kQWNjb3VudFNpZw==";
 const DRAWN_SIGNATURE = "data:image/png;base64,ZHJhd25TaWc=";
+const DOWNLOAD_PRESERVE_FLAG =
+  "NEXT_PUBLIC_QUICKFILL_DOWNLOAD_PRESERVE";
+const originalDownloadPreserveFlag =
+  process.env[DOWNLOAD_PRESERVE_FLAG];
 
 const mockAuthState: {
   isLoaded: boolean;
@@ -237,6 +241,14 @@ beforeEach(() => {
   localStorage.clear();
 });
 
+afterEach(() => {
+  if (originalDownloadPreserveFlag === undefined) {
+    delete process.env[DOWNLOAD_PRESERVE_FLAG];
+  } else {
+    process.env[DOWNLOAD_PRESERVE_FLAG] = originalDownloadPreserveFlag;
+  }
+});
+
 describe("MobileFiller photo cleanup wiring", () => {
   const originalFetch = global.fetch;
 
@@ -384,6 +396,94 @@ describe("MobileFiller AcroForm fields", () => {
     fireEvent.change(inputs[1], { target: { value: "Second widget" } });
     expect(inputs[0]).toHaveValue("First widget");
     expect(inputs[1]).toHaveValue("Second widget");
+  });
+
+  it("seeds checked and choice state only for the exact download-preserve flag", async () => {
+    process.env[DOWNLOAD_PRESERVE_FLAG] = "v1";
+    mockedNormalize.mockResolvedValueOnce({
+      fileName: "seeded-fields.pdf",
+      pdfBytes: new ArrayBuffer(8),
+      sourceType: "pdf",
+      skipAcroFormDetection: false,
+    });
+    mockedDetect.mockResolvedValueOnce([
+      {
+        name: "confirmed",
+        type: "checkbox",
+        x: 10,
+        y: 10,
+        width: 20,
+        height: 20,
+        page: 0,
+        value: "",
+        checked: true,
+        valueSource: "none",
+      },
+      {
+        name: "region",
+        type: "text",
+        x: 10,
+        y: 50,
+        width: 120,
+        height: 20,
+        page: 0,
+        value: "West",
+        checked: false,
+        valueSource: "choice",
+      },
+    ]);
+
+    render(<MobileFiller />);
+    pickUploadFile(new File([new Uint8Array([1])], "seeded-fields.pdf", {
+      type: "application/pdf",
+    }));
+
+    expect(await screen.findByText("Checked")).toBeInTheDocument();
+    expect(screen.getByDisplayValue("West")).toBeInTheDocument();
+  });
+
+  it("keeps new checkbox and choice seeding off for non-matching flag values", async () => {
+    process.env[DOWNLOAD_PRESERVE_FLAG] = "true";
+    mockedNormalize.mockResolvedValueOnce({
+      fileName: "default-fields.pdf",
+      pdfBytes: new ArrayBuffer(8),
+      sourceType: "pdf",
+      skipAcroFormDetection: false,
+    });
+    mockedDetect.mockResolvedValueOnce([
+      {
+        name: "confirmed",
+        type: "checkbox",
+        x: 10,
+        y: 10,
+        width: 20,
+        height: 20,
+        page: 0,
+        value: "",
+        checked: true,
+        valueSource: "none",
+      },
+      {
+        name: "region",
+        type: "text",
+        x: 10,
+        y: 50,
+        width: 120,
+        height: 20,
+        page: 0,
+        value: "West",
+        checked: false,
+        valueSource: "choice",
+      },
+    ]);
+
+    render(<MobileFiller />);
+    pickUploadFile(new File([new Uint8Array([1])], "default-fields.pdf", {
+      type: "application/pdf",
+    }));
+
+    expect(await screen.findByText("Tap to check")).toBeInTheDocument();
+    expect(screen.getByPlaceholderText("Type here")).toHaveValue("");
   });
 });
 

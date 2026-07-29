@@ -12,6 +12,9 @@ import {
   PDFName,
   PDFArray,
   PDFDict,
+  PDFDropdown,
+  PDFOptionList,
+  PDFRadioGroup,
   concatTransformationMatrix,
   pushGraphicsState,
   popGraphicsState,
@@ -27,7 +30,10 @@ import { checkRateLimit } from "@/lib/rate-limit";
 import { getRedis } from "@/lib/redis";
 import { recordDownloadLog } from "@/lib/admin-logs";
 import { getRequestEntitlement } from "@/lib/entitlements";
-import { orderFieldsForPdfDraw } from "@/lib/pdf-utils";
+import {
+  orderFieldsForPdfDraw,
+  overlayTextBaseline,
+} from "@/lib/pdf-utils";
 import { buildPdfDownloadHeaders, filledPdfFilename } from "@/lib/pdf-download-response";
 import { finalizePdfForDownload } from "@/lib/pdf-finalize";
 import { PDF_UPLOAD_MAX_BYTES, PDF_UPLOAD_MAX_LABEL } from "@/lib/upload-limits";
@@ -46,6 +52,11 @@ import {
   WHITEOUT_REDACTION_ERROR_CODE,
   WHITEOUT_REDACTION_ERROR_MESSAGE,
 } from "@/lib/pdf-flatten";
+import {
+  CONTENT_PRESERVE_ERROR_CODE,
+  CONTENT_PRESERVE_ERROR_MESSAGE,
+  isContentPreserveError,
+} from "@/lib/pdf-annot-flatten";
 
 /** Replace control characters (including newlines) with a space */
 function sanitize(text: string): string {
@@ -231,28 +242,101 @@ export async function POST(request: NextRequest) {
     pageCountForLog = pdfDoc.getPageCount();
     const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
     const signatureFont = await pdfDoc.embedFont(StandardFonts.HelveticaOblique);
+    const downloadPreserveEnabled =
+      process.env.NEXT_PUBLIC_QUICKFILL_DOWNLOAD_PRESERVE === "v1";
+    const fieldsRenderedByAcroForm = new Set<EditorField>();
 
     if (hasAcroForm) {
       const form = pdfDoc.getForm();
 
-      try {
-        for (const acroField of form.getFields()) {
-          if (acroField.constructor.name === "PDFTextField") {
+      if (downloadPreserveEnabled) {
+        const acroFieldsByName = new Map(
+          form
+            .getFields()
+            .map((acroField) => [acroField.getName(), acroField] as const),
+        );
+        for (const field of editorFields) {
+          const acroField = acroFieldsByName.get(field.id);
+          if (!acroField) continue;
+
+          if (
+            acroField instanceof PDFDropdown ||
+            acroField instanceof PDFRadioGroup ||
+            acroField instanceof PDFOptionList
+          ) {
+            const submittedValue =
+              "value" in field && typeof field.value === "string"
+                ? field.value
+                : "";
             try {
-              const textField = form.getTextField(acroField.getName());
-              const raw = textField.getText() ?? "";
-              if (raw) textField.setText(sanitize(raw));
-            } catch { /* skip unreadable text fields */ }
+              const currentSelection =
+                acroField instanceof PDFRadioGroup
+                  ? acroField.getSelected() ?? ""
+                  : acroField.getSelected().join(", ");
+              if (
+                submittedValue === "" ||
+                submittedValue === currentSelection
+              ) {
+                fieldsRenderedByAcroForm.add(field);
+              }
+            } catch {
+              // Selection lookup failures retain the overlay fallback.
+            }
+            continue;
+          }
+
+          try {
+            if (
+              field.type === "text" ||
+              field.type === "date" ||
+              (field.type === "signature" && !field.signatureDataUrl)
+            ) {
+              form.getTextField(field.id).setText(sanitize(field.value ?? ""));
+              fieldsRenderedByAcroForm.add(field);
+            } else if (field.type === "checkbox") {
+              const checkBox = form.getCheckBox(field.id);
+              if (field.checked) checkBox.check();
+              else checkBox.uncheck();
+              fieldsRenderedByAcroForm.add(field);
+            }
+          } catch {
+            // Type mismatches, repaired duplicate IDs, and encoding failures
+            // fall back to the existing overlay drawing path below.
           }
         }
-        form.flatten({ updateFieldAppearances: false });
-      } catch (flattenErr) {
-        console.warn("blank form flatten failed, removing AcroForm artifacts:", flattenErr instanceof Error ? flattenErr.message : flattenErr);
-        removeFilledAreaWidgets(pdfDoc, form, editorFields);
+
         try {
-          for (const remainingField of form.getFields()) remainingField.enableReadOnly();
-        } catch {
-          // Form cleanup is best-effort; drawn output remains static.
+          form.flatten();
+        } catch (flattenErr) {
+          fieldsRenderedByAcroForm.clear();
+          console.warn("blank form flatten failed, removing AcroForm artifacts:", flattenErr instanceof Error ? flattenErr.message : flattenErr);
+          removeFilledAreaWidgets(pdfDoc, form, editorFields);
+          try {
+            for (const remainingField of form.getFields()) remainingField.enableReadOnly();
+          } catch {
+            // Form cleanup is best-effort; drawn output remains static.
+          }
+        }
+      } else {
+        try {
+          for (const acroField of form.getFields()) {
+            if (acroField.constructor.name === "PDFTextField") {
+              try {
+                const textField = form.getTextField(acroField.getName());
+                const raw = textField.getText() ?? "";
+                if (raw) textField.setText(sanitize(raw));
+              } catch { /* skip unreadable text fields */ }
+            }
+          }
+          form.flatten({ updateFieldAppearances: false });
+        } catch (flattenErr) {
+          console.warn("blank form flatten failed, removing AcroForm artifacts:", flattenErr instanceof Error ? flattenErr.message : flattenErr);
+          removeFilledAreaWidgets(pdfDoc, form, editorFields);
+          try {
+            for (const remainingField of form.getFields()) remainingField.enableReadOnly();
+          } catch {
+            // Form cleanup is best-effort; drawn output remains static.
+          }
         }
       }
 
@@ -298,6 +382,9 @@ export async function POST(request: NextRequest) {
     // Track which pages have been wrapped to avoid duplicate wrapping
     const wrappedPages = new Set<number>();
     for (const field of orderedFields) {
+      if (downloadPreserveEnabled && fieldsRenderedByAcroForm.has(field)) {
+        continue;
+      }
       // Whiteout is already burned into flattened page images; skip the vector rect.
       if (field.type === "whiteout" && flattenedPageSet.has(field.page)) continue;
       if (!wrappedPages.has(field.page)) {
@@ -310,7 +397,35 @@ export async function POST(request: NextRequest) {
       await drawFieldOnPage(pdfDoc, field, pageScales, font, signatureFont, viewportDims);
     }
 
-    const resultBytes = await finalizePdfForDownload(pdfDoc, access.isPro || access.isQaBypass === true);
+    let resultBytes: Uint8Array;
+    try {
+      resultBytes = await finalizePdfForDownload(
+        pdfDoc,
+        access.isPro || access.isQaBypass === true,
+      );
+    } catch (error) {
+      if (!isContentPreserveError(error)) throw error;
+
+      await recordDownloadLog({
+        status: "failed",
+        userId: access.userId,
+        guest: access.guest,
+        filename: fileForLog?.name,
+        fileSizeKb: Math.round((fileForLog?.size ?? 0) / 1024),
+        fieldCount: editorFields.length,
+        pageCount: pageCountForLog,
+        hasAcroForm,
+        reason: CONTENT_PRESERVE_ERROR_CODE,
+        message: `Existing annotation preservation failed on page index ${error.pageIndex} for subtype ${error.subtype}`,
+      }).catch(() => {});
+      return NextResponse.json(
+        {
+          error: CONTENT_PRESERVE_ERROR_MESSAGE,
+          code: CONTENT_PRESERVE_ERROR_CODE,
+        },
+        { status: 422 },
+      );
+    }
     const resultBuffer = Buffer.from(resultBytes);
     await incrementDownloadUsage(access);
     await recordDownloadLog({
@@ -753,7 +868,15 @@ async function drawFieldOnPage(pdfDoc: PDFDocument, field: EditorField, _pageSca
           const fontSize = field.type === "signature" ? 16 : field.fontSize ?? 14;
           const activeFont = field.type === "signature" ? signatureFont : font;
           // Vertically center text in the field box (matching editor's verticalAlign: "middle")
-          const textY = finalPdfY + (pdfH - fontSize) / 2;
+          const textY =
+            process.env.NEXT_PUBLIC_QUICKFILL_DOWNLOAD_PRESERVE === "v1"
+              ? overlayTextBaseline(
+                  finalPdfY,
+                  pdfH,
+                  fontSize,
+                  activeFont,
+                )
+              : finalPdfY + (pdfH - fontSize) / 2;
           page.drawText(sanitize(field.value), {
             x: pdfX + 2,
             y: textY,

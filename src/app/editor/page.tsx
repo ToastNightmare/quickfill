@@ -1250,6 +1250,8 @@ function EditorPageContent() {
             if (acroFields.length > 0) {
               detectedAcroFieldCount = acroFields.length;
               setHasAcroForm(true);
+              const preserveDownloadContent =
+                process.env.NEXT_PUBLIC_QUICKFILL_DOWNLOAD_PRESERVE === "v1";
               const editorFields: EditorField[] = acroFields.map((af) => {
                 if (af.type === "checkbox") {
                   return {
@@ -1260,7 +1262,9 @@ function EditorPageContent() {
                     width: af.width,
                     height: af.height,
                     page: af.page,
-                    checked: false,
+                    checked: preserveDownloadContent
+                      ? af.checked ?? false
+                      : false,
                   };
                 }
                 return {
@@ -1271,7 +1275,10 @@ function EditorPageContent() {
                   width: af.width,
                   height: af.height,
                   page: af.page,
-                  value: af.value,
+                  value:
+                    !preserveDownloadContent && af.valueSource === "choice"
+                      ? ""
+                      : af.value,
                   fontSize: 12,
                 };
               });
