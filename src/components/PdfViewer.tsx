@@ -14,7 +14,9 @@ import { MASK_ERASE_FILL, addEraserMask, brushIntersectField, interpolateMaskPat
 import {
   GESTURE_PLACEMENT_SUPPRESS_MS,
   anchoredScrollPosition,
+  clampPdfRenderScale,
   clampGestureZoom,
+  gestureZoomMax,
   gestureZoom,
   shouldSuppressTouchPlacement,
   touchDistance,
@@ -22,6 +24,7 @@ import {
   type GesturePoint,
 } from "@/lib/pinch-zoom";
 import {
+  LOCAL_FIELD_SUGGESTION_MAX_BOXES,
   prepareLocalFieldDetectionSnapshot,
   type LocalFieldDetectionLifecycleEvent,
   type LocalFieldDetectionSnapshotKey,
@@ -77,7 +80,7 @@ interface PdfViewerProps {
   onEditingChange?: (fieldId: string | null) => void;
   /** Live readout while a pinch gesture is in progress; null when it ends. */
   onGestureZoomPreview?: (zoom: number | null) => void;
-  /** Commits the final pinch zoom (clamped 50-200) when the gesture ends. */
+  /** Commits the final pinch zoom (clamped to the active rollout limit). */
   onGestureZoomCommit?: (zoom: number) => void;
   /** Optional QA-only publication of the existing full-page snap scan. */
   fieldSuggestionDocumentRevision?: number;
@@ -89,6 +92,50 @@ interface SnapPreview {
   y: number;
   width: number;
   height: number;
+}
+
+function scaleSnapResult(
+  result: SnapResult | null,
+  scale: number,
+): SnapResult | null {
+  if (!result || scale === 1) return result;
+  return {
+    x: result.x * scale,
+    y: result.y * scale,
+    width: result.width * scale,
+    height: result.height * scale,
+  };
+}
+
+function findPrecomputedSnap(
+  boxes: readonly SnapResult[],
+  displayX: number,
+  displayY: number,
+  renderRatio: number,
+): SnapResult | null {
+  if (boxes.length === 0) return null;
+  const canvasX = displayX * renderRatio;
+  const canvasY = displayY * renderRatio;
+  const tolerance = 3 * renderRatio;
+  const containing: SnapResult[] = [];
+  for (const box of boxes) {
+    if (
+      canvasX >= box.x - tolerance &&
+      canvasX <= box.x + box.width + tolerance &&
+      canvasY >= box.y - tolerance &&
+      canvasY <= box.y + box.height + tolerance
+    ) {
+      containing.push(box);
+    }
+  }
+  if (containing.length === 0) return null;
+  containing.sort(
+    (left, right) =>
+      snapCredibilityScore(left) - snapCredibilityScore(right),
+  );
+  const best = containing[0];
+  if (best.width / Math.max(best.height, 1) > 10) return null;
+  return scaleSnapResult(best, 1 / renderRatio);
 }
 
 function createLineField(
@@ -209,6 +256,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
 }, ref) {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const canvasRenderRatioRef = useRef(1);
   const stageRef = useRef<Konva.Stage | null>(null);
   const [dimensions, setDimensions] = useState({ width: 800, height: 1100 });
   // fitScale: ratio from PDF points to base canvas pixels (before zoom)
@@ -419,7 +467,11 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
             await new Promise<void>((resolve) => {
               const img = new Image();
               img.onload = () => {
-                ctx.drawImage(img, 0, 0);
+                if (canvasRenderRatioRef.current < 1) {
+                  ctx.drawImage(img, 0, 0, width, height);
+                } else {
+                  ctx.drawImage(img, 0, 0);
+                }
                 resolve();
               };
               img.onerror = () => resolve();
@@ -459,6 +511,10 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
   }, []);
 
   const zoomFactor = zoom / 100;
+  const mobilePolishFlag =
+    process.env.NEXT_PUBLIC_QUICKFILL_MOBILE_POLISH;
+  const mobilePolishEnabled = mobilePolishFlag === "v1";
+  const gestureZoomLimit = gestureZoomMax(mobilePolishFlag);
   const createFieldId = useCallback(
     (prefix = "field") => createEditorFieldId(fields, prefix),
     [fields],
@@ -689,15 +745,26 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
         const newFitScale = Math.min((containerWidth - 32) / viewport.width, 1.5);
         const effectiveScale = newFitScale * zoomFactor;
         const scaledViewport = page.getViewport({ scale: effectiveScale });
+        const renderScale = mobilePolishEnabled
+          ? clampPdfRenderScale(
+              effectiveScale,
+              viewport.width,
+              viewport.height,
+            )
+          : effectiveScale;
+        const renderViewport = page.getViewport({ scale: renderScale });
 
-        const canvasWidth = Math.floor(scaledViewport.width);
-        const canvasHeight = Math.floor(scaledViewport.height);
+        const displayWidth = Math.floor(scaledViewport.width);
+        const displayHeight = Math.floor(scaledViewport.height);
+        const canvasWidth = Math.floor(renderViewport.width);
+        const canvasHeight = Math.floor(renderViewport.height);
+        canvasRenderRatioRef.current = renderScale / effectiveScale;
 
         setFitScale(newFitScale);
         onPageScaleSet(currentPage, newFitScale);
         setDimensions({
-          width: canvasWidth,
-          height: canvasHeight,
+          width: displayWidth,
+          height: displayHeight,
         });
 
         if (
@@ -726,8 +793,8 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
             pageIndex: currentPage,
             rotation: scaledViewport.rotation,
             viewportTransform,
-            canvasWidth,
-            canvasHeight,
+            canvasWidth: displayWidth,
+            canvasHeight: displayHeight,
             viewportWidth: viewport.width,
             viewportHeight: viewport.height,
             renderedViewportWidth: scaledViewport.width,
@@ -762,7 +829,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
 
         renderTask = page.render({
           canvasContext: ctx,
-          viewport: scaledViewport,
+          viewport: renderViewport,
           canvas: canvas,
         } as Parameters<typeof page.render>[0]);
         await renderTask.promise;
@@ -793,10 +860,19 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
               if (!active || active.key !== renderSnapshotKey) return;
               active.scanDurationMs = scanDurationMs;
 
+              const displayScale = 1 / canvasRenderRatioRef.current;
+              const snapshotBoxes =
+                displayScale !== 1 &&
+                boxes.length > 0 &&
+                boxes.length <= LOCAL_FIELD_SUGGESTION_MAX_BOXES
+                  ? boxes.map((box) =>
+                      scaleSnapResult(box, displayScale) as SnapResult
+                    )
+                  : boxes;
               const prepared = prepareLocalFieldDetectionSnapshot({
                 key: renderSnapshotKey,
                 scanDurationMs,
-                boxes,
+                boxes: snapshotBoxes,
               });
               if (prepared.status !== "ready") {
                 failSnapshot("ineligible-metadata", scanDurationMs);
@@ -893,6 +969,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
     pdfBytes,
     currentPage,
     zoom,
+    mobilePolishEnabled,
     fitRequestId,
     fieldSuggestionDocumentRevision,
     onFieldSuggestionSnapshotEvent,
@@ -1278,43 +1355,40 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
       try {
         // First check pre-computed boxes (instant, no pixel scanning)
         const preBoxes = precomputedBoxesRef.current;
-        let snap: SnapResult | null = null;
-
-        if (preBoxes.length > 0) {
-          // Find all boxes containing the pointer, pick the most credible (smallest cell)
-          const containing: SnapResult[] = [];
-          for (const box of preBoxes) {
-            if (
-              pos.x >= box.x - 3 &&
-              pos.x <= box.x + box.width + 3 &&
-              pos.y >= box.y - 3 &&
-              pos.y <= box.y + box.height + 3
-            ) {
-              containing.push(box);
-            }
-          }
-          if (containing.length > 0) {
-            containing.sort((a, b) => snapCredibilityScore(a) - snapCredibilityScore(b));
-            const best = containing[0];
-            const aspectRatio = best.width / Math.max(best.height, 1);
-            // Skip pre-computed if box is row-spanning (extreme aspect ratio)
-            if (aspectRatio <= 10) {
-              snap = best;
-            }
-          }
-        }
+        let snap = findPrecomputedSnap(
+          preBoxes,
+          pos.x,
+          pos.y,
+          canvasRenderRatioRef.current,
+        );
 
         // Fall back: try flood fill directly on canvas, then line-based scan
         if (!snap && canvasRef.current) {
+          const renderRatio = canvasRenderRatioRef.current;
+          const canvasX = pos.x * renderRatio;
+          const canvasY = pos.y * renderRatio;
           const ctx = canvasRef.current.getContext("2d");
           if (ctx) {
             try {
               const imgData = ctx.getImageData(0, 0, canvasRef.current.width, canvasRef.current.height);
-              const ff = floodFillCell(imgData.data, canvasRef.current.width, canvasRef.current.height, Math.round(pos.x), Math.round(pos.y));
-              if (ff) snap = ff;
+              const ff = floodFillCell(
+                imgData.data,
+                canvasRef.current.width,
+                canvasRef.current.height,
+                Math.round(canvasX),
+                Math.round(canvasY),
+              );
+              if (ff) {
+                snap = scaleSnapResult(ff, 1 / renderRatio);
+              }
             } catch { /* silent */ }
           }
-          if (!snap) snap = detectSnapBox(canvasRef.current, pos.x, pos.y);
+          if (!snap) {
+            snap = scaleSnapResult(
+              detectSnapBox(canvasRef.current, canvasX, canvasY),
+              1 / renderRatio,
+            );
+          }
         }
 
         if (snap) {
@@ -1518,32 +1592,34 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
               let totalWidth = fieldW;
 
               if (canvas) {
+                const canvasDetectionScale =
+                  effectiveScale * canvasRenderRatioRef.current;
                 // Convert PDF points to canvas pixels for detection
                 const combResult = detectCombCells(
                   canvas,
-                  fieldX * effectiveScale,
-                  fieldY * effectiveScale,
-                  fieldW * effectiveScale,
-                  fieldH * effectiveScale,
+                  fieldX * canvasDetectionScale,
+                  fieldY * canvasDetectionScale,
+                  fieldW * canvasDetectionScale,
+                  fieldH * canvasDetectionScale,
                 );
                 if (combResult && combResult.cellCount >= 2) {
                   // Convert detected values back to PDF point space
-                  detectedCellWidth = Math.round(combResult.cellWidth / effectiveScale);
+                  detectedCellWidth = Math.round(combResult.cellWidth / canvasDetectionScale);
                   detectedCellCount = combResult.cellCount;
                   // Snap X position to first detected cell boundary (PDF points)
-                  snapX = Math.round(combResult.firstCellX / effectiveScale);
+                  snapX = Math.round(combResult.firstCellX / canvasDetectionScale);
                   // Snap Y and height to detected box bounds (PDF points)
-                  snapY = Math.round(combResult.y / effectiveScale);
-                  snapHeight = Math.round(combResult.height / effectiveScale);
+                  snapY = Math.round(combResult.y / canvasDetectionScale);
+                  snapHeight = Math.round(combResult.height / canvasDetectionScale);
 
                   // Store cell centers relative to field X for non-uniform spacing (PDF points)
                   if (combResult.cellCenters && combResult.cellCenters.length > 0) {
-                    cellPositions = combResult.cellCenters.map(c => Math.round((c / effectiveScale) - snapX));
-                    cellWidthsArr = combResult.cellWidths.map(w => Math.round(w / effectiveScale));
+                    cellPositions = combResult.cellCenters.map(c => Math.round((c / canvasDetectionScale) - snapX));
+                    cellWidthsArr = combResult.cellWidths.map(w => Math.round(w / canvasDetectionScale));
                     // Calculate total width from first cell to end of last cell
                     const lastCellRight = combResult.cellBoundaries[combResult.cellBoundaries.length - 1] +
                       (combResult.cellWidths[combResult.cellWidths.length - 1] || combResult.cellWidth);
-                    totalWidth = Math.round((lastCellRight - combResult.firstCellX) / effectiveScale);
+                    totalWidth = Math.round((lastCellRight - combResult.firstCellX) / canvasDetectionScale);
                   }
                 }
               }
@@ -1575,8 +1651,9 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
                   const ctx = canvas.getContext("2d");
                   if (ctx) {
                     // Use raw screen coordinates for sampling (center of drawn rectangle)
-                    const canvasCx = Math.round(x + absDx / 2);
-                    const canvasCy = Math.round(y + absDy / 2);
+                    const renderRatio = canvasRenderRatioRef.current;
+                    const canvasCx = Math.round((x + absDx / 2) * renderRatio);
+                    const canvasCy = Math.round((y + absDy / 2) * renderRatio);
                     fillColor = sampleBackgroundColor(ctx, canvasCx, canvasCy, canvas.width, canvas.height);
                     // Auto-save sampled color for subsequent whiteouts
                     setWhiteoutColor(fillColor);
@@ -1641,32 +1718,24 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
                 snapped = true;
               } else {
                 const preBoxes = precomputedBoxesRef.current;
-                let foundSnap: SnapResult | null = null;
-
-                // preBoxes are in canvas pixels, pos is also canvas pixels
-                if (preBoxes.length > 0) {
-                  const containing: SnapResult[] = [];
-                  for (const box of preBoxes) {
-                    if (
-                      pos.x >= box.x - 3 &&
-                      pos.x <= box.x + box.width + 3 &&
-                      pos.y >= box.y - 3 &&
-                      pos.y <= box.y + box.height + 3
-                    ) {
-                      containing.push(box);
-                    }
-                  }
-                  if (containing.length > 0) {
-                    containing.sort((a, b) => snapCredibilityScore(a) - snapCredibilityScore(b));
-                    const best = containing[0];
-                    const aspectRatio = best.width / Math.max(best.height, 1);
-                    if (aspectRatio <= 10) foundSnap = best;
-                  }
-                }
+                let foundSnap = findPrecomputedSnap(
+                  preBoxes,
+                  pos.x,
+                  pos.y,
+                  canvasRenderRatioRef.current,
+                );
 
                 if (!foundSnap && canvasRef.current) {
                   try {
-                    foundSnap = detectSnapBox(canvasRef.current, pos.x, pos.y);
+                    const renderRatio = canvasRenderRatioRef.current;
+                    foundSnap = scaleSnapResult(
+                      detectSnapBox(
+                        canvasRef.current,
+                        pos.x * renderRatio,
+                        pos.y * renderRatio,
+                      ),
+                      1 / renderRatio,
+                    );
                   } catch { /* fall back to default */ }
                 }
 
@@ -1778,28 +1847,30 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
                 let combTotalWidth = fieldW;
 
                 if (combCanvas) {
+                  const canvasDetectionScale =
+                    effectiveScale * canvasRenderRatioRef.current;
                   // Convert PDF points to canvas pixels for detection
                   const combResult = detectCombCells(
                     combCanvas,
-                    fieldX * effectiveScale,
-                    fieldY * effectiveScale,
-                    fieldW * effectiveScale,
-                    fieldH * effectiveScale,
+                    fieldX * canvasDetectionScale,
+                    fieldY * canvasDetectionScale,
+                    fieldW * canvasDetectionScale,
+                    fieldH * canvasDetectionScale,
                   );
                   if (combResult && combResult.cellCount >= 2) {
                     // Convert back to PDF point space
-                    combDetectedCellWidth = Math.round(combResult.cellWidth / effectiveScale);
+                    combDetectedCellWidth = Math.round(combResult.cellWidth / canvasDetectionScale);
                     combDetectedCellCount = combResult.cellCount;
-                    combSnapX = Math.round(combResult.firstCellX / effectiveScale);
-                    combSnapY = Math.round(combResult.y / effectiveScale);
-                    combSnapHeight = Math.round(combResult.height / effectiveScale);
+                    combSnapX = Math.round(combResult.firstCellX / canvasDetectionScale);
+                    combSnapY = Math.round(combResult.y / canvasDetectionScale);
+                    combSnapHeight = Math.round(combResult.height / canvasDetectionScale);
 
                     if (combResult.cellCenters && combResult.cellCenters.length > 0) {
-                      combCellPositions = combResult.cellCenters.map(c => Math.round((c / effectiveScale) - combSnapX));
-                      combCellWidthsArr = combResult.cellWidths.map(w => Math.round(w / effectiveScale));
+                      combCellPositions = combResult.cellCenters.map(c => Math.round((c / canvasDetectionScale) - combSnapX));
+                      combCellWidthsArr = combResult.cellWidths.map(w => Math.round(w / canvasDetectionScale));
                       const lastCellRight = combResult.cellBoundaries[combResult.cellBoundaries.length - 1] +
                         (combResult.cellWidths[combResult.cellWidths.length - 1] || combResult.cellWidth);
-                      combTotalWidth = Math.round((lastCellRight - combResult.firstCellX) / effectiveScale);
+                      combTotalWidth = Math.round((lastCellRight - combResult.firstCellX) / canvasDetectionScale);
                     }
                   }
                 }
@@ -1831,8 +1902,9 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
                     const ctx = canvas.getContext("2d");
                     if (ctx) {
                       // Use raw screen coordinates for sampling
-                      const canvasCx = Math.round(pos.x);
-                      const canvasCy = Math.round(pos.y);
+                      const renderRatio = canvasRenderRatioRef.current;
+                      const canvasCx = Math.round(pos.x * renderRatio);
+                      const canvasCy = Math.round(pos.y * renderRatio);
                       fillColor = sampleBackgroundColor(ctx, canvasCx, canvasCy, canvas.width, canvas.height);
                       setWhiteoutColor(fillColor);
                     }
@@ -1919,32 +1991,24 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
           snapped = true;
         } else {
           const preBoxes = precomputedBoxesRef.current;
-          let foundSnap: SnapResult | null = null;
-
-          // preBoxes are in canvas pixels
-          if (preBoxes.length > 0) {
-            const containing: SnapResult[] = [];
-            for (const box of preBoxes) {
-              if (
-                posX >= box.x - 3 &&
-                posX <= box.x + box.width + 3 &&
-                posY >= box.y - 3 &&
-                posY <= box.y + box.height + 3
-              ) {
-                containing.push(box);
-              }
-            }
-            if (containing.length > 0) {
-              containing.sort((a, b) => snapCredibilityScore(a) - snapCredibilityScore(b));
-              const best = containing[0];
-              const aspectRatio = best.width / Math.max(best.height, 1);
-              if (aspectRatio <= 10) foundSnap = best;
-            }
-          }
+          let foundSnap = findPrecomputedSnap(
+            preBoxes,
+            posX,
+            posY,
+            canvasRenderRatioRef.current,
+          );
 
           if (!foundSnap && canvasRef.current) {
             try {
-              foundSnap = detectSnapBox(canvasRef.current, posX, posY);
+              const renderRatio = canvasRenderRatioRef.current;
+              foundSnap = scaleSnapResult(
+                detectSnapBox(
+                  canvasRef.current,
+                  posX * renderRatio,
+                  posY * renderRatio,
+                ),
+                1 / renderRatio,
+              );
             } catch { /* fall back to default */ }
           }
 
@@ -2049,28 +2113,30 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
           let combTotalWidth3 = fieldW;
 
           if (combCanvas3) {
+            const canvasDetectionScale =
+              effectiveScale * canvasRenderRatioRef.current;
             // Convert PDF points to canvas pixels for detection
             const combResult3 = detectCombCells(
               combCanvas3,
-              fieldX * effectiveScale,
-              fieldY * effectiveScale,
-              fieldW * effectiveScale,
-              fieldH * effectiveScale,
+              fieldX * canvasDetectionScale,
+              fieldY * canvasDetectionScale,
+              fieldW * canvasDetectionScale,
+              fieldH * canvasDetectionScale,
             );
             if (combResult3 && combResult3.cellCount >= 2) {
               // Convert back to PDF point space
-              combDetectedCellWidth3 = Math.round(combResult3.cellWidth / effectiveScale);
+              combDetectedCellWidth3 = Math.round(combResult3.cellWidth / canvasDetectionScale);
               combDetectedCellCount3 = combResult3.cellCount;
-              combSnapX3 = Math.round(combResult3.firstCellX / effectiveScale);
-              combSnapY3 = Math.round(combResult3.y / effectiveScale);
-              combSnapHeight3 = Math.round(combResult3.height / effectiveScale);
+              combSnapX3 = Math.round(combResult3.firstCellX / canvasDetectionScale);
+              combSnapY3 = Math.round(combResult3.y / canvasDetectionScale);
+              combSnapHeight3 = Math.round(combResult3.height / canvasDetectionScale);
 
               if (combResult3.cellCenters && combResult3.cellCenters.length > 0) {
-                combCellPositions3 = combResult3.cellCenters.map(c => Math.round((c / effectiveScale) - combSnapX3));
-                combCellWidthsArr3 = combResult3.cellWidths.map(w => Math.round(w / effectiveScale));
+                combCellPositions3 = combResult3.cellCenters.map(c => Math.round((c / canvasDetectionScale) - combSnapX3));
+                combCellWidthsArr3 = combResult3.cellWidths.map(w => Math.round(w / canvasDetectionScale));
                 const lastCellRight3 = combResult3.cellBoundaries[combResult3.cellBoundaries.length - 1] +
                   (combResult3.cellWidths[combResult3.cellWidths.length - 1] || combResult3.cellWidth);
-                combTotalWidth3 = Math.round((lastCellRight3 - combResult3.firstCellX) / effectiveScale);
+                combTotalWidth3 = Math.round((lastCellRight3 - combResult3.firstCellX) / canvasDetectionScale);
               }
             }
           }
@@ -2102,8 +2168,9 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
               const ctx = canvas.getContext("2d");
               if (ctx) {
                 // Use raw screen coordinates for sampling
-                const canvasCx = Math.round(posX);
-                const canvasCy = Math.round(posY);
+                const renderRatio = canvasRenderRatioRef.current;
+                const canvasCx = Math.round(posX * renderRatio);
+                const canvasCy = Math.round(posY * renderRatio);
                 fillColor = sampleBackgroundColor(ctx, canvasCx, canvasCy, canvas.width, canvas.height);
                 setWhiteoutColor(fillColor);
               }
@@ -2307,7 +2374,9 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
       // Dead zone: a wobbly two-finger pan (tiny distance change) must not
       // trigger a zoom commit and re-render.
       if (Math.abs(g.currentZoom - g.startZoom) < 2) return;
-      const finalZoom = Math.round(clampGestureZoom(g.currentZoom));
+      const finalZoom = Math.round(
+        clampGestureZoom(g.currentZoom, gestureZoomLimit),
+      );
       if (finalZoom === Math.round(g.startZoom) || !onGestureZoomCommit) return;
       const viewportEl = containerRef.current?.parentElement;
       if (viewportEl && wrap) {
@@ -2324,7 +2393,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
       }
       onGestureZoomCommit(finalZoom);
     },
-    [onGestureZoomCommit, onGestureZoomPreview]
+    [gestureZoomLimit, onGestureZoomCommit, onGestureZoomPreview]
   );
 
   useEffect(() => {
@@ -2395,7 +2464,12 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
 
       // Pinch: CSS transform only during the gesture (no pdf.js re-render
       // per frame); the crisp re-render happens once on release.
-      const nextZoom = gestureZoom(g.startZoom, g.startDist, touchDistance(p0, p1));
+      const nextZoom = gestureZoom(
+        g.startZoom,
+        g.startDist,
+        touchDistance(p0, p1),
+        gestureZoomLimit,
+      );
       g.currentZoom = nextZoom;
       const wrap = pageWrapRef.current;
       if (wrap) {
@@ -2409,7 +2483,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
         }
       }
     },
-    [onGestureZoomPreview]
+    [gestureZoomLimit, onGestureZoomPreview]
   );
 
   const handleGestureTouchEnd = useCallback(

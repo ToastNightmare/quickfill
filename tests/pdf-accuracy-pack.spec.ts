@@ -64,9 +64,11 @@ const rotationSafeDownloadEnabled =
   process.env.NEXT_PUBLIC_QUICKFILL_ROTATION_SAFE_DOWNLOAD === "local-v1";
 const downloadPreserveEnabled =
   process.env.NEXT_PUBLIC_QUICKFILL_DOWNLOAD_PRESERVE === "v1";
+const mobilePolishEnabled =
+  process.env.NEXT_PUBLIC_QUICKFILL_MOBILE_POLISH === "v1";
 const enforcedBaseUrl = "http://localhost:3000";
 const enforcedRedisUrl = "http://127.0.0.1:38079";
-const expectedEnforcedPdfTestCount = 31;
+const expectedEnforcedPdfTestCount = 32;
 const fieldPositionLandmark = {
   x: 73,
   y: 91,
@@ -317,6 +319,29 @@ async function createNeedAppearancesPdf(): Promise<TestPdf> {
 
   return {
     name: "quickfill-qa-need-appearances.pdf",
+    bytes: Buffer.from(
+      await pdfDoc.save({ updateFieldAppearances: false }),
+    ),
+  };
+}
+
+async function createSelectedDropdownPdf(): Promise<TestPdf> {
+  const pdfDoc = await PDFDocument.create();
+  const page = pdfDoc.addPage([300, 200]);
+  const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+  const dropdown = pdfDoc.getForm().createDropdown("region");
+  dropdown.setOptions(["CHOICE_A", "CHOICE_B"]);
+  dropdown.select("CHOICE_A");
+  dropdown.addToPage(page, {
+    x: 20,
+    y: 140,
+    width: 120,
+    height: 24,
+    font,
+  });
+
+  return {
+    name: "quickfill-qa-selected-dropdown.pdf",
     bytes: Buffer.from(
       await pdfDoc.save({ updateFieldAppearances: false }),
     ),
@@ -1353,7 +1378,7 @@ test.describe("PDF accuracy pack", () => {
       );
       expect(
         executedPdfTests,
-        "Enforced PDF QA must execute the deliberate 31-test pack",
+        "Enforced PDF QA must execute the deliberate 32-test pack",
       ).toBe(expectedEnforcedPdfTestCount);
       expect(
         skippedPdfTests,
@@ -1737,6 +1762,40 @@ test.describe("PDF accuracy pack", () => {
     );
   });
 
+  test("a valid mobile dropdown selection is rendered by the form exactly once", async ({
+    page,
+    request,
+  }) => {
+    const pdf = await createSelectedDropdownPdf();
+    const { response, body } = await requestDownloadPreserveExport(
+      request,
+      pdf,
+      [
+        {
+          id: "region",
+          type: "text",
+          choice: true,
+          x: 20,
+          y: 36,
+          width: 120,
+          height: 24,
+          page: 0,
+          value: "CHOICE_B",
+          fontSize: 12,
+        },
+      ],
+      true,
+    );
+
+    expect(response.status()).toBe(200);
+    await installPdfTextExtractor(page);
+    const [renderedText] = await extractPdfPageTexts(page, body);
+    expect(renderedText.split("CHOICE_B").length - 1).toBe(1);
+    expect(renderedText.split("CHOICE_A").length - 1).toBe(
+      mobilePolishEnabled && downloadPreserveEnabled ? 0 : 1,
+    );
+  });
+
   test("visible annotation content burns in and missing appearances fail closed only at v1", async ({
     page,
     request,
@@ -1859,11 +1918,15 @@ test.describe("PDF accuracy pack", () => {
     await expect(page.getByText(/0 of 4 filled/i)).toBeVisible();
 
     const inputs = page.locator("input[type='text']:visible");
-    await expect(inputs).toHaveCount(4);
+    await expect(inputs).toHaveCount(downloadPreserveEnabled ? 3 : 4);
     await inputs.nth(0).fill("Kyle Stanley");
     await inputs.nth(1).fill("01/02/1989");
     await inputs.nth(2).fill("123456789");
-    await inputs.nth(3).fill("Yes");
+    if (downloadPreserveEnabled) {
+      await page.getByRole("button", { name: /tap to check/i }).click();
+    } else {
+      await inputs.nth(3).fill("Yes");
+    }
     await expect(page.getByText(/4 of 4 filled/i)).toBeVisible();
 
     const overflow = await page.locator("body").evaluate((body) => body.scrollWidth - body.clientWidth);

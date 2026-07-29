@@ -13,6 +13,39 @@ export interface GesturePoint {
 /** Zoom bounds for gesture-driven zoom (percent). */
 export const GESTURE_ZOOM_MIN = 50;
 export const GESTURE_ZOOM_MAX = 200;
+export const MOBILE_POLISH_GESTURE_ZOOM_MAX = 400;
+export const PDF_RENDER_MAX_DIMENSION = 4096;
+
+export function gestureZoomMax(
+  mobilePolishFlag = process.env.NEXT_PUBLIC_QUICKFILL_MOBILE_POLISH,
+): number {
+  return mobilePolishFlag === "v1"
+    ? MOBILE_POLISH_GESTURE_ZOOM_MAX
+    : GESTURE_ZOOM_MAX;
+}
+
+/**
+ * Limit only the PDF canvas backing scale. Callers keep using `targetScale`
+ * for layout and field geometry, then stretch the lower-resolution canvas to
+ * those unchanged display dimensions with CSS.
+ */
+export function clampPdfRenderScale(
+  targetScale: number,
+  viewportWidthAtScale1: number,
+  viewportHeightAtScale1: number,
+  maxDimension = PDF_RENDER_MAX_DIMENSION,
+): number {
+  const largestTargetDimension =
+    Math.max(viewportWidthAtScale1, viewportHeightAtScale1) * targetScale;
+  if (
+    !Number.isFinite(largestTargetDimension) ||
+    largestTargetDimension <= 0 ||
+    largestTargetDimension <= maxDimension
+  ) {
+    return targetScale;
+  }
+  return targetScale * (maxDimension / largestTargetDimension);
+}
 
 /**
  * How long after a two-finger gesture ends that single-finger taps are
@@ -28,9 +61,12 @@ export function touchMidpoint(a: GesturePoint, b: GesturePoint): GesturePoint {
   return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
 }
 
-export function clampGestureZoom(zoom: number): number {
+export function clampGestureZoom(
+  zoom: number,
+  maxZoom = GESTURE_ZOOM_MAX,
+): number {
   if (Number.isNaN(zoom)) return GESTURE_ZOOM_MIN;
-  return Math.min(GESTURE_ZOOM_MAX, Math.max(GESTURE_ZOOM_MIN, zoom));
+  return Math.min(maxZoom, Math.max(GESTURE_ZOOM_MIN, zoom));
 }
 
 /**
@@ -40,21 +76,28 @@ export function clampGestureZoom(zoom: number): number {
 export function gestureZoom(
   startZoom: number,
   startDistance: number,
-  currentDistance: number
+  currentDistance: number,
+  maxZoom = GESTURE_ZOOM_MAX,
 ): number {
   if (startDistance <= 0 || currentDistance <= 0) {
-    return clampGestureZoom(startZoom);
+    return clampGestureZoom(startZoom, maxZoom);
   }
-  return clampGestureZoom(startZoom * (currentDistance / startDistance));
+  return clampGestureZoom(
+    startZoom * (currentDistance / startDistance),
+    maxZoom,
+  );
 }
 
 /** Final zoom committed when the pinch ends (rounded and clamped). */
 export function commitGestureZoom(
   startZoom: number,
   startDistance: number,
-  endDistance: number
+  endDistance: number,
+  maxZoom = GESTURE_ZOOM_MAX,
 ): number {
-  return Math.round(gestureZoom(startZoom, startDistance, endDistance));
+  return Math.round(
+    gestureZoom(startZoom, startDistance, endDistance, maxZoom),
+  );
 }
 
 export interface TouchPlacementGuardArgs {

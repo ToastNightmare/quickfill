@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useAuth } from "@clerk/nextjs";
-import { useState, useCallback, useRef, useEffect } from "react";
+import { memo, useState, useCallback, useRef, useEffect } from "react";
 import {
   Upload,
   Camera,
@@ -21,7 +21,7 @@ import {
 import { detectAcroFormFields } from "@/lib/pdf-utils";
 import { SignatureModal } from "@/components/SignatureModal";
 import { DownloadPreviewGate } from "@/components/DownloadPreviewGate";
-import { trackEvent } from "@/lib/analytics";
+import { trackEvent, trackPrivacySafeEvent } from "@/lib/analytics";
 import { getPdfPageCount, renderGatePagePreview } from "@/lib/gate-preview";
 import { trackAutofillShadowReport } from "@/lib/autofill-shadow-reporting";
 import { autofillModeFromFlag, runProfileAutofill } from "@/lib/profile-autofill";
@@ -62,6 +62,18 @@ import {
 const SIG_KEYWORDS = ["signature", "sign here", "signed", "sig", "esign", "e-sign"];
 const MOBILE_FILLER_SESSION_KEY = "quickfill_mobile_filler_session";
 const MOBILE_FILLER_SESSION_VALUE = "v1";
+const MOBILE_FILLER_NONEMPTY_FIELDS_KEY =
+  "quickfill_mobile_filler_session_nonempty_fields";
+const MOBILE_FILLER_NONEMPTY_FIELDS_VALUE = "1";
+const FIELD_PERSIST_DEBOUNCE_MS = 300;
+const STORAGE_BLOCKED_MESSAGE =
+  "Your browser is blocking storage, so we can't bring you back to your document after payment. If you're in Private Browsing, please switch it off and try again.";
+const RESTORE_ERROR_MESSAGE =
+  "We couldn't restore your document. Your payment went through — choose the same file again and your Pro download will work.";
+
+function isMobilePolishEnabled() {
+  return process.env.NEXT_PUBLIC_QUICKFILL_MOBILE_POLISH === "v1";
+}
 
 function isPhoneSimpleViewport() {
   return typeof window !== "undefined" && window.innerWidth < 640;
@@ -86,9 +98,48 @@ function markMobileFillerSession() {
 function clearMobileFillerSession() {
   try {
     localStorage.removeItem(MOBILE_FILLER_SESSION_KEY);
+    if (isMobilePolishEnabled()) {
+      localStorage.removeItem(MOBILE_FILLER_NONEMPTY_FIELDS_KEY);
+    }
   } catch {
     // Nothing else to clear when browser storage is unavailable.
   }
+}
+
+function markMobileFillerFieldState(nonEmpty: boolean): boolean {
+  try {
+    if (nonEmpty) {
+      localStorage.setItem(
+        MOBILE_FILLER_NONEMPTY_FIELDS_KEY,
+        MOBILE_FILLER_NONEMPTY_FIELDS_VALUE,
+      );
+      return localStorage.getItem(MOBILE_FILLER_NONEMPTY_FIELDS_KEY) ===
+        MOBILE_FILLER_NONEMPTY_FIELDS_VALUE;
+    }
+    localStorage.removeItem(MOBILE_FILLER_NONEMPTY_FIELDS_KEY);
+    return localStorage.getItem(MOBILE_FILLER_NONEMPTY_FIELDS_KEY) === null;
+  } catch {
+    return false;
+  }
+}
+
+function savedSessionHadNonEmptyFields() {
+  try {
+    return localStorage.getItem(MOBILE_FILLER_NONEMPTY_FIELDS_KEY) ===
+      MOBILE_FILLER_NONEMPTY_FIELDS_VALUE;
+  } catch {
+    return false;
+  }
+}
+
+function arrayBuffersEqual(left: ArrayBuffer, right: ArrayBuffer) {
+  if (left.byteLength !== right.byteLength) return false;
+  const leftBytes = new Uint8Array(left);
+  const rightBytes = new Uint8Array(right);
+  for (let index = 0; index < leftBytes.length; index += 1) {
+    if (leftBytes[index] !== rightBytes[index]) return false;
+  }
+  return true;
 }
 
 function isSignatureField(name: string): boolean {
@@ -111,6 +162,9 @@ type MobileField = {
   width: number;
   height: number;
   fillColor?: string;
+  choiceKind?: "radio" | "choice";
+  options?: string[];
+  multiselect?: boolean;
 };
 
 type Step = "upload" | "filling" | "done";
@@ -188,7 +242,7 @@ function toEditorField(field: MobileField): EditorField {
     };
   }
 
-  return {
+  const textField: EditorField = {
     id: field.id,
     type: "text",
     x: field.x,
@@ -199,6 +253,14 @@ function toEditorField(field: MobileField): EditorField {
     value: field.value,
     fontSize: 12,
   };
+  if (
+    isMobilePolishEnabled() &&
+    field.choiceKind &&
+    !field.multiselect
+  ) {
+    textField.choice = true;
+  }
+  return textField;
 }
 
 function repairMobileFieldIds(fields: MobileField[]): MobileField[] {
@@ -213,12 +275,18 @@ function mobileFieldsFromDetected(
 ): MobileField[] {
   const preserveDownloadContent =
     process.env.NEXT_PUBLIC_QUICKFILL_DOWNLOAD_PRESERVE === "v1";
+  const mobilePolishEnabled = isMobilePolishEnabled();
   return repairMobileFieldIds(detected.map((field) => ({
     id: field.name,
     name: field.name,
-    type: isSignatureField(field.name) ? "signature" as const : field.type,
+    type:
+      !field.kind && isSignatureField(field.name)
+        ? "signature" as const
+        : field.type,
     value:
-      !preserveDownloadContent && field.valueSource === "choice"
+      !mobilePolishEnabled &&
+      !preserveDownloadContent &&
+      field.valueSource === "choice"
         ? ""
         : field.value ?? "",
     checked: preserveDownloadContent ? field.checked ?? false : false,
@@ -227,16 +295,23 @@ function mobileFieldsFromDetected(
     y: field.y,
     width: field.width,
     height: field.height,
+    ...(mobilePolishEnabled && field.kind
+      ? {
+          choiceKind: field.kind,
+          options: field.options ?? [],
+          multiselect: field.multiselect ?? false,
+        }
+      : {}),
   })));
 }
 
 function mobileFieldFromSavedEditorField(
   field: EditorField,
-  name: string,
+  detected?: Awaited<ReturnType<typeof detectAcroFormFields>>[number],
 ): MobileField | null {
   const base = {
     id: field.id,
-    name,
+    name: detected?.name ?? field.id,
     page: field.page,
     x: field.x,
     y: field.y,
@@ -257,7 +332,26 @@ function mobileFieldFromSavedEditorField(
     };
   }
   if (field.type === "text") {
-    return { ...base, type: "text", value: field.value, checked: false };
+    const choiceKind =
+      isMobilePolishEnabled() &&
+      field.choice &&
+      detected?.kind &&
+      !detected.multiselect
+        ? detected.kind
+        : undefined;
+    return {
+      ...base,
+      type: "text",
+      value: field.value,
+      checked: false,
+      ...(choiceKind
+        ? {
+            choiceKind,
+            options: detected?.options ?? [],
+            multiselect: false,
+          }
+        : {}),
+    };
   }
   if (field.type === "whiteout") {
     return {
@@ -283,6 +377,7 @@ export function MobileFiller({
 }: {
   restorePersistedSession?: boolean;
 }) {
+  const mobilePolishEnabled = isMobilePolishEnabled();
   const makeFillableEnabled = isFieldSuggestionReviewEnabled();
   const { isLoaded, isSignedIn, userId, sessionId } = useAuth();
   const [step, setStep] = useState<Step>("upload");
@@ -300,8 +395,12 @@ export function MobileFiller({
   const [pendingPhoto, setPendingPhoto] = useState<File | null>(null);
   const [showDownloadGate, setShowDownloadGate] = useState(false);
   const [gatePageCount, setGatePageCount] = useState(1);
+  const [storageNotice, setStorageNotice] = useState<string | null>(null);
+  const [restoreError, setRestoreError] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const pdfBytesRef = useRef<ArrayBuffer | null>(null);
+  const fieldsRef = useRef<MobileField[]>([]);
+  const fieldPersistenceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const photoCaptureInputRef = useRef<HTMLInputElement>(null);
   const fieldRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const signatureLoadSessionKeyRef = useRef<string | null>(null);
@@ -317,6 +416,15 @@ export function MobileFiller({
   // A resolved auth transition invalidates stale responses during this render.
   // Temporary unresolved states preserve the last continuous session identity.
   if (isLoaded) signatureActiveSessionKeyRef.current = authenticatedSignatureSessionKey;
+  fieldsRef.current = fields;
+
+  const flushFieldPersistence = useCallback(() => {
+    if (fieldPersistenceTimerRef.current !== null) {
+      clearTimeout(fieldPersistenceTimerRef.current);
+      fieldPersistenceTimerRef.current = null;
+    }
+    return saveFieldsToLocalStorage(fieldsRef.current.map(toEditorField));
+  }, []);
 
   useEffect(() => {
     signatureComponentMountedRef.current = true;
@@ -386,6 +494,7 @@ export function MobileFiller({
         if (cancelled) return;
         if (!savedPdf) {
           clearMobileFillerSession();
+          if (mobilePolishEnabled) setRestoreError(true);
           return;
         }
 
@@ -393,9 +502,18 @@ export function MobileFiller({
         if (cancelled) return;
 
         const savedFields = repairDuplicateEditorFieldIds(loadFieldsFromLocalStorage());
+        if (
+          mobilePolishEnabled &&
+          savedSessionHadNonEmptyFields() &&
+          savedFields.length === 0
+        ) {
+          clearMobileFillerSession();
+          setRestoreError(true);
+          return;
+        }
         const restoredFields = savedFields.length > 0
           ? savedFields.map((field, index) =>
-              mobileFieldFromSavedEditorField(field, detected[index]?.name ?? field.id)
+              mobileFieldFromSavedEditorField(field, detected[index])
             )
           : mobileFieldsFromDetected(detected);
 
@@ -410,6 +528,7 @@ export function MobileFiller({
         setPdfBytes(savedPdf);
         setFields(nextFields);
         setHasAcroForm(detected.length > 0 || nextFields.length > 0);
+        setRestoreError(false);
         setStep("filling");
       })
       .catch(() => {
@@ -425,12 +544,30 @@ export function MobileFiller({
     return () => {
       cancelled = true;
     };
-  }, [restorePersistedSession]);
+  }, [mobilePolishEnabled, restorePersistedSession]);
 
   useEffect(() => {
     if (!pdfBytes) return;
-    saveFieldsToLocalStorage(fields.map(toEditorField));
-  }, [fields, pdfBytes]);
+    if (!mobilePolishEnabled) {
+      saveFieldsToLocalStorage(fields.map(toEditorField));
+      return;
+    }
+
+    if (fieldPersistenceTimerRef.current !== null) {
+      clearTimeout(fieldPersistenceTimerRef.current);
+    }
+    fieldPersistenceTimerRef.current = setTimeout(() => {
+      fieldPersistenceTimerRef.current = null;
+      saveFieldsToLocalStorage(fieldsRef.current.map(toEditorField));
+    }, FIELD_PERSIST_DEBOUNCE_MS);
+
+    return () => {
+      if (fieldPersistenceTimerRef.current !== null) {
+        clearTimeout(fieldPersistenceTimerRef.current);
+        fieldPersistenceTimerRef.current = null;
+      }
+    };
+  }, [fields, mobilePolishEnabled, pdfBytes]);
 
   const showToast = useCallback((msg: string, ms = 3500) => {
     setToast(msg);
@@ -448,6 +585,8 @@ export function MobileFiller({
 
   const handleFile = useCallback(async (file: File, options?: { makeFillable?: boolean }) => {
     setIsLoading(true);
+    setRestoreError(false);
+    setStorageNotice(null);
     clearFieldSuggestionIntent();
 
     try {
@@ -503,6 +642,7 @@ export function MobileFiller({
     const file = e.target.files?.[0];
     e.target.value = "";
     if (!file) return;
+    setRestoreError(false);
     if (isCleanablePhoto(file)) {
       setPendingPhoto(file);
       return;
@@ -595,6 +735,24 @@ export function MobileFiller({
     pdfBytesRef.current = pdfBytes;
   }, [pdfBytes]);
 
+  useEffect(() => {
+    if (!mobilePolishEnabled) return;
+
+    const flushIfDocumentIsOpen = () => {
+      if (pdfBytesRef.current) flushFieldPersistence();
+    };
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "hidden") flushIfDocumentIsOpen();
+    };
+
+    window.addEventListener("pagehide", flushIfDocumentIsOpen);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => {
+      window.removeEventListener("pagehide", flushIfDocumentIsOpen);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [flushFieldPersistence, mobilePolishEnabled]);
+
   const openDownloadGate = useCallback(() => {
     // Fields carry page indexes, so they give an immediate lower bound while
     // the real page count loads; a stale async result for a replaced
@@ -610,6 +768,41 @@ export function MobileFiller({
     });
   }, [pdfBytes, fields]);
 
+  const verifyStorageForGate = useCallback(async () => {
+    if (!mobilePolishEnabled || !pdfBytes) return true;
+
+    const editorFields = fieldsRef.current.map(toEditorField);
+    const fieldsSaved = flushFieldPersistence();
+    const pdfSaved = await savePdfToIndexedDB(pdfBytes);
+    const [savedPdf, savedFields] = await Promise.all([
+      loadPdfFromIndexedDB(),
+      Promise.resolve(loadFieldsFromLocalStorage()),
+    ]);
+    markMobileFillerSession();
+    const sessionSaved = hasMobileFillerSession();
+    const markerSaved = markMobileFillerFieldState(editorFields.length > 0);
+    const storageVerified =
+      fieldsSaved &&
+      pdfSaved &&
+      sessionSaved &&
+      markerSaved &&
+      savedPdf !== null &&
+      arrayBuffersEqual(pdfBytes, savedPdf) &&
+      JSON.stringify(editorFields) === JSON.stringify(savedFields);
+
+    if (storageVerified) {
+      setStorageNotice(null);
+      return true;
+    }
+
+    trackPrivacySafeEvent("mobile_storage_verification_failed", {
+      surface: "mobile_filler",
+      stage: "pre_gate",
+    });
+    setStorageNotice(STORAGE_BLOCKED_MESSAGE);
+    return false;
+  }, [flushFieldPersistence, mobilePolishEnabled, pdfBytes]);
+
   // Locked per-page preview renderer for the download gate. Shares the
   // desktop gate compositor; never calls /api/fill-pdf.
   const renderGatePreviewPage = useCallback(
@@ -622,6 +815,7 @@ export function MobileFiller({
 
   const handleDownload = useCallback(async () => {
     if (!pdfBytes) return;
+    if (mobilePolishEnabled) flushFieldPersistence();
     trackEvent("download_attempt", {
       surface: "mobile",
       fieldCount: fields.length,
@@ -647,6 +841,7 @@ export function MobileFiller({
 
       // Non-Pro users always see the gate. Never call fill-pdf before payment.
       if (!isPro) {
+        if (mobilePolishEnabled && !(await verifyStorageForGate())) return;
         trackEvent("download_gate_shown", { source: "mobile_filler" });
         openDownloadGate();
         return;
@@ -686,6 +881,7 @@ export function MobileFiller({
       if (!fillRes.ok) {
         if (fillRes.status === 402) {
           // Server-side entitlement safety net.
+          if (mobilePolishEnabled && !(await verifyStorageForGate())) return;
           trackEvent("download_gate_shown", { source: "mobile_api_402_safety" });
           openDownloadGate();
           return;
@@ -737,7 +933,17 @@ export function MobileFiller({
     } finally {
       setIsDownloading(false);
     }
-  }, [pdfBytes, fields, fileName, hasAcroForm, showToast, openDownloadGate]);
+  }, [
+    pdfBytes,
+    fields,
+    fileName,
+    hasAcroForm,
+    showToast,
+    openDownloadGate,
+    mobilePolishEnabled,
+    flushFieldPersistence,
+    verifyStorageForGate,
+  ]);
 
   useEffect(() => {
     if (!restorePersistedSession || !isPhoneSimpleViewport() || !hasMobileFillerSession()) return;
@@ -747,7 +953,13 @@ export function MobileFiller({
     downloadCancelledHandledRef.current = true;
 
     trackEvent("checkout_cancelled", { source: "download_preview_gate_mobile" });
-    openDownloadGate();
+    if (mobilePolishEnabled) {
+      void verifyStorageForGate().then((verified) => {
+        if (verified) openDownloadGate();
+      });
+    } else {
+      openDownloadGate();
+    }
 
     params.delete("download");
     const query = params.toString();
@@ -756,7 +968,13 @@ export function MobileFiller({
       "",
       query ? `${window.location.pathname}?${query}` : window.location.pathname,
     );
-  }, [restorePersistedSession, pdfBytes, openDownloadGate]);
+  }, [
+    restorePersistedSession,
+    pdfBytes,
+    openDownloadGate,
+    mobilePolishEnabled,
+    verifyStorageForGate,
+  ]);
 
   useEffect(() => {
     if (!restorePersistedSession || !isPhoneSimpleViewport() || !hasMobileFillerSession()) return;
@@ -766,6 +984,22 @@ export function MobileFiller({
     downloadReadyFiredRef.current = true;
     void handleDownload();
   }, [restorePersistedSession, isLoaded, isSignedIn, pdfBytes, handleDownload]);
+
+  const setFieldRef = useCallback((fieldId: string, node: HTMLDivElement | null) => {
+    fieldRefs.current[fieldId] = node;
+  }, []);
+
+  const handleFieldTextChange = useCallback((fieldId: string, value: string) => {
+    setFields((previousFields) => previousFields.map((field) =>
+      field.id === fieldId ? { ...field, value } : field
+    ));
+  }, []);
+
+  const handleFieldCheckboxToggle = useCallback((fieldId: string) => {
+    setFields((previousFields) => previousFields.map((field) =>
+      field.id === fieldId ? { ...field, checked: !field.checked } : field
+    ));
+  }, []);
 
   const handleReset = useCallback(() => {
     clearFieldSuggestionIntent();
@@ -778,6 +1012,12 @@ export function MobileFiller({
     setHasAcroForm(false);
     setShowDownloadGate(false);
     setGatePageCount(1);
+    setStorageNotice(null);
+    setRestoreError(false);
+    if (fieldPersistenceTimerRef.current !== null) {
+      clearTimeout(fieldPersistenceTimerRef.current);
+      fieldPersistenceTimerRef.current = null;
+    }
     if (fileInputRef.current) fileInputRef.current.value = "";
   }, []);
 
@@ -788,6 +1028,14 @@ export function MobileFiller({
     return (
       <div className="flex min-h-[calc(100svh-64px)] flex-col items-center justify-center px-6 pb-8">
         <Toast msg={toast} />
+        {restoreError && (
+          <div
+            role="alert"
+            className="mb-6 w-full max-w-sm rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm leading-relaxed text-amber-950"
+          >
+            {RESTORE_ERROR_MESSAGE}
+          </div>
+        )}
         <div className="mb-5 flex h-16 w-16 items-center justify-center rounded-2xl bg-accent/10">
           <FileText className="h-8 w-8 text-accent" />
         </div>
@@ -882,6 +1130,25 @@ export function MobileFiller({
   return (
     <div className="flex min-h-[calc(100svh-64px)] flex-col bg-surface-alt/40">
       <Toast msg={toast} />
+      {storageNotice && (
+        <div
+          role="alertdialog"
+          aria-modal="true"
+          aria-label="Storage unavailable"
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/45 px-5"
+        >
+          <div className="w-full max-w-sm rounded-2xl bg-surface p-5 shadow-xl">
+            <p className="text-sm leading-relaxed text-text">{storageNotice}</p>
+            <button
+              type="button"
+              onClick={() => setStorageNotice(null)}
+              className="mt-5 flex h-11 w-full items-center justify-center rounded-xl bg-accent px-4 text-sm font-semibold text-white"
+            >
+              Dismiss
+            </button>
+          </div>
+        </div>
+      )}
 
       <div className="sticky top-16 z-30 border-b border-border bg-surface">
         <div className="flex items-center gap-3 px-4 py-3">
@@ -964,17 +1231,48 @@ export function MobileFiller({
           </div>
         ) : (
           <div className="flex flex-col gap-3">
-            {fields.map((field) => (
-              <FieldCard
-                key={field.id}
-                field={field}
-                isFilled={fieldIsFilled(field)}
-                setRef={(node) => { fieldRefs.current[field.id] = node; }}
-                onTextChange={(val) => setFields((prev) => prev.map((f) => f.id === field.id ? { ...f, value: val } : f))}
-                onCheckboxToggle={() => setFields((prev) => prev.map((f) => f.id === field.id ? { ...f, checked: !f.checked } : f))}
-                onSignatureTap={() => openSignatureModal(field.id)}
-              />
-            ))}
+            {fields.map((field) => {
+              const Card = mobilePolishEnabled ? MemoizedFieldCard : FieldCard;
+              return (
+                <Card
+                  key={field.id}
+                  field={field}
+                  isFilled={fieldIsFilled(field)}
+                  setRef={
+                    mobilePolishEnabled
+                      ? setFieldRef
+                      : (_fieldId, node) => { fieldRefs.current[field.id] = node; }
+                  }
+                  onTextChange={
+                    mobilePolishEnabled
+                      ? handleFieldTextChange
+                      : (_fieldId, value) => setFields((previousFields) =>
+                          previousFields.map((previousField) =>
+                            previousField.id === field.id
+                              ? { ...previousField, value }
+                              : previousField
+                          )
+                        )
+                  }
+                  onCheckboxToggle={
+                    mobilePolishEnabled
+                      ? handleFieldCheckboxToggle
+                      : () => setFields((previousFields) =>
+                          previousFields.map((previousField) =>
+                            previousField.id === field.id
+                              ? { ...previousField, checked: !previousField.checked }
+                              : previousField
+                          )
+                        )
+                  }
+                  onSignatureTap={
+                    mobilePolishEnabled
+                      ? openSignatureModal
+                      : () => openSignatureModal(field.id)
+                  }
+                />
+              );
+            })}
           </div>
         )}
       </div>
@@ -1036,16 +1334,33 @@ function FieldCard({
 }: {
   field: MobileField;
   isFilled: boolean;
-  setRef: (node: HTMLDivElement | null) => void;
-  onTextChange: (val: string) => void;
-  onCheckboxToggle: () => void;
-  onSignatureTap: () => void;
+  setRef: (fieldId: string, node: HTMLDivElement | null) => void;
+  onTextChange: (fieldId: string, value: string) => void;
+  onCheckboxToggle: (fieldId: string) => void;
+  onSignatureTap: (fieldId: string) => void;
 }) {
   const label = humanizeFieldName(field.name);
   const pageTag = field.page > 0 ? `p.${field.page + 1}` : null;
+  const options = field.options ?? [];
+  const showRadioChoices =
+    field.type === "text" &&
+    field.choiceKind === "radio" &&
+    !field.multiselect &&
+    options.length > 0;
+  const showSelectChoices =
+    field.type === "text" &&
+    field.choiceKind === "choice" &&
+    !field.multiselect &&
+    options.length > 0;
+  const showTextInput =
+    field.type === "text" &&
+    (!field.choiceKind || field.multiselect || options.length === 0);
 
   return (
-    <div ref={setRef} className={`rounded-xl border bg-surface p-4 shadow-sm ${isFilled ? "border-green-200" : "border-border"}`}>
+    <div
+      ref={(node) => setRef(field.id, node)}
+      className={`rounded-xl border bg-surface p-4 shadow-sm ${isFilled ? "border-green-200" : "border-border"}`}
+    >
       <div className="mb-2 flex items-baseline justify-between gap-3">
         <label className="min-w-0 truncate text-xs font-semibold uppercase tracking-wide text-text-muted">
           {label}
@@ -1058,7 +1373,8 @@ function FieldCard({
 
       {field.type === "checkbox" && (
         <button
-          onClick={onCheckboxToggle}
+          type="button"
+          onClick={() => onCheckboxToggle(field.id)}
           className="flex w-full items-center gap-3 rounded-xl border border-border bg-surface-alt px-3 py-3 text-left"
         >
           <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border-2 transition-colors ${field.checked ? "border-accent bg-accent" : "border-border bg-surface"}`}>
@@ -1068,12 +1384,55 @@ function FieldCard({
         </button>
       )}
 
-      {field.type === "text" && (
+      {showRadioChoices && (
+        <div
+          role="radiogroup"
+          aria-label={label}
+          className="flex flex-wrap gap-2"
+        >
+          {options.map((option) => {
+            const selected = field.value === option;
+            return (
+              <button
+                key={option}
+                type="button"
+                role="radio"
+                aria-checked={selected}
+                onClick={() => onTextChange(field.id, option)}
+                className={`min-h-11 rounded-full border px-4 py-2 text-sm font-medium transition-colors ${
+                  selected
+                    ? "border-accent bg-accent text-white"
+                    : "border-border bg-surface-alt text-text"
+                }`}
+              >
+                {option}
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {showSelectChoices && (
+        <select
+          aria-label={label}
+          value={field.value}
+          onChange={(event) => onTextChange(field.id, event.target.value)}
+          className="w-full rounded-xl border border-border bg-surface-alt px-3 py-3 text-text outline-none transition-colors focus:border-accent focus:bg-white"
+          style={{ fontSize: 16 }}
+        >
+          <option value="">Choose an option</option>
+          {options.map((option) => (
+            <option key={option} value={option}>{option}</option>
+          ))}
+        </select>
+      )}
+
+      {showTextInput && (
         <input
           type={inputTypeFor(label)}
           inputMode={inputModeFor(label)}
           value={field.value}
-          onChange={(e) => onTextChange(e.target.value)}
+          onChange={(event) => onTextChange(field.id, event.target.value)}
           placeholder="Type here"
           enterKeyHint="next"
           className="w-full rounded-xl border border-border bg-surface-alt px-3 py-3 text-text outline-none transition-colors focus:border-accent focus:bg-white"
@@ -1083,7 +1442,8 @@ function FieldCard({
 
       {field.type === "signature" && (
         <button
-          onClick={onSignatureTap}
+          type="button"
+          onClick={() => onSignatureTap(field.id)}
           className={`flex w-full items-center justify-center gap-2 rounded-xl border-2 border-dashed py-4 transition-colors ${
             field.signatureDataUrl
               ? "border-green-300 bg-green-50"
@@ -1113,6 +1473,8 @@ function FieldCard({
     </div>
   );
 }
+
+const MemoizedFieldCard = memo(FieldCard);
 
 function Toast({ msg }: { msg: string | null }) {
   if (!msg) return null;

@@ -74,6 +74,8 @@ export interface TextField extends FieldBase {
   type: "text";
   value: string;
   fontSize: number;
+  /** Mobile-polish choice cards submit a real AcroForm option value. */
+  choice?: true;
 }
 
 export type CheckboxStamp = "tick" | "cross" | "none";
