@@ -264,9 +264,24 @@ export async function POST(request: NextRequest) {
             acroField instanceof PDFRadioGroup ||
             acroField instanceof PDFOptionList
           ) {
-            // Choice controls are display-only in the current clients. Leave
-            // their existing value untouched and let flatten render it once.
-            fieldsRenderedByAcroForm.add(field);
+            const submittedValue =
+              "value" in field && typeof field.value === "string"
+                ? field.value
+                : "";
+            try {
+              const currentSelection =
+                acroField instanceof PDFRadioGroup
+                  ? acroField.getSelected() ?? ""
+                  : acroField.getSelected().join(", ");
+              if (
+                submittedValue === "" ||
+                submittedValue === currentSelection
+              ) {
+                fieldsRenderedByAcroForm.add(field);
+              }
+            } catch {
+              // Selection lookup failures retain the overlay fallback.
+            }
             continue;
           }
 

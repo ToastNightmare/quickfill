@@ -748,6 +748,23 @@ async function createNeedAppearancesForm() {
   return pdfDoc.save({ updateFieldAppearances: false });
 }
 
+async function createSelectedDropdownForm() {
+  const pdfDoc = await PDFDocument.create();
+  const page = pdfDoc.addPage([300, 200]);
+  const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+  const dropdown = pdfDoc.getForm().createDropdown("region");
+  dropdown.setOptions(["CHOICE_A", "CHOICE_B"]);
+  dropdown.select("CHOICE_B");
+  dropdown.addToPage(page, {
+    x: 20,
+    y: 140,
+    width: 120,
+    height: 24,
+    font,
+  });
+  return pdfDoc.save({ updateFieldAppearances: false });
+}
+
 async function createMissingAppearanceAnnotationPdf() {
   const pdfDoc = await PDFDocument.create();
   const page = pdfDoc.addPage([300, 200]);
@@ -884,6 +901,45 @@ describe("fill-pdf download content preservation", () => {
     expect(streams).toContain("-2.5 -4.9 l");
     expect(streams).toContain("6.8999999999999995 4.75 l");
   });
+
+  it.each([
+    ["changed", "CHOICE_C", "CHOICE_C"],
+    ["unchanged", "CHOICE_B", "CHOICE_B"],
+    ["empty", "", "CHOICE_B"],
+  ])(
+    "overlay-draws a %s submitted dropdown value only when it differs from the current selection",
+    async (_case, submittedValue, expectedMarker) => {
+      const response = await POST(
+        await makeDownloadPreserveRequest(
+          await createSelectedDropdownForm(),
+          [
+            {
+              id: "region",
+              type: "text",
+              x: 20,
+              y: 36,
+              width: 120,
+              height: 24,
+              page: 0,
+              value: submittedValue,
+              fontSize: 12,
+            },
+          ],
+          true,
+        ),
+      );
+      const bytes = new Uint8Array(await response.arrayBuffer());
+      const streams = await decodedPdfStreams(bytes);
+
+      expect(response.status).toBe(200);
+      if (submittedValue === "CHOICE_C") {
+        expect(markerOccurrences(streams, expectedMarker)).toBeGreaterThan(0);
+        expect(markerOccurrences(streams, "CHOICE_B")).toBe(1);
+      } else {
+        expect(markerOccurrences(streams, expectedMarker)).toBe(1);
+      }
+    },
+  );
 
   it("returns the typed 422 without quota use when visible content cannot be preserved", async () => {
     jest.spyOn(console, "warn").mockImplementation(() => undefined);
