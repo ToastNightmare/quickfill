@@ -3,6 +3,7 @@ import {
   decodePDFRawStream,
   degrees,
   PDFArray,
+  PDFBool,
   PDFDict,
   PDFDocument,
   PDFName,
@@ -61,9 +62,11 @@ const qaToken = process.env.QUICKFILL_QA_TOKEN;
 const enforceQaToken = process.env.QUICKFILL_PDF_QA_ENFORCE === "1";
 const rotationSafeDownloadEnabled =
   process.env.NEXT_PUBLIC_QUICKFILL_ROTATION_SAFE_DOWNLOAD === "local-v1";
+const downloadPreserveEnabled =
+  process.env.NEXT_PUBLIC_QUICKFILL_DOWNLOAD_PRESERVE === "v1";
 const enforcedBaseUrl = "http://localhost:3000";
 const enforcedRedisUrl = "http://127.0.0.1:38079";
-const expectedEnforcedPdfTestCount = 28;
+const expectedEnforcedPdfTestCount = 31;
 const fieldPositionLandmark = {
   x: 73,
   y: 91,
@@ -245,6 +248,136 @@ async function createAcroFormPdf(): Promise<TestPdf> {
   return { name: "quickfill-qa-acroform.pdf", bytes: Buffer.from(bytes) };
 }
 
+async function createPrefilledAppearancePdf(): Promise<TestPdf> {
+  const pdfDoc = await PDFDocument.create();
+  const page = pdfDoc.addPage([300, 200]);
+  const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+  const textField = pdfDoc.getForm().createTextField("fullName");
+  textField.setText("PREFILLEDONCE");
+  textField.addToPage(page, {
+    x: 20,
+    y: 140,
+    width: 180,
+    height: 24,
+    font,
+  });
+
+  return {
+    name: "quickfill-qa-prefilled-appearance.pdf",
+    bytes: Buffer.from(
+      await pdfDoc.save({ updateFieldAppearances: false }),
+    ),
+  };
+}
+
+async function createNeedAppearancesPdf(): Promise<TestPdf> {
+  const pdfDoc = await PDFDocument.create();
+  const page = pdfDoc.addPage([300, 240]);
+  const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+  const form = pdfDoc.getForm();
+
+  const textField = form.createTextField("needsText");
+  textField.setText("NEEDSTEXT");
+  textField.addToPage(page, {
+    x: 20,
+    y: 180,
+    width: 160,
+    height: 24,
+    font,
+  });
+  for (const widget of textField.acroField.getWidgets()) {
+    widget.dict.delete(PDFName.of("AP"));
+  }
+
+  const checkbox = form.createCheckBox("confirmed");
+  checkbox.check();
+  checkbox.addToPage(page, {
+    x: 20,
+    y: 135,
+    width: 20,
+    height: 20,
+  });
+
+  const dropdown = form.createDropdown("region");
+  dropdown.setOptions(["East", "West"]);
+  dropdown.select("West");
+  dropdown.addToPage(page, {
+    x: 20,
+    y: 90,
+    width: 120,
+    height: 24,
+    font,
+  });
+
+  const acroForm = pdfDoc.catalog.lookup(
+    PDFName.of("AcroForm"),
+    PDFDict,
+  );
+  acroForm.set(PDFName.of("NeedAppearances"), PDFBool.True);
+
+  return {
+    name: "quickfill-qa-need-appearances.pdf",
+    bytes: Buffer.from(
+      await pdfDoc.save({ updateFieldAppearances: false }),
+    ),
+  };
+}
+
+async function createAnnotationPreservationPdf(
+  missingAppearance = false,
+): Promise<TestPdf> {
+  const pdfDoc = await PDFDocument.create();
+  const page = pdfDoc.addPage([300, 200]);
+  const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+  const annotations = PDFArray.withContext(pdfDoc.context);
+
+  const addFreeText = (
+    marker: string,
+    rect: [number, number, number, number],
+    flags?: number,
+  ) => {
+    const annotationEntries: Record<string, unknown> = {
+      Type: "Annot",
+      Subtype: "FreeText",
+      Rect: rect,
+      F: flags,
+    };
+    if (!missingAppearance) {
+      const appearance = pdfDoc.context.stream(
+        `BT /F1 12 Tf 0 0 Td (${marker}) Tj ET`,
+        {
+          Type: "XObject",
+          Subtype: "Form",
+          BBox: [0, 0, 120, 20],
+          Resources: { Font: { F1: font.ref } },
+        },
+      );
+      annotationEntries.AP = {
+        N: pdfDoc.context.register(appearance),
+      };
+    }
+    annotations.push(
+      pdfDoc.context.register(
+        pdfDoc.context.obj(annotationEntries as never),
+      ),
+    );
+  };
+
+  addFreeText("VISIBLEANNOTATION", [20, 140, 220, 175]);
+  if (!missingAppearance) {
+    addFreeText("HIDDENANNOTATION", [20, 90, 220, 125], 1 << 1);
+    annotations.push(PDFString.of("corrupt annotation entry"));
+  }
+  page.node.set(PDFName.of("Annots"), annotations);
+
+  return {
+    name: missingAppearance
+      ? "quickfill-qa-missing-annotation-appearance.pdf"
+      : "quickfill-qa-visible-annotation.pdf",
+    bytes: Buffer.from(await pdfDoc.save()),
+  };
+}
+
 async function createFlatPdf(): Promise<TestPdf> {
   const pdfDoc = await PDFDocument.create();
   const page = pdfDoc.addPage([612, 792]);
@@ -362,6 +495,32 @@ async function decodedPdfStreams(bytes: Uint8Array): Promise<string> {
     }
   }
   return decoded;
+}
+
+async function requestDownloadPreserveExport(
+  request: APIRequestContext,
+  pdf: TestPdf,
+  fields: Record<string, unknown>[],
+  hasAcroForm: boolean,
+) {
+  test.skip(!qaToken, "Set QUICKFILL_QA_TOKEN to run preservation checks.");
+  const response = await request.post("/api/fill-pdf", {
+    headers: qaToken ? { "x-quickfill-qa-token": qaToken } : undefined,
+    multipart: {
+      pdf: {
+        name: pdf.name,
+        mimeType: "application/pdf",
+        buffer: pdf.bytes,
+      },
+      fields: JSON.stringify(fields),
+      pageScales: JSON.stringify([[0, 1]]),
+      hasAcroForm: String(hasAcroForm),
+    },
+  });
+  return {
+    response,
+    body: Buffer.from(await response.body()),
+  };
 }
 
 async function requestRotatedPositionExport(
@@ -1194,7 +1353,7 @@ test.describe("PDF accuracy pack", () => {
       );
       expect(
         executedPdfTests,
-        "Enforced PDF QA must execute the deliberate 28-test pack",
+        "Enforced PDF QA must execute the deliberate 31-test pack",
       ).toBe(expectedEnforcedPdfTestCount);
       expect(
         skippedPdfTests,
@@ -1486,6 +1645,133 @@ test.describe("PDF accuracy pack", () => {
     const pdf = await createAcroFormPdf();
     const body = await requestFilledPdf(request, pdf);
     await verifyStaticPdf(body);
+  });
+
+  test("prefilled text appearance is drawn once only with download preservation enabled", async ({
+    page,
+    request,
+  }) => {
+    const pdf = await createPrefilledAppearancePdf();
+    const { response, body } = await requestDownloadPreserveExport(
+      request,
+      pdf,
+      [
+        {
+          id: "fullName",
+          type: "text",
+          x: 20,
+          y: 36,
+          width: 180,
+          height: 24,
+          page: 0,
+          value: "PREFILLEDONCE",
+          fontSize: 12,
+        },
+      ],
+      true,
+    );
+
+    expect(response.status()).toBe(200);
+    await installPdfTextExtractor(page);
+    const [renderedText] = await extractPdfPageTexts(page, body);
+    expect(renderedText.match(/PREFILLEDONCE/g)?.length ?? 0).toBe(
+      downloadPreserveEnabled ? 1 : 2,
+    );
+  });
+
+  test("NeedAppearances keeps text, a prechecked checkbox, and an untouched dropdown", async ({
+    page,
+    request,
+  }) => {
+    const pdf = await createNeedAppearancesPdf();
+    const { response, body } = await requestDownloadPreserveExport(
+      request,
+      pdf,
+      [
+        {
+          id: "needsText",
+          type: "text",
+          x: 20,
+          y: 36,
+          width: 160,
+          height: 24,
+          page: 0,
+          value: "NEEDSTEXT",
+          fontSize: 12,
+        },
+        {
+          id: "confirmed",
+          type: "checkbox",
+          x: 20,
+          y: 85,
+          width: 20,
+          height: 20,
+          page: 0,
+          checked: downloadPreserveEnabled,
+        },
+        {
+          id: "region",
+          type: "text",
+          x: 20,
+          y: 126,
+          width: 120,
+          height: 24,
+          page: 0,
+          value: downloadPreserveEnabled ? "West" : "",
+          fontSize: 12,
+        },
+      ],
+      true,
+    );
+    const streams = await decodedPdfStreams(body);
+
+    expect(response.status()).toBe(200);
+    await installPdfTextExtractor(page);
+    const [renderedText] = await extractPdfPageTexts(page, body);
+    expect(renderedText.split("NEEDSTEXT").length - 1).toBe(1);
+    expect(renderedText.split("West").length - 1).toBe(
+      downloadPreserveEnabled ? 1 : 0,
+    );
+    expect(streams.includes("-2.5 -4.9 l")).toBe(
+      downloadPreserveEnabled,
+    );
+  });
+
+  test("visible annotation content burns in and missing appearances fail closed only at v1", async ({
+    page,
+    request,
+  }) => {
+    const source = await createAnnotationPreservationPdf();
+    const preserved = await requestDownloadPreserveExport(
+      request,
+      source,
+      [],
+      false,
+    );
+
+    expect(preserved.response.status()).toBe(200);
+    await installPdfTextExtractor(page);
+    const [renderedText] = await extractPdfPageTexts(page, preserved.body);
+    expect(renderedText.split("VISIBLEANNOTATION").length - 1).toBe(
+      downloadPreserveEnabled ? 1 : 0,
+    );
+    expect(renderedText.split("HIDDENANNOTATION").length - 1).toBe(0);
+
+    const missing = await requestDownloadPreserveExport(
+      request,
+      await createAnnotationPreservationPdf(true),
+      [],
+      false,
+    );
+    if (downloadPreserveEnabled) {
+      expect(missing.response.status()).toBe(422);
+      expect(JSON.parse(missing.body.toString("utf8"))).toMatchObject({
+        code: "content_preserve_failed",
+      });
+    } else {
+      expect(missing.response.status()).toBe(200);
+      await expect(PDFDocument.load(missing.body)).resolves.toBeDefined();
+    }
   });
 
   test("unrotated whiteout removes covered text from pdf.js extraction", async ({ page, request }) => {

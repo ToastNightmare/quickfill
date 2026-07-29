@@ -24,6 +24,12 @@ import {
 } from "@/lib/persistence";
 import { trackEvent, trackPrivacySafeEvent } from "@/lib/analytics";
 import type { EditorField } from "@/lib/types";
+import { detectAcroFormFields } from "@/lib/pdf-utils";
+
+const DOWNLOAD_PRESERVE_FLAG =
+  "NEXT_PUBLIC_QUICKFILL_DOWNLOAD_PRESERVE";
+const originalDownloadPreserveFlag =
+  process.env[DOWNLOAD_PRESERVE_FLAG];
 
 const mockGetCompositePreviewURL = jest.fn().mockResolvedValue("data:image/png;base64,preview");
 let mockSnapshotMode: "auto-ready" | "manual" = "auto-ready";
@@ -368,6 +374,8 @@ const mockedRolloutEnabled = isFieldSuggestionReviewEnabled as jest.MockedFuncti
 const mockedMapLocal = mapLocalFieldSuggestions as jest.MockedFunction<typeof mapLocalFieldSuggestions>;
 const mockedTrackEvent = trackEvent as jest.MockedFunction<typeof trackEvent>;
 const mockedTrackPrivacySafeEvent = trackPrivacySafeEvent as jest.MockedFunction<typeof trackPrivacySafeEvent>;
+const mockedDetectAcroFormFields =
+  detectAcroFormFields as jest.MockedFunction<typeof detectAcroFormFields>;
 
 function suggestedFields(documentRevision: string): FieldSuggestion[] {
   const textBounds = { x: 80, y: 120, width: 180, height: 24 };
@@ -536,6 +544,90 @@ describe("editor local field suggestion review", () => {
   afterEach(() => {
     jest.useRealTimers();
     global.fetch = originalFetch;
+    if (originalDownloadPreserveFlag === undefined) {
+      delete process.env[DOWNLOAD_PRESERVE_FLAG];
+    } else {
+      process.env[DOWNLOAD_PRESERVE_FLAG] =
+        originalDownloadPreserveFlag;
+    }
+  });
+
+  it("seeds detected checkbox and choice state with the exact preserve flag", async () => {
+    process.env[DOWNLOAD_PRESERVE_FLAG] = "v1";
+    mockedDetectAcroFormFields.mockResolvedValueOnce([
+      {
+        name: "confirmed",
+        type: "checkbox",
+        x: 10,
+        y: 10,
+        width: 20,
+        height: 20,
+        page: 0,
+        value: "",
+        checked: true,
+        valueSource: "none",
+      },
+      {
+        name: "region",
+        type: "text",
+        x: 10,
+        y: 50,
+        width: 120,
+        height: 20,
+        page: 0,
+        value: "West",
+        checked: false,
+        valueSource: "choice",
+      },
+    ]);
+
+    render(<EditorPage />);
+    fireEvent.click(screen.getByRole("button", { name: "Mock normal upload" }));
+
+    await waitFor(() => expect(editorFields()).toHaveLength(2));
+    expect(editorFields()).toEqual([
+      expect.objectContaining({ id: "confirmed", checked: true }),
+      expect.objectContaining({ id: "region", value: "West" }),
+    ]);
+  });
+
+  it("keeps new detected state unseeded when the preserve flag is not exact", async () => {
+    process.env[DOWNLOAD_PRESERVE_FLAG] = "v1 ";
+    mockedDetectAcroFormFields.mockResolvedValueOnce([
+      {
+        name: "confirmed",
+        type: "checkbox",
+        x: 10,
+        y: 10,
+        width: 20,
+        height: 20,
+        page: 0,
+        value: "",
+        checked: true,
+        valueSource: "none",
+      },
+      {
+        name: "region",
+        type: "text",
+        x: 10,
+        y: 50,
+        width: 120,
+        height: 20,
+        page: 0,
+        value: "West",
+        checked: false,
+        valueSource: "choice",
+      },
+    ]);
+
+    render(<EditorPage />);
+    fireEvent.click(screen.getByRole("button", { name: "Mock normal upload" }));
+
+    await waitFor(() => expect(editorFields()).toHaveLength(2));
+    expect(editorFields()).toEqual([
+      expect.objectContaining({ id: "confirmed", checked: false }),
+      expect.objectContaining({ id: "region", value: "" }),
+    ]);
   });
 
   it("keeps the existing photo entry and add-page prompt unchanged when disabled", async () => {

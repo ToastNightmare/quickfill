@@ -1,6 +1,10 @@
 import { PDFDocument, PDFName, StandardFonts } from "pdf-lib";
 import { applyBorderWatermark } from "./watermark";
 import { assertValidGeneratedPdf } from "./pdf-download-response";
+import {
+  flattenVisibleContentAnnotations,
+  isContentPreserveError,
+} from "./pdf-annot-flatten";
 
 export function cleanupEditedDocumentArtifacts(pdfDoc: PDFDocument) {
   try {
@@ -64,12 +68,16 @@ async function stampAndSavePdf(pdfDoc: PDFDocument, isPro: boolean) {
 
 export async function finalizePdfForDownload(sourceDoc: PDFDocument, isPro: boolean) {
   try {
+    if (process.env.NEXT_PUBLIC_QUICKFILL_DOWNLOAD_PRESERVE === "v1") {
+      flattenVisibleContentAnnotations(sourceDoc);
+    }
     const outputDoc = await createViewerSafePdfDocument(sourceDoc);
 
     // Stamp free-account branding after every user edit, whiteout, and compatibility pass.
     // This keeps QuickFill's own whiteout tool from covering it and preserves link annotations.
     return await stampAndSavePdf(outputDoc, isPro);
   } catch (error) {
+    if (isContentPreserveError(error)) throw error;
     console.warn(
       "viewer-safe PDF finalization failed, saving edited document directly:",
       error instanceof Error ? error.message : error,
