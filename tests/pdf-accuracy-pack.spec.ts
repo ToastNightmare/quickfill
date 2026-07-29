@@ -17,6 +17,12 @@ import { readFile } from "node:fs/promises";
 import { createServer, type Server } from "node:http";
 import { join } from "node:path";
 import { finalizePdfForDownload } from "../src/lib/pdf-finalize";
+import {
+  fitOverlayFontSize,
+  fitOverlayTextPadding,
+  overlayTextBaseline,
+  standardOverlayTextHeightAtSize,
+} from "../src/lib/pdf-utils";
 import { PDF_UPLOAD_MAX_LABEL } from "../src/lib/upload-limits";
 import { WATERMARK_URL } from "../src/lib/watermark";
 
@@ -66,9 +72,11 @@ const downloadPreserveEnabled =
   process.env.NEXT_PUBLIC_QUICKFILL_DOWNLOAD_PRESERVE === "v1";
 const mobilePolishEnabled =
   process.env.NEXT_PUBLIC_QUICKFILL_MOBILE_POLISH === "v1";
+const fieldFitEnabled =
+  process.env.NEXT_PUBLIC_QUICKFILL_FIELD_FIT === "v1";
 const enforcedBaseUrl = "http://localhost:3000";
 const enforcedRedisUrl = "http://127.0.0.1:38079";
-const expectedEnforcedPdfTestCount = 32;
+const expectedEnforcedPdfTestCount = 33;
 const fieldPositionLandmark = {
   x: 73,
   y: 91,
@@ -348,6 +356,15 @@ async function createSelectedDropdownPdf(): Promise<TestPdf> {
   };
 }
 
+async function createFieldFitPdf(): Promise<TestPdf> {
+  const pdfDoc = await PDFDocument.create();
+  pdfDoc.addPage([300, 200]);
+  return {
+    name: "quickfill-qa-field-fit.pdf",
+    bytes: Buffer.from(await pdfDoc.save()),
+  };
+}
+
 async function createAnnotationPreservationPdf(
   missingAppearance = false,
 ): Promise<TestPdf> {
@@ -520,6 +537,35 @@ async function decodedPdfStreams(bytes: Uint8Array): Promise<string> {
     }
   }
   return decoded;
+}
+
+function textDrawForMarker(decoded: string, marker: string) {
+  const markerHex = Buffer.from(marker, "latin1").toString("hex");
+  const markerToken = `<${markerHex}> Tj`;
+  const normalized = decoded.toLowerCase();
+  const normalizedMarker = markerToken.toLowerCase();
+  const markerIndex = normalized.indexOf(normalizedMarker);
+  if (markerIndex < 0) throw new Error(`Missing PDF text marker: ${marker}`);
+  const prefix = decoded.slice(Math.max(0, markerIndex - 300), markerIndex);
+  const number = "[-+]?(?:\\d+\\.?\\d*|\\.\\d+)(?:e[-+]?\\d+)?";
+  const fontMatches = [
+    ...prefix.matchAll(new RegExp(`(${number}) Tf`, "gi")),
+  ];
+  const matrixMatches = [
+    ...prefix.matchAll(
+      new RegExp(`1 0 0 1 (${number}) (${number}) Tm`, "gi"),
+    ),
+  ];
+  const fontMatch = fontMatches.at(-1);
+  const matrixMatch = matrixMatches.at(-1);
+  if (!fontMatch || !matrixMatch) {
+    throw new Error(`Missing PDF text operators for marker: ${marker}`);
+  }
+  return {
+    fontSize: Number(fontMatch[1]),
+    x: Number(matrixMatch[1]),
+    y: Number(matrixMatch[2]),
+  };
 }
 
 async function requestDownloadPreserveExport(
@@ -1378,7 +1424,7 @@ test.describe("PDF accuracy pack", () => {
       );
       expect(
         executedPdfTests,
-        "Enforced PDF QA must execute the deliberate 32-test pack",
+        "Enforced PDF QA must execute the deliberate 33-test pack",
       ).toBe(expectedEnforcedPdfTestCount);
       expect(
         skippedPdfTests,
@@ -1670,6 +1716,57 @@ test.describe("PDF accuracy pack", () => {
     const pdf = await createAcroFormPdf();
     const body = await requestFilledPdf(request, pdf);
     await verifyStaticPdf(body);
+  });
+
+  test("short overlay text uses the rollout-exact fitted size and preview baseline", async ({
+    page,
+    request,
+  }) => {
+    const marker = "FIELDFITMARKER";
+    const { response, body } = await requestDownloadPreserveExport(
+      request,
+      await createFieldFitPdf(),
+      [
+        {
+          id: "field-fit-overlay",
+          type: "text",
+          x: 20,
+          y: 40,
+          width: 8,
+          height: 8,
+          page: 0,
+          value: marker,
+          fontSize: 14,
+        },
+      ],
+      false,
+    );
+    const draw = textDrawForMarker(await decodedPdfStreams(body), marker);
+    const padding = fieldFitEnabled
+      ? fitOverlayTextPadding(8, 8, 4)
+      : 2;
+    const previewFontSize = fieldFitEnabled
+      ? fitOverlayFontSize(
+          8,
+          14,
+          standardOverlayTextHeightAtSize,
+          padding,
+        )
+      : 14;
+    const metricsDoc = await PDFDocument.create();
+    const font = await metricsDoc.embedFont(StandardFonts.Helvetica);
+    const expectedBaseline = fieldFitEnabled || downloadPreserveEnabled
+      ? overlayTextBaseline(152, 8, previewFontSize, font)
+      : 152 + (8 - previewFontSize) / 2;
+    await installPdfTextExtractor(page);
+    const [renderedText] = await extractPdfPageTexts(page, body);
+
+    expect(response.status()).toBe(200);
+    expect(renderedText.match(new RegExp(marker, "g"))?.length ?? 0).toBe(1);
+    expect(draw.fontSize).toBeCloseTo(previewFontSize, 8);
+    expect(draw.x).toBeCloseTo(20 + padding, 8);
+    expect(Math.abs(draw.y - expectedBaseline)).toBeLessThanOrEqual(0.5);
+    expect(draw.fontSize < 14).toBe(fieldFitEnabled);
   });
 
   test("prefilled text appearance is drawn once only with download preservation enabled", async ({

@@ -23,7 +23,11 @@ import { recordDownloadLog } from "@/lib/admin-logs";
 import { getRequestEntitlement } from "@/lib/entitlements";
 import { PDF_UPLOAD_MAX_BYTES, PDF_UPLOAD_MAX_LABEL } from "@/lib/upload-limits";
 import { maskToPdfRect } from "@/lib/pdf-mask-transform";
-import { overlayTextBaseline } from "@/lib/pdf-utils";
+import {
+  fitOverlayFontSize,
+  fitOverlayTextPadding,
+  overlayTextBaseline,
+} from "@/lib/pdf-utils";
 import {
   WHITEOUT_REDACTION_ERROR_CODE,
   WHITEOUT_REDACTION_ERROR_MESSAGE,
@@ -36,10 +40,12 @@ import {
 const ROTATION_SAFE_DOWNLOAD_FLAG = "NEXT_PUBLIC_QUICKFILL_ROTATION_SAFE_DOWNLOAD";
 const DOWNLOAD_PRESERVE_FLAG = "NEXT_PUBLIC_QUICKFILL_DOWNLOAD_PRESERVE";
 const MOBILE_POLISH_FLAG = "NEXT_PUBLIC_QUICKFILL_MOBILE_POLISH";
+const FIELD_FIT_FLAG = "NEXT_PUBLIC_QUICKFILL_FIELD_FIT";
 const originalRotationSafeDownloadFlag =
   process.env[ROTATION_SAFE_DOWNLOAD_FLAG];
 const originalDownloadPreserveFlag = process.env[DOWNLOAD_PRESERVE_FLAG];
 const originalMobilePolishFlag = process.env[MOBILE_POLISH_FLAG];
+const originalFieldFitFlag = process.env[FIELD_FIT_FLAG];
 
 jest.mock("@/lib/admin-logs", () => ({
   recordDownloadLog: jest.fn().mockResolvedValue(undefined),
@@ -690,6 +696,74 @@ function markerOccurrences(decoded: string, marker: string) {
   return count(literal) + count(hex);
 }
 
+function textDrawForMarker(decoded: string, marker: string) {
+  const markerToken = `<${Buffer.from(marker, "latin1").toString("hex")}> Tj`;
+  const markerIndex = decoded.toLowerCase().indexOf(markerToken.toLowerCase());
+  if (markerIndex < 0) throw new Error(`Missing PDF text marker: ${marker}`);
+  const prefix = decoded.slice(Math.max(0, markerIndex - 300), markerIndex);
+  const number = "[-+]?(?:\\d+\\.?\\d*|\\.\\d+)(?:e[-+]?\\d+)?";
+  const fontMatches = [
+    ...prefix.matchAll(new RegExp(`(${number}) Tf`, "gi")),
+  ];
+  const matrixMatches = [
+    ...prefix.matchAll(
+      new RegExp(`1 0 0 1 (${number}) (${number}) Tm`, "gi"),
+    ),
+  ];
+  const fontMatch = fontMatches.at(-1);
+  const matrixMatch = matrixMatches.at(-1);
+  if (!fontMatch || !matrixMatch) {
+    throw new Error(`Missing PDF text operators for marker: ${marker}`);
+  }
+  return {
+    fontSize: Number(fontMatch[1]),
+    x: Number(matrixMatch[1]),
+    y: Number(matrixMatch[2]),
+  };
+}
+
+async function makeFieldFitRequest(sourceBytes?: Uint8Array) {
+  const resolvedSourceBytes = sourceBytes ?? await createSourcePdf();
+  const formData = new FormData();
+  formData.set(
+    "pdf",
+    new Blob(
+      [
+        resolvedSourceBytes.buffer.slice(
+          resolvedSourceBytes.byteOffset,
+          resolvedSourceBytes.byteOffset + resolvedSourceBytes.byteLength,
+        ) as ArrayBuffer,
+      ],
+      { type: "application/pdf" },
+    ),
+    "field-fit.pdf",
+  );
+  formData.set(
+    "fields",
+    JSON.stringify([
+      {
+        id: "field-fit-overlay",
+        type: "text",
+        x: 20,
+        y: 40,
+        width: 8,
+        height: 8,
+        page: 0,
+        value: "FIELDFITMARKER",
+        fontSize: 14,
+      },
+    ]),
+  );
+  formData.set("pageScales", JSON.stringify([[0, 1]]));
+  formData.set("hasAcroForm", "false");
+
+  return new NextRequest("https://getquickfill.com/api/fill-pdf", {
+    method: "POST",
+    body: formData,
+    headers: { "x-quickfill-qa-token": "test-token" },
+  });
+}
+
 async function createPrefilledTextForm() {
   const pdfDoc = await PDFDocument.create();
   const page = pdfDoc.addPage([300, 200]);
@@ -1163,6 +1237,79 @@ describe("fill-pdf download content preservation", () => {
     expect(recordDownloadLog).not.toHaveBeenCalledWith(
       expect.objectContaining({ status: "success" }),
     );
+  });
+});
+
+describe("fill-pdf field-fit overlay", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    process.env.QUICKFILL_QA_TOKEN = "test-token";
+    process.env[DOWNLOAD_PRESERVE_FLAG] = "v1";
+    process.env[MOBILE_POLISH_FLAG] = "v1";
+  });
+
+  afterEach(() => {
+    delete process.env.QUICKFILL_QA_TOKEN;
+    if (originalFieldFitFlag === undefined) {
+      delete process.env[FIELD_FIT_FLAG];
+    } else {
+      process.env[FIELD_FIT_FLAG] = originalFieldFitFlag;
+    }
+    if (originalDownloadPreserveFlag === undefined) {
+      delete process.env[DOWNLOAD_PRESERVE_FLAG];
+    } else {
+      process.env[DOWNLOAD_PRESERVE_FLAG] =
+        originalDownloadPreserveFlag;
+    }
+    if (originalMobilePolishFlag === undefined) {
+      delete process.env[MOBILE_POLISH_FLAG];
+    } else {
+      process.env[MOBILE_POLISH_FLAG] = originalMobilePolishFlag;
+    }
+  });
+
+  it("draws a short-field value at the shared fitted size and baseline", async () => {
+    process.env[FIELD_FIT_FLAG] = "v1";
+    const response = await POST(await makeFieldFitRequest());
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    const decoded = await decodedPdfStreams(bytes);
+    const draw = textDrawForMarker(decoded, "FIELDFITMARKER");
+    const metricsDoc = await PDFDocument.create();
+    const font = await metricsDoc.embedFont(StandardFonts.Helvetica);
+    const padding = fitOverlayTextPadding(8, 8, 4);
+    const fittedSize = fitOverlayFontSize(
+      8,
+      14,
+      (fontSize) => font.heightAtSize(fontSize),
+      padding,
+    );
+    const expectedBaseline = overlayTextBaseline(152, 8, fittedSize, font);
+
+    expect(response.status).toBe(200);
+    expect(markerOccurrences(decoded, "FIELDFITMARKER")).toBeGreaterThan(0);
+    expect(draw.fontSize).toBeCloseTo(fittedSize, 8);
+    expect(draw.x).toBeCloseTo(20 + padding, 8);
+    expect(Math.abs(draw.y - expectedBaseline)).toBeLessThanOrEqual(0.5);
+  });
+
+  it("keeps unset and non-v1 output byte-identical", async () => {
+    const sourceBytes = await createSourcePdf();
+    delete process.env[FIELD_FIT_FLAG];
+    const unsetResponse = await POST(await makeFieldFitRequest(sourceBytes));
+    const unsetBytes = Buffer.from(await unsetResponse.arrayBuffer());
+
+    process.env[FIELD_FIT_FLAG] = "true";
+    const nonV1Response = await POST(await makeFieldFitRequest(sourceBytes));
+    const nonV1Bytes = Buffer.from(await nonV1Response.arrayBuffer());
+    const draw = textDrawForMarker(
+      await decodedPdfStreams(nonV1Bytes),
+      "FIELDFITMARKER",
+    );
+
+    expect(unsetResponse.status).toBe(200);
+    expect(nonV1Response.status).toBe(200);
+    expect(nonV1Bytes.equals(unsetBytes)).toBe(true);
+    expect(draw.fontSize).toBe(14);
   });
 });
 

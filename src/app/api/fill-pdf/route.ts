@@ -31,6 +31,8 @@ import { getRedis } from "@/lib/redis";
 import { recordDownloadLog } from "@/lib/admin-logs";
 import { getRequestEntitlement } from "@/lib/entitlements";
 import {
+  fitOverlayFontSize,
+  fitOverlayTextPadding,
   orderFieldsForPdfDraw,
   overlayTextBaseline,
 } from "@/lib/pdf-utils";
@@ -881,11 +883,35 @@ async function drawFieldOnPage(pdfDoc: PDFDocument, field: EditorField, _pageSca
         });
       } else if (field.type === "text" || field.type === "date" || field.type === "signature") {
         if (field.value) {
-          const fontSize = field.type === "signature" ? 16 : field.fontSize ?? 14;
+          const requestedFontSize =
+            field.type === "signature" ? 16 : field.fontSize ?? 14;
           const activeFont = field.type === "signature" ? signatureFont : font;
+          const fieldFitEnabled =
+            process.env.NEXT_PUBLIC_QUICKFILL_FIELD_FIT === "v1";
+          const textPadding = fieldFitEnabled
+            ? fitOverlayTextPadding(
+                pdfW,
+                pdfH,
+                field.snapped ? 2 : 4,
+              )
+            : 2;
+          const fontSize = fieldFitEnabled
+            ? fitOverlayFontSize(
+                pdfH,
+                requestedFontSize,
+                (size) => activeFont.heightAtSize(size),
+                textPadding,
+              )
+            : requestedFontSize;
           // Vertically center text in the field box (matching editor's verticalAlign: "middle")
-          const textY =
-            process.env.NEXT_PUBLIC_QUICKFILL_DOWNLOAD_PRESERVE === "v1"
+          const textY = fieldFitEnabled
+            ? overlayTextBaseline(
+                finalPdfY,
+                pdfH,
+                fontSize,
+                activeFont,
+              )
+            : process.env.NEXT_PUBLIC_QUICKFILL_DOWNLOAD_PRESERVE === "v1"
               ? overlayTextBaseline(
                   finalPdfY,
                   pdfH,
@@ -894,7 +920,7 @@ async function drawFieldOnPage(pdfDoc: PDFDocument, field: EditorField, _pageSca
                 )
               : finalPdfY + (pdfH - fontSize) / 2;
           page.drawText(sanitize(field.value), {
-            x: pdfX + 2,
+            x: pdfX + textPadding,
             y: textY,
             size: fontSize,
             font: activeFont,

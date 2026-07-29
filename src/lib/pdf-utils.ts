@@ -32,6 +32,69 @@ export function overlayTextBaseline(
   return fieldBottom + (fieldHeight - fullHeight) / 2 + descent;
 }
 
+export const MIN_OVERLAY_FONT_SIZE = 4;
+export const STANDARD_OVERLAY_TEXT_HEIGHT_RATIO = 0.925;
+
+/**
+ * pdf-lib's standard Helvetica and HelveticaOblique fonts both report a
+ * full ascent-plus-descent height of 0.925pt at 1pt. Keep the editor's
+ * height fit in the same metric family as the PDF overlay baseline.
+ */
+export function standardOverlayTextHeightAtSize(fontSize: number): number {
+  return fontSize * STANDARD_OVERLAY_TEXT_HEIGHT_RATIO;
+}
+
+/**
+ * Scale the existing overlay padding down before it can consume a small box.
+ * Ten percent on each side always leaves a positive inner content area.
+ */
+export function fitOverlayTextPadding(
+  boxWidth: number,
+  boxHeight: number,
+  preferredPadding: number,
+): number {
+  const smallerDimension = Math.max(0, Math.min(boxWidth, boxHeight));
+  return Math.min(Math.max(0, preferredPadding), smallerDimension * 0.1);
+}
+
+/**
+ * Find the largest font size whose full ascent-plus-descent height fits the
+ * padded box. When even 4pt cannot fit, keep 4pt and let the renderer clip it
+ * instead of hiding a non-empty value.
+ */
+export function fitOverlayFontSize(
+  boxHeight: number,
+  requestedFontSize: number,
+  fullHeightAtSize: (fontSize: number) => number,
+  verticalPadding = 0,
+): number {
+  const requested = Number.isFinite(requestedFontSize)
+    ? Math.max(MIN_OVERLAY_FONT_SIZE, requestedFontSize)
+    : MIN_OVERLAY_FONT_SIZE;
+  const safeBoxHeight = Number.isFinite(boxHeight) ? Math.max(0, boxHeight) : 0;
+  const safePadding = Number.isFinite(verticalPadding)
+    ? Math.max(0, verticalPadding)
+    : 0;
+  const availableHeight = Math.max(0, safeBoxHeight - safePadding * 2);
+
+  if (fullHeightAtSize(requested) <= availableHeight) return requested;
+  if (fullHeightAtSize(MIN_OVERLAY_FONT_SIZE) > availableHeight) {
+    return MIN_OVERLAY_FONT_SIZE;
+  }
+
+  let lower = MIN_OVERLAY_FONT_SIZE;
+  let upper = requested;
+  for (let index = 0; index < 40; index += 1) {
+    const candidate = (lower + upper) / 2;
+    if (fullHeightAtSize(candidate) <= availableHeight) {
+      lower = candidate;
+    } else {
+      upper = candidate;
+    }
+  }
+  return lower;
+}
+
 /**
  * Keep eraser/whiteout marks behind everything the customer adds afterwards.
  * This makes the final PDF match the editor: whiteout first, text/signature/checks on top.
