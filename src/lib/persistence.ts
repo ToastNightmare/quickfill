@@ -377,7 +377,7 @@ async function savePdfAndClearMedia(arrayBuffer: ArrayBuffer): Promise<void> {
 export async function savePdfToIndexedDB(
   arrayBuffer: ArrayBuffer,
   options: SavePdfOptions = {},
-): Promise<void> {
+): Promise<boolean> {
   const clearMedia =
     options.invalidateMediaBinding === undefined && isAddMediaEnabled();
   try {
@@ -386,16 +386,18 @@ export async function savePdfToIndexedDB(
     } else {
       await savePdfCore(arrayBuffer, options);
     }
+    return true;
   } catch (err) {
     if (clearMedia) {
       try {
         await savePdfCore(arrayBuffer, { invalidateMediaBinding: true });
-        return;
+        return true;
       } catch {
         // Report the original feature-on failure without exposing local data.
       }
     }
     console.warn("Failed to save PDF to IndexedDB:", err);
+    return false;
   }
 }
 
@@ -444,11 +446,13 @@ export async function clearPdfFromIndexedDB(
   }
 }
 
-export function saveFieldsToLocalStorage(fields: EditorField[]): void {
+export function saveFieldsToLocalStorage(fields: EditorField[]): boolean {
   try {
     localStorage.setItem(FIELDS_KEY, JSON.stringify(fields));
+    return true;
   } catch (err) {
     console.warn("Failed to save fields to localStorage:", err);
+    return false;
   }
 }
 

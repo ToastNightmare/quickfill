@@ -14,6 +14,7 @@ import {
   cleanupOldIndexedDBSessions,
   loadPdfFromIndexedDB,
   runQuickFillMediaTransaction,
+  saveFieldsToLocalStorage,
   savePdfToIndexedDB,
 } from "@/lib/persistence";
 
@@ -384,7 +385,7 @@ describe("QuickFill IndexedDB ownership", () => {
     install(fake);
     const pdf = Uint8Array.from([1, 2, 3]).buffer;
 
-    await savePdfToIndexedDB(pdf);
+    await expect(savePdfToIndexedDB(pdf)).resolves.toBe(true);
 
     expect(fake.state.version).toBe(QUICKFILL_CORE_DB_VERSION);
     expect([...fake.state.stores.keys()].sort()).toEqual(
@@ -536,6 +537,45 @@ describe("QuickFill IndexedDB ownership", () => {
 
     await expect(loadPdfFromIndexedDB()).resolves.toBeNull();
     expect(warnSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns false instead of throwing when a PDF write is blocked", async () => {
+    Object.defineProperty(globalThis, "indexedDB", {
+      configurable: true,
+      value: undefined,
+    });
+
+    await expect(
+      savePdfToIndexedDB(Uint8Array.from([1, 2, 3]).buffer),
+    ).resolves.toBe(false);
+    expect(warnSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("reports local field write success and failure without throwing", () => {
+    const fields = [
+      {
+        id: "full_name",
+        type: "text" as const,
+        x: 10,
+        y: 20,
+        width: 100,
+        height: 24,
+        page: 0,
+        value: "Kyle",
+        fontSize: 12,
+      },
+    ];
+
+    expect(saveFieldsToLocalStorage(fields)).toBe(true);
+    const setItemSpy = jest
+      .spyOn(Storage.prototype, "setItem")
+      .mockImplementationOnce(() => {
+        throw new DOMException("blocked", "SecurityError");
+      });
+
+    expect(saveFieldsToLocalStorage(fields)).toBe(false);
+    expect(warnSpy).toHaveBeenCalledTimes(1);
+    setItemSpy.mockRestore();
   });
 
   it("fails closed without hanging when IndexedDB is unavailable or an open is blocked", async () => {

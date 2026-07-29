@@ -244,6 +244,8 @@ export async function POST(request: NextRequest) {
     const signatureFont = await pdfDoc.embedFont(StandardFonts.HelveticaOblique);
     const downloadPreserveEnabled =
       process.env.NEXT_PUBLIC_QUICKFILL_DOWNLOAD_PRESERVE === "v1";
+    const mobilePolishEnabled =
+      process.env.NEXT_PUBLIC_QUICKFILL_MOBILE_POLISH === "v1";
     const fieldsRenderedByAcroForm = new Set<EditorField>();
 
     if (hasAcroForm) {
@@ -277,6 +279,20 @@ export async function POST(request: NextRequest) {
                 submittedValue === "" ||
                 submittedValue === currentSelection
               ) {
+                fieldsRenderedByAcroForm.add(field);
+              } else if (
+                mobilePolishEnabled &&
+                field.type === "text" &&
+                field.choice === true &&
+                acroField.getOptions().includes(submittedValue)
+              ) {
+                if (acroField instanceof PDFRadioGroup) {
+                  form.getRadioGroup(field.id).select(submittedValue);
+                } else if (acroField instanceof PDFDropdown) {
+                  form.getDropdown(field.id).select(submittedValue);
+                } else {
+                  form.getOptionList(field.id).select(submittedValue);
+                }
                 fieldsRenderedByAcroForm.add(field);
               }
             } catch {

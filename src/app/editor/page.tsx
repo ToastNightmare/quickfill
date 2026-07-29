@@ -57,7 +57,7 @@ import { DOCUMENT_FILE_INPUT_ACCEPT, PDF_UPLOAD_MAX_BYTES, PDF_UPLOAD_MAX_LABEL 
 import { appendUploadToDocument, filledDocumentFilename, removePageFromDocument, shiftFieldsAfterPageRemoval, type NormalizedDocumentUpload } from "@/lib/document-intake";
 import { isCleanablePhoto } from "@/lib/image-cleanup";
 import { clearLocalSignature, loadLocalSignature, saveLocalSignature } from "@/lib/signature-store";
-import { clampGestureZoom } from "@/lib/pinch-zoom";
+import { clampGestureZoom, gestureZoomMax } from "@/lib/pinch-zoom";
 import { PhotoCleanupModal } from "@/components/PhotoCleanupModal";
 import {
   createDocumentRevision,
@@ -98,10 +98,17 @@ import type {
 } from "@/lib/media-types";
 import type { MediaPageBounds } from "@/lib/media-editor";
 
-const ZOOM_LEVELS = [50, 75, 100, 125, 150, 175, 200];
+const DEFAULT_ZOOM_LEVELS = [50, 75, 100, 125, 150, 175, 200];
+const MOBILE_POLISH_ZOOM_LEVELS = [
+  ...DEFAULT_ZOOM_LEVELS,
+  250,
+  300,
+  350,
+  400,
+];
 const GESTURE_HINT_KEY = "quickfill_gesture_hint_seen";
 const SNAP_MIN = 125;
-const SNAP_MAX = 175;
+const DEFAULT_ZOOM_BUTTON_MAX = 175;
 const FIELD_SUGGESTION_SNAPSHOT_WAIT_MS = 5_000;
 const MOBILE_FILLER_SESSION_KEY = "quickfill_mobile_filler_session";
 const MOBILE_FILLER_SESSION_VALUE = "v1";
@@ -298,6 +305,16 @@ function LocalSaveBadge({ status }: { status: LocalSaveStatus }) {
 function EditorPageContent() {
   const fieldSuggestionReviewEnabled = isFieldSuggestionReviewEnabled();
   const addMediaEnabled = isAddMediaEnabled();
+  const mobilePolishFlag =
+    process.env.NEXT_PUBLIC_QUICKFILL_MOBILE_POLISH;
+  const mobilePolishEnabled = mobilePolishFlag === "v1";
+  const zoomLevels = mobilePolishEnabled
+    ? MOBILE_POLISH_ZOOM_LEVELS
+    : DEFAULT_ZOOM_LEVELS;
+  const zoomButtonMax = mobilePolishEnabled
+    ? gestureZoomMax(mobilePolishFlag)
+    : DEFAULT_ZOOM_BUTTON_MAX;
+  const gestureZoomLimit = gestureZoomMax(mobilePolishFlag);
   const [pdfBytes, setPdfBytes] = useState<ArrayBuffer | null>(null);
   const [fileName, setFileName] = useState<string>("");
   const [activeTool, setActiveTool] = useState<ToolType>("select");
@@ -1123,14 +1140,14 @@ function EditorPageContent() {
 
   const handleZoomIn = useCallback(() => {
     invalidateFieldSuggestionReviewForRenderIntent();
-    setZoom((prev) => ZOOM_LEVELS.find((z) => z > prev && z <= SNAP_MAX) ?? prev);
-  }, [invalidateFieldSuggestionReviewForRenderIntent]);
+    setZoom((prev) => zoomLevels.find((z) => z > prev && z <= zoomButtonMax) ?? prev);
+  }, [invalidateFieldSuggestionReviewForRenderIntent, zoomButtonMax, zoomLevels]);
 
   const handleZoomOut = useCallback(() => {
     invalidateFieldSuggestionReviewForRenderIntent();
     const mobile = isMobileDevice();
-    setZoom((prev) => [...ZOOM_LEVELS].reverse().find((z) => z < prev && (mobile || z >= SNAP_MIN)) ?? prev);
-  }, [invalidateFieldSuggestionReviewForRenderIntent]);
+    setZoom((prev) => [...zoomLevels].reverse().find((z) => z < prev && (mobile || z >= SNAP_MIN)) ?? prev);
+  }, [invalidateFieldSuggestionReviewForRenderIntent, zoomLevels]);
 
   // Fit to width: reset zoom to the base fit level AND ask the viewer to
   // re-measure the viewport and recompute its fit scale, so Fit works even
@@ -1143,7 +1160,7 @@ function EditorPageContent() {
   }, [invalidateFieldSuggestionReviewForRenderIntent]);
 
   // Pinch zoom (PR #94): live readout during the gesture, then a single
-  // committed zoom value on release (clamped 50-200).
+  // committed zoom value on release (clamped to the active rollout limit).
   const handleGestureZoomPreview = useCallback((value: number | null) => {
     setPinchZoomPreview(value);
   }, []);
@@ -1151,8 +1168,8 @@ function EditorPageContent() {
   const handleGestureZoomCommit = useCallback((value: number) => {
     invalidateFieldSuggestionReviewForRenderIntent();
     setPinchZoomPreview(null);
-    setZoom(clampGestureZoom(Math.round(value)));
-  }, [invalidateFieldSuggestionReviewForRenderIntent]);
+    setZoom(clampGestureZoom(Math.round(value), gestureZoomLimit));
+  }, [gestureZoomLimit, invalidateFieldSuggestionReviewForRenderIntent]);
 
   const handleSnapZoom = useCallback(() => {
     invalidateFieldSuggestionReviewForRenderIntent();
@@ -2594,7 +2611,7 @@ function EditorPageContent() {
             )}
             <button
               onClick={handleZoomIn}
-              disabled={zoom >= SNAP_MAX}
+              disabled={zoom >= zoomButtonMax}
               title="Zoom In"
               className="flex h-7 w-7 items-center justify-center rounded-md text-text-muted hover:bg-surface-alt transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
             >

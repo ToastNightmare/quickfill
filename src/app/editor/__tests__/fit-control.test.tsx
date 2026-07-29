@@ -3,6 +3,9 @@ import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import EditorPage from "../page";
 import { loadZoomFromLocalStorage, saveZoomToLocalStorage } from "@/lib/persistence";
 
+const MOBILE_POLISH_FLAG = "NEXT_PUBLIC_QUICKFILL_MOBILE_POLISH";
+const originalMobilePolishFlag = process.env[MOBILE_POLISH_FLAG];
+
 // PR #93: the Fit control must actually recompute the viewer's fit scale
 // (not only reset the zoom percentage), and mobile/tablet cold loads start
 // at fit-to-width instead of a restored zoom that can clip the page.
@@ -108,9 +111,9 @@ jest.mock("@/lib/use-history", () => ({
 }));
 
 jest.mock("@/lib/persistence", () => ({
-  savePdfToIndexedDB: jest.fn().mockResolvedValue(undefined),
+  savePdfToIndexedDB: jest.fn().mockResolvedValue(true),
   loadPdfFromIndexedDB: jest.fn().mockResolvedValue(null),
-  saveFieldsToLocalStorage: jest.fn(),
+  saveFieldsToLocalStorage: jest.fn(() => true),
   loadFieldsFromLocalStorage: jest.fn(() => []),
   savePageToLocalStorage: jest.fn(),
   loadPageFromLocalStorage: jest.fn(() => 0),
@@ -164,6 +167,18 @@ function setViewportWidth(width: number) {
     value: width,
   });
 }
+
+beforeEach(() => {
+  delete process.env[MOBILE_POLISH_FLAG];
+});
+
+afterEach(() => {
+  if (originalMobilePolishFlag === undefined) {
+    delete process.env[MOBILE_POLISH_FLAG];
+  } else {
+    process.env[MOBILE_POLISH_FLAG] = originalMobilePolishFlag;
+  }
+});
 
 describe("Editor Fit control and initial fit", () => {
   const originalFetch = global.fetch;
@@ -295,6 +310,23 @@ describe("Editor pinch zoom gesture wiring (PR #94)", () => {
     act(() => commit(180));
     expect(screen.getByText("180%")).toBeInTheDocument();
     expect(screen.queryByText("176%")).not.toBeInTheDocument();
+  });
+
+  it("extends gesture and button zoom to 400 only for the exact mobile flag", async () => {
+    process.env[MOBILE_POLISH_FLAG] = "v1";
+    await openEditor();
+
+    const commit = viewerPropsRef.current.onGestureZoomCommit as (z: number) => void;
+    act(() => commit(999));
+    expect(screen.getByText("400%")).toBeInTheDocument();
+
+    act(() => commit(150));
+    const zoomIn = screen.getByTitle("Zoom In");
+    for (const expectedZoom of [175, 200, 250, 300, 350, 400]) {
+      fireEvent.click(zoomIn);
+      expect(screen.getByText(`${expectedZoom}%`)).toBeInTheDocument();
+    }
+    expect(zoomIn).toBeDisabled();
   });
 });
 

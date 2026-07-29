@@ -6,10 +6,11 @@ import {
   loadFieldsFromLocalStorage,
   loadFileNameFromLocalStorage,
   loadPdfFromIndexedDB,
+  saveFieldsToLocalStorage,
   savePdfToIndexedDB,
 } from "@/lib/persistence";
 import { detectAcroFormFields } from "@/lib/pdf-utils";
-import { trackEvent } from "@/lib/analytics";
+import { trackEvent, trackPrivacySafeEvent } from "@/lib/analytics";
 import { loadPdfjsClient } from "@/lib/pdfjs-client";
 import {
   renderFlattenedWhiteoutPages,
@@ -27,8 +28,12 @@ const SECOND_ACCOUNT_SIGNATURE = "data:image/png;base64,c2Vjb25kQWNjb3VudFNpZw==
 const DRAWN_SIGNATURE = "data:image/png;base64,ZHJhd25TaWc=";
 const DOWNLOAD_PRESERVE_FLAG =
   "NEXT_PUBLIC_QUICKFILL_DOWNLOAD_PRESERVE";
+const MOBILE_POLISH_FLAG =
+  "NEXT_PUBLIC_QUICKFILL_MOBILE_POLISH";
 const originalDownloadPreserveFlag =
   process.env[DOWNLOAD_PRESERVE_FLAG];
+const originalMobilePolishFlag =
+  process.env[MOBILE_POLISH_FLAG];
 
 const mockAuthState: {
   isLoaded: boolean;
@@ -133,10 +138,10 @@ jest.mock("@/lib/persistence", () => ({
   loadFieldsFromLocalStorage: jest.fn(() => []),
   loadFileNameFromLocalStorage: jest.fn(() => ""),
   loadPdfFromIndexedDB: jest.fn().mockResolvedValue(null),
-  saveFieldsToLocalStorage: jest.fn(),
+  saveFieldsToLocalStorage: jest.fn(() => true),
   saveFileNameToLocalStorage: jest.fn(),
   savePageToLocalStorage: jest.fn(),
-  savePdfToIndexedDB: jest.fn().mockResolvedValue(undefined),
+  savePdfToIndexedDB: jest.fn().mockResolvedValue(true),
 }));
 
 jest.mock("@/lib/pdf-utils", () => ({
@@ -167,6 +172,7 @@ jest.mock("@/lib/autofill-shadow-reporting", () => ({
 
 jest.mock("@/lib/analytics", () => ({
   trackEvent: jest.fn(),
+  trackPrivacySafeEvent: jest.fn(),
 }));
 
 jest.mock("@/lib/pdfjs-client", () => ({
@@ -188,6 +194,8 @@ jest.mock("@/lib/profile-autofill", () => ({
 
 const mockedNormalize = normalizeDocumentUpload as jest.MockedFunction<typeof normalizeDocumentUpload>;
 const mockedSavePdf = savePdfToIndexedDB as jest.MockedFunction<typeof savePdfToIndexedDB>;
+const mockedSaveFields =
+  saveFieldsToLocalStorage as jest.MockedFunction<typeof saveFieldsToLocalStorage>;
 const mockedLoadPdf = loadPdfFromIndexedDB as jest.MockedFunction<typeof loadPdfFromIndexedDB>;
 const mockedLoadFields = loadFieldsFromLocalStorage as jest.MockedFunction<typeof loadFieldsFromLocalStorage>;
 const mockedLoadFileName = loadFileNameFromLocalStorage as jest.MockedFunction<typeof loadFileNameFromLocalStorage>;
@@ -238,6 +246,9 @@ beforeEach(() => {
   mockedLoadPdf.mockReset().mockResolvedValue(null);
   mockedLoadFields.mockReset().mockReturnValue([]);
   mockedLoadFileName.mockReset().mockReturnValue("");
+  mockedSavePdf.mockReset().mockResolvedValue(true);
+  mockedSaveFields.mockReset().mockReturnValue(true);
+  delete process.env[MOBILE_POLISH_FLAG];
   localStorage.clear();
 });
 
@@ -246,6 +257,11 @@ afterEach(() => {
     delete process.env[DOWNLOAD_PRESERVE_FLAG];
   } else {
     process.env[DOWNLOAD_PRESERVE_FLAG] = originalDownloadPreserveFlag;
+  }
+  if (originalMobilePolishFlag === undefined) {
+    delete process.env[MOBILE_POLISH_FLAG];
+  } else {
+    process.env[MOBILE_POLISH_FLAG] = originalMobilePolishFlag;
   }
 });
 
@@ -484,6 +500,116 @@ describe("MobileFiller AcroForm fields", () => {
 
     expect(await screen.findByText("Tap to check")).toBeInTheDocument();
     expect(screen.getByPlaceholderText("Type here")).toHaveValue("");
+  });
+
+  it("renders one-card radio chips, a single-select menu, and the multiselect text fallback", async () => {
+    process.env[MOBILE_POLISH_FLAG] = "v1";
+    mockedNormalize.mockResolvedValueOnce({
+      fileName: "choice-fields.pdf",
+      pdfBytes: new ArrayBuffer(8),
+      sourceType: "pdf",
+      skipAcroFormDetection: false,
+    });
+    mockedDetect.mockResolvedValueOnce([
+      {
+        name: "contact_method",
+        type: "text",
+        kind: "radio",
+        options: ["Email", "Phone"],
+        currentSelection: "Phone",
+        x: 10,
+        y: 10,
+        width: 20,
+        height: 20,
+        page: 0,
+        value: "Phone",
+      },
+      {
+        name: "region",
+        type: "text",
+        kind: "choice",
+        options: ["North", "West"],
+        currentSelection: "",
+        x: 10,
+        y: 50,
+        width: 120,
+        height: 20,
+        page: 0,
+        value: "",
+      },
+      {
+        name: "services",
+        type: "text",
+        kind: "choice",
+        options: ["Support", "Training", "Hosting"],
+        currentSelection: "Support, Hosting",
+        multiselect: true,
+        x: 10,
+        y: 90,
+        width: 120,
+        height: 40,
+        page: 0,
+        value: "Support, Hosting",
+      },
+    ]);
+
+    render(<MobileFiller />);
+    pickUploadFile(new File([new Uint8Array([1])], "choice-fields.pdf", {
+      type: "application/pdf",
+    }));
+
+    const email = await screen.findByRole("radio", { name: "Email" });
+    const phone = screen.getByRole("radio", { name: "Phone" });
+    expect(phone).toHaveAttribute("aria-checked", "true");
+    expect(screen.getByText("2 of 3 filled")).toBeInTheDocument();
+
+    fireEvent.click(email);
+    expect(email).toHaveAttribute("aria-checked", "true");
+    fireEvent.change(screen.getByRole("combobox", { name: "Region" }), {
+      target: { value: "West" },
+    });
+
+    expect(screen.getByDisplayValue("Support, Hosting")).toHaveAttribute(
+      "placeholder",
+      "Type here",
+    );
+    expect(screen.getByText("3 of 3 filled")).toBeInTheDocument();
+    expect(screen.getByText("Ready")).toBeInTheDocument();
+  });
+
+  it("keeps the old text card for a non-matching mobile flag value", async () => {
+    process.env[MOBILE_POLISH_FLAG] = "true";
+    process.env[DOWNLOAD_PRESERVE_FLAG] = "true";
+    mockedNormalize.mockResolvedValueOnce({
+      fileName: "default-choice.pdf",
+      pdfBytes: new ArrayBuffer(8),
+      sourceType: "pdf",
+      skipAcroFormDetection: false,
+    });
+    mockedDetect.mockResolvedValueOnce([
+      {
+        name: "contact_method",
+        type: "text",
+        kind: "radio",
+        options: ["Email", "Phone"],
+        currentSelection: "Phone",
+        valueSource: "choice",
+        x: 10,
+        y: 10,
+        width: 20,
+        height: 20,
+        page: 0,
+        value: "Phone",
+      },
+    ]);
+
+    render(<MobileFiller />);
+    pickUploadFile(new File([new Uint8Array([1])], "default-choice.pdf", {
+      type: "application/pdf",
+    }));
+
+    expect(await screen.findByPlaceholderText("Type here")).toHaveValue("");
+    expect(screen.queryByRole("radio")).not.toBeInTheDocument();
   });
 });
 
@@ -836,6 +962,8 @@ describe("MobileFiller download gate", () => {
   const originalRevokeObjectURL = global.URL.revokeObjectURL;
   const originalInnerWidth = window.innerWidth;
   const mockedTrackEvent = trackEvent as jest.MockedFunction<typeof trackEvent>;
+  const mockedTrackPrivacySafeEvent =
+    trackPrivacySafeEvent as jest.MockedFunction<typeof trackPrivacySafeEvent>;
 
   const fillPdfCalls: string[] = [];
   const fillPdfBodies: FormData[] = [];
@@ -865,15 +993,28 @@ describe("MobileFiller download gate", () => {
     }) as unknown as typeof global.fetch;
   }
 
-  async function uploadAcroFormPdf() {
+  async function uploadAcroFormPdf(options: {
+    pdfBytes?: ArrayBuffer;
+    detectedFields?: Awaited<ReturnType<typeof detectAcroFormFields>>;
+  } = {}) {
+    const pdfBytes = options.pdfBytes ?? new ArrayBuffer(8);
     mockedNormalize.mockResolvedValueOnce({
       fileName: "form.pdf",
-      pdfBytes: new ArrayBuffer(8),
+      pdfBytes,
       sourceType: "pdf",
       skipAcroFormDetection: false,
     });
-    mockedDetect.mockResolvedValueOnce([
-      { name: "full_name", type: "text", x: 10, y: 10, width: 120, height: 20, page: 0, value: "" },
+    mockedDetect.mockResolvedValueOnce(options.detectedFields ?? [
+      {
+        name: "full_name",
+        type: "text",
+        x: 10,
+        y: 10,
+        width: 120,
+        height: 20,
+        page: 0,
+        value: "",
+      },
     ]);
 
     render(<MobileFiller />);
@@ -900,6 +1041,7 @@ describe("MobileFiller download gate", () => {
       value: originalInnerWidth,
     });
     window.history.replaceState(null, "", "/");
+    jest.useRealTimers();
   });
 
   it("non-Pro download opens the gate and never calls fill-pdf", async () => {
@@ -960,6 +1102,215 @@ describe("MobileFiller download gate", () => {
       ).not.toBeInTheDocument();
     });
     expect(screen.getByPlaceholderText("Type here")).toHaveValue("Kyle");
+  });
+
+  it("verifies current PDF and fields before opening the mobile gate", async () => {
+    process.env[MOBILE_POLISH_FLAG] = "v1";
+    const pdfBytes = Uint8Array.from([1, 2, 3, 4]).buffer;
+    const persistedFields = [
+      {
+        id: "full_name",
+        type: "text" as const,
+        x: 10,
+        y: 10,
+        width: 120,
+        height: 20,
+        page: 0,
+        value: "Kyle",
+        fontSize: 12,
+      },
+    ];
+    mockedLoadPdf.mockResolvedValue(pdfBytes);
+    mockedLoadFields.mockReturnValue(persistedFields);
+    mockFetchWithUsage({ isPro: false, used: 0, limit: 3, guest: true });
+
+    const downloadButton = await uploadAcroFormPdf({ pdfBytes });
+    mockedSaveFields.mockClear();
+    fireEvent.change(screen.getByPlaceholderText("Type here"), {
+      target: { value: "Kyle" },
+    });
+    fireEvent.click(downloadButton);
+
+    expect(
+      await screen.findByRole("heading", { name: "Your document is ready" }),
+    ).toBeInTheDocument();
+    expect(mockedSavePdf).toHaveBeenLastCalledWith(pdfBytes);
+    expect(mockedSaveFields).toHaveBeenLastCalledWith(persistedFields);
+    expect(
+      localStorage.getItem("quickfill_mobile_filler_session_nonempty_fields"),
+    ).toBe("1");
+
+    const gateEventIndex = mockedTrackEvent.mock.calls.findIndex(
+      ([name]) => name === "download_gate_shown",
+    );
+    expect(gateEventIndex).toBeGreaterThanOrEqual(0);
+    expect(mockedSaveFields.mock.invocationCallOrder.at(-1)).toBeLessThan(
+      mockedTrackEvent.mock.invocationCallOrder[gateEventIndex],
+    );
+  });
+
+  it("blocks the gate with dismissible exact copy when storage readback fails", async () => {
+    process.env[MOBILE_POLISH_FLAG] = "v1";
+    const pdfBytes = Uint8Array.from([4, 3, 2, 1]).buffer;
+    const persistedFields = [
+      {
+        id: "full_name",
+        type: "text" as const,
+        x: 10,
+        y: 10,
+        width: 120,
+        height: 20,
+        page: 0,
+        value: "",
+        fontSize: 12,
+      },
+    ];
+    mockedSavePdf
+      .mockResolvedValueOnce(true)
+      .mockResolvedValueOnce(false);
+    mockedLoadPdf.mockResolvedValue(pdfBytes);
+    mockedLoadFields.mockReturnValue(persistedFields);
+    mockFetchWithUsage({ isPro: false, used: 0, limit: 3, guest: true });
+
+    const downloadButton = await uploadAcroFormPdf({ pdfBytes });
+    fireEvent.click(downloadButton);
+
+    const message =
+      "Your browser is blocking storage, so we can't bring you back to your document after payment. If you're in Private Browsing, please switch it off and try again.";
+    expect(await screen.findByText(message)).toBeInTheDocument();
+    expect(
+      screen.queryByRole("heading", { name: "Your document is ready" }),
+    ).not.toBeInTheDocument();
+    expect(fillPdfCalls).toHaveLength(0);
+    expect(mockedTrackPrivacySafeEvent).toHaveBeenCalledWith(
+      "mobile_storage_verification_failed",
+      { surface: "mobile_filler", stage: "pre_gate" },
+    );
+    expect(JSON.stringify(mockedTrackPrivacySafeEvent.mock.calls)).not.toContain(
+      "form.pdf",
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Dismiss" }));
+    expect(screen.queryByText(message)).not.toBeInTheDocument();
+  });
+
+  it("sends single-select choice markers while leaving multiselect on the text fallback", async () => {
+    process.env[MOBILE_POLISH_FLAG] = "v1";
+    mockFetchWithUsage({ isPro: true, tier: "pro", guest: false });
+    const detectedFields: Awaited<ReturnType<typeof detectAcroFormFields>> = [
+      {
+        name: "contact",
+        type: "text",
+        kind: "radio",
+        options: ["Email", "Phone"],
+        currentSelection: "Phone",
+        x: 10,
+        y: 10,
+        width: 20,
+        height: 20,
+        page: 0,
+        value: "Phone",
+      },
+      {
+        name: "region",
+        type: "text",
+        kind: "choice",
+        options: ["North", "West"],
+        currentSelection: "North",
+        x: 10,
+        y: 50,
+        width: 120,
+        height: 20,
+        page: 0,
+        value: "North",
+      },
+      {
+        name: "services",
+        type: "text",
+        kind: "choice",
+        options: ["Support", "Training"],
+        currentSelection: "Support, Training",
+        multiselect: true,
+        x: 10,
+        y: 90,
+        width: 120,
+        height: 40,
+        page: 0,
+        value: "Support, Training",
+      },
+    ];
+
+    const downloadButton = await uploadAcroFormPdf({ detectedFields });
+    fireEvent.click(screen.getByRole("radio", { name: "Email" }));
+    fireEvent.change(screen.getByRole("combobox", { name: "Region" }), {
+      target: { value: "West" },
+    });
+    fireEvent.change(screen.getByDisplayValue("Support, Training"), {
+      target: { value: "Training" },
+    });
+    fireEvent.click(downloadButton);
+
+    expect(await screen.findByRole("heading", { name: "All done!" })).toBeInTheDocument();
+    expect(JSON.parse(String(fillPdfBodies[0].get("fields")))).toEqual([
+      expect.objectContaining({
+        id: "contact",
+        type: "text",
+        value: "Email",
+        choice: true,
+      }),
+      expect.objectContaining({
+        id: "region",
+        type: "text",
+        value: "West",
+        choice: true,
+      }),
+      expect.not.objectContaining({ choice: true }),
+    ]);
+  });
+
+  it("debounces rapid flag-on field persistence to one write after 300ms", async () => {
+    process.env[MOBILE_POLISH_FLAG] = "v1";
+    jest.useFakeTimers();
+    global.fetch = jest.fn(async () => (
+      { ok: true, json: async () => ({}) } as Response
+    ));
+
+    await uploadAcroFormPdf();
+    mockedSaveFields.mockClear();
+    const input = screen.getByPlaceholderText("Type here");
+    fireEvent.change(input, { target: { value: "K" } });
+    fireEvent.change(input, { target: { value: "Ky" } });
+    fireEvent.change(input, { target: { value: "Kyle" } });
+
+    act(() => jest.advanceTimersByTime(299));
+    expect(mockedSaveFields).not.toHaveBeenCalled();
+    act(() => jest.advanceTimersByTime(1));
+    expect(mockedSaveFields).toHaveBeenCalledTimes(1);
+    expect(mockedSaveFields).toHaveBeenLastCalledWith([
+      expect.objectContaining({ id: "full_name", value: "Kyle" }),
+    ]);
+  });
+
+  it("flushes a pending flag-on field write on pagehide", async () => {
+    process.env[MOBILE_POLISH_FLAG] = "v1";
+    jest.useFakeTimers();
+    global.fetch = jest.fn(async () => (
+      { ok: true, json: async () => ({}) } as Response
+    ));
+
+    await uploadAcroFormPdf();
+    mockedSaveFields.mockClear();
+    fireEvent.change(screen.getByPlaceholderText("Type here"), {
+      target: { value: "Before leaving" },
+    });
+    act(() => window.dispatchEvent(new Event("pagehide")));
+
+    expect(mockedSaveFields).toHaveBeenCalledTimes(1);
+    expect(mockedSaveFields).toHaveBeenLastCalledWith([
+      expect.objectContaining({ value: "Before leaving" }),
+    ]);
+    act(() => jest.advanceTimersByTime(300));
+    expect(mockedSaveFields).toHaveBeenCalledTimes(1);
   });
 
   it("Pro download stays clean: fill-pdf runs, no gate, success step", async () => {
@@ -1025,6 +1376,61 @@ describe("MobileFiller download gate", () => {
       "download_success",
       expect.objectContaining({ surface: "mobile", pro: true }),
     );
+  });
+
+  it("shows the paid-return recovery action when the saved PDF is missing", async () => {
+    process.env[MOBILE_POLISH_FLAG] = "v1";
+    Object.defineProperty(window, "innerWidth", {
+      configurable: true,
+      value: 390,
+    });
+    localStorage.setItem("quickfill_mobile_filler_session", "v1");
+    mockedLoadPdf.mockResolvedValueOnce(null);
+
+    render(<MobileFiller restorePersistedSession />);
+
+    expect(
+      await screen.findByText(
+        "We couldn't restore your document. Your payment went through — choose the same file again and your Pro download will work.",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Choose file" })).toBeEnabled();
+  });
+
+  it("shows the paid-return recovery action when marked nonempty fields restore empty", async () => {
+    process.env[MOBILE_POLISH_FLAG] = "v1";
+    Object.defineProperty(window, "innerWidth", {
+      configurable: true,
+      value: 390,
+    });
+    localStorage.setItem("quickfill_mobile_filler_session", "v1");
+    localStorage.setItem(
+      "quickfill_mobile_filler_session_nonempty_fields",
+      "1",
+    );
+    mockedLoadPdf.mockResolvedValueOnce(new ArrayBuffer(8));
+    mockedLoadFields.mockReturnValueOnce([]);
+    mockedDetect.mockResolvedValueOnce([
+      {
+        name: "full_name",
+        type: "text",
+        x: 10,
+        y: 10,
+        width: 120,
+        height: 20,
+        page: 0,
+        value: "",
+      },
+    ]);
+
+    render(<MobileFiller restorePersistedSession />);
+
+    expect(
+      await screen.findByText(
+        "We couldn't restore your document. Your payment went through — choose the same file again and your Pro download will work.",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Choose file" })).toBeEnabled();
   });
 
   it("renders and sends flattened whiteout pages before a mobile download", async () => {

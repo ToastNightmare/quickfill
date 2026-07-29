@@ -2,10 +2,14 @@ import {
   GESTURE_PLACEMENT_SUPPRESS_MS,
   GESTURE_ZOOM_MAX,
   GESTURE_ZOOM_MIN,
+  MOBILE_POLISH_GESTURE_ZOOM_MAX,
+  PDF_RENDER_MAX_DIMENSION,
   anchoredScrollPosition,
+  clampPdfRenderScale,
   clampGestureZoom,
   commitGestureZoom,
   gestureZoom,
+  gestureZoomMax,
   shouldSuppressTouchPlacement,
   touchDistance,
   touchMidpoint,
@@ -54,6 +58,14 @@ describe("clampGestureZoom", () => {
     expect(clampGestureZoom(Number.POSITIVE_INFINITY)).toBe(GESTURE_ZOOM_MAX);
     expect(clampGestureZoom(Number.NEGATIVE_INFINITY)).toBe(GESTURE_ZOOM_MIN);
   });
+
+  it("keeps the default cap at 200 and enables 400 only for the exact mobile flag", () => {
+    expect(gestureZoomMax("true")).toBe(GESTURE_ZOOM_MAX);
+    expect(gestureZoomMax("v1")).toBe(MOBILE_POLISH_GESTURE_ZOOM_MAX);
+    expect(clampGestureZoom(900, gestureZoomMax("v1"))).toBe(
+      MOBILE_POLISH_GESTURE_ZOOM_MAX,
+    );
+  });
 });
 
 describe("gestureZoom", () => {
@@ -92,6 +104,35 @@ describe("commitGestureZoom", () => {
   it("clamps the committed zoom", () => {
     expect(commitGestureZoom(100, 50, 500)).toBe(GESTURE_ZOOM_MAX);
     expect(commitGestureZoom(100, 500, 50)).toBe(GESTURE_ZOOM_MIN);
+  });
+});
+
+describe("clampPdfRenderScale", () => {
+  it("caps the backing canvas at 4096px without changing target display geometry", () => {
+    const targetScale = 4;
+    const widthAtScale1 = 1_200;
+    const heightAtScale1 = 1_600;
+    const renderScale = clampPdfRenderScale(
+      targetScale,
+      widthAtScale1,
+      heightAtScale1,
+    );
+
+    expect(widthAtScale1 * renderScale).toBeLessThanOrEqual(
+      PDF_RENDER_MAX_DIMENSION,
+    );
+    expect(heightAtScale1 * renderScale).toBeLessThanOrEqual(
+      PDF_RENDER_MAX_DIMENSION,
+    );
+    expect(widthAtScale1 * targetScale).toBe(4_800);
+    expect(heightAtScale1 * targetScale).toBe(6_400);
+    const fieldPdfX = 125;
+    expect(fieldPdfX * targetScale).toBe(500);
+    expect(fieldPdfX * renderScale).toBeLessThan(500);
+  });
+
+  it("leaves an already-safe backing scale unchanged", () => {
+    expect(clampPdfRenderScale(2, 1_000, 1_500)).toBe(2);
   });
 });
 

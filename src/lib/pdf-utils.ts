@@ -85,6 +85,8 @@ export async function detectAcroFormFields(pdfBytes: ArrayBuffer) {
   const fields = form.getFields();
   const downloadPreserveEnabled =
     process.env.NEXT_PUBLIC_QUICKFILL_DOWNLOAD_PRESERVE === "v1";
+  const mobilePolishEnabled =
+    process.env.NEXT_PUBLIC_QUICKFILL_MOBILE_POLISH === "v1";
   const result: {
     name: string;
     type: "text" | "checkbox";
@@ -96,10 +98,89 @@ export async function detectAcroFormFields(pdfBytes: ArrayBuffer) {
     value: string;
     checked?: boolean;
     valueSource?: "text" | "choice" | "none";
+    kind?: "radio" | "choice";
+    options?: string[];
+    currentSelection?: string;
+    multiselect?: boolean;
   }[] = [];
 
   for (const field of fields) {
     const widgets = field.acroField.getWidgets();
+    const choiceKind =
+      field instanceof PDFRadioGroup
+        ? "radio"
+        : field instanceof PDFDropdown || field instanceof PDFOptionList
+          ? "choice"
+          : null;
+
+    if (mobilePolishEnabled && choiceKind) {
+      const widget = widgets[0];
+      if (!widget) continue;
+
+      const rect = widget.getRectangle();
+      const pageRef = widget.P();
+      let pageIndex = 0;
+      if (pageRef) {
+        const pages = pdfDoc.getPages();
+        for (let i = 0; i < pages.length; i++) {
+          if (pages[i].ref === pageRef) {
+            pageIndex = i;
+            break;
+          }
+        }
+      }
+
+      let currentSelection = "";
+      try {
+        currentSelection =
+          field instanceof PDFRadioGroup
+            ? form.getRadioGroup(field.getName()).getSelected() ?? ""
+            : field instanceof PDFDropdown
+              ? form.getDropdown(field.getName()).getSelected().join(", ")
+              : form.getOptionList(field.getName()).getSelected().join(", ");
+      } catch {
+        // An unreadable selection still produces a usable empty choice card.
+      }
+
+      let multiselect = false;
+      try {
+        multiselect =
+          field instanceof PDFDropdown || field instanceof PDFOptionList
+            ? field.isMultiselect()
+            : false;
+      } catch {
+        // Default to the supported single-select UI.
+      }
+      const options =
+        field instanceof PDFRadioGroup
+          ? field.getOptions()
+          : field instanceof PDFDropdown
+            ? field.getOptions()
+            : field instanceof PDFOptionList
+              ? field.getOptions()
+              : [];
+
+      const page = pdfDoc.getPages()[pageIndex];
+      result.push({
+        name: field.getName(),
+        type: "text",
+        x: rect.x,
+        y: page.getHeight() - rect.y - rect.height,
+        width: rect.width,
+        height: rect.height,
+        page: pageIndex,
+        value: currentSelection,
+        ...(downloadPreserveEnabled
+          ? { checked: false, valueSource: "choice" as const }
+          : {}),
+        kind: choiceKind,
+        options,
+        currentSelection,
+        ...(multiselect ? { multiselect: true } : {}),
+      });
+      continue;
+    }
+
     for (const widget of widgets) {
       const rect = widget.getRectangle();
       const pageRef = widget.P();

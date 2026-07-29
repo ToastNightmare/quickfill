@@ -10,8 +10,11 @@ import {
   PDFBool,
   PDFDict,
   PDFDocument,
+  PDFDropdown,
   PDFName,
+  PDFOptionList,
   PDFRawStream,
+  PDFRadioGroup,
   StandardFonts,
 } from "pdf-lib";
 
@@ -32,9 +35,11 @@ import {
 
 const ROTATION_SAFE_DOWNLOAD_FLAG = "NEXT_PUBLIC_QUICKFILL_ROTATION_SAFE_DOWNLOAD";
 const DOWNLOAD_PRESERVE_FLAG = "NEXT_PUBLIC_QUICKFILL_DOWNLOAD_PRESERVE";
+const MOBILE_POLISH_FLAG = "NEXT_PUBLIC_QUICKFILL_MOBILE_POLISH";
 const originalRotationSafeDownloadFlag =
   process.env[ROTATION_SAFE_DOWNLOAD_FLAG];
 const originalDownloadPreserveFlag = process.env[DOWNLOAD_PRESERVE_FLAG];
+const originalMobilePolishFlag = process.env[MOBILE_POLISH_FLAG];
 
 jest.mock("@/lib/admin-logs", () => ({
   recordDownloadLog: jest.fn().mockResolvedValue(undefined),
@@ -765,6 +770,52 @@ async function createSelectedDropdownForm() {
   return pdfDoc.save({ updateFieldAppearances: false });
 }
 
+async function createSelectedChoiceForm() {
+  const pdfDoc = await PDFDocument.create();
+  const page = pdfDoc.addPage([400, 300]);
+  const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+  const form = pdfDoc.getForm();
+
+  const radio = form.createRadioGroup("contact");
+  radio.addOptionToPage("EMAIL", page, {
+    x: 20,
+    y: 240,
+    width: 20,
+    height: 20,
+  });
+  radio.addOptionToPage("PHONE", page, {
+    x: 60,
+    y: 240,
+    width: 20,
+    height: 20,
+  });
+  radio.select("EMAIL");
+
+  const dropdown = form.createDropdown("region");
+  dropdown.setOptions(["NORTH", "WEST"]);
+  dropdown.select("NORTH");
+  dropdown.addToPage(page, {
+    x: 20,
+    y: 180,
+    width: 120,
+    height: 24,
+    font,
+  });
+
+  const optionList = form.createOptionList("service");
+  optionList.setOptions(["SUPPORT", "TRAINING"]);
+  optionList.select("SUPPORT");
+  optionList.addToPage(page, {
+    x: 20,
+    y: 90,
+    width: 160,
+    height: 60,
+    font,
+  });
+
+  return pdfDoc.save({ updateFieldAppearances: false });
+}
+
 async function createMissingAppearanceAnnotationPdf() {
   const pdfDoc = await PDFDocument.create();
   const page = pdfDoc.addPage([300, 200]);
@@ -784,15 +835,22 @@ describe("fill-pdf download content preservation", () => {
     jest.clearAllMocks();
     process.env.QUICKFILL_QA_TOKEN = "test-token";
     process.env[DOWNLOAD_PRESERVE_FLAG] = "v1";
+    delete process.env[MOBILE_POLISH_FLAG];
   });
 
   afterEach(() => {
+    jest.restoreAllMocks();
     delete process.env.QUICKFILL_QA_TOKEN;
     if (originalDownloadPreserveFlag === undefined) {
       delete process.env[DOWNLOAD_PRESERVE_FLAG];
     } else {
       process.env[DOWNLOAD_PRESERVE_FLAG] =
         originalDownloadPreserveFlag;
+    }
+    if (originalMobilePolishFlag === undefined) {
+      delete process.env[MOBILE_POLISH_FLAG];
+    } else {
+      process.env[MOBILE_POLISH_FLAG] = originalMobilePolishFlag;
     }
   });
 
@@ -940,6 +998,145 @@ describe("fill-pdf download content preservation", () => {
       }
     },
   );
+
+  it("selects valid radio, dropdown, and option-list values in the real form only when both flags are active", async () => {
+    const sourceBytes = await createSelectedChoiceForm();
+    const radioSelect = jest.spyOn(PDFRadioGroup.prototype, "select");
+    const dropdownSelect = jest.spyOn(PDFDropdown.prototype, "select");
+    const optionListSelect = jest.spyOn(PDFOptionList.prototype, "select");
+    process.env[MOBILE_POLISH_FLAG] = "v1";
+
+    const response = await POST(
+      await makeDownloadPreserveRequest(
+        sourceBytes,
+        [
+          {
+            id: "contact",
+            type: "text",
+            choice: true,
+            x: 20,
+            y: 40,
+            width: 20,
+            height: 20,
+            page: 0,
+            value: "PHONE",
+            fontSize: 12,
+          },
+          {
+            id: "region",
+            type: "text",
+            choice: true,
+            x: 20,
+            y: 96,
+            width: 120,
+            height: 24,
+            page: 0,
+            value: "WEST",
+            fontSize: 12,
+          },
+          {
+            id: "service",
+            type: "text",
+            choice: true,
+            x: 20,
+            y: 150,
+            width: 160,
+            height: 60,
+            page: 0,
+            value: "TRAINING",
+            fontSize: 12,
+          },
+        ],
+        true,
+      ),
+    );
+
+    expect(response.status).toBe(200);
+    expect(radioSelect).toHaveBeenCalledWith("PHONE");
+    expect(dropdownSelect).toHaveBeenCalledWith("WEST");
+    expect(optionListSelect).toHaveBeenCalledWith("TRAINING");
+
+    radioSelect.mockRestore();
+    dropdownSelect.mockRestore();
+    optionListSelect.mockRestore();
+  });
+
+  it.each([
+    ["mobile flag", "true", "v1"],
+    ["download-preserve flag", "v1", "true"],
+  ])(
+    "keeps the existing overlay fallback when the %s is not the exact rollout value",
+    async (_flag, mobileFlag, preserveFlag) => {
+      const sourceBytes = await createSelectedDropdownForm();
+      const dropdownSelect = jest.spyOn(PDFDropdown.prototype, "select");
+      process.env[MOBILE_POLISH_FLAG] = mobileFlag;
+      process.env[DOWNLOAD_PRESERVE_FLAG] = preserveFlag;
+
+      const response = await POST(
+        await makeDownloadPreserveRequest(
+          sourceBytes,
+          [
+            {
+              id: "region",
+              type: "text",
+              choice: true,
+              x: 20,
+              y: 36,
+              width: 120,
+              height: 24,
+              page: 0,
+              value: "CHOICE_A",
+              fontSize: 12,
+            },
+          ],
+          true,
+        ),
+      );
+      const bytes = new Uint8Array(await response.arrayBuffer());
+
+      expect(response.status).toBe(200);
+      expect(dropdownSelect).not.toHaveBeenCalled();
+      expect(
+        markerOccurrences(await decodedPdfStreams(bytes), "CHOICE_A"),
+      ).toBeGreaterThan(0);
+      dropdownSelect.mockRestore();
+    },
+  );
+
+  it("keeps an invalid mobile choice on the overlay fallback", async () => {
+    const sourceBytes = await createSelectedDropdownForm();
+    const dropdownSelect = jest.spyOn(PDFDropdown.prototype, "select");
+    process.env[MOBILE_POLISH_FLAG] = "v1";
+
+    const response = await POST(
+      await makeDownloadPreserveRequest(
+        sourceBytes,
+        [
+          {
+            id: "region",
+            type: "text",
+            choice: true,
+            x: 20,
+            y: 36,
+            width: 120,
+            height: 24,
+            page: 0,
+            value: "CHOICE_C",
+            fontSize: 12,
+          },
+        ],
+        true,
+      ),
+    );
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    const streams = await decodedPdfStreams(bytes);
+
+    expect(response.status).toBe(200);
+    expect(dropdownSelect).not.toHaveBeenCalled();
+    expect(markerOccurrences(streams, "CHOICE_C")).toBeGreaterThan(0);
+    expect(markerOccurrences(streams, "CHOICE_B")).toBe(1);
+    dropdownSelect.mockRestore();
+  });
 
   it("returns the typed 422 without quota use when visible content cannot be preserved", async () => {
     jest.spyOn(console, "warn").mockImplementation(() => undefined);
