@@ -29,6 +29,12 @@ import {
   type LocalFieldDetectionLifecycleEvent,
   type LocalFieldDetectionSnapshotKey,
 } from "@/lib/local-field-suggestion-provider";
+import {
+  fitOverlayFontSize,
+  fitOverlayTextPadding,
+  STANDARD_OVERLAY_TEXT_HEIGHT_RATIO,
+  standardOverlayTextHeightAtSize,
+} from "@/lib/pdf-utils";
 import { MediaOverlayLayer } from "@/components/MediaOverlayLayer";
 
 type PdfActiveTool = PlacementToolType | "mask-eraser";
@@ -514,6 +520,8 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
   const mobilePolishFlag =
     process.env.NEXT_PUBLIC_QUICKFILL_MOBILE_POLISH;
   const mobilePolishEnabled = mobilePolishFlag === "v1";
+  const fieldFitEnabled =
+    process.env.NEXT_PUBLIC_QUICKFILL_FIELD_FIT === "v1";
   const gestureZoomLimit = gestureZoomMax(mobilePolishFlag);
   const createFieldId = useCallback(
     (prefix = "field") => createEditorFieldId(fields, prefix),
@@ -2671,6 +2679,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
                 field={field}
                 fitScale={fitScale}
                 zoomFactor={zoomFactor}
+                fieldFitEnabled={fieldFitEnabled}
                 isSelected={!isCapturingPreview && activeTool !== "mask-eraser" && field.id === selectedFieldId && field.type !== "whiteout"}
                 isEditing={activeTool !== "mask-eraser" && field.id === editingFieldId}
                 isHighlighted={!isCapturingPreview && (field.id === snappedFieldId || (highlightFieldIds?.has(field.id) ?? false))}
@@ -2780,6 +2789,21 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
                 // Lines are not resizable via canvas - only draggable
                 if (selectedField?.type === "line") {
                   return oldBox;
+                }
+                if (
+                  fieldFitEnabled &&
+                  (selectedField?.type === "text" ||
+                    selectedField?.type === "date" ||
+                    selectedField?.type === "signature")
+                ) {
+                  const minimumScreenSize = 8 * fitScale * zoomFactor;
+                  if (
+                    newBox.width < minimumScreenSize ||
+                    newBox.height < minimumScreenSize
+                  ) {
+                    return oldBox;
+                  }
+                  return newBox;
                 }
                 if (newBox.width < 16 || newBox.height < 16) return oldBox;
                 return newBox;
@@ -2951,10 +2975,33 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
             const isEditSnapped = editField.snapped ?? false;
             // Convert from PDF point space to canvas pixels
             const effectiveScale = fitScale * zoomFactor;
-            const editorFontSize = Math.max(
-              16,
-              ((editField as { fontSize?: number }).fontSize ?? 14) * effectiveScale
-            );
+            const requestedEditorFontSize =
+              (editField as { fontSize?: number }).fontSize ?? 14;
+            const editorPaddingPoints = fieldFitEnabled
+              ? fitOverlayTextPadding(
+                  editField.width,
+                  editField.height,
+                  isEditSnapped ? 2 : 4,
+                )
+              : isEditSnapped
+                ? 2
+                : 4;
+            const fittedEditorFontSize = fieldFitEnabled
+              ? fitOverlayFontSize(
+                  editField.height,
+                  requestedEditorFontSize,
+                  standardOverlayTextHeightAtSize,
+                  editorPaddingPoints,
+                )
+              : requestedEditorFontSize;
+            const editorFontSize = fieldFitEnabled
+              ? fittedEditorFontSize * effectiveScale
+              : Math.max(16, requestedEditorFontSize * effectiveScale);
+            const editorPadding = fieldFitEnabled
+              ? editorPaddingPoints * effectiveScale
+              : isEditSnapped
+                ? 2
+                : 4;
             // On small screens the fit scale shrinks fields below the 16px
             // font floor, which clips typed text. Give the input enough
             // height and a readable background so users can see what they
@@ -2963,9 +3010,11 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
               typeof window !== "undefined" &&
               typeof window.matchMedia === "function" &&
               window.matchMedia("(max-width: 1023px)").matches;
-            const editorHeight = isSmallScreen
-              ? Math.max(editField.height * effectiveScale, editorFontSize + 8)
-              : editField.height * effectiveScale;
+            const editorHeight = fieldFitEnabled
+              ? editField.height * effectiveScale
+              : isSmallScreen
+                ? Math.max(editField.height * effectiveScale, editorFontSize + 8)
+                : editField.height * effectiveScale;
 
             return (
               <input
@@ -2984,11 +3033,20 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
                   color: "#1a1a2e",
                   cursor: "text",
                   // Match Konva text padding exactly so text aligns
-                  paddingLeft: isEditSnapped ? 2 : 4,
-                  paddingRight: isEditSnapped ? 2 : 4,
+                  paddingLeft: editorPadding,
+                  paddingRight: editorPadding,
                   paddingTop: 0,
                   paddingBottom: 0,
                   boxSizing: "border-box",
+                  ...(fieldFitEnabled
+                    ? {
+                        lineHeight: `${
+                          standardOverlayTextHeightAtSize(
+                            fittedEditorFontSize,
+                          ) * effectiveScale
+                        }px`,
+                      }
+                    : {}),
                   // Desktop: fully transparent so the field box shows through.
                   // Small screens: near-solid white so typed text stays legible.
                   backgroundColor: isSmallScreen ? "rgba(255,255,255,0.95)" : "rgba(0,0,0,0)",
@@ -3012,8 +3070,12 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
                   onFieldUpdate(editField.id, { value: newValue } as Partial<EditorField>);
 
                   // Auto-expand field width if text overflows
-                  const fontSize = ((editField as { fontSize?: number }).fontSize ?? 14) * effectiveScale;
-                  const padding = (isEditSnapped ? 2 : 4) * 2;
+                  const fontSize = fieldFitEnabled
+                    ? editorFontSize
+                    : requestedEditorFontSize * effectiveScale;
+                  const padding = fieldFitEnabled
+                    ? editorPadding * 2
+                    : (isEditSnapped ? 2 : 4) * 2;
                   // Measure text width using canvas
                   const canvas = document.createElement("canvas");
                   const ctx = canvas.getContext("2d");
@@ -3069,6 +3131,7 @@ function FieldShape({
   field,
   fitScale,
   zoomFactor,
+  fieldFitEnabled,
   isSelected,
   isEditing,
   isHighlighted,
@@ -3094,6 +3157,7 @@ function FieldShape({
   field: EditorField;
   fitScale: number;
   zoomFactor: number;
+  fieldFitEnabled: boolean;
   isSelected: boolean;
   isEditing: boolean;
   isHighlighted: boolean;
@@ -3642,6 +3706,33 @@ function FieldShape({
           ? "Click for date"
           : "Click to type...");
   const isEmpty = !field.value && !hasSignatureImage;
+  const requestedOverlayFontSize =
+    field.type === "signature"
+      ? 16
+      : (field as { fontSize?: number }).fontSize ?? 14;
+  const preferredOverlayPadding = isSnapped ? 2 : 4;
+  const overlayPaddingPoints = fieldFitEnabled
+    ? fitOverlayTextPadding(
+        field.width,
+        field.height,
+        preferredOverlayPadding,
+      )
+    : preferredOverlayPadding;
+  const fittedOverlayFontSize = fieldFitEnabled
+    ? fitOverlayFontSize(
+        field.height,
+        requestedOverlayFontSize,
+        standardOverlayTextHeightAtSize,
+        overlayPaddingPoints,
+      )
+    : requestedOverlayFontSize;
+  const overlayFontSize = fittedOverlayFontSize * fitScale;
+  const overlayPadding = fieldFitEnabled
+    ? overlayPaddingPoints * fitScale
+    : preferredOverlayPadding;
+  const overlayWidth = fieldFitEnabled
+    ? stageW
+    : stageW - (isSnapped ? 4 : 8);
 
   // BUG 3 FIX: Signature fields must register with Transformer and be draggable
   // Signature fields should NOT be snapped (they use click-to-place, not snap detection)
@@ -3683,6 +3774,15 @@ function FieldShape({
           const scaleY = node.scaleY();
           node.scaleX(1);
           node.scaleY(1);
+          if (fieldFitEnabled) {
+            onTransformEnd(
+              Math.max(8 * fitScale, node.width() * scaleX),
+              Math.max(8 * fitScale, node.height() * scaleY),
+              node.x(),
+              node.y()
+            );
+            return;
+          }
           onTransformEnd(
             Math.max(40, node.width() * scaleX),
             Math.max(20, node.height() * scaleY),
@@ -3742,7 +3842,7 @@ function FieldShape({
               />
             );
           })()
-        ) : field.type === "signature" ? (
+        ) : field.type === "signature" && (!fieldFitEnabled || !field.value) ? (
           /* Unsigned, pen icon + "Click to sign" */
           <Text
             text="✎  Click to sign"
@@ -3755,17 +3855,23 @@ function FieldShape({
             verticalAlign="middle"
           />
         ) : (
-          !isEditing && (
+          (!isEditing || field.type === "signature") && (
             <Text
               text={displayValue}
-              fontSize={((field as { fontSize?: number }).fontSize ?? 14) * fitScale}
+              fontSize={overlayFontSize}
               fill={isEmpty ? "#9ca3af" : "#1a1a2e"}
               fontFamily="Arial"
+              {...(fieldFitEnabled && field.type === "signature"
+                ? { fontStyle: "italic" }
+                : {})}
               // BUG FIX: Lock text width to field dimensions - prevent auto-resize on deselect
               // Use exact field width minus padding, with ellipsis to prevent expansion
-              width={stageW - (isSnapped ? 4 : 8)}
+              width={overlayWidth}
               height={stageH}
-              padding={isSnapped ? 2 : 4}
+              padding={overlayPadding}
+              {...(fieldFitEnabled
+                ? { lineHeight: STANDARD_OVERLAY_TEXT_HEIGHT_RATIO }
+                : {})}
               verticalAlign="middle"
               align="left"
               wrap="none"
