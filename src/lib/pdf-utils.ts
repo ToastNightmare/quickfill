@@ -20,6 +20,120 @@ function sanitize(text: string): string {
   return text.replace(/[\x00-\x09\x0b-\x1f\x7f\n\r]/g, " ");
 }
 
+/** Keep intentional line breaks while making all other control characters safe. */
+export function sanitizeMultiline(text: string): string {
+  return text
+    .replace(/\r\n?/g, "\n")
+    .replace(/[\x00-\x09\x0b-\x1f\x7f]/g, " ");
+}
+
+export interface OverlayTextFontMetrics {
+  widthOfTextAtSize(text: string, fontSize: number): number;
+  heightAtSize(
+    fontSize: number,
+    options?: { descender?: boolean },
+  ): number;
+}
+
+function splitOverlayWord(
+  word: string,
+  innerWidth: number,
+  widthOfText: (text: string) => number,
+): string[] {
+  const pieces: string[] = [];
+  let current = "";
+  let currentWidth = 0;
+
+  for (const character of Array.from(word)) {
+    const characterWidth = widthOfText(character);
+    if (current && currentWidth + characterWidth > innerWidth) {
+      pieces.push(current);
+      current = character;
+      currentWidth = characterWidth;
+    } else if (!current && characterWidth > innerWidth) {
+      pieces.push(character);
+    } else {
+      current += character;
+      currentWidth += characterWidth;
+    }
+  }
+
+  if (current) pieces.push(current);
+  return pieces;
+}
+
+/**
+ * Preserve explicit paragraphs, then greedily wrap each paragraph to the
+ * measured inner width. Words wider than the box are split by character so a
+ * single token cannot escape horizontally.
+ */
+export function wrapOverlayTextLines(
+  value: string,
+  innerWidthPts: number,
+  font: OverlayTextFontMetrics,
+  fontSize: number,
+): string[] {
+  if (!value) return [];
+
+  const innerWidth = Number.isFinite(innerWidthPts)
+    ? Math.max(0, innerWidthPts)
+    : Number.MAX_SAFE_INTEGER;
+  const lines: string[] = [];
+  const widthCache = new Map<string, number>();
+  const widthOfText = (text: string) => {
+    const cached = widthCache.get(text);
+    if (cached !== undefined) return cached;
+    const measured = font.widthOfTextAtSize(text, fontSize);
+    widthCache.set(text, measured);
+    return measured;
+  };
+  const spaceWidth = widthOfText(" ");
+
+  for (const paragraph of value.replace(/\r\n?/g, "\n").split("\n")) {
+    const words = paragraph.match(/\S+/g) ?? [];
+    if (words.length === 0) {
+      lines.push("");
+      continue;
+    }
+
+    let current = "";
+    let currentWidth = 0;
+    for (const word of words) {
+      const wordWidth = widthOfText(word);
+      const candidate = current ? `${current} ${word}` : word;
+      const candidateWidth = current
+        ? currentWidth + spaceWidth + wordWidth
+        : wordWidth;
+      if (candidateWidth <= innerWidth) {
+        current = candidate;
+        currentWidth = candidateWidth;
+        continue;
+      }
+
+      if (current) {
+        lines.push(current);
+        current = "";
+        currentWidth = 0;
+      }
+
+      if (wordWidth <= innerWidth) {
+        current = word;
+        currentWidth = wordWidth;
+        continue;
+      }
+
+      const pieces = splitOverlayWord(word, innerWidth, widthOfText);
+      lines.push(...pieces.slice(0, -1));
+      current = pieces.at(-1) ?? "";
+      currentWidth = widthOfText(current);
+    }
+
+    if (current) lines.push(current);
+  }
+
+  return lines;
+}
+
 export function overlayTextBaseline(
   fieldBottom: number,
   fieldHeight: number,
@@ -34,6 +148,79 @@ export function overlayTextBaseline(
 
 export const MIN_OVERLAY_FONT_SIZE = 4;
 export const STANDARD_OVERLAY_TEXT_HEIGHT_RATIO = 0.925;
+
+export interface MultilineOverlayTextLayout {
+  lines: string[];
+  fontSize: number;
+  lineHeight: number;
+}
+
+/**
+ * Find the largest font size whose wrapped lines fit inside the padded box.
+ * If even 4pt cannot fit, retain the established 4pt floor and let the caller
+ * apply its normal clipping policy.
+ */
+export function fitMultilineOverlayText(
+  value: string,
+  innerWidthPts: number,
+  boxHeight: number,
+  font: OverlayTextFontMetrics,
+  requestedFontSize = 12,
+  verticalPadding = 0,
+): MultilineOverlayTextLayout {
+  const requested = Number.isFinite(requestedFontSize)
+    ? Math.max(MIN_OVERLAY_FONT_SIZE, requestedFontSize)
+    : 12;
+  const safeBoxHeight = Number.isFinite(boxHeight)
+    ? Math.max(0, boxHeight)
+    : 0;
+  const safePadding = Number.isFinite(verticalPadding)
+    ? Math.max(0, verticalPadding)
+    : 0;
+  const availableHeight = Math.max(0, safeBoxHeight - safePadding * 2);
+
+  const layoutAt = (fontSize: number): MultilineOverlayTextLayout => {
+    const lines = wrapOverlayTextLines(
+      value,
+      innerWidthPts,
+      font,
+      fontSize,
+    );
+    const measuredHeight = font.heightAtSize(fontSize);
+    const lineHeight =
+      Number.isFinite(measuredHeight) && measuredHeight > 0
+        ? measuredHeight
+        : standardOverlayTextHeightAtSize(fontSize);
+    return { lines, fontSize, lineHeight };
+  };
+  const fits = (layout: MultilineOverlayTextLayout) =>
+    layout.lines.length * layout.lineHeight <= availableHeight;
+
+  const requestedLayout = layoutAt(requested);
+  if (fits(requestedLayout)) return requestedLayout;
+
+  const minimumLayout = layoutAt(MIN_OVERLAY_FONT_SIZE);
+  if (!fits(minimumLayout)) return minimumLayout;
+
+  let lower = MIN_OVERLAY_FONT_SIZE;
+  let upper = requested;
+  let fitted = minimumLayout;
+  for (
+    let index = 0;
+    index < 20 && upper - lower > 0.01;
+    index += 1
+  ) {
+    const candidate = (lower + upper) / 2;
+    const candidateLayout = layoutAt(candidate);
+    if (fits(candidateLayout)) {
+      lower = candidate;
+      fitted = candidateLayout;
+    } else {
+      upper = candidate;
+    }
+  }
+  return fitted;
+}
 
 /**
  * pdf-lib's standard Helvetica and HelveticaOblique fonts both report a
@@ -150,6 +337,8 @@ export async function detectAcroFormFields(pdfBytes: ArrayBuffer) {
     process.env.NEXT_PUBLIC_QUICKFILL_DOWNLOAD_PRESERVE === "v1";
   const mobilePolishEnabled =
     process.env.NEXT_PUBLIC_QUICKFILL_MOBILE_POLISH === "v1";
+  const formFidelityEnabled =
+    process.env.NEXT_PUBLIC_QUICKFILL_FORM_FIDELITY === "v1";
   const result: {
     name: string;
     type: "text" | "checkbox";
@@ -165,6 +354,7 @@ export async function detectAcroFormFields(pdfBytes: ArrayBuffer) {
     options?: string[];
     currentSelection?: string;
     multiselect?: boolean;
+    multiline?: true;
   }[] = [];
 
   for (const field of fields) {
@@ -267,6 +457,15 @@ export async function detectAcroFormFields(pdfBytes: ArrayBuffer) {
       let value = "";
       let checked = false;
       let valueSource: "text" | "choice" | "none" = "none";
+      let multiline = false;
+
+      if (formFidelityEnabled && field instanceof PDFTextField) {
+        try {
+          multiline = form.getTextField(field.getName()).isMultiline();
+        } catch {
+          // Unreadable field metadata keeps the existing single-line editor.
+        }
+      }
 
       if (downloadPreserveEnabled) {
         if (field instanceof PDFCheckBox) {
@@ -329,6 +528,7 @@ export async function detectAcroFormFields(pdfBytes: ArrayBuffer) {
         page: pageIndex,
         value,
         ...(downloadPreserveEnabled ? { checked, valueSource } : {}),
+        ...(multiline ? { multiline: true as const } : {}),
       });
     }
   }
@@ -582,6 +782,10 @@ async function drawFieldOnPage(
     const value = combField.value || "";
     // Coordinates are already in PDF points - no scaling needed
     const offsetX = combField.offsetX ?? 0;
+    const offsetY =
+      process.env.NEXT_PUBLIC_QUICKFILL_FORM_FIDELITY === "v1"
+        ? combField.offsetY ?? 0
+        : 0;
     const charOffsetX = combField.charOffsetX ?? 0;
     // Non-uniform cell positions (for fields with gaps like DD/MM/YYYY)
     const cellPositions = combField.cellPositions;
@@ -600,7 +804,12 @@ async function drawFieldOnPage(
 
         // Center character in cell
         const charX = pdfX + offsetX + cellCenterX + charOffsetX - fontSize * 0.25;
-        const charY = pdfY + pdfH - fontSize - (pdfH - fontSize) / 2;
+        const charY =
+          pdfY +
+          pdfH -
+          fontSize -
+          (pdfH - fontSize) / 2 +
+          offsetY;
         page.drawText(sanitize(char), {
           x: charX,
           y: charY,

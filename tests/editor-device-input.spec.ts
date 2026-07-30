@@ -19,6 +19,8 @@ function isLoopbackBaseUrl(value: string) {
 }
 
 const runsAgainstLocalApp = isLoopbackBaseUrl(localBaseUrl);
+const formFidelityEnabled =
+  process.env.NEXT_PUBLIC_QUICKFILL_FORM_FIDELITY === "v1";
 const PDF_WIDTH = 612;
 const MINIMUM_TOUCH_TARGET = 44;
 
@@ -503,10 +505,11 @@ async function interactAtPageFraction(
   page: Page,
   interaction: Interaction,
   xFraction: number,
-  yFraction: number
+  yFraction: number,
+  scrollIntoView = true,
 ) {
   const pdfPage = page.getByTestId("pdf-page");
-  await pdfPage.scrollIntoViewIfNeeded();
+  if (scrollIntoView) await pdfPage.scrollIntoViewIfNeeded();
   const box = await pdfPage.boundingBox();
   expect(box).not.toBeNull();
   const x = box!.x + box!.width * xFraction;
@@ -629,6 +632,31 @@ async function placeTextAndBox(
   await activate(boxTool, page, interaction);
   await expect(boxTool).toHaveClass(/bg-accent/);
   await interactAtPageFraction(page, interaction, 0.55, 0.38);
+  if (interaction === "touch" && formFidelityEnabled) {
+    await expect(
+      page.getByTestId("box-first-corner-marker"),
+    ).toBeVisible();
+    await expect(
+      page.getByText("Now tap the opposite corner"),
+    ).toBeVisible();
+    // Complete up-and-left of corner A without a second scroll. Re-scrolling
+    // the tall page on compact screens can move this touch under the sticky
+    // toolbar; preserving the current viewport mirrors an actual second tap.
+    await interactAtPageFraction(
+      page,
+      interaction,
+      0.35,
+      0.37,
+      false,
+    );
+    if (
+      await page.evaluate(() =>
+        window.matchMedia("(max-width: 1023px)").matches
+      )
+    ) {
+      await expect(page.getByTestId("mobile-field-sheet")).toBeVisible();
+    }
+  }
   await waitForFieldCount(page, 2);
   if (enforceTouchTargets) await expectSelectedFieldTouchTargets(page);
   await page.keyboard.type(boxValue);

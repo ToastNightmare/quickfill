@@ -18,9 +18,11 @@ import { createServer, type Server } from "node:http";
 import { join } from "node:path";
 import { finalizePdfForDownload } from "../src/lib/pdf-finalize";
 import {
+  fitMultilineOverlayText,
   fitOverlayFontSize,
   fitOverlayTextPadding,
   overlayTextBaseline,
+  sanitizeMultiline,
   standardOverlayTextHeightAtSize,
 } from "../src/lib/pdf-utils";
 import { PDF_UPLOAD_MAX_LABEL } from "../src/lib/upload-limits";
@@ -74,9 +76,13 @@ const mobilePolishEnabled =
   process.env.NEXT_PUBLIC_QUICKFILL_MOBILE_POLISH === "v1";
 const fieldFitEnabled =
   process.env.NEXT_PUBLIC_QUICKFILL_FIELD_FIT === "v1";
+const formFidelityEnabled =
+  process.env.NEXT_PUBLIC_QUICKFILL_FORM_FIDELITY === "v1";
 const enforcedBaseUrl = "http://localhost:3000";
 const enforcedRedisUrl = "http://127.0.0.1:38079";
-const expectedEnforcedPdfTestCount = 33;
+const expectedEnforcedPdfTestCount = 34;
+const multilineClaimValue =
+  "The policy holder confirms the insured property remains occupied during the working day.\nAdditional claim details stay inside this full-width multiline box.";
 const fieldPositionLandmark = {
   x: 73,
   y: 91,
@@ -274,6 +280,29 @@ async function createPrefilledAppearancePdf(): Promise<TestPdf> {
 
   return {
     name: "quickfill-qa-prefilled-appearance.pdf",
+    bytes: Buffer.from(
+      await pdfDoc.save({ updateFieldAppearances: false }),
+    ),
+  };
+}
+
+async function createMultilineAppearancePdf(): Promise<TestPdf> {
+  const pdfDoc = await PDFDocument.create();
+  const page = pdfDoc.addPage([600, 260]);
+  const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+  const textField = pdfDoc.getForm().createTextField("claimDetails");
+  textField.enableMultiline();
+  textField.setText(multilineClaimValue);
+  textField.addToPage(page, {
+    x: 40,
+    y: 80,
+    width: 480,
+    height: 90,
+    font,
+  });
+
+  return {
+    name: "quickfill-qa-multiline-appearance.pdf",
     bytes: Buffer.from(
       await pdfDoc.save({ updateFieldAppearances: false }),
     ),
@@ -539,33 +568,47 @@ async function decodedPdfStreams(bytes: Uint8Array): Promise<string> {
   return decoded;
 }
 
-function textDrawForMarker(decoded: string, marker: string) {
+function textDrawsForMarker(decoded: string, marker: string) {
   const markerHex = Buffer.from(marker, "latin1").toString("hex");
   const markerToken = `<${markerHex}> Tj`;
   const normalized = decoded.toLowerCase();
   const normalizedMarker = markerToken.toLowerCase();
-  const markerIndex = normalized.indexOf(normalizedMarker);
-  if (markerIndex < 0) throw new Error(`Missing PDF text marker: ${marker}`);
-  const prefix = decoded.slice(Math.max(0, markerIndex - 300), markerIndex);
   const number = "[-+]?(?:\\d+\\.?\\d*|\\.\\d+)(?:e[-+]?\\d+)?";
-  const fontMatches = [
-    ...prefix.matchAll(new RegExp(`(${number}) Tf`, "gi")),
-  ];
-  const matrixMatches = [
-    ...prefix.matchAll(
-      new RegExp(`1 0 0 1 (${number}) (${number}) Tm`, "gi"),
-    ),
-  ];
-  const fontMatch = fontMatches.at(-1);
-  const matrixMatch = matrixMatches.at(-1);
-  if (!fontMatch || !matrixMatch) {
-    throw new Error(`Missing PDF text operators for marker: ${marker}`);
+  const draws: { fontSize: number; x: number; y: number }[] = [];
+  let searchFrom = 0;
+
+  while (searchFrom < normalized.length) {
+    const markerIndex = normalized.indexOf(normalizedMarker, searchFrom);
+    if (markerIndex < 0) break;
+    const prefix = decoded.slice(Math.max(0, markerIndex - 300), markerIndex);
+    const fontMatches = [
+      ...prefix.matchAll(new RegExp(`(${number}) Tf`, "gi")),
+    ];
+    const matrixMatches = [
+      ...prefix.matchAll(
+        new RegExp(`1 0 0 1 (${number}) (${number}) Tm`, "gi"),
+      ),
+    ];
+    const fontMatch = fontMatches.at(-1);
+    const matrixMatch = matrixMatches.at(-1);
+    if (fontMatch && matrixMatch) {
+      draws.push({
+        fontSize: Number(fontMatch[1]),
+        x: Number(matrixMatch[1]),
+        y: Number(matrixMatch[2]),
+      });
+    }
+    searchFrom = markerIndex + normalizedMarker.length;
   }
-  return {
-    fontSize: Number(fontMatch[1]),
-    x: Number(matrixMatch[1]),
-    y: Number(matrixMatch[2]),
-  };
+
+  if (draws.length === 0) {
+    throw new Error(`Missing PDF text marker: ${marker}`);
+  }
+  return draws;
+}
+
+function textDrawForMarker(decoded: string, marker: string) {
+  return textDrawsForMarker(decoded, marker)[0];
 }
 
 async function requestDownloadPreserveExport(
@@ -1424,7 +1467,7 @@ test.describe("PDF accuracy pack", () => {
       );
       expect(
         executedPdfTests,
-        "Enforced PDF QA must execute the deliberate 33-test pack",
+        "Enforced PDF QA must execute the deliberate 34-test pack",
       ).toBe(expectedEnforcedPdfTestCount);
       expect(
         skippedPdfTests,
@@ -1799,6 +1842,89 @@ test.describe("PDF accuracy pack", () => {
     expect(renderedText.match(/PREFILLEDONCE/g)?.length ?? 0).toBe(
       downloadPreserveEnabled ? 1 : 2,
     );
+  });
+
+  test("multiline AcroForm text stays once and inside its full widget", async ({
+    page,
+    request,
+  }) => {
+    const pdf = await createMultilineAppearancePdf();
+    const { response, body } = await requestDownloadPreserveExport(
+      request,
+      pdf,
+      [
+        {
+          id: "claimDetails",
+          type: "text",
+          x: 40,
+          y: 90,
+          width: 480,
+          height: 90,
+          page: 0,
+          value: multilineClaimValue,
+          fontSize: 12,
+        },
+      ],
+      true,
+    );
+    await installPdfTextExtractor(page);
+    const [renderedText] = await extractPdfPageTexts(page, body);
+    const normalizedRenderedText = renderedText
+      .replace(/\s+/g, " ")
+      .trim();
+    const normalizedExpectedText = multilineClaimValue
+      .replace(/\s+/g, " ")
+      .trim();
+    const visibleOccurrences =
+      normalizedRenderedText.split(normalizedExpectedText).length - 1;
+
+    expect(response.status()).toBe(200);
+    expect(visibleOccurrences).toBe(1);
+    expect(await countWidgetAnnotations(body)).toBe(0);
+
+    if (formFidelityEnabled && downloadPreserveEnabled) {
+      const metricsDoc = await PDFDocument.create();
+      const font = await metricsDoc.embedFont(StandardFonts.Helvetica);
+      const padding = fitOverlayTextPadding(480, 90, 4);
+      const layout = fitMultilineOverlayText(
+        sanitizeMultiline(multilineClaimValue),
+        480 - padding * 2,
+        90,
+        font,
+        12,
+        padding,
+      );
+      const ascent = font.heightAtSize(layout.fontSize, {
+        descender: false,
+      });
+      const descent = layout.lineHeight - ascent;
+      const decoded = await decodedPdfStreams(body);
+
+      for (const line of layout.lines.filter(Boolean)) {
+        const insideDraws = Array.from(
+          new Map(
+            textDrawsForMarker(decoded, line)
+              .filter((draw) => {
+                const lineWidth = font.widthOfTextAtSize(
+                  line,
+                  draw.fontSize,
+                );
+                return (
+                  draw.x >= 40 &&
+                  draw.x + lineWidth <= 520 &&
+                  draw.y - descent >= 80 &&
+                  draw.y + ascent <= 170
+                );
+              })
+              .map((draw) => [
+                `${draw.fontSize}:${draw.x}:${draw.y}`,
+                draw,
+              ] as const),
+          ).values(),
+        );
+        expect(insideDraws).toHaveLength(1);
+      }
+    }
   });
 
   test("NeedAppearances keeps text, a prechecked checkbox, and an untouched dropdown", async ({

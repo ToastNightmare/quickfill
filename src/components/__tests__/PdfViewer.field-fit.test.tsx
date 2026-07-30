@@ -1,11 +1,22 @@
 import "@testing-library/jest-dom";
 import React, { act } from "react";
-import { render, screen, waitFor } from "@testing-library/react";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { PdfViewer } from "../PdfViewer";
 import type { EditorField, ToolDefaultState } from "@/lib/types";
-import { STANDARD_OVERLAY_TEXT_HEIGHT_RATIO } from "@/lib/pdf-utils";
+import {
+  fitMultilineOverlayText,
+  fitOverlayTextPadding,
+  STANDARD_OVERLAY_TEXT_HEIGHT_RATIO,
+  standardOverlayTextHeightAtSize,
+} from "@/lib/pdf-utils";
 
 const mockDetectAllBoxes = jest.fn();
+const mockDetectCombCells = jest.fn();
 const mockPageRender = jest.fn();
 const mockGetViewport = jest.fn();
 const mockKonvaProps: Record<string, Array<Record<string, unknown>>> = {
@@ -24,7 +35,7 @@ jest.mock("@/lib/snap-detect", () => ({
   detectSnapBox: jest.fn(() => null),
   snapCredibilityScore: jest.fn(() => 0),
   floodFillCell: jest.fn(() => null),
-  detectCombCells: jest.fn(() => null),
+  detectCombCells: (...args: unknown[]) => mockDetectCombCells(...args),
 }));
 
 jest.mock("@/lib/pdfjs-client", () => ({
@@ -60,6 +71,7 @@ jest.mock("react-konva", () => {
         getLayer: () => ({ batchDraw: jest.fn() }),
         getStage: () => null,
         getPointerPosition: () => null,
+        getIntersection: () => null,
         toDataURL: () => "",
         container: () => document.createElement("div"),
         width: () => (typeof props.width === "number" ? props.width : 0),
@@ -84,6 +96,8 @@ jest.mock("react-konva", () => {
 
 const FIELD_FIT_FLAG = "NEXT_PUBLIC_QUICKFILL_FIELD_FIT";
 const originalFieldFitFlag = process.env[FIELD_FIT_FLAG];
+const FORM_FIDELITY_FLAG = "NEXT_PUBLIC_QUICKFILL_FORM_FIDELITY";
+const originalFormFidelityFlag = process.env[FORM_FIDELITY_FLAG];
 
 const TOOL_DEFAULTS: ToolDefaultState = {
   select: {},
@@ -118,7 +132,10 @@ function textField(
 function createProps(
   field: EditorField,
   zoom: number,
-  onFieldUpdate = jest.fn(),
+  onFieldUpdate: (
+    id: string,
+    updates: Partial<EditorField>,
+  ) => void = jest.fn(),
 ) {
   return {
     pdfBytes: Uint8Array.from([1, 2, 3]).buffer,
@@ -153,7 +170,10 @@ function latestProps(
 async function renderViewer(
   field: EditorField,
   zoom: number,
-  onFieldUpdate = jest.fn(),
+  onFieldUpdate: (
+    id: string,
+    updates: Partial<EditorField>,
+  ) => void = jest.fn(),
 ) {
   const result = render(
     <PdfViewer {...createProps(field, zoom, onFieldUpdate)} />,
@@ -189,6 +209,7 @@ describe("PdfViewer field-fit rollout", () => {
       cancel: jest.fn(),
     }));
     mockDetectAllBoxes.mockReturnValue([]);
+    mockDetectCombCells.mockReturnValue(null);
     getContextSpy = jest
       .spyOn(HTMLCanvasElement.prototype, "getContext")
       .mockReturnValue({} as CanvasRenderingContext2D);
@@ -246,6 +267,11 @@ describe("PdfViewer field-fit rollout", () => {
       delete process.env[FIELD_FIT_FLAG];
     } else {
       process.env[FIELD_FIT_FLAG] = originalFieldFitFlag;
+    }
+    if (originalFormFidelityFlag === undefined) {
+      delete process.env[FORM_FIDELITY_FLAG];
+    } else {
+      process.env[FORM_FIDELITY_FLAG] = originalFormFidelityFlag;
     }
     jest.restoreAllMocks();
   });
@@ -407,5 +433,456 @@ describe("PdfViewer field-fit rollout", () => {
     expect(text.text).toBe("SIGNED");
     expect(text.fontStyle).toBe("italic");
     expect(Number(text.fontSize)).toBeGreaterThan(0);
+  });
+
+  it("uses shared multiline breaks and a textarea editor flag-on", async () => {
+    process.env[FIELD_FIT_FLAG] = "v1";
+    process.env[FORM_FIDELITY_FLAG] = "v1";
+    const field = textField({
+      width: 120,
+      height: 54,
+      value:
+        "First explicit line\nSecond paragraph wraps at the field width",
+      fontSize: 12,
+    });
+    const onFieldUpdate = jest.fn();
+    await renderViewer(field, 100, onFieldUpdate);
+
+    const group = latestProps("Group", (props) => props.id === field.id);
+    const text = latestProps(
+      "Text",
+      (props) =>
+        typeof props.text === "string" &&
+        props.text.includes("First explicit line"),
+    );
+    const padding = fitOverlayTextPadding(
+      field.width,
+      field.height,
+      4,
+    );
+    const expectedLayout = fitMultilineOverlayText(
+      field.value,
+      field.width - padding * 2,
+      field.height,
+      {
+        widthOfTextAtSize: (value, fontSize) =>
+          Array.from(value).length * fontSize * 0.5,
+        heightAtSize: standardOverlayTextHeightAtSize,
+      },
+      field.fontSize,
+      padding,
+    );
+
+    expect(text.text).toBe(expectedLayout.lines.join("\n"));
+    expect(text.wrap).toBe("none");
+    expect(text.ellipsis).toBe(false);
+    expect(text.verticalAlign).toBe("top");
+
+    act(() => {
+      (group.onDblClick as (event: { cancelBubble: boolean }) => void)({
+        cancelBubble: false,
+      });
+    });
+    const editor = await screen.findByTestId("pdf-field-editor");
+    expect(editor.tagName).toBe("TEXTAREA");
+
+    fireEvent.keyDown(editor, { key: "Enter" });
+    expect(screen.getByTestId("pdf-field-editor")).toBeInTheDocument();
+    fireEvent.change(editor, {
+      target: { value: `${field.value}\nThird explicit line` },
+    });
+    expect(onFieldUpdate).toHaveBeenLastCalledWith(field.id, {
+      value: `${field.value}\nThird explicit line`,
+    });
+    fireEvent.keyDown(editor, { key: "Escape" });
+    expect(screen.queryByTestId("pdf-field-editor")).not.toBeInTheDocument();
+  });
+
+  it("uses a textarea for a one-line source multiline field", async () => {
+    process.env[FORM_FIDELITY_FLAG] = "v1";
+    const field = textField({
+      width: 160,
+      height: 54,
+      value: "First line",
+      fontSize: 12,
+      multiline: true,
+    });
+    const onFieldUpdate = jest.fn();
+    await renderViewer(field, 100, onFieldUpdate);
+    const group = latestProps(
+      "Group",
+      (props) => props.id === field.id,
+    );
+    act(() => {
+      (group.onDblClick as (event: { cancelBubble: boolean }) => void)({
+        cancelBubble: false,
+      });
+    });
+
+    const editor = await screen.findByTestId("pdf-field-editor");
+    expect(editor.tagName).toBe("TEXTAREA");
+    fireEvent.keyDown(editor, { key: "Enter" });
+    expect(screen.getByTestId("pdf-field-editor")).toBeInTheDocument();
+    fireEvent.change(editor, {
+      target: { value: "First line\nSecond line" },
+    });
+    expect(onFieldUpdate).toHaveBeenLastCalledWith(field.id, {
+      value: "First line\nSecond line",
+    });
+  });
+
+  it("applies comb offsetY only when form fidelity is enabled", async () => {
+    const field: Extract<EditorField, { type: "comb" }> = {
+      id: "comb-offset-y",
+      type: "comb",
+      x: 20,
+      y: 20,
+      width: 100,
+      height: 24,
+      page: 0,
+      value: "AB",
+      charCount: 2,
+      offsetY: 7,
+    };
+    process.env[FORM_FIDELITY_FLAG] = "v1";
+    const enabled = await renderViewer(field, 100);
+    const enabledRoot = latestProps(
+      "Group",
+      (props) => props.id === field.id,
+    );
+    const fitScale = Number(enabledRoot.width) / field.width;
+    expect(
+      mockKonvaProps.Group.filter(
+        (props) =>
+          props.id === undefined &&
+          Number(props.y) === 7 * fitScale &&
+          Number(props.height) === Number(enabledRoot.height),
+      ),
+    ).toHaveLength(2);
+    enabled.unmount();
+
+    for (const entries of Object.values(mockKonvaProps)) entries.length = 0;
+    delete process.env[FORM_FIDELITY_FLAG];
+    await renderViewer(field, 100);
+    const disabledRoot = latestProps(
+      "Group",
+      (props) => props.id === field.id,
+    );
+    expect(
+      mockKonvaProps.Group.filter(
+        (props) =>
+          props.id === undefined &&
+          Number(props.y) === 0 &&
+          Number(props.height) === Number(disabledRoot.height),
+      ),
+    ).toHaveLength(2);
+  });
+
+  it("creates a normalized Box from two coarse-pointer taps", async () => {
+    process.env[FORM_FIDELITY_FLAG] = "v1";
+    Object.defineProperty(window, "matchMedia", {
+      configurable: true,
+      value: jest.fn((query: string) => ({
+        matches: query === "(pointer: coarse)",
+        addEventListener: jest.fn(),
+        removeEventListener: jest.fn(),
+      })),
+    });
+    jest
+      .spyOn(HTMLCanvasElement.prototype, "getBoundingClientRect")
+      .mockReturnValue({
+        left: 0,
+        top: 0,
+        right: 768,
+        bottom: 1024,
+        width: 768,
+        height: 1024,
+        x: 0,
+        y: 0,
+        toJSON: () => ({}),
+      } as DOMRect);
+    const onFieldAdd = jest.fn((field: EditorField) => field);
+    const onFieldSelect = jest.fn();
+    const onToolSelect = jest.fn();
+    const props: React.ComponentProps<typeof PdfViewer> = {
+      ...createProps(textField(), 100),
+      fields: [],
+      activeTool: "box",
+      selectedFieldId: null,
+      onFieldAdd,
+      onFieldSelect,
+      onToolSelect,
+    };
+    render(<PdfViewer {...props} />);
+    await waitFor(() =>
+      expect(screen.queryByText("Rendering PDF...")).not.toBeInTheDocument(),
+    );
+    const viewer = screen.getByTestId("pdf-viewer");
+
+    fireEvent.touchEnd(viewer, {
+      touches: [],
+      changedTouches: [
+        { identifier: 1, clientX: 300, clientY: 300 },
+      ],
+    });
+    expect(onFieldAdd).not.toHaveBeenCalled();
+    expect(
+      screen.getByText("Now tap the opposite corner"),
+    ).toBeInTheDocument();
+
+    fireEvent.touchEnd(viewer, {
+      touches: [],
+      changedTouches: [
+        { identifier: 2, clientX: 100, clientY: 140 },
+      ],
+    });
+    expect(onFieldAdd).toHaveBeenCalledTimes(1);
+    const added = onFieldAdd.mock.calls[0][0] as Extract<
+      EditorField,
+      { type: "comb" }
+    >;
+    const pageWidth = Number.parseFloat(
+      screen.getByTestId("pdf-page").style.width,
+    );
+    const effectiveScale = pageWidth / 600;
+    expect(added.type).toBe("comb");
+    expect(added.x).toBeCloseTo(100 / effectiveScale, 8);
+    expect(added.y).toBeCloseTo(140 / effectiveScale, 8);
+    expect(added.width).toBeCloseTo(200 / effectiveScale, 8);
+    expect(added.height).toBeCloseTo(160 / effectiveScale, 8);
+    expect(mockDetectCombCells).toHaveBeenCalledTimes(1);
+    expect(onToolSelect).toHaveBeenCalledWith(null);
+    expect(onFieldSelect).toHaveBeenCalledWith(added.id);
+    expect(
+      screen.queryByTestId("box-first-corner-marker"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("enforces the drawn minimum for close Box taps", async () => {
+    process.env[FORM_FIDELITY_FLAG] = "v1";
+    Object.defineProperty(window, "matchMedia", {
+      configurable: true,
+      value: jest.fn((query: string) => ({
+        matches: query === "(pointer: coarse)",
+        addEventListener: jest.fn(),
+        removeEventListener: jest.fn(),
+      })),
+    });
+    jest
+      .spyOn(HTMLCanvasElement.prototype, "getBoundingClientRect")
+      .mockReturnValue({
+        left: 0,
+        top: 0,
+        right: 768,
+        bottom: 1024,
+        width: 768,
+        height: 1024,
+        x: 0,
+        y: 0,
+        toJSON: () => ({}),
+      } as DOMRect);
+    const onFieldAdd = jest.fn((field: EditorField) => field);
+    const props: React.ComponentProps<typeof PdfViewer> = {
+      ...createProps(textField(), 100),
+      fields: [],
+      activeTool: "box",
+      selectedFieldId: null,
+      onFieldAdd,
+    };
+    render(<PdfViewer {...props} />);
+    await waitFor(() =>
+      expect(screen.queryByText("Rendering PDF...")).not.toBeInTheDocument(),
+    );
+    const viewer = screen.getByTestId("pdf-viewer");
+    fireEvent.touchEnd(viewer, {
+      touches: [],
+      changedTouches: [
+        { identifier: 1, clientX: 100, clientY: 100 },
+      ],
+    });
+    fireEvent.touchEnd(viewer, {
+      touches: [],
+      changedTouches: [
+        { identifier: 2, clientX: 102, clientY: 103 },
+      ],
+    });
+
+    const added = onFieldAdd.mock.calls[0][0] as Extract<
+      EditorField,
+      { type: "comb" }
+    >;
+    const fitScale =
+      Number.parseFloat(screen.getByTestId("pdf-page").style.width) /
+      600;
+    expect(added.width).toBeCloseTo(20 / fitScale, 8);
+    expect(added.height).toBeCloseTo(20 / fitScale, 8);
+  });
+
+  it("cancels a pending Box corner on Escape, tool switch, and two fingers", async () => {
+    process.env[FORM_FIDELITY_FLAG] = "v1";
+    Object.defineProperty(window, "matchMedia", {
+      configurable: true,
+      value: jest.fn((query: string) => ({
+        matches: query === "(pointer: coarse)",
+        addEventListener: jest.fn(),
+        removeEventListener: jest.fn(),
+      })),
+    });
+    jest
+      .spyOn(HTMLCanvasElement.prototype, "getBoundingClientRect")
+      .mockReturnValue({
+        left: 0,
+        top: 0,
+        right: 768,
+        bottom: 1024,
+        width: 768,
+        height: 1024,
+        x: 0,
+        y: 0,
+        toJSON: () => ({}),
+      } as DOMRect);
+    const props: React.ComponentProps<typeof PdfViewer> = {
+      ...createProps(textField(), 100),
+      fields: [],
+      activeTool: "box",
+      selectedFieldId: null,
+    };
+    const result = render(<PdfViewer {...props} />);
+    await waitFor(() =>
+      expect(screen.queryByText("Rendering PDF...")).not.toBeInTheDocument(),
+    );
+    const viewer = screen.getByTestId("pdf-viewer");
+    const tapFirstCorner = () =>
+      fireEvent.touchEnd(viewer, {
+        touches: [],
+        changedTouches: [
+          { identifier: 1, clientX: 120, clientY: 120 },
+        ],
+      });
+
+    tapFirstCorner();
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(
+      screen.queryByTestId("box-first-corner-marker"),
+    ).not.toBeInTheDocument();
+
+    tapFirstCorner();
+    result.rerender(<PdfViewer {...props} activeTool={null} />);
+    expect(
+      screen.queryByTestId("box-first-corner-marker"),
+    ).not.toBeInTheDocument();
+
+    result.rerender(<PdfViewer {...props} activeTool="box" />);
+    tapFirstCorner();
+    fireEvent.touchStart(viewer, {
+      touches: [
+        { identifier: 7, clientX: 100, clientY: 100 },
+        { identifier: 8, clientX: 200, clientY: 200 },
+      ],
+      changedTouches: [
+        { identifier: 8, clientX: 200, clientY: 200 },
+      ],
+    });
+    expect(
+      screen.queryByTestId("box-first-corner-marker"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("keeps flag-off touch placement and fine-pointer mouse drag paths", async () => {
+    delete process.env[FORM_FIDELITY_FLAG];
+    jest
+      .spyOn(HTMLCanvasElement.prototype, "getBoundingClientRect")
+      .mockReturnValue({
+        left: 0,
+        top: 0,
+        right: 768,
+        bottom: 1024,
+        width: 768,
+        height: 1024,
+        x: 0,
+        y: 0,
+        toJSON: () => ({}),
+      } as DOMRect);
+    const flagOffAdd = jest.fn((field: EditorField) => field);
+    const flagOffProps: React.ComponentProps<typeof PdfViewer> = {
+      ...createProps(textField(), 100),
+      fields: [],
+      activeTool: "box",
+      selectedFieldId: null,
+      onFieldAdd: flagOffAdd,
+    };
+    const flagOff = render(<PdfViewer {...flagOffProps} />);
+    await waitFor(() =>
+      expect(screen.queryByText("Rendering PDF...")).not.toBeInTheDocument(),
+    );
+    fireEvent.touchEnd(screen.getByTestId("pdf-viewer"), {
+      touches: [],
+      changedTouches: [
+        { identifier: 1, clientX: 100, clientY: 100 },
+      ],
+    });
+    expect(flagOffAdd).toHaveBeenCalledTimes(1);
+    expect(
+      screen.queryByTestId("box-first-corner-marker"),
+    ).not.toBeInTheDocument();
+    flagOff.unmount();
+
+    for (const entries of Object.values(mockKonvaProps)) entries.length = 0;
+    process.env[FORM_FIDELITY_FLAG] = "v1";
+    const mouseAdd = jest.fn((field: EditorField) => field);
+    const mouseProps: React.ComponentProps<typeof PdfViewer> = {
+      ...createProps(textField(), 100),
+      fields: [],
+      activeTool: "box",
+      selectedFieldId: null,
+      onFieldAdd: mouseAdd,
+    };
+    render(<PdfViewer {...mouseProps} />);
+    await waitFor(() =>
+      expect(screen.queryByText("Rendering PDF...")).not.toBeInTheDocument(),
+    );
+    const stageProps = latestProps("Stage");
+    const container = document.createElement("div");
+    jest.spyOn(container, "getBoundingClientRect").mockReturnValue({
+      left: 0,
+      top: 0,
+      right: 768,
+      bottom: 1024,
+      width: 768,
+      height: 1024,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    } as DOMRect);
+    const stage = {
+      getStage: () => stage,
+      container: () => container,
+    };
+
+    act(() => {
+      (
+        stageProps.onMouseDown as (event: {
+          target: typeof stage;
+          evt: { clientX: number; clientY: number };
+        }) => void
+      )({
+        target: stage,
+        evt: { clientX: 80, clientY: 90 },
+      });
+      (
+        stageProps.onMouseUp as (event: {
+          target: typeof stage;
+          evt: { clientX: number; clientY: number };
+        }) => void
+      )({
+        target: stage,
+        evt: { clientX: 280, clientY: 190 },
+      });
+    });
+    expect(mouseAdd).toHaveBeenCalledTimes(1);
+    expect(mouseAdd.mock.calls[0][0]).toMatchObject({
+      type: "comb",
+      snapped: false,
+    });
   });
 });

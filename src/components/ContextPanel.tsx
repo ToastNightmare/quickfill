@@ -976,6 +976,11 @@ function CombControls({
   if (selectedField.type !== "comb") return null;
   const combField = selectedField as CombField;
   const charCount = combField.charCount ?? 9;
+  const formFidelityEnabled =
+    process.env.NEXT_PUBLIC_QUICKFILL_FORM_FIDELITY === "v1";
+  const characterCountOptions = formFidelityEnabled
+    ? Array.from({ length: 29 }, (_, index) => index + 2)
+    : [8, 9, 10, 11, 12, 15, 16, 20, 30];
   const currentCellWidth = combField.cellWidth ?? Math.round(selectedField.width / charCount);
   const filledCellCount = Math.min(combField.value?.replace(/ /g, "").length ?? 0, charCount);
 
@@ -1005,11 +1010,14 @@ function CombControls({
               }}
               className="mt-2 w-full rounded-lg border border-border bg-surface-alt px-3 py-2 text-sm font-medium text-text focus:outline-none focus:ring-2 focus:ring-accent"
             >
-              {[8, 9, 10, 11, 12, 15, 16, 20, 30].map((count) => (
+              {characterCountOptions.map((count) => (
                 <option key={count} value={count}>{count} characters</option>
               ))}
             </select>
-            <p className="mt-2 text-xs text-text-muted">Common: 9 TFN, 11 ABN, 10 Medicare</p>
+            <p className="mt-2 text-xs text-text-muted">
+              Common: 9 TFN, 11 ABN, 10 Medicare
+              {formFidelityEnabled ? ", 6 BSB" : ""}
+            </p>
           </>
         )}
       </Section>
@@ -1037,6 +1045,25 @@ function CombControls({
         suffix="px"
         onChange={(offsetX) => onFieldUpdate(selectedField.id, { offsetX } as Partial<EditorField>)}
       />
+      {formFidelityEnabled && (
+        <>
+          <Divider />
+          <RangeControl
+            label="Y Offset"
+            min={-20}
+            max={20}
+            value={combField.offsetY ?? 0}
+            suffix="px"
+            testId="comb-offset-y"
+            onChange={(offsetY) =>
+              onFieldUpdate(
+                selectedField.id,
+                { offsetY } as Partial<EditorField>,
+              )
+            }
+          />
+        </>
+      )}
       <Divider />
       <RangeControl
         label="Char Offset"
@@ -1054,7 +1081,7 @@ function CombControls({
   );
 }
 
-function RangeControl({ label, min, max, value, suffix, onChange }: { label: string; min: number; max: number; value: number; suffix: string; onChange: (value: number) => void }) {
+function RangeControl({ label, min, max, value, suffix, testId, onChange }: { label: string; min: number; max: number; value: number; suffix: string; testId?: string; onChange: (value: number) => void }) {
   return (
     <Section>
       <label className="text-[10px] font-semibold uppercase tracking-widest text-text-muted">{label}</label>
@@ -1065,6 +1092,7 @@ function RangeControl({ label, min, max, value, suffix, onChange }: { label: str
           max={max}
           step={1}
           value={value}
+          data-testid={testId}
           onChange={(event) => onChange(parseInt(event.target.value, 10))}
           className="h-2 flex-1 cursor-pointer appearance-none rounded-lg bg-surface-alt accent-accent"
         />
