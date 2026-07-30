@@ -67,18 +67,22 @@ pinned pnpm version, builds the production application, runs the full Jest
 suite directly, and then runs the standard Playwright suite directly against a
 fresh `http://localhost:3000` server with one worker. It never runs
 `qa:pdf:prod` or targets production. The same required job then runs
-`pnpm qa:pdf` in enforcement mode against localhost and requires all 33 PDF
+`pnpm qa:pdf` in enforcement mode against localhost and requires all 34 PDF
 accuracy checks to execute with none skipped. The pack's enforcement hook
-fails the run unless it records exactly `executed=33, skipped=0`. The field-fit
+fails the run unless it records exactly `executed=34, skipped=0`. The field-fit
 check verifies that a short overlay value appears exactly once at the
-rollout-selected font size and preview baseline. The two
+rollout-selected font size and preview baseline. The form-fidelity check uses
+a pre-filled multiline AcroForm fixture and, under the exact rollout flag,
+requires its wrapped text to appear once with every measured line inside the
+full widget rectangle. The two
 additional checks extend secure whiteout coverage to a 90-degree page and a
 mobile-editor download; together with the unrotated case, they assert through
 pdf.js that covered source text is no longer extractable. The four
-download-preservation checks cover a pre-filled appearance without duplicate
-text, a NeedAppearances form with text/checkbox/choice state, a changed mobile
-dropdown rendered through the real form under both rollout flags, and visible
-annotation burn-in with fail-closed handling for a missing appearance.
+existing download-preservation checks cover a pre-filled appearance without
+duplicate text, a NeedAppearances form with text/checkbox/choice state, a
+changed mobile dropdown rendered through the real form under both rollout
+flags, and visible annotation burn-in with fail-closed handling for a missing
+appearance.
 
 The workflow requires these matching Clerk Development credentials as GitHub
 repository Actions secrets:

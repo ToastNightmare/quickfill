@@ -9,10 +9,14 @@ const DOWNLOAD_PRESERVE_FLAG =
   "NEXT_PUBLIC_QUICKFILL_DOWNLOAD_PRESERVE";
 const MOBILE_POLISH_FLAG =
   "NEXT_PUBLIC_QUICKFILL_MOBILE_POLISH";
+const FORM_FIDELITY_FLAG =
+  "NEXT_PUBLIC_QUICKFILL_FORM_FIDELITY";
 const originalDownloadPreserveFlag =
   process.env[DOWNLOAD_PRESERVE_FLAG];
 const originalMobilePolishFlag =
   process.env[MOBILE_POLISH_FLAG];
+const originalFormFidelityFlag =
+  process.env[FORM_FIDELITY_FLAG];
 
 function asArrayBuffer(bytes: Uint8Array) {
   return bytes.buffer.slice(
@@ -25,6 +29,7 @@ describe("detectAcroFormFields value seeding", () => {
   beforeEach(() => {
     process.env[DOWNLOAD_PRESERVE_FLAG] = "v1";
     delete process.env[MOBILE_POLISH_FLAG];
+    delete process.env[FORM_FIDELITY_FLAG];
   });
 
   afterEach(() => {
@@ -39,6 +44,41 @@ describe("detectAcroFormFields value seeding", () => {
     } else {
       process.env[MOBILE_POLISH_FLAG] = originalMobilePolishFlag;
     }
+    if (originalFormFidelityFlag === undefined) {
+      delete process.env[FORM_FIDELITY_FLAG];
+    } else {
+      process.env[FORM_FIDELITY_FLAG] =
+        originalFormFidelityFlag;
+    }
+  });
+
+  it("exposes source multiline metadata only for the exact form-fidelity flag", async () => {
+    const pdfDoc = await PDFDocument.create();
+    const page = pdfDoc.addPage([500, 500]);
+    const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+    const notes = pdfDoc.getForm().createTextField("notes");
+    notes.enableMultiline();
+    notes.setText("One line so far");
+    notes.addToPage(page, {
+      x: 20,
+      y: 360,
+      width: 320,
+      height: 80,
+      font,
+    });
+    const sourceBytes = asArrayBuffer(await pdfDoc.save());
+
+    process.env[FORM_FIDELITY_FLAG] = "v1";
+    const enabled = await detectAcroFormFields(sourceBytes);
+    expect(enabled[0]).toMatchObject({
+      name: "notes",
+      value: "One line so far",
+      multiline: true,
+    });
+
+    process.env[FORM_FIDELITY_FLAG] = "true";
+    const disabled = await detectAcroFormFields(sourceBytes);
+    expect(disabled[0]).not.toHaveProperty("multiline");
   });
 
   it("reads text, checkbox, dropdown, radio, and option-list state without changing UI types", async () => {

@@ -1298,6 +1298,7 @@ function EditorPageContent() {
                       ? ""
                       : af.value,
                   fontSize: 12,
+                  ...(af.multiline ? { multiline: true as const } : {}),
                 };
               });
               reset(repairDuplicateEditorFieldIds(editorFields));

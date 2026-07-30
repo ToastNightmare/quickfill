@@ -15,6 +15,7 @@ import {
   PDFDropdown,
   PDFOptionList,
   PDFRadioGroup,
+  PDFTextField,
   concatTransformationMatrix,
   pushGraphicsState,
   popGraphicsState,
@@ -31,10 +32,12 @@ import { getRedis } from "@/lib/redis";
 import { recordDownloadLog } from "@/lib/admin-logs";
 import { getRequestEntitlement } from "@/lib/entitlements";
 import {
+  fitMultilineOverlayText,
   fitOverlayFontSize,
   fitOverlayTextPadding,
   orderFieldsForPdfDraw,
   overlayTextBaseline,
+  sanitizeMultiline,
 } from "@/lib/pdf-utils";
 import { buildPdfDownloadHeaders, filledPdfFilename } from "@/lib/pdf-download-response";
 import { finalizePdfForDownload } from "@/lib/pdf-finalize";
@@ -248,7 +251,13 @@ export async function POST(request: NextRequest) {
       process.env.NEXT_PUBLIC_QUICKFILL_DOWNLOAD_PRESERVE === "v1";
     const mobilePolishEnabled =
       process.env.NEXT_PUBLIC_QUICKFILL_MOBILE_POLISH === "v1";
+    const formFidelityEnabled =
+      process.env.NEXT_PUBLIC_QUICKFILL_FORM_FIDELITY === "v1";
     const fieldsRenderedByAcroForm = new Set<EditorField>();
+    const multilineAcroFormOverlays = new Map<
+      EditorField,
+      MultilineAcroFormOverlay[]
+    >();
 
     if (hasAcroForm) {
       const form = pdfDoc.getForm();
@@ -309,7 +318,33 @@ export async function POST(request: NextRequest) {
               field.type === "date" ||
               (field.type === "signature" && !field.signatureDataUrl)
             ) {
-              form.getTextField(field.id).setText(sanitize(field.value ?? ""));
+              const textField = form.getTextField(field.id);
+              if (
+                formFidelityEnabled &&
+                field.type === "text" &&
+                textField.isMultiline()
+              ) {
+                const value =
+                  typeof field.value === "string"
+                    ? field.value
+                    : textField.getText() ?? "";
+                const overlays = textField.acroField
+                  .getWidgets()
+                  .map((widget) => ({
+                    pageIndex: findWidgetPageIndex(pdfDoc, widget),
+                    rect: widget.getRectangle(),
+                    value,
+                    requestedFontSize: field.fontSize ?? 12,
+                  }));
+                if (overlays.length > 0) {
+                  multilineAcroFormOverlays.set(field, overlays);
+                  textField.setText("");
+                  fieldsRenderedByAcroForm.add(field);
+                  continue;
+                }
+              }
+
+              textField.setText(sanitize(field.value ?? ""));
               fieldsRenderedByAcroForm.add(field);
             } else if (field.type === "checkbox") {
               const checkBox = form.getCheckBox(field.id);
@@ -327,6 +362,9 @@ export async function POST(request: NextRequest) {
           form.flatten();
         } catch (flattenErr) {
           fieldsRenderedByAcroForm.clear();
+          for (const field of multilineAcroFormOverlays.keys()) {
+            fieldsRenderedByAcroForm.add(field);
+          }
           console.warn("blank form flatten failed, removing AcroForm artifacts:", flattenErr instanceof Error ? flattenErr.message : flattenErr);
           removeFilledAreaWidgets(pdfDoc, form, editorFields);
           try {
@@ -401,6 +439,33 @@ export async function POST(request: NextRequest) {
     const wrappedPages = new Set<number>();
     for (const field of orderedFields) {
       if (downloadPreserveEnabled && fieldsRenderedByAcroForm.has(field)) {
+        const overlays = formFidelityEnabled
+          ? multilineAcroFormOverlays.get(field)
+          : undefined;
+        if (overlays) {
+          for (const overlay of overlays) {
+            const page = pdfDoc.getPages()[overlay.pageIndex];
+            if (!page) continue;
+            if (!wrappedPages.has(overlay.pageIndex)) {
+              if (!flattenedPageSet.has(overlay.pageIndex)) {
+                preparePageForDrawing(page, pdfDoc);
+              }
+              wrappedPages.add(overlay.pageIndex);
+            }
+            drawMultilineOverlayText(
+              page,
+              overlay.value,
+              overlay.rect,
+              overlay.requestedFontSize,
+              font,
+              fitOverlayTextPadding(
+                overlay.rect.width,
+                overlay.rect.height,
+                4,
+              ),
+            );
+          }
+        }
         continue;
       }
       // Whiteout is already burned into flattened page images; skip the vector rect.
@@ -488,6 +553,12 @@ export async function POST(request: NextRequest) {
 type PDFPage = ReturnType<PDFDocument["getPages"]>[number];
 type PDFFont = Awaited<ReturnType<PDFDocument["embedFont"]>>;
 type PDFForm = ReturnType<PDFDocument["getForm"]>;
+type MultilineAcroFormOverlay = {
+  pageIndex: number;
+  rect: { x: number; y: number; width: number; height: number };
+  value: string;
+  requestedFontSize: number;
+};
 
 function findWidgetPageIndex(pdfDoc: PDFDocument, widget: any) {
   const pageRef = widget.P();
@@ -599,10 +670,57 @@ function removeWidgetAnnotations(pdfDoc: PDFDocument) {
   }
 }
 
-function drawMultilineText(page: PDFPage, text: string, x: number, startY: number, fontSize: number, activeFont: PDFFont) {
-  const safeLine = sanitize(text);
-  if (!safeLine) return;
-  page.drawText(safeLine, { x, y: startY, size: fontSize, font: activeFont, color: rgb(0, 0, 0) });
+function drawMultilineOverlayText(
+  page: PDFPage,
+  text: string,
+  rect: { x: number; y: number; width: number; height: number },
+  requestedFontSize: number,
+  activeFont: PDFFont,
+  padding: number,
+) {
+  const safeText = sanitizeMultiline(text);
+  if (!safeText) return;
+
+  const innerWidth = Math.max(0, rect.width - padding * 2);
+  const layout = fitMultilineOverlayText(
+    safeText,
+    innerWidth,
+    rect.height,
+    activeFont,
+    requestedFontSize,
+    padding,
+  );
+
+  page.pushOperators(
+    pushGraphicsState(),
+    ...pdfRectOps(rect.x, rect.y, rect.width, rect.height),
+    clipEvenOdd(),
+    endPath(),
+  );
+  try {
+    layout.lines.forEach((line, index) => {
+      if (!line) return;
+      const lineBottom =
+        rect.y +
+        rect.height -
+        padding -
+        (index + 1) * layout.lineHeight;
+      page.drawText(line, {
+        x: rect.x + padding,
+        y: overlayTextBaseline(
+          lineBottom,
+          layout.lineHeight,
+          layout.fontSize,
+          activeFont,
+        ),
+        size: layout.fontSize,
+        font: activeFont,
+        color: rgb(0, 0, 0),
+      });
+    });
+  } finally {
+    page.pushOperators(popGraphicsState());
+  }
 }
 
 async function drawSignatureImage(pdfDoc: PDFDocument, page: PDFPage, signatureDataUrl: string,
@@ -886,6 +1004,10 @@ async function drawFieldOnPage(pdfDoc: PDFDocument, field: EditorField, _pageSca
           const requestedFontSize =
             field.type === "signature" ? 16 : field.fontSize ?? 14;
           const activeFont = field.type === "signature" ? signatureFont : font;
+          const formFidelityMultiline =
+            process.env.NEXT_PUBLIC_QUICKFILL_FORM_FIDELITY === "v1" &&
+            field.type === "text" &&
+            field.value.includes("\n");
           const fieldFitEnabled =
             process.env.NEXT_PUBLIC_QUICKFILL_FIELD_FIT === "v1";
           const textPadding = fieldFitEnabled
@@ -895,6 +1017,21 @@ async function drawFieldOnPage(pdfDoc: PDFDocument, field: EditorField, _pageSca
                 field.snapped ? 2 : 4,
               )
             : 2;
+          if (formFidelityMultiline) {
+            drawMultilineOverlayText(
+              page,
+              field.value,
+              { x: pdfX, y: finalPdfY, width: pdfW, height: pdfH },
+              requestedFontSize,
+              activeFont,
+              fitOverlayTextPadding(
+                pdfW,
+                pdfH,
+                field.snapped ? 2 : 4,
+              ),
+            );
+            return;
+          }
           const fontSize = fieldFitEnabled
             ? fitOverlayFontSize(
                 pdfH,
@@ -957,6 +1094,10 @@ async function drawFieldOnPage(pdfDoc: PDFDocument, field: EditorField, _pageSca
         const fontSize = (combField as unknown as { fontSize?: number }).fontSize ?? pdfH * 0.6;
         const charCount = combField.charCount || 1;
         const offsetX = combField.offsetX ?? 0;
+        const offsetY =
+          process.env.NEXT_PUBLIC_QUICKFILL_FORM_FIDELITY === "v1"
+            ? combField.offsetY ?? 0
+            : 0;
         const charOffsetX = combField.charOffsetX ?? 0;
 
         // Use non-uniform cell positions/widths if available, otherwise uniform spacing
@@ -989,7 +1130,7 @@ async function drawFieldOnPage(pdfDoc: PDFDocument, field: EditorField, _pageSca
           const charX = cellCenterX - charWidth / 2 + charOffsetX;
 
           // Vertically center the character
-          const charY = finalPdfY + (pdfH - fontSize) / 2;
+          const charY = finalPdfY + (pdfH - fontSize) / 2 + offsetY;
 
           page.drawText(char, {
             x: charX,

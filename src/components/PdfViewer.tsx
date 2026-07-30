@@ -30,10 +30,13 @@ import {
   type LocalFieldDetectionSnapshotKey,
 } from "@/lib/local-field-suggestion-provider";
 import {
+  fitMultilineOverlayText,
   fitOverlayFontSize,
   fitOverlayTextPadding,
+  sanitizeMultiline,
   STANDARD_OVERLAY_TEXT_HEIGHT_RATIO,
   standardOverlayTextHeightAtSize,
+  type OverlayTextFontMetrics,
 } from "@/lib/pdf-utils";
 import { MediaOverlayLayer } from "@/components/MediaOverlayLayer";
 
@@ -192,6 +195,30 @@ function inferFontSize(boxHeight: number): number {
   return Math.max(8, Math.min(36, raw));
 }
 
+let editorOverlayMeasureContext: CanvasRenderingContext2D | null = null;
+
+const editorOverlayFontMetrics: OverlayTextFontMetrics = {
+  widthOfTextAtSize(text, fontSize) {
+    if (
+      !editorOverlayMeasureContext &&
+      typeof document !== "undefined"
+    ) {
+      editorOverlayMeasureContext = document
+        .createElement("canvas")
+        .getContext("2d");
+    }
+    if (
+      editorOverlayMeasureContext &&
+      typeof editorOverlayMeasureContext.measureText === "function"
+    ) {
+      editorOverlayMeasureContext.font = `${fontSize}px Arial, sans-serif`;
+      return editorOverlayMeasureContext.measureText(text).width;
+    }
+    return Array.from(text).length * fontSize * 0.5;
+  },
+  heightAtSize: standardOverlayTextHeightAtSize,
+};
+
 /** Sample background color from canvas, with fallback to white for dark/transparent pixels */
 function sampleBackgroundColor(
   ctx: CanvasRenderingContext2D,
@@ -316,6 +343,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
   const [linePreview, setLinePreview] = useState<{ x: number; y: number; orientation: LineOrientation } | null>(null);
   const [checkboxPreview, setCheckboxPreview] = useState<{ x: number; y: number } | null>(null);
   const [isMobileEditor, setIsMobileEditor] = useState(false);
+  const [isCoarsePointer, setIsCoarsePointer] = useState(false);
   const [whiteoutColorInternal, setWhiteoutColorInternal] = useState<string | null>(null);
   const [maskCursor, setMaskCursor] = useState<{ x: number; y: number } | null>(null);
   const [maskPreviewFields, setMaskPreviewFields] = useState<EditorField[] | null>(null);
@@ -400,6 +428,24 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
   const dragCurrent = useRef<{x: number, y: number} | null>(null);
   const isDragDrawing = useRef(false);
   const [drawRect, setDrawRect] = useState<{x: number, y: number, w: number, h: number} | null>(null);
+  const pendingBoxCornerRef = useRef<{ x: number; y: number } | null>(
+    null,
+  );
+  const [pendingBoxCorner, setPendingBoxCorner] = useState<{
+    x: number;
+    y: number;
+  } | null>(null);
+  const cancelPendingBoxCorner = useCallback(() => {
+    pendingBoxCornerRef.current = null;
+    setPendingBoxCorner(null);
+  }, []);
+  const plantPendingBoxCorner = useCallback(
+    (corner: { x: number; y: number }) => {
+      pendingBoxCornerRef.current = corner;
+      setPendingBoxCorner(corner);
+    },
+    [],
+  );
 
   // Reset line preview when tool changes
   useEffect(() => {
@@ -503,7 +549,12 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
   }));
 
   useEffect(() => {
-    const updateMobileEditor = () => setIsMobileEditor(isMobileEditorViewport());
+    const updateMobileEditor = () => {
+      setIsMobileEditor(isMobileEditorViewport());
+      setIsCoarsePointer(
+        window.matchMedia?.("(pointer: coarse)").matches === true,
+      );
+    };
     updateMobileEditor();
 
     const coarsePointer = window.matchMedia?.("(pointer: coarse)");
@@ -522,6 +573,10 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
   const mobilePolishEnabled = mobilePolishFlag === "v1";
   const fieldFitEnabled =
     process.env.NEXT_PUBLIC_QUICKFILL_FIELD_FIT === "v1";
+  const formFidelityEnabled =
+    process.env.NEXT_PUBLIC_QUICKFILL_FORM_FIDELITY === "v1";
+  const twoTapBoxPlacementEnabled =
+    formFidelityEnabled && isCoarsePointer && activeTool === "box";
   const gestureZoomLimit = gestureZoomMax(mobilePolishFlag);
   const createFieldId = useCallback(
     (prefix = "field") => createEditorFieldId(fields, prefix),
@@ -530,6 +585,10 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
   const maskEraserSize = toolDefaults["mask-eraser"].size ?? 48;
   const renderFields = maskPreviewFields ?? fields;
   const pageFields = renderFields.filter((f) => f.page === currentPage);
+
+  useEffect(() => {
+    if (!twoTapBoxPlacementEnabled) cancelPendingBoxCorner();
+  }, [cancelPendingBoxCorner, twoTapBoxPlacementEnabled]);
   const stagePointToPagePoint = useCallback(
     (pos: { x: number; y: number }) => {
       const effectiveScale = fitScale * zoomFactor;
@@ -648,7 +707,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
 
     const scrollEditorIntoView = (behavior: ScrollBehavior) => {
       document
-        .querySelector<HTMLInputElement>('[data-testid="pdf-field-editor"]')
+        .querySelector<HTMLElement>('[data-testid="pdf-field-editor"]')
         ?.scrollIntoView({ block: "center", inline: "nearest", behavior });
     };
 
@@ -1102,6 +1161,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
       // Escape - deactivate tool and deselect
       if (e.key === "Escape") {
         e.preventDefault();
+        cancelPendingBoxCorner();
         if (activeTool === "mask-eraser") {
           stopMaskDrag();
         }
@@ -1138,7 +1198,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
     return () => {
       document.removeEventListener("keydown", handleKeyDown);
     };
-  }, [activeTool, editingFieldId, selectedFieldId, fields, currentPage, onFieldDelete, onFieldSelect, onToolSelect, onFieldUpdate, createFieldId, stopMaskDrag]);
+  }, [activeTool, editingFieldId, selectedFieldId, fields, currentPage, onFieldDelete, onFieldSelect, onToolSelect, onFieldUpdate, createFieldId, stopMaskDrag, cancelPendingBoxCorner]);
 
   // Drive the single global Transformer based on selectedFieldId
   useLayoutEffect(() => {
@@ -1441,6 +1501,184 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
     }
   }, [activeTool, stopMaskDrag]);
 
+  const createDrawnBoxField = useCallback(
+    (
+      firstCorner: { x: number; y: number },
+      oppositeCorner: { x: number; y: number },
+    ) => {
+      const effectiveScale = fitScale * zoomFactor;
+      const absDx = Math.abs(oppositeCorner.x - firstCorner.x);
+      const absDy = Math.abs(oppositeCorner.y - firstCorner.y);
+      const drawnX = Math.min(firstCorner.x, oppositeCorner.x);
+      const drawnY = Math.min(firstCorner.y, oppositeCorner.y);
+      let fieldX = drawnX / effectiveScale;
+      let fieldY = drawnY / effectiveScale;
+      const fieldW = Math.max(
+        absDx / effectiveScale,
+        20 / fitScale,
+      );
+      const fieldH = Math.max(
+        absDy / effectiveScale,
+        20 / fitScale,
+      );
+      const pageFields = fields.filter((field) => field.page === currentPage);
+      const minimumGap = 3;
+
+      for (const existing of pageFields) {
+        const existingRight = existing.x + existing.width;
+        const existingBottom = existing.y + existing.height;
+        const isAdjacentRight =
+          Math.abs(fieldX - existingRight) < minimumGap &&
+          Math.abs(
+            fieldY +
+              fieldH / 2 -
+              (existing.y + existing.height / 2),
+          ) < Math.max(fieldH, existing.height);
+        const isAdjacentLeft =
+          Math.abs(fieldX + fieldW - existing.x) < minimumGap &&
+          Math.abs(
+            fieldY +
+              fieldH / 2 -
+              (existing.y + existing.height / 2),
+          ) < Math.max(fieldH, existing.height);
+        const isAdjacentBottom =
+          Math.abs(fieldY - existingBottom) < minimumGap &&
+          Math.abs(
+            fieldX +
+              fieldW / 2 -
+              (existing.x + existing.width / 2),
+          ) < Math.max(fieldW, existing.width);
+        const isAdjacentTop =
+          Math.abs(fieldY + fieldH - existing.y) < minimumGap &&
+          Math.abs(
+            fieldX +
+              fieldW / 2 -
+              (existing.x + existing.width / 2),
+          ) < Math.max(fieldW, existing.width);
+
+        if (isAdjacentRight) {
+          fieldX = existingRight + minimumGap;
+        } else if (isAdjacentLeft) {
+          fieldX = existing.x - fieldW - minimumGap;
+        } else if (isAdjacentBottom) {
+          fieldY = existingBottom + minimumGap;
+        } else if (isAdjacentTop) {
+          fieldY = existing.y - fieldH - minimumGap;
+        }
+      }
+
+      const id = createFieldId();
+      const snapBounds = {
+        x: fieldX,
+        y: fieldY,
+        width: fieldW,
+        height: fieldH,
+      };
+      const base = {
+        id,
+        x: fieldX,
+        y: fieldY,
+        page: currentPage,
+        snapped: false,
+        snapBounds,
+      };
+      const canvas = canvasRef.current;
+      let detectedCellWidth: number | undefined;
+      let detectedCellCount: number | undefined;
+      let snapX = fieldX;
+      let snapY = fieldY;
+      let snapHeight = fieldH;
+      let cellPositions: number[] | undefined;
+      let cellWidths: number[] | undefined;
+      let totalWidth = fieldW;
+
+      if (canvas) {
+        const canvasDetectionScale =
+          effectiveScale * canvasRenderRatioRef.current;
+        const combResult = detectCombCells(
+          canvas,
+          fieldX * canvasDetectionScale,
+          fieldY * canvasDetectionScale,
+          fieldW * canvasDetectionScale,
+          fieldH * canvasDetectionScale,
+        );
+        if (combResult && combResult.cellCount >= 2) {
+          detectedCellWidth = Math.round(
+            combResult.cellWidth / canvasDetectionScale,
+          );
+          detectedCellCount = combResult.cellCount;
+          snapX = Math.round(
+            combResult.firstCellX / canvasDetectionScale,
+          );
+          snapY = Math.round(combResult.y / canvasDetectionScale);
+          snapHeight = Math.round(
+            combResult.height / canvasDetectionScale,
+          );
+
+          if (
+            combResult.cellCenters &&
+            combResult.cellCenters.length > 0
+          ) {
+            cellPositions = combResult.cellCenters.map((center) =>
+              Math.round(center / canvasDetectionScale - snapX),
+            );
+            cellWidths = combResult.cellWidths.map((width) =>
+              Math.round(width / canvasDetectionScale),
+            );
+            const lastCellRight =
+              combResult.cellBoundaries[
+                combResult.cellBoundaries.length - 1
+              ] +
+              (combResult.cellWidths[
+                combResult.cellWidths.length - 1
+              ] || combResult.cellWidth);
+            totalWidth = Math.round(
+              (lastCellRight - combResult.firstCellX) /
+                canvasDetectionScale,
+            );
+          }
+        }
+      }
+
+      const charCount =
+        detectedCellCount ??
+        Math.min(30, Math.max(1, Math.round(fieldW / 24)));
+      const width = cellPositions
+        ? totalWidth
+        : detectedCellWidth
+          ? detectedCellWidth * charCount
+          : fieldW;
+      const field: CombField = {
+        ...base,
+        x: snapX,
+        y: snapY,
+        type: "comb",
+        width,
+        height: snapHeight,
+        value: "",
+        charCount,
+        cellWidth: detectedCellWidth,
+        cellPositions,
+        cellWidths,
+      };
+      const addedField = onFieldAdd(field);
+      onToolSelect(null);
+      setCursorStyle("default");
+      onFieldSelect(addedField.id);
+      return addedField;
+    },
+    [
+      createFieldId,
+      currentPage,
+      fields,
+      fitScale,
+      onFieldAdd,
+      onFieldSelect,
+      onToolSelect,
+      zoomFactor,
+    ],
+  );
+
   const handleStageMouseDown = useCallback(
     (e: Konva.KonvaEventObject<MouseEvent>) => {
       const stage = e.target.getStage();
@@ -1512,6 +1750,17 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
         
         // If drag distance > 10px in both axes, use drawn rectangle
         if (absDx > 10 && absDy > 10 && isPlacementTool(activeTool) && e.target === stage) {
+          if (activeTool === "box") {
+            createDrawnBoxField(dragStart.current, pos);
+            isDragDrawing.current = false;
+            dragStart.current = null;
+            dragCurrent.current = null;
+            setDrawRect(null);
+            setLinePreview(null);
+            setCheckboxPreview(null);
+            cancelPendingBoxCorner();
+            return;
+          }
           const x = Math.min(dragStart.current.x, pos.x);
           const y = Math.min(dragStart.current.y, pos.y);
           // Convert canvas pixels to PDF point space (divide by fitScale * zoomFactor)
@@ -1587,69 +1836,6 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
             case "date":
               field = { ...base, type: "date", width: fieldW, height: fieldH, value: todayDateStamp(), fontSize: 14 };
               break;
-            case "box": {
-              // Try to auto-detect comb cells from the PDF
-              const canvas = canvasRef.current;
-              let detectedCellWidth: number | undefined;
-              let detectedCellCount: number | undefined;
-              let snapX = fieldX; // Default to drawn position (PDF points)
-              let snapY = fieldY;
-              let snapHeight = fieldH;
-              let cellPositions: number[] | undefined;
-              let cellWidthsArr: number[] | undefined;
-              let totalWidth = fieldW;
-
-              if (canvas) {
-                const canvasDetectionScale =
-                  effectiveScale * canvasRenderRatioRef.current;
-                // Convert PDF points to canvas pixels for detection
-                const combResult = detectCombCells(
-                  canvas,
-                  fieldX * canvasDetectionScale,
-                  fieldY * canvasDetectionScale,
-                  fieldW * canvasDetectionScale,
-                  fieldH * canvasDetectionScale,
-                );
-                if (combResult && combResult.cellCount >= 2) {
-                  // Convert detected values back to PDF point space
-                  detectedCellWidth = Math.round(combResult.cellWidth / canvasDetectionScale);
-                  detectedCellCount = combResult.cellCount;
-                  // Snap X position to first detected cell boundary (PDF points)
-                  snapX = Math.round(combResult.firstCellX / canvasDetectionScale);
-                  // Snap Y and height to detected box bounds (PDF points)
-                  snapY = Math.round(combResult.y / canvasDetectionScale);
-                  snapHeight = Math.round(combResult.height / canvasDetectionScale);
-
-                  // Store cell centers relative to field X for non-uniform spacing (PDF points)
-                  if (combResult.cellCenters && combResult.cellCenters.length > 0) {
-                    cellPositions = combResult.cellCenters.map(c => Math.round((c / canvasDetectionScale) - snapX));
-                    cellWidthsArr = combResult.cellWidths.map(w => Math.round(w / canvasDetectionScale));
-                    // Calculate total width from first cell to end of last cell
-                    const lastCellRight = combResult.cellBoundaries[combResult.cellBoundaries.length - 1] +
-                      (combResult.cellWidths[combResult.cellWidths.length - 1] || combResult.cellWidth);
-                    totalWidth = Math.round((lastCellRight - combResult.firstCellX) / canvasDetectionScale);
-                  }
-                }
-              }
-
-              const finalCharCount = detectedCellCount ?? Math.min(30, Math.max(1, Math.round(fieldW / 24)));
-              const finalWidth = cellPositions ? totalWidth : (detectedCellWidth ? detectedCellWidth * finalCharCount : fieldW);
-              
-              field = { 
-                ...base, 
-                x: snapX,
-                y: snapY,
-                type: "comb", 
-                width: finalWidth, 
-                height: snapHeight, 
-                value: "", 
-                charCount: finalCharCount,
-                cellWidth: detectedCellWidth,
-                cellPositions: cellPositions,
-                cellWidths: cellWidthsArr,
-              };
-              break;
-            }
             case "whiteout": {
               // Use pre-sampled whiteout color if available, otherwise sample from canvas
               let fillColor = whiteoutColor || "#ffffff";
@@ -1685,7 +1871,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
 
           if (activeTool === "signature") {
             onSignatureFieldPlaced?.(addedField);
-          } else if (!isMobileEditor && activeTool !== "checkbox" && activeTool !== "whiteout" && activeTool !== "box" && activeTool !== "line") {
+          } else if (!isMobileEditor && activeTool !== "checkbox" && activeTool !== "whiteout" && activeTool !== "line") {
             setEditingFieldId(addedField.id);
           }
         } else if (absDx <= 10 || absDy <= 10) {
@@ -1955,7 +2141,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
         setCheckboxPreview(null);
       }
     },
-    [activeTool, currentPage, zoomFactor, fitScale, onFieldAdd, onFieldSelect, onToolSelect, onSignatureFieldPlaced, snapPreview, whiteoutColor, fields, snapEnabled, createFieldId, isMobileEditor, toolDefaults, viewportAtScale1, applyMaskAlongStagePath, stopMaskDrag]
+    [activeTool, currentPage, zoomFactor, fitScale, onFieldAdd, onFieldSelect, onToolSelect, onSignatureFieldPlaced, snapPreview, whiteoutColor, fields, snapEnabled, createFieldId, isMobileEditor, toolDefaults, viewportAtScale1, applyMaskAlongStagePath, stopMaskDrag, cancelPendingBoxCorner, createDrawnBoxField]
   );
 
   // Core field creation logic - shared by click and touch
@@ -2335,6 +2521,19 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
       if (touchX < 0 || touchY < 0 || touchX > rect.width || touchY > rect.height) return;
       lastTouchEndAtRef.current = Date.now();
 
+      if (twoTapBoxPlacementEnabled) {
+        e.preventDefault();
+        const corner = { x: touchX, y: touchY };
+        const firstCorner = pendingBoxCornerRef.current;
+        if (!firstCorner) {
+          plantPendingBoxCorner(corner);
+          return;
+        }
+        cancelPendingBoxCorner();
+        createDrawnBoxField(firstCorner, corner);
+        return;
+      }
+
       const stage = stageRef.current;
       if (stage) {
         const hitField = fieldFromStagePoint(stage, { x: touchX, y: touchY });
@@ -2348,7 +2547,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
       e.preventDefault();
       createFieldAtPoint(touchX, touchY, true);
     },
-    [activeTool, createFieldAtPoint, fieldFromStagePoint, selectFieldForInteraction]
+    [activeTool, cancelPendingBoxCorner, createDrawnBoxField, createFieldAtPoint, fieldFromStagePoint, plantPendingBoxCorner, selectFieldForInteraction, twoTapBoxPlacementEnabled]
   );
 
   // --- Two-finger gestures: pinch zoom + pan (PR #94) -------------------
@@ -2422,6 +2621,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
         if (node.isDragging()) node.stopDrag();
       });
       stopMaskDrag();
+      cancelPendingBoxCorner();
       isDragDrawing.current = false;
       dragStart.current = null;
       dragCurrent.current = null;
@@ -2446,7 +2646,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
       gestureTailTouchIdRef.current = null;
       setIsGesturing(true);
     },
-    [stopMaskDrag]
+    [cancelPendingBoxCorner, stopMaskDrag]
   );
 
   const handleGestureTouchMove = useCallback(
@@ -2647,6 +2847,48 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
           />
         )}
 
+        {twoTapBoxPlacementEnabled && pendingBoxCorner && (
+          <>
+            <div
+              data-testid="box-first-corner-marker"
+              style={{
+                position: "absolute",
+                left: pendingBoxCorner.x,
+                top: pendingBoxCorner.y,
+                width: 12,
+                height: 12,
+                transform: "translate(-50%, -50%)",
+                border: "2px solid #0891b2",
+                borderRadius: "9999px",
+                backgroundColor: "#ffffff",
+                boxShadow: "0 1px 3px rgba(15,23,42,0.25)",
+                pointerEvents: "none",
+                zIndex: 16,
+              }}
+            />
+            <div
+              data-testid="box-opposite-corner-hint"
+              style={{
+                position: "absolute",
+                left: pendingBoxCorner.x + 12,
+                top: pendingBoxCorner.y + 12,
+                borderRadius: 6,
+                backgroundColor: "rgba(15,23,42,0.92)",
+                color: "#ffffff",
+                fontSize: 12,
+                fontWeight: 600,
+                lineHeight: "18px",
+                padding: "4px 8px",
+                pointerEvents: "none",
+                whiteSpace: "nowrap",
+                zIndex: 16,
+              }}
+            >
+              Now tap the opposite corner
+            </div>
+          </>
+        )}
+
         {(() => {
           const selectedField = selectedFieldId ? pageFields.find(f => f.id === selectedFieldId) : null;
           const selectedFieldIsSnapped = selectedField?.snapped ?? false;
@@ -2680,13 +2922,17 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
                 fitScale={fitScale}
                 zoomFactor={zoomFactor}
                 fieldFitEnabled={fieldFitEnabled}
+                formFidelityEnabled={formFidelityEnabled}
                 isSelected={!isCapturingPreview && activeTool !== "mask-eraser" && field.id === selectedFieldId && field.type !== "whiteout"}
                 isEditing={activeTool !== "mask-eraser" && field.id === editingFieldId}
                 isHighlighted={!isCapturingPreview && (field.id === snappedFieldId || (highlightFieldIds?.has(field.id) ?? false))}
                 isHovered={!isCapturingPreview && field.id === hoveredFieldId}
                 isMobileEditor={isMobileEditor && !isCapturingPreview}
                 activeTool={isPlacementTool(activeTool) ? activeTool : null}
-                disableInteraction={activeTool === "mask-eraser"}
+                disableInteraction={
+                  activeTool === "mask-eraser" ||
+                  twoTapBoxPlacementEnabled
+                }
                 onSelect={() => {
                   selectFieldForInteraction(field);
                   // Reset cursor for whiteout fields
@@ -2977,7 +3223,13 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
             const effectiveScale = fitScale * zoomFactor;
             const requestedEditorFontSize =
               (editField as { fontSize?: number }).fontSize ?? 14;
-            const editorPaddingPoints = fieldFitEnabled
+            const formFidelityMultilineEditor =
+              formFidelityEnabled &&
+              editField.type === "text" &&
+              (editField.multiline === true ||
+                editField.value.includes("\n"));
+            const editorPaddingPoints =
+              fieldFitEnabled || formFidelityMultilineEditor
               ? fitOverlayTextPadding(
                   editField.width,
                   editField.height,
@@ -2986,7 +3238,22 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
               : isEditSnapped
                 ? 2
                 : 4;
-            const fittedEditorFontSize = fieldFitEnabled
+            const multilineEditorLayout = formFidelityMultilineEditor
+              ? fitMultilineOverlayText(
+                  sanitizeMultiline(editField.value),
+                  Math.max(
+                    0,
+                    editField.width - editorPaddingPoints * 2,
+                  ),
+                  editField.height,
+                  editorOverlayFontMetrics,
+                  requestedEditorFontSize,
+                  editorPaddingPoints,
+                )
+              : null;
+            const fittedEditorFontSize = multilineEditorLayout
+              ? multilineEditorLayout.fontSize
+              : fieldFitEnabled
               ? fitOverlayFontSize(
                   editField.height,
                   requestedEditorFontSize,
@@ -2994,10 +3261,12 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
                   editorPaddingPoints,
                 )
               : requestedEditorFontSize;
-            const editorFontSize = fieldFitEnabled
+            const editorFontSize =
+              fieldFitEnabled || formFidelityMultilineEditor
               ? fittedEditorFontSize * effectiveScale
               : Math.max(16, requestedEditorFontSize * effectiveScale);
-            const editorPadding = fieldFitEnabled
+            const editorPadding =
+              fieldFitEnabled || formFidelityMultilineEditor
               ? editorPaddingPoints * effectiveScale
               : isEditSnapped
                 ? 2
@@ -3010,17 +3279,21 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
               typeof window !== "undefined" &&
               typeof window.matchMedia === "function" &&
               window.matchMedia("(max-width: 1023px)").matches;
-            const editorHeight = fieldFitEnabled
+            const editorHeight =
+              fieldFitEnabled || formFidelityMultilineEditor
               ? editField.height * effectiveScale
               : isSmallScreen
                 ? Math.max(editField.height * effectiveScale, editorFontSize + 8)
                 : editField.height * effectiveScale;
+            const EditorElement = formFidelityMultilineEditor
+              ? "textarea"
+              : "input";
 
             return (
-              <input
+              <EditorElement
                 key={editingFieldId}
                 autoFocus
-                type="text"
+                type={formFidelityMultilineEditor ? undefined : "text"}
                 data-testid="pdf-field-editor"
                 className="absolute z-20 outline-none"
                 style={{
@@ -3035,15 +3308,20 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
                   // Match Konva text padding exactly so text aligns
                   paddingLeft: editorPadding,
                   paddingRight: editorPadding,
-                  paddingTop: 0,
-                  paddingBottom: 0,
+                  paddingTop: formFidelityMultilineEditor
+                    ? editorPadding
+                    : 0,
+                  paddingBottom: formFidelityMultilineEditor
+                    ? editorPadding
+                    : 0,
                   boxSizing: "border-box",
-                  ...(fieldFitEnabled
+                  ...(fieldFitEnabled || formFidelityMultilineEditor
                     ? {
                         lineHeight: `${
-                          standardOverlayTextHeightAtSize(
-                            fittedEditorFontSize,
-                          ) * effectiveScale
+                          (multilineEditorLayout?.lineHeight ??
+                            standardOverlayTextHeightAtSize(
+                              fittedEditorFontSize,
+                            )) * effectiveScale
                         }px`,
                       }
                     : {}),
@@ -3057,7 +3335,10 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
                   borderBottom: "1.5px solid rgba(59,130,246,0.7)",
                   // No scrollbar, text just extends right
                   overflow: "hidden",
-                  whiteSpace: "nowrap",
+                  whiteSpace: formFidelityMultilineEditor
+                    ? "pre-wrap"
+                    : "nowrap",
+                  resize: formFidelityMultilineEditor ? "none" : undefined,
                 }}
                 value={editField.value}
                 placeholder={
@@ -3065,9 +3346,15 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
                     ? DATE_STAMP_PLACEHOLDER
                     : "Type here..."
                 }
-                onChange={(e) => {
+                onChange={(
+                  e: React.ChangeEvent<
+                    HTMLInputElement | HTMLTextAreaElement
+                  >,
+                ) => {
                   const newValue = e.target.value;
                   onFieldUpdate(editField.id, { value: newValue } as Partial<EditorField>);
+
+                  if (formFidelityMultilineEditor) return;
 
                   // Auto-expand field width if text overflows
                   const fontSize = fieldFitEnabled
@@ -3094,7 +3381,10 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
                 }}
                 onBlur={() => setEditingFieldId(null)}
                 onKeyDown={(e) => {
-                  if (e.key === "Enter" || e.key === "Escape") {
+                  if (
+                    e.key === "Escape" ||
+                    (!formFidelityMultilineEditor && e.key === "Enter")
+                  ) {
                     setEditingFieldId(null);
                   }
                   e.stopPropagation();
@@ -3132,6 +3422,7 @@ function FieldShape({
   fitScale,
   zoomFactor,
   fieldFitEnabled,
+  formFidelityEnabled,
   isSelected,
   isEditing,
   isHighlighted,
@@ -3158,6 +3449,7 @@ function FieldShape({
   fitScale: number;
   zoomFactor: number;
   fieldFitEnabled: boolean;
+  formFidelityEnabled: boolean;
   isSelected: boolean;
   isEditing: boolean;
   isHighlighted: boolean;
@@ -3532,6 +3824,9 @@ function FieldShape({
     const slotHeight = stageH;
     const value = combField.value || "";
     const offsetX = (combField.offsetX ?? 0) * fitScale;
+    const offsetY = formFidelityEnabled
+      ? (combField.offsetY ?? 0) * fitScale
+      : 0;
     const charOffsetX = (combField.charOffsetX ?? 0) * fitScale;
     // Non-uniform cell positions (for TFN-style fields with gaps) - scale to Stage coords
     const cellPositions = combField.cellPositions?.map(p => p * fitScale);
@@ -3629,7 +3924,7 @@ function FieldShape({
               <Group
                 key={i}
                 x={cellLeftX + offsetX}
-                y={0}
+                y={offsetY}
                 width={thisCellWidth}
                 height={slotHeight}
                 onClick={(e) => {
@@ -3696,7 +3991,7 @@ function FieldShape({
   const sigImage = useLoadedImage(sigDataUrl);
   const hasSignatureImage = field.type === "signature" && !!sigDataUrl && !!sigImage;
 
-  const displayValue =
+  const rawDisplayValue =
     hasSignatureImage
       ? ""
       : field.value ||
@@ -3718,7 +4013,26 @@ function FieldShape({
         preferredOverlayPadding,
       )
     : preferredOverlayPadding;
-  const fittedOverlayFontSize = fieldFitEnabled
+  const formFidelityMultiline =
+    formFidelityEnabled &&
+    field.type === "text" &&
+    (field.multiline === true || field.value.includes("\n"));
+  const multilineOverlayLayout = formFidelityMultiline
+    ? fitMultilineOverlayText(
+        sanitizeMultiline(field.value),
+        Math.max(0, field.width - overlayPaddingPoints * 2),
+        field.height,
+        editorOverlayFontMetrics,
+        requestedOverlayFontSize,
+        overlayPaddingPoints,
+      )
+    : null;
+  const displayValue = multilineOverlayLayout
+    ? multilineOverlayLayout.lines.join("\n")
+    : rawDisplayValue;
+  const fittedOverlayFontSize = multilineOverlayLayout
+    ? multilineOverlayLayout.fontSize
+    : fieldFitEnabled
     ? fitOverlayFontSize(
         field.height,
         requestedOverlayFontSize,
@@ -3727,10 +4041,10 @@ function FieldShape({
       )
     : requestedOverlayFontSize;
   const overlayFontSize = fittedOverlayFontSize * fitScale;
-  const overlayPadding = fieldFitEnabled
+  const overlayPadding = fieldFitEnabled || formFidelityMultiline
     ? overlayPaddingPoints * fitScale
     : preferredOverlayPadding;
-  const overlayWidth = fieldFitEnabled
+  const overlayWidth = fieldFitEnabled || formFidelityMultiline
     ? stageW
     : stageW - (isSnapped ? 4 : 8);
 
@@ -3869,13 +4183,18 @@ function FieldShape({
               width={overlayWidth}
               height={stageH}
               padding={overlayPadding}
-              {...(fieldFitEnabled
-                ? { lineHeight: STANDARD_OVERLAY_TEXT_HEIGHT_RATIO }
+              {...(fieldFitEnabled || formFidelityMultiline
+                ? {
+                    lineHeight: multilineOverlayLayout
+                      ? multilineOverlayLayout.lineHeight /
+                        multilineOverlayLayout.fontSize
+                      : STANDARD_OVERLAY_TEXT_HEIGHT_RATIO,
+                  }
                 : {})}
-              verticalAlign="middle"
+              verticalAlign={formFidelityMultiline ? "top" : "middle"}
               align="left"
               wrap="none"
-              ellipsis={true}
+              ellipsis={!formFidelityMultiline}
             />
           )
         )}

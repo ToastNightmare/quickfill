@@ -24,9 +24,11 @@ import { getRequestEntitlement } from "@/lib/entitlements";
 import { PDF_UPLOAD_MAX_BYTES, PDF_UPLOAD_MAX_LABEL } from "@/lib/upload-limits";
 import { maskToPdfRect } from "@/lib/pdf-mask-transform";
 import {
+  fitMultilineOverlayText,
   fitOverlayFontSize,
   fitOverlayTextPadding,
   overlayTextBaseline,
+  sanitizeMultiline,
 } from "@/lib/pdf-utils";
 import {
   WHITEOUT_REDACTION_ERROR_CODE,
@@ -41,11 +43,13 @@ const ROTATION_SAFE_DOWNLOAD_FLAG = "NEXT_PUBLIC_QUICKFILL_ROTATION_SAFE_DOWNLOA
 const DOWNLOAD_PRESERVE_FLAG = "NEXT_PUBLIC_QUICKFILL_DOWNLOAD_PRESERVE";
 const MOBILE_POLISH_FLAG = "NEXT_PUBLIC_QUICKFILL_MOBILE_POLISH";
 const FIELD_FIT_FLAG = "NEXT_PUBLIC_QUICKFILL_FIELD_FIT";
+const FORM_FIDELITY_FLAG = "NEXT_PUBLIC_QUICKFILL_FORM_FIDELITY";
 const originalRotationSafeDownloadFlag =
   process.env[ROTATION_SAFE_DOWNLOAD_FLAG];
 const originalDownloadPreserveFlag = process.env[DOWNLOAD_PRESERVE_FLAG];
 const originalMobilePolishFlag = process.env[MOBILE_POLISH_FLAG];
 const originalFieldFitFlag = process.env[FIELD_FIT_FLAG];
+const originalFormFidelityFlag = process.env[FORM_FIDELITY_FLAG];
 
 jest.mock("@/lib/admin-logs", () => ({
   recordDownloadLog: jest.fn().mockResolvedValue(undefined),
@@ -696,30 +700,46 @@ function markerOccurrences(decoded: string, marker: string) {
   return count(literal) + count(hex);
 }
 
-function textDrawForMarker(decoded: string, marker: string) {
+function textDrawsForMarker(decoded: string, marker: string) {
   const markerToken = `<${Buffer.from(marker, "latin1").toString("hex")}> Tj`;
-  const markerIndex = decoded.toLowerCase().indexOf(markerToken.toLowerCase());
-  if (markerIndex < 0) throw new Error(`Missing PDF text marker: ${marker}`);
-  const prefix = decoded.slice(Math.max(0, markerIndex - 300), markerIndex);
+  const normalized = decoded.toLowerCase();
+  const normalizedMarker = markerToken.toLowerCase();
   const number = "[-+]?(?:\\d+\\.?\\d*|\\.\\d+)(?:e[-+]?\\d+)?";
-  const fontMatches = [
-    ...prefix.matchAll(new RegExp(`(${number}) Tf`, "gi")),
-  ];
-  const matrixMatches = [
-    ...prefix.matchAll(
-      new RegExp(`1 0 0 1 (${number}) (${number}) Tm`, "gi"),
-    ),
-  ];
-  const fontMatch = fontMatches.at(-1);
-  const matrixMatch = matrixMatches.at(-1);
-  if (!fontMatch || !matrixMatch) {
-    throw new Error(`Missing PDF text operators for marker: ${marker}`);
+  const draws: { fontSize: number; x: number; y: number }[] = [];
+  let searchFrom = 0;
+
+  while (searchFrom < normalized.length) {
+    const markerIndex = normalized.indexOf(normalizedMarker, searchFrom);
+    if (markerIndex < 0) break;
+    const prefix = decoded.slice(Math.max(0, markerIndex - 300), markerIndex);
+    const fontMatches = [
+      ...prefix.matchAll(new RegExp(`(${number}) Tf`, "gi")),
+    ];
+    const matrixMatches = [
+      ...prefix.matchAll(
+        new RegExp(`1 0 0 1 (${number}) (${number}) Tm`, "gi"),
+      ),
+    ];
+    const fontMatch = fontMatches.at(-1);
+    const matrixMatch = matrixMatches.at(-1);
+    if (fontMatch && matrixMatch) {
+      draws.push({
+        fontSize: Number(fontMatch[1]),
+        x: Number(matrixMatch[1]),
+        y: Number(matrixMatch[2]),
+      });
+    }
+    searchFrom = markerIndex + normalizedMarker.length;
   }
-  return {
-    fontSize: Number(fontMatch[1]),
-    x: Number(matrixMatch[1]),
-    y: Number(matrixMatch[2]),
-  };
+
+  if (draws.length === 0) {
+    throw new Error(`Missing PDF text marker: ${marker}`);
+  }
+  return draws;
+}
+
+function textDrawForMarker(decoded: string, marker: string) {
+  return textDrawsForMarker(decoded, marker)[0];
 }
 
 async function makeFieldFitRequest(sourceBytes?: Uint8Array) {
@@ -775,6 +795,23 @@ async function createPrefilledTextForm() {
     y: 140,
     width: 180,
     height: 24,
+    font,
+  });
+  return pdfDoc.save({ updateFieldAppearances: false });
+}
+
+async function createMultilineTextForm(
+  value: string,
+  rect = { x: 40, y: 80, width: 480, height: 90 },
+) {
+  const pdfDoc = await PDFDocument.create();
+  const page = pdfDoc.addPage([600, 260]);
+  const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+  const textField = pdfDoc.getForm().createTextField("claimDetails");
+  textField.enableMultiline();
+  textField.setText(value);
+  textField.addToPage(page, {
+    ...rect,
     font,
   });
   return pdfDoc.save({ updateFieldAppearances: false });
@@ -1237,6 +1274,250 @@ describe("fill-pdf download content preservation", () => {
     expect(recordDownloadLog).not.toHaveBeenCalledWith(
       expect.objectContaining({ status: "success" }),
     );
+  });
+});
+
+describe("fill-pdf form-fidelity multiline overlay", () => {
+  const multilineValue =
+    "The policy holder confirms the insured property remains occupied during the working day.\nAdditional claim details stay inside this full-width multiline box.";
+  const multilineField = (value: string) => ({
+    id: "claimDetails",
+    type: "text",
+    x: 40,
+    y: 90,
+    width: 480,
+    height: 90,
+    page: 0,
+    value,
+    fontSize: 12,
+  });
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    process.env.QUICKFILL_QA_TOKEN = "test-token";
+    process.env[DOWNLOAD_PRESERVE_FLAG] = "v1";
+    process.env[MOBILE_POLISH_FLAG] = "v1";
+    process.env[FIELD_FIT_FLAG] = "v1";
+    process.env[FORM_FIDELITY_FLAG] = "v1";
+  });
+
+  afterEach(() => {
+    delete process.env.QUICKFILL_QA_TOKEN;
+    for (const [name, original] of [
+      [DOWNLOAD_PRESERVE_FLAG, originalDownloadPreserveFlag],
+      [MOBILE_POLISH_FLAG, originalMobilePolishFlag],
+      [FIELD_FIT_FLAG, originalFieldFitFlag],
+      [FORM_FIDELITY_FLAG, originalFormFidelityFlag],
+    ] as const) {
+      if (original === undefined) delete process.env[name];
+      else process.env[name] = original;
+    }
+  });
+
+  it("draws a matched multiline value exactly once and keeps every line inside the widget", async () => {
+    const response = await POST(
+      await makeDownloadPreserveRequest(
+        await createMultilineTextForm(multilineValue),
+        [multilineField(multilineValue)],
+        true,
+      ),
+    );
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    const decoded = await decodedPdfStreams(bytes);
+    const metricsDoc = await PDFDocument.create();
+    const font = await metricsDoc.embedFont(StandardFonts.Helvetica);
+    const padding = fitOverlayTextPadding(480, 90, 4);
+    const layout = fitMultilineOverlayText(
+      sanitizeMultiline(multilineValue),
+      480 - padding * 2,
+      90,
+      font,
+      12,
+      padding,
+    );
+    const drawnLines = layout.lines.filter(Boolean);
+    const ascent = font.heightAtSize(layout.fontSize, { descender: false });
+    const descent = layout.lineHeight - ascent;
+
+    expect(response.status).toBe(200);
+    expect(drawnLines.join(" ").replace(/\s+/g, " ").trim()).toBe(
+      multilineValue.replace(/\s+/g, " ").trim(),
+    );
+    for (const line of drawnLines) {
+      const insideDraws = Array.from(
+        new Map(
+          textDrawsForMarker(decoded, line)
+            .filter((draw) => {
+              const lineWidth = font.widthOfTextAtSize(line, draw.fontSize);
+              return (
+                draw.x >= 40 &&
+                draw.x + lineWidth <= 520 &&
+                draw.y - descent >= 80 &&
+                draw.y + ascent <= 170
+              );
+            })
+            // Viewer-safe finalization serializes the source stream and its
+            // painted Form XObject with identical operators. Deduplicate that
+            // storage detail; pdf.js QA below asserts the visible occurrence.
+            .map((draw) => [
+              `${draw.fontSize}:${draw.x}:${draw.y}`,
+              draw,
+            ] as const),
+        ).values(),
+      );
+      expect(insideDraws).toHaveLength(1);
+      const draw = insideDraws[0];
+      expect(draw.fontSize).toBeCloseTo(layout.fontSize, 8);
+      expect(draw.x).toBeGreaterThanOrEqual(40);
+      expect(
+        draw.x + font.widthOfTextAtSize(line, draw.fontSize),
+      ).toBeLessThanOrEqual(520);
+      expect(draw.y - descent).toBeGreaterThanOrEqual(80);
+      expect(draw.y + ascent).toBeLessThanOrEqual(170);
+    }
+  });
+
+  it("flattens a cleared multiline field without retaining its old value", async () => {
+    const staleValue = "STALEMULTILINEVALUE";
+    const response = await POST(
+      await makeDownloadPreserveRequest(
+        await createMultilineTextForm(staleValue),
+        [multilineField("")],
+        true,
+      ),
+    );
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    const resultDoc = await PDFDocument.load(bytes);
+
+    expect(response.status).toBe(200);
+    expect(resultDoc.getForm().getFields()).toHaveLength(0);
+    expect(markerOccurrences(await decodedPdfStreams(bytes), staleValue)).toBe(
+      0,
+    );
+  });
+
+  it("clips unavoidable 4pt-floor overflow to the multiline widget", async () => {
+    const overflowValue = "ONE\nTWO\nTHREE\nFOUR";
+    const response = await POST(
+      await makeDownloadPreserveRequest(
+        await createMultilineTextForm(overflowValue, {
+          x: 40,
+          y: 80,
+          width: 30,
+          height: 8,
+        }),
+        [multilineField(overflowValue)],
+        true,
+      ),
+    );
+    const decoded = await decodedPdfStreams(
+      new Uint8Array(await response.arrayBuffer()),
+    );
+
+    expect(response.status).toBe(200);
+    expect(decoded).toMatch(
+      /q\s+39\.5 79\.5 m\s+70\.5 79\.5 l\s+70\.5 88\.5 l\s+39\.5 88\.5 l\s+h\s+W\*\s+n/i,
+    );
+    for (const line of overflowValue.split("\n")) {
+      expect(markerOccurrences(decoded, line)).toBeGreaterThan(0);
+    }
+  });
+
+  it("keeps unset and non-v1 output byte-identical to the flag-off path", async () => {
+    const sourceBytes = await createMultilineTextForm(multilineValue);
+    delete process.env[FORM_FIDELITY_FLAG];
+    const unsetResponse = await POST(
+      await makeDownloadPreserveRequest(
+        sourceBytes,
+        [multilineField(multilineValue)],
+        true,
+      ),
+    );
+    const unsetBytes = Buffer.from(await unsetResponse.arrayBuffer());
+
+    process.env[FORM_FIDELITY_FLAG] = "true";
+    const nonV1Response = await POST(
+      await makeDownloadPreserveRequest(
+        sourceBytes,
+        [multilineField(multilineValue)],
+        true,
+      ),
+    );
+    const nonV1Bytes = Buffer.from(await nonV1Response.arrayBuffer());
+
+    expect(unsetResponse.status).toBe(200);
+    expect(nonV1Response.status).toBe(200);
+    expect(nonV1Bytes.equals(unsetBytes)).toBe(true);
+  });
+
+  it("applies comb offsetY only for the exact form-fidelity flag", async () => {
+    const sourceBytes = await createSourcePdf();
+    const combField = (offsetY: number) => ({
+      id: "comb-offset-y",
+      type: "comb",
+      x: 20,
+      y: 40,
+      width: 100,
+      height: 20,
+      page: 0,
+      value: "Q",
+      charCount: 2,
+      offsetY,
+    });
+    const zeroResponse = await POST(
+      await makeDownloadPreserveRequest(
+        sourceBytes,
+        [combField(0)],
+        false,
+      ),
+    );
+    const zeroBytes = new Uint8Array(await zeroResponse.arrayBuffer());
+    const shiftedResponse = await POST(
+      await makeDownloadPreserveRequest(
+        sourceBytes,
+        [combField(7)],
+        false,
+      ),
+    );
+    const shiftedBytes = new Uint8Array(
+      await shiftedResponse.arrayBuffer(),
+    );
+    const zeroDraw = textDrawForMarker(
+      await decodedPdfStreams(zeroBytes),
+      "Q",
+    );
+    const shiftedDraw = textDrawForMarker(
+      await decodedPdfStreams(shiftedBytes),
+      "Q",
+    );
+
+    expect(zeroResponse.status).toBe(200);
+    expect(shiftedResponse.status).toBe(200);
+    expect(shiftedDraw.y - zeroDraw.y).toBeCloseTo(7, 8);
+
+    delete process.env[FORM_FIDELITY_FLAG];
+    const disabledZeroResponse = await POST(
+      await makeDownloadPreserveRequest(
+        sourceBytes,
+        [combField(0)],
+        false,
+      ),
+    );
+    const disabledShiftedResponse = await POST(
+      await makeDownloadPreserveRequest(
+        sourceBytes,
+        [combField(7)],
+        false,
+      ),
+    );
+    const disabledZeroBytes = Buffer.from(
+      await disabledZeroResponse.arrayBuffer(),
+    );
+    const disabledShiftedBytes = Buffer.from(
+      await disabledShiftedResponse.arrayBuffer(),
+    );
+
+    expect(disabledShiftedBytes.equals(disabledZeroBytes)).toBe(true);
   });
 });
 

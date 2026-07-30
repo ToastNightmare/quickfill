@@ -74,6 +74,8 @@ export interface TextField extends FieldBase {
   type: "text";
   value: string;
   fontSize: number;
+  /** The source AcroForm field accepts explicit line breaks. */
+  multiline?: true;
   /** Mobile-polish choice cards submit a real AcroForm option value. */
   choice?: true;
 }
@@ -133,6 +135,7 @@ export interface CombField extends FieldBase {
   cursorIndex?: number; // persisted cursor position for re-selection
   cellWidth?: number; // manual cell width override for alignment with form boxes
   offsetX?: number; // horizontal offset for fine-tuning alignment (-20 to +20px)
+  offsetY?: number; // vertical offset for fine-tuning alignment (-20 to +20px)
   charOffsetX?: number; // character offset within each cell for centering (-10 to +10px)
   cellPositions?: number[]; // X positions of each cell center relative to field X (for non-uniform spacing)
   cellWidths?: number[]; // Width of each individual cell (for non-uniform spacing like TFN)
