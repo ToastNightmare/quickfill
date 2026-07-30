@@ -6,8 +6,9 @@ import type Konva from "konva";
 import type { EditorField, PlacementToolType, SignatureField, CheckboxStamp, WhiteoutField, CombField, ToolDefaultState, LineField, LineOrientation } from "@/lib/types";
 import { todayDateStamp, DATE_STAMP_PLACEHOLDER } from "@/lib/date-stamp";
 import { clampSignatureOpacity, clampSignatureRotation } from "@/lib/signature-transform";
-import { detectSnapBox, detectAllBoxes, snapCredibilityScore, floodFillCell, detectCombCells } from "@/lib/snap-detect";
+import { detectSnapBox, detectAllBoxes, snapCredibilityScore, floodFillCell, detectCombCells, detectCombCellsV2 } from "@/lib/snap-detect";
 import type { SnapResult, CombDetectResult } from "@/lib/snap-detect";
+import { backspaceCombCharacter, getCombCursorIndex, insertCombCharacter, moveCombCursor } from "@/lib/comb-input";
 import { createEditorFieldId } from "@/lib/field-ids";
 import { loadPdfjsClient } from "@/lib/pdfjs-client";
 import { MASK_ERASE_FILL, addEraserMask, brushIntersectField, interpolateMaskPath, isMaskErasable, maskCacheConfig } from "@/lib/eraser-mask";
@@ -43,6 +44,7 @@ import { MediaOverlayLayer } from "@/components/MediaOverlayLayer";
 type PdfActiveTool = PlacementToolType | "mask-eraser";
 
 let nextFieldSuggestionViewerInstanceId = 0;
+const COMB_HIDDEN_INPUT_SENTINEL = "\u200b";
 
 export interface PdfViewerHandle {
   getCanvasDataURL: () => string | null;
@@ -291,6 +293,28 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const canvasRenderRatioRef = useRef(1);
   const stageRef = useRef<Konva.Stage | null>(null);
+  const combHiddenInputRef = useRef<HTMLInputElement>(null);
+  const combMobileEnabled =
+    process.env.NEXT_PUBLIC_QUICKFILL_COMB_MOBILE === "v1";
+  const resetCombHiddenInput = useCallback(
+    (input = combHiddenInputRef.current) => {
+      if (!input) return;
+      input.value = COMB_HIDDEN_INPUT_SENTINEL;
+      input.setSelectionRange(
+        COMB_HIDDEN_INPUT_SENTINEL.length,
+        COMB_HIDDEN_INPUT_SENTINEL.length,
+      );
+    },
+    [],
+  );
+  const focusCombHiddenInput = useCallback(() => {
+    if (!combMobileEnabled) return;
+    const input = combHiddenInputRef.current;
+    if (!input) return;
+    resetCombHiddenInput(input);
+    input.focus({ preventScroll: true });
+    resetCombHiddenInput(input);
+  }, [combMobileEnabled, resetCombHiddenInput]);
   const [dimensions, setDimensions] = useState({ width: 800, height: 1100 });
   // fitScale: ratio from PDF points to base canvas pixels (before zoom)
   // Field coordinates are stored in PDF point space for consistency across resizes
@@ -475,7 +499,15 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
     getViewportDims: () => viewportAtScale1,
     editField: (fieldId: string) => {
       const field = fields.find((candidate) => candidate.id === fieldId);
-      if (!field || field.type === "checkbox" || field.type === "signature" || field.type === "whiteout" || field.type === "comb" || field.type === "line") {
+      if (!field) return;
+      if (field.type === "comb") {
+        if (!combMobileEnabled) return;
+        onToolSelect(null);
+        onFieldSelect(fieldId);
+        focusCombHiddenInput();
+        return;
+      }
+      if (field.type === "checkbox" || field.type === "signature" || field.type === "whiteout" || field.type === "line") {
         return;
       }
       onToolSelect(null);
@@ -585,6 +617,108 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
   const maskEraserSize = toolDefaults["mask-eraser"].size ?? 48;
   const renderFields = maskPreviewFields ?? fields;
   const pageFields = renderFields.filter((f) => f.page === currentPage);
+  const applyCombHiddenInputAction = useCallback(
+    (
+      action: "insert" | "backspace" | "left" | "right",
+      insertedText = "",
+    ) => {
+      if (!combMobileEnabled || !selectedFieldId) return;
+      const selectedComb = fields.find(
+        (field) =>
+          field.id === selectedFieldId &&
+          field.page === currentPage &&
+          field.type === "comb",
+      ) as CombField | undefined;
+      if (!selectedComb) return;
+
+      const charCount = selectedComb.charCount ?? 9;
+      const currentValue = selectedComb.value || "";
+      const currentIndex = getCombCursorIndex(
+        currentValue,
+        charCount,
+        selectedComb.cursorIndex,
+      );
+
+      if (action === "insert") {
+        let nextValue = currentValue;
+        let nextIndex = currentIndex;
+        for (const character of Array.from(insertedText)) {
+          const update = insertCombCharacter(
+            nextValue,
+            charCount,
+            nextIndex,
+            character,
+          );
+          nextValue = update.value;
+          nextIndex = update.cursorIndex;
+        }
+        if (insertedText) {
+          onFieldUpdate(
+            selectedComb.id,
+            { value: nextValue, cursorIndex: nextIndex } as Partial<EditorField>,
+          );
+        }
+        return;
+      }
+
+      if (action === "backspace") {
+        onFieldUpdate(
+          selectedComb.id,
+          backspaceCombCharacter(
+            currentValue,
+            charCount,
+            currentIndex,
+          ) as Partial<EditorField>,
+        );
+        return;
+      }
+
+      onFieldUpdate(
+        selectedComb.id,
+        {
+          cursorIndex: moveCombCursor(
+            currentValue,
+            charCount,
+            currentIndex,
+            action,
+          ),
+        } as Partial<EditorField>,
+      );
+    },
+    [
+      combMobileEnabled,
+      currentPage,
+      fields,
+      onFieldUpdate,
+      selectedFieldId,
+    ],
+  );
+  useEffect(() => {
+    if (!combMobileEnabled || !selectedFieldId) return;
+    const input = combHiddenInputRef.current;
+    if (!input) return;
+
+    const handleBeforeInput = (event: InputEvent) => {
+      event.preventDefault();
+      event.stopPropagation();
+      if (event.inputType === "insertText" && event.data) {
+        applyCombHiddenInputAction("insert", event.data);
+      } else if (event.inputType === "deleteContentBackward") {
+        applyCombHiddenInputAction("backspace");
+      }
+      resetCombHiddenInput(input);
+    };
+
+    input.addEventListener("beforeinput", handleBeforeInput);
+    return () => {
+      input.removeEventListener("beforeinput", handleBeforeInput);
+    };
+  }, [
+    applyCombHiddenInputAction,
+    combMobileEnabled,
+    resetCombHiddenInput,
+    selectedFieldId,
+  ]);
 
   useEffect(() => {
     if (!twoTapBoxPlacementEnabled) cancelPendingBoxCorner();
@@ -1098,6 +1232,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
   // Feature 2: Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.target === combHiddenInputRef.current) return;
       // Only active when not editing
       if (editingFieldId !== null) return;
       
@@ -1106,32 +1241,48 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
       if (selectedField && selectedField.type === "comb") {
         const combField = selectedField as CombField;
         const charCount = combField.charCount ?? 9;
-        const currentIndex = Math.min(Math.max(combField.cursorIndex ?? Math.min((combField.value || "").replace(/ +$/, "").length, charCount - 1), 0), charCount - 1);
         const currentValue = combField.value || "";
+        const currentIndex = getCombCursorIndex(
+          currentValue,
+          charCount,
+          combField.cursorIndex,
+        );
 
         if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
           e.preventDefault();
-          const paddedValue = currentValue.padEnd(charCount, " ");
-          const newValue = paddedValue.slice(0, currentIndex) + e.key + paddedValue.slice(currentIndex + 1);
-          const nextIndex = Math.min(currentIndex + 1, charCount - 1);
-          onFieldUpdate(selectedField.id, { value: newValue, cursorIndex: nextIndex } as Partial<EditorField>);
+          onFieldUpdate(
+            selectedField.id,
+            insertCombCharacter(
+              currentValue,
+              charCount,
+              currentIndex,
+              e.key,
+            ) as Partial<EditorField>,
+          );
           return;
         }
 
         if (e.key === "Backspace") {
           e.preventDefault();
-          const paddedValue = currentValue.padEnd(charCount, " ");
-          const targetIndex = currentIndex > 0 ? currentIndex - 1 : 0;
-          const newValue = paddedValue.slice(0, targetIndex) + " " + paddedValue.slice(targetIndex + 1);
-          onFieldUpdate(selectedField.id, { value: newValue, cursorIndex: targetIndex } as Partial<EditorField>);
+          onFieldUpdate(
+            selectedField.id,
+            backspaceCombCharacter(
+              currentValue,
+              charCount,
+              currentIndex,
+            ) as Partial<EditorField>,
+          );
           return;
         }
 
         if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
           e.preventDefault();
-          const nextIndex = e.key === "ArrowLeft"
-            ? Math.max(currentIndex - 1, 0)
-            : Math.min(currentIndex + 1, charCount - 1);
+          const nextIndex = moveCombCursor(
+            currentValue,
+            charCount,
+            currentIndex,
+            e.key === "ArrowLeft" ? "left" : "right",
+          );
           onFieldUpdate(selectedField.id, { cursorIndex: nextIndex } as Partial<EditorField>);
           return;
         }
@@ -1515,11 +1666,11 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
       let fieldY = drawnY / effectiveScale;
       const fieldW = Math.max(
         absDx / effectiveScale,
-        20 / fitScale,
+        combMobileEnabled ? 8 : 20 / fitScale,
       );
       const fieldH = Math.max(
         absDy / effectiveScale,
-        20 / fitScale,
+        combMobileEnabled ? 8 : 20 / fitScale,
       );
       const pageFields = fields.filter((field) => field.page === currentPage);
       const minimumGap = 3;
@@ -1595,13 +1746,22 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
       if (canvas) {
         const canvasDetectionScale =
           effectiveScale * canvasRenderRatioRef.current;
-        const combResult = detectCombCells(
-          canvas,
-          fieldX * canvasDetectionScale,
-          fieldY * canvasDetectionScale,
-          fieldW * canvasDetectionScale,
-          fieldH * canvasDetectionScale,
-        );
+        const combResult = combMobileEnabled
+          ? detectCombCellsV2(
+              canvas,
+              fieldX * canvasDetectionScale,
+              fieldY * canvasDetectionScale,
+              fieldW * canvasDetectionScale,
+              fieldH * canvasDetectionScale,
+              canvasDetectionScale,
+            )
+          : detectCombCells(
+              canvas,
+              fieldX * canvasDetectionScale,
+              fieldY * canvasDetectionScale,
+              fieldW * canvasDetectionScale,
+              fieldH * canvasDetectionScale,
+            );
         if (combResult && combResult.cellCount >= 2) {
           detectedCellWidth = Math.round(
             combResult.cellWidth / canvasDetectionScale,
@@ -1670,6 +1830,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
     [
       createFieldId,
       currentPage,
+      combMobileEnabled,
       fields,
       fitScale,
       onFieldAdd,
@@ -2044,13 +2205,22 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
                   const canvasDetectionScale =
                     effectiveScale * canvasRenderRatioRef.current;
                   // Convert PDF points to canvas pixels for detection
-                  const combResult = detectCombCells(
-                    combCanvas,
-                    fieldX * canvasDetectionScale,
-                    fieldY * canvasDetectionScale,
-                    fieldW * canvasDetectionScale,
-                    fieldH * canvasDetectionScale,
-                  );
+                  const combResult = combMobileEnabled
+                    ? detectCombCellsV2(
+                        combCanvas,
+                        fieldX * canvasDetectionScale,
+                        fieldY * canvasDetectionScale,
+                        fieldW * canvasDetectionScale,
+                        fieldH * canvasDetectionScale,
+                        canvasDetectionScale,
+                      )
+                    : detectCombCells(
+                        combCanvas,
+                        fieldX * canvasDetectionScale,
+                        fieldY * canvasDetectionScale,
+                        fieldW * canvasDetectionScale,
+                        fieldH * canvasDetectionScale,
+                      );
                   if (combResult && combResult.cellCount >= 2) {
                     // Convert back to PDF point space
                     combDetectedCellWidth = Math.round(combResult.cellWidth / canvasDetectionScale);
@@ -2141,7 +2311,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
         setCheckboxPreview(null);
       }
     },
-    [activeTool, currentPage, zoomFactor, fitScale, onFieldAdd, onFieldSelect, onToolSelect, onSignatureFieldPlaced, snapPreview, whiteoutColor, fields, snapEnabled, createFieldId, isMobileEditor, toolDefaults, viewportAtScale1, applyMaskAlongStagePath, stopMaskDrag, cancelPendingBoxCorner, createDrawnBoxField]
+    [activeTool, currentPage, zoomFactor, fitScale, onFieldAdd, onFieldSelect, onToolSelect, onSignatureFieldPlaced, snapPreview, whiteoutColor, fields, snapEnabled, createFieldId, isMobileEditor, toolDefaults, viewportAtScale1, applyMaskAlongStagePath, stopMaskDrag, cancelPendingBoxCorner, createDrawnBoxField, combMobileEnabled]
   );
 
   // Core field creation logic - shared by click and touch
@@ -2310,13 +2480,22 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
             const canvasDetectionScale =
               effectiveScale * canvasRenderRatioRef.current;
             // Convert PDF points to canvas pixels for detection
-            const combResult3 = detectCombCells(
-              combCanvas3,
-              fieldX * canvasDetectionScale,
-              fieldY * canvasDetectionScale,
-              fieldW * canvasDetectionScale,
-              fieldH * canvasDetectionScale,
-            );
+            const combResult3 = combMobileEnabled
+              ? detectCombCellsV2(
+                  combCanvas3,
+                  fieldX * canvasDetectionScale,
+                  fieldY * canvasDetectionScale,
+                  fieldW * canvasDetectionScale,
+                  fieldH * canvasDetectionScale,
+                  canvasDetectionScale,
+                )
+              : detectCombCells(
+                  combCanvas3,
+                  fieldX * canvasDetectionScale,
+                  fieldY * canvasDetectionScale,
+                  fieldW * canvasDetectionScale,
+                  fieldH * canvasDetectionScale,
+                );
             if (combResult3 && combResult3.cellCount >= 2) {
               // Convert back to PDF point space
               combDetectedCellWidth3 = Math.round(combResult3.cellWidth / canvasDetectionScale);
@@ -2401,7 +2580,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
 
       return true;
     },
-    [activeTool, currentPage, onFieldAdd, onFieldSelect, onToolSelect, zoomFactor, fitScale, snapPreview, onSignatureFieldPlaced, snapEnabled, whiteoutColor, fields, createFieldId, isMobileEditor, toolDefaults, viewportAtScale1]
+    [activeTool, currentPage, onFieldAdd, onFieldSelect, onToolSelect, zoomFactor, fitScale, snapPreview, onSignatureFieldPlaced, snapEnabled, whiteoutColor, fields, createFieldId, isMobileEditor, toolDefaults, viewportAtScale1, combMobileEnabled]
   );
 
   const handleStageClick = useCallback(
@@ -2923,6 +3102,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
                 zoomFactor={zoomFactor}
                 fieldFitEnabled={fieldFitEnabled}
                 formFidelityEnabled={formFidelityEnabled}
+                combMobileEnabled={combMobileEnabled}
                 isSelected={!isCapturingPreview && activeTool !== "mask-eraser" && field.id === selectedFieldId && field.type !== "whiteout"}
                 isEditing={activeTool !== "mask-eraser" && field.id === editingFieldId}
                 isHighlighted={!isCapturingPreview && (field.id === snappedFieldId || (highlightFieldIds?.has(field.id) ?? false))}
@@ -3011,6 +3191,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
                     onFieldUpdate(field.id, { cursorIndex } as Partial<EditorField>);
                   }
                 }}
+                onCombInputFocus={focusCombHiddenInput}
                 registerNode={registerNode}
                 unregisterNode={unregisterNode}
                 onContextMenu={(e, fieldId) => {
@@ -3037,10 +3218,11 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
                   return oldBox;
                 }
                 if (
-                  fieldFitEnabled &&
-                  (selectedField?.type === "text" ||
-                    selectedField?.type === "date" ||
-                    selectedField?.type === "signature")
+                  (fieldFitEnabled &&
+                    (selectedField?.type === "text" ||
+                      selectedField?.type === "date" ||
+                      selectedField?.type === "signature")) ||
+                  (combMobileEnabled && selectedField?.type === "comb")
                 ) {
                   const minimumScreenSize = 8 * fitScale * zoomFactor;
                   if (
@@ -3204,6 +3386,82 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
             </div>
           );
         })()}
+
+        {combMobileEnabled &&
+          selectedFieldId &&
+          (() => {
+            const combField = pageFields.find(
+              (field) =>
+                field.id === selectedFieldId && field.type === "comb",
+            );
+            if (!combField) return null;
+            const effectiveScale = fitScale * zoomFactor;
+
+            return (
+              <input
+                key={combField.id}
+                ref={combHiddenInputRef}
+                type="text"
+                value={COMB_HIDDEN_INPUT_SENTINEL}
+                tabIndex={-1}
+                aria-label="Edit box field"
+                data-testid="comb-hidden-input"
+                autoComplete="off"
+                autoCorrect="off"
+                spellCheck={false}
+                autoCapitalize="characters"
+                style={{
+                  position: "absolute",
+                  left: combField.x * effectiveScale,
+                  top: combField.y * effectiveScale,
+                  width: 1,
+                  height: 1,
+                  padding: 0,
+                  border: 0,
+                  opacity: 0.01,
+                  overflow: "hidden",
+                  clip: "rect(0 0 0 0)",
+                  clipPath: "inset(50%)",
+                  fontSize: 16,
+                  pointerEvents: "none",
+                  zIndex: 30,
+                }}
+                onFocus={(event) =>
+                  resetCombHiddenInput(event.currentTarget)
+                }
+                onKeyDown={(event) => {
+                  event.stopPropagation();
+                  if (event.key === "Backspace") {
+                    event.preventDefault();
+                    applyCombHiddenInputAction("backspace");
+                    resetCombHiddenInput(event.currentTarget);
+                    return;
+                  }
+                  if (
+                    event.key === "ArrowLeft" ||
+                    event.key === "ArrowRight"
+                  ) {
+                    event.preventDefault();
+                    applyCombHiddenInputAction(
+                      event.key === "ArrowLeft" ? "left" : "right",
+                    );
+                    resetCombHiddenInput(event.currentTarget);
+                    return;
+                  }
+                  if (event.key === "Enter") {
+                    event.preventDefault();
+                    event.currentTarget.blur();
+                  }
+                }}
+                onInput={(event) =>
+                  resetCombHiddenInput(event.currentTarget)
+                }
+                onChange={(event) =>
+                  resetCombHiddenInput(event.currentTarget)
+                }
+              />
+            );
+          })()}
 
         {/* HTML input overlay for text editing */}
         {editingFieldId &&
@@ -3423,6 +3681,7 @@ function FieldShape({
   zoomFactor,
   fieldFitEnabled,
   formFidelityEnabled,
+  combMobileEnabled,
   isSelected,
   isEditing,
   isHighlighted,
@@ -3440,6 +3699,7 @@ function FieldShape({
   onDoubleClick,
   onValueChange,
   onCombCursorChange,
+  onCombInputFocus,
   onDelete,
   registerNode,
   unregisterNode,
@@ -3450,6 +3710,7 @@ function FieldShape({
   zoomFactor: number;
   fieldFitEnabled: boolean;
   formFidelityEnabled: boolean;
+  combMobileEnabled: boolean;
   isSelected: boolean;
   isEditing: boolean;
   isHighlighted: boolean;
@@ -3467,6 +3728,7 @@ function FieldShape({
   onDoubleClick: () => void;
   onValueChange: (value: string | boolean | CheckboxStamp) => void;
   onCombCursorChange?: (cursorIndex: number) => void;
+  onCombInputFocus?: () => void;
   onDelete: () => void;
   registerNode: (id: string, node: Konva.Group) => void;
   unregisterNode: (id: string) => void;
@@ -3879,8 +4141,14 @@ function FieldShape({
             const scaleY = node.scaleY();
             node.scaleX(1);
             node.scaleY(1);
-            const rawWidth = Math.max(40, node.width() * scaleX);
-            const rawHeight = Math.max(20, node.height() * scaleY);
+            const rawWidth = Math.max(
+              combMobileEnabled ? 8 * fitScale : 40,
+              node.width() * scaleX,
+            );
+            const rawHeight = Math.max(
+              combMobileEnabled ? 8 * fitScale : 20,
+              node.height() * scaleY,
+            );
             const currentCharCount = combField.charCount ?? 9;
             const cellSize = stageW / currentCharCount;
             const maxCount = 30;
@@ -3937,12 +4205,14 @@ function FieldShape({
                   }
                 }}
                 onTap={(e) => {
+                  if (combMobileEnabled) e.evt.preventDefault();
                   e.cancelBubble = true;
                   markTapHandled();
                   handleSlotClick(i);
                   if (!isSelected) {
                     onSelect();
                   }
+                  onCombInputFocus?.();
                 }}
               >
                 {/* Slot border - only visible when selected or hovered */}

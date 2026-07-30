@@ -6,6 +6,8 @@ const localBaseUrl = process.env.PLAYWRIGHT_BASE_URL ?? "";
 const runsAgainstLocalApp = /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(?::\d+)?/i.test(localBaseUrl);
 const mobileSimpleDefaultEnabled =
   process.env.NEXT_PUBLIC_QUICKFILL_MOBILE_SIMPLE_DEFAULT === "v1";
+const combMobileEnabled =
+  process.env.NEXT_PUBLIC_QUICKFILL_COMB_MOBILE === "v1";
 
 test.beforeEach(async ({ page }) => {
   await page.route(
@@ -137,6 +139,26 @@ async function seedRestoredEditorPdf(page: Page, name: string) {
   );
 }
 
+async function readCombField(page: Page) {
+  return page.evaluate(() => {
+    const rawFields = localStorage.getItem("quickfill_fields");
+    if (!rawFields) return null;
+    const fields = JSON.parse(rawFields) as Array<Record<string, unknown>>;
+    const field = fields.find((candidate) => candidate.type === "comb");
+    if (!field) return null;
+    return {
+      x: Number(field.x),
+      y: Number(field.y),
+      width: Number(field.width),
+      height: Number(field.height),
+      value: String(field.value ?? ""),
+      charCount: Number(field.charCount),
+      cursorIndex:
+        typeof field.cursorIndex === "number" ? field.cursorIndex : null,
+    };
+  });
+}
+
 test.describe("mobile simple default routing", () => {
   test.skip(!runsAgainstLocalApp, "Requires PLAYWRIGHT_BASE_URL pointing at a local dev server.");
   test.use({
@@ -226,6 +248,106 @@ test.describe("mobile editor field interactions", () => {
       await textTool.click();
       await tapPdfPoint(page, 96, 170);
       await expect(page.getByTestId("mobile-field-sheet")).toBeVisible();
+    });
+
+    test("box slots and Edit focus the hidden mobile input", async ({ page }) => {
+      test.skip(
+        !combMobileEnabled,
+        "Requires NEXT_PUBLIC_QUICKFILL_COMB_MOBILE=v1.",
+      );
+
+      await page.setViewportSize({ width: 900, height: 900 });
+      await seedRestoredEditorPdf(page, "comb-mobile-input.pdf");
+      await page.goto("/editor?advanced=1");
+      await expect(page.getByTestId("pdf-page")).toBeVisible({
+        timeout: 15_000,
+      });
+      await page.waitForFunction(
+        () => document.querySelectorAll("canvas").length >= 2,
+      );
+
+      const boxTool = page
+        .locator('button[title="Box field: drag across character boxes"]')
+        .last();
+      await boxTool.click();
+      const interactionCanvas = page
+        .getByTestId("pdf-page")
+        .locator(".konvajs-content canvas")
+        .first();
+      await interactionCanvas.click({ position: { x: 180, y: 240 } });
+
+      await expect.poll(() => readCombField(page)).not.toBeNull();
+      const hiddenInput = page.getByTestId("comb-hidden-input");
+      await expect(hiddenInput).toBeAttached();
+      await expect(hiddenInput).not.toBeFocused();
+
+      await page.setViewportSize({ width: 390, height: 844 });
+      await expect(page.getByTestId("mobile-field-sheet")).toBeVisible();
+      await tapElement(page, page.getByTestId("mobile-field-edit"));
+      await expect(hiddenInput).toBeFocused();
+      await page.keyboard.press("Enter");
+      await expect(hiddenInput).not.toBeFocused();
+
+      const combField = await readCombField(page);
+      expect(combField).not.toBeNull();
+      const canvasBox = await interactionCanvas.boundingBox();
+      expect(canvasBox).not.toBeNull();
+      const pdfScale = canvasBox!.width / 612;
+      const slotWidth = combField!.width / combField!.charCount;
+      const tappedSlotIndex = Math.min(2, combField!.charCount - 1);
+
+      const consoleErrors: string[] = [];
+      const pageErrors: string[] = [];
+      const externalRequests: string[] = [];
+      const localOrigin = new URL(localBaseUrl).origin;
+      page.on("console", (message) => {
+        if (message.type() === "error") consoleErrors.push(message.text());
+      });
+      page.on("pageerror", (error) => pageErrors.push(error.message));
+      page.on("request", (request) => {
+        if (new URL(request.url()).origin !== localOrigin) {
+          externalRequests.push(`${request.method()} ${request.url()}`);
+        }
+      });
+
+      await page.touchscreen.tap(
+        canvasBox!.x +
+          (combField!.x + (tappedSlotIndex + 0.5) * slotWidth) *
+            pdfScale,
+        canvasBox!.y +
+          (combField!.y + combField!.height / 2) * pdfScale,
+      );
+      await expect.poll(async () => (await readCombField(page))?.cursorIndex).toBe(
+        tappedSlotIndex,
+      );
+      await expect(hiddenInput).toBeFocused();
+
+      await page.keyboard.type("AB");
+      const valueAfterTyping =
+        " ".repeat(tappedSlotIndex) +
+        "AB" +
+        " ".repeat(combField!.charCount - tappedSlotIndex - 2);
+      await expect.poll(() => readCombField(page)).toMatchObject({
+        value: valueAfterTyping,
+        cursorIndex: tappedSlotIndex + 2,
+      });
+
+      await page.keyboard.press("Backspace");
+      const valueAfterBackspace =
+        " ".repeat(tappedSlotIndex) +
+        "A" +
+        " ".repeat(combField!.charCount - tappedSlotIndex - 1);
+      await expect.poll(() => readCombField(page)).toMatchObject({
+        value: valueAfterBackspace,
+        cursorIndex: tappedSlotIndex + 1,
+      });
+
+      await page.keyboard.press("Enter");
+      await expect(hiddenInput).not.toBeFocused();
+
+      expect(consoleErrors).toEqual([]);
+      expect(pageErrors).toEqual([]);
+      expect(externalRequests).toEqual([]);
     });
   });
 

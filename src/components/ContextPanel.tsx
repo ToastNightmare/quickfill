@@ -388,7 +388,13 @@ function MobileFieldSheet({
 
   const isSignature = selectedField.type === "signature";
   const isSigned = isSignature && Boolean((selectedField as SignatureField).signatureDataUrl);
-  const canEdit = (selectedField.type === "text" || selectedField.type === "date") && Boolean(onFieldEdit);
+  const combMobileEnabled =
+    process.env.NEXT_PUBLIC_QUICKFILL_COMB_MOBILE === "v1";
+  const canEdit =
+    (selectedField.type === "text" ||
+      selectedField.type === "date" ||
+      (combMobileEnabled && selectedField.type === "comb")) &&
+    Boolean(onFieldEdit);
 
   const compactAction =
     "flex min-h-11 flex-1 items-center justify-center gap-1.5 rounded-xl border text-xs font-semibold transition-colors";
