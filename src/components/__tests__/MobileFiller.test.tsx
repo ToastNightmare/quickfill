@@ -21,6 +21,7 @@ import {
   isFieldSuggestionReviewEnabled,
   storeFieldSuggestionIntent,
 } from "@/lib/field-suggestion-rollout";
+import { trackGoogleAdsCheckoutConversion } from "@/lib/gads";
 
 const LOCAL_SIGNATURE = "data:image/png;base64,bG9jYWxTaWdMb2NhbA==";
 const ACCOUNT_SIGNATURE = "data:image/png;base64,YWNjb3VudFNpZw==";
@@ -175,6 +176,10 @@ jest.mock("@/lib/analytics", () => ({
   trackPrivacySafeEvent: jest.fn(),
 }));
 
+jest.mock("@/lib/gads", () => ({
+  trackGoogleAdsCheckoutConversion: jest.fn(),
+}));
+
 jest.mock("@/lib/pdfjs-client", () => ({
   loadPdfjsClient: jest.fn().mockRejectedValue(new Error("pdfjs disabled in tests")),
 }));
@@ -205,6 +210,10 @@ const mockedStoreIntent = storeFieldSuggestionIntent as jest.MockedFunction<type
 const mockedLoadPdfjsClient = loadPdfjsClient as jest.MockedFunction<typeof loadPdfjsClient>;
 const mockedRenderFlattenedWhiteoutPages =
   renderFlattenedWhiteoutPages as jest.MockedFunction<typeof renderFlattenedWhiteoutPages>;
+const mockedTrackGoogleAdsCheckoutConversion =
+  trackGoogleAdsCheckoutConversion as jest.MockedFunction<
+    typeof trackGoogleAdsCheckoutConversion
+  >;
 
 function pickUploadFile(file: File) {
   const input = document.querySelector('input[accept*="application/pdf"]') as HTMLInputElement;
@@ -1332,6 +1341,7 @@ describe("MobileFiller download gate", () => {
       "download_gate_shown",
       expect.anything()
     );
+    expect(mockedTrackGoogleAdsCheckoutConversion).not.toHaveBeenCalled();
   });
 
   it("restores the simple session and completes a paid return download", async () => {
@@ -1376,6 +1386,7 @@ describe("MobileFiller download gate", () => {
       "download_success",
       expect.objectContaining({ surface: "mobile", pro: true }),
     );
+    expect(mockedTrackGoogleAdsCheckoutConversion).toHaveBeenCalledTimes(1);
   });
 
   it("shows the paid-return recovery action when the saved PDF is missing", async () => {

@@ -6,6 +6,7 @@ import {
   WHITEOUT_REDACTION_ERROR_CODE,
   WHITEOUT_REDACTION_ERROR_MESSAGE,
 } from "@/lib/pdf-flatten-client";
+import { trackGoogleAdsCheckoutConversion } from "@/lib/gads";
 
 jest.mock("@clerk/nextjs", () => ({
   useAuth: () => ({ isLoaded: true, isSignedIn: true }),
@@ -123,6 +124,10 @@ jest.mock("@/lib/pdf-utils", () => ({
 
 jest.mock("@/lib/analytics", () => ({
   trackEvent: jest.fn(),
+}));
+
+jest.mock("@/lib/gads", () => ({
+  trackGoogleAdsCheckoutConversion: jest.fn(),
 }));
 
 jest.mock("@/lib/meta-pixel", () => ({
@@ -258,6 +263,24 @@ describe("Editor download gate", () => {
     expect(screen.queryByRole("heading", { name: "Your document is ready" })).not.toBeInTheDocument();
   });
 
+  it("fires the Google Ads helper once on the paid download-ready return", async () => {
+    mockFetchForUsage({ isPro: true, tier: "pro", used: 0, limit: 3 });
+    window.history.replaceState(null, "", "/editor?download=ready");
+
+    render(<EditorPage />);
+    fireEvent.click(screen.getByRole("button", { name: "Mock upload" }));
+
+    await waitFor(() => {
+      expect(trackGoogleAdsCheckoutConversion).toHaveBeenCalledTimes(1);
+    });
+    await waitFor(() => {
+      expect(global.fetch).toHaveBeenCalledWith(
+        "/api/fill-pdf",
+        expect.objectContaining({ method: "POST" }),
+      );
+    });
+  });
+
   it("does not show the preview gate for Pro downloads", async () => {
     mockFetchForUsage({ isPro: true, tier: "pro", used: 0, limit: 3 });
     render(<EditorPage />);
@@ -269,6 +292,7 @@ describe("Editor download gate", () => {
       expect(global.fetch).toHaveBeenCalledWith("/api/fill-pdf", expect.objectContaining({ method: "POST" }));
     });
     expect(screen.queryByRole("heading", { name: "Your document is ready" })).not.toBeInTheDocument();
+    expect(trackGoogleAdsCheckoutConversion).not.toHaveBeenCalled();
   });
 
   it("maps the fail-closed whiteout code to the secure user message without a download", async () => {

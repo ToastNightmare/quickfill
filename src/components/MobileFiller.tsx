@@ -47,6 +47,7 @@ import { isCleanablePhoto } from "@/lib/image-cleanup";
 import { clearLocalSignature, loadLocalSignature, saveLocalSignature } from "@/lib/signature-store";
 import { PhotoCleanupModal } from "@/components/PhotoCleanupModal";
 import { createDocumentRevision } from "@/lib/field-suggestions";
+import { trackGoogleAdsCheckoutConversion } from "@/lib/gads";
 import { loadPdfjsClient } from "@/lib/pdfjs-client";
 import {
   renderFlattenedWhiteoutPages,
@@ -982,6 +983,7 @@ export function MobileFiller({
     const params = new URLSearchParams(window.location.search);
     if (params.get("download") !== "ready") return;
     downloadReadyFiredRef.current = true;
+    trackGoogleAdsCheckoutConversion();
     void handleDownload();
   }, [restorePersistedSession, isLoaded, isSignedIn, pdfBytes, handleDownload]);
 

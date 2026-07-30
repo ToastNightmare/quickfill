@@ -1,10 +1,10 @@
 import type { Metadata, Viewport } from "next";
 import { ClerkProvider } from "@clerk/nextjs";
+import Script from "next/script";
 import { Analytics } from "@vercel/analytics/next";
 import "./globals.css";
 import { AppShell } from "@/components/AppShell";
 import { MetaPixel } from "@/components/MetaPixel";
-import { GoogleAdsTag } from "@/components/GoogleAdsTag";
 import { APP_CONFIG } from "@/lib/config";
 
 const themeInitializerScript = `
@@ -67,13 +67,48 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const googleAdsId =
+    process.env.NEXT_PUBLIC_QUICKFILL_GADS_ID?.trim();
+  const googleAdsConversionLabel =
+    process.env.NEXT_PUBLIC_QUICKFILL_GADS_CONVERSION_LABEL?.trim();
+  const googleAdsConfig = googleAdsId && googleAdsConversionLabel
+    ? {
+        scriptUrl:
+          `https://www.googletagmanager.com/gtag/js?id=${encodeURIComponent(googleAdsId)}`,
+        serializedId:
+          (JSON.stringify(googleAdsId) ?? "\"\"").replace(/</g, "\\u003c"),
+      }
+    : null;
+
   return (
     <ClerkProvider>
       <html lang="en" className="h-full antialiased" suppressHydrationWarning>
         <body className="min-h-full flex flex-col bg-surface text-text">
           <script dangerouslySetInnerHTML={{ __html: themeInitializerScript }} />
           <MetaPixel />
-          <GoogleAdsTag />
+          {googleAdsConfig && (
+            <>
+              <Script
+                id="quickfill-google-ads-base"
+                strategy="afterInteractive"
+                src={googleAdsConfig.scriptUrl}
+              />
+              <Script
+                id="quickfill-google-ads-config"
+                strategy="afterInteractive"
+                dangerouslySetInnerHTML={{
+                  __html: `
+                    try {
+                      window.dataLayer = window.dataLayer || [];
+                      window.gtag = window.gtag || function(){window.dataLayer.push(arguments);};
+                      window.gtag('js', new Date());
+                      window.gtag('config', ${googleAdsConfig.serializedId});
+                    } catch (_) {}
+                  `,
+                }}
+              />
+            </>
+          )}
           <AppShell>{children}</AppShell>
           <Analytics />
         </body>
