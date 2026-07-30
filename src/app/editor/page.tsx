@@ -14,6 +14,7 @@ import { SupportForm } from "@/components/SupportForm";
 import { DownloadPreviewGate } from "@/components/DownloadPreviewGate";
 import { AddAnotherPagePrompt } from "@/components/AddAnotherPagePrompt";
 import { SaveProgressPrompt } from "@/components/SaveProgressPrompt";
+import { trackGoogleAdsCheckoutConversion } from "@/lib/gads";
 import {
   FieldSuggestionReview,
   type FieldSuggestionCommitAction,
@@ -2236,6 +2237,7 @@ function EditorPageContent() {
     if (params.get("download") !== "ready") return;
     if (downloadReadyFiredRef.current) return;
     downloadReadyFiredRef.current = true;
+    trackGoogleAdsCheckoutConversion();
 
     fetch("/api/usage")
       .then((res) => res.ok ? res.json() : null)
