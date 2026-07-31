@@ -1293,31 +1293,38 @@ function findVerticalLinesV2(
   width: number,
   height: number,
   minimumLineLength: number,
+  gapTolerance: number,
   darkFn: (pixels: Uint8ClampedArray, index: number) => boolean,
 ): VLine[] {
   const lines: VLine[] = [];
 
   for (let column = 0; column < width; column++) {
     let runStart = -1;
+    let gapCount = 0;
 
     for (let row = 0; row < height; row++) {
       const index = (row * width + column) * 4;
       if (darkFn(data, index)) {
         if (runStart === -1) runStart = row;
+        gapCount = 0;
         continue;
       }
 
       if (runStart !== -1) {
-        const runEnd = row - 1;
-        if (runEnd - runStart + 1 >= minimumLineLength) {
-          lines.push({ x: column, y1: runStart, y2: runEnd });
+        gapCount++;
+        if (gapCount > gapTolerance) {
+          const runEnd = row - gapCount;
+          if (runEnd - runStart + 1 >= minimumLineLength) {
+            lines.push({ x: column, y1: runStart, y2: runEnd });
+          }
+          runStart = -1;
+          gapCount = 0;
         }
-        runStart = -1;
       }
     }
 
     if (runStart !== -1) {
-      const runEnd = height - 1;
+      const runEnd = height - 1 - gapCount;
       if (runEnd - runStart + 1 >= minimumLineLength) {
         lines.push({ x: column, y1: runStart, y2: runEnd });
       }
@@ -1370,6 +1377,7 @@ function detectCombCellsV2WithThreshold(
   darkFn: (pixels: Uint8ClampedArray, index: number) => boolean,
 ): CombDetectResult | null {
   const minimumLineLength = 5 * scale;
+  const gapTolerance = Math.max(2, Math.round(2 * scale));
   const mergeTolerance = Math.max(2, 2 * scale);
   const candidateMinimumWidth = 4 * scale;
   const candidateMaximumWidth = 50 * scale;
@@ -1379,6 +1387,7 @@ function detectCombCellsV2WithThreshold(
     width,
     height,
     minimumLineLength,
+    gapTolerance,
     darkFn,
   );
   const merged = mergeVLinesV2(verticalLines, mergeTolerance);

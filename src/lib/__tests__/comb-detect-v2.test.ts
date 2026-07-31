@@ -65,6 +65,21 @@ describe("detectCombCellsV2FromImageData", () => {
     expect(result?.cellWidths).toEqual([14, 14, 14, 14, 14, 14]);
   });
 
+  test("detects a comb row with dashed internal dividers", () => {
+    const pixels = createPixels(110, 40);
+    for (const x of [10, 24, 38, 52, 66, 80, 94]) {
+      for (let y = 12; y <= 25; y++) {
+        if ((y - 12) % 4 < 2) {
+          drawVerticalLine(pixels, 110, x, y, y);
+        }
+      }
+    }
+
+    const result = detectCombCellsV2FromImageData(pixels, 110, 40, 1);
+
+    expect(result?.cellCount).toBe(6);
+  });
+
   test("drops narrow gaps between six separated squares", () => {
     const pixels = drawLines(
       122,
