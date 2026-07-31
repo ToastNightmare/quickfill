@@ -1287,3 +1287,351 @@ export function detectCombCells(
     cellWidths: cellWidths,
   };
 }
+
+function findVerticalLinesV2(
+  data: Uint8ClampedArray,
+  width: number,
+  height: number,
+  minimumLineLength: number,
+  gapTolerance: number,
+  darkFn: (pixels: Uint8ClampedArray, index: number) => boolean,
+): VLine[] {
+  const lines: VLine[] = [];
+
+  for (let column = 0; column < width; column++) {
+    let runStart = -1;
+    let gapCount = 0;
+
+    for (let row = 0; row < height; row++) {
+      const index = (row * width + column) * 4;
+      if (darkFn(data, index)) {
+        if (runStart === -1) runStart = row;
+        gapCount = 0;
+        continue;
+      }
+
+      if (runStart !== -1) {
+        gapCount++;
+        if (gapCount > gapTolerance) {
+          const runEnd = row - gapCount;
+          if (runEnd - runStart + 1 >= minimumLineLength) {
+            lines.push({ x: column, y1: runStart, y2: runEnd });
+          }
+          runStart = -1;
+          gapCount = 0;
+        }
+      }
+    }
+
+    if (runStart !== -1) {
+      const runEnd = height - 1 - gapCount;
+      if (runEnd - runStart + 1 >= minimumLineLength) {
+        lines.push({ x: column, y1: runStart, y2: runEnd });
+      }
+    }
+  }
+
+  return lines;
+}
+
+function mergeVLinesV2(lines: VLine[], xTolerance: number): VLine[] {
+  if (lines.length === 0) return [];
+
+  const sorted = [...lines].sort((left, right) =>
+    left.x - right.x || left.y1 - right.y1
+  );
+  const merged: VLine[] = [{ ...sorted[0] }];
+
+  for (let index = 1; index < sorted.length; index++) {
+    const previous = merged[merged.length - 1];
+    const current = sorted[index];
+    const overlapsVertically =
+      Math.min(previous.y2, current.y2) >=
+      Math.max(previous.y1, current.y1);
+
+    if (
+      Math.abs(current.x - previous.x) <= xTolerance &&
+      overlapsVertically
+    ) {
+      previous.x = Math.round((previous.x + current.x) / 2);
+      previous.y1 = Math.min(previous.y1, current.y1);
+      previous.y2 = Math.max(previous.y2, current.y2);
+    } else {
+      merged.push({ ...current });
+    }
+  }
+
+  return merged;
+}
+
+function upperMedian(values: number[]): number {
+  const sorted = [...values].sort((left, right) => left - right);
+  return sorted[Math.floor(sorted.length / 2)];
+}
+
+function detectCombCellsV2WithThreshold(
+  data: Uint8ClampedArray,
+  width: number,
+  height: number,
+  scale: number,
+  darkFn: (pixels: Uint8ClampedArray, index: number) => boolean,
+): CombDetectResult | null {
+  const minimumLineLength = 5 * scale;
+  const gapTolerance = Math.max(2, Math.round(2 * scale));
+  const mergeTolerance = Math.max(2, 2 * scale);
+  const candidateMinimumWidth = 4 * scale;
+  const candidateMaximumWidth = 50 * scale;
+
+  const verticalLines = findVerticalLinesV2(
+    data,
+    width,
+    height,
+    minimumLineLength,
+    gapTolerance,
+    darkFn,
+  );
+  const merged = mergeVLinesV2(verticalLines, mergeTolerance);
+  if (merged.length < 2) return null;
+
+  const tallestLine = merged.reduce((tallest, line) =>
+    line.y2 - line.y1 > tallest.y2 - tallest.y1 ? line : tallest
+  );
+  const tallestHeight = tallestLine.y2 - tallestLine.y1 + 1;
+  const alignedLines = merged
+    .filter((line) => {
+      const lineHeight = line.y2 - line.y1 + 1;
+      const overlap =
+        Math.min(line.y2, tallestLine.y2) -
+        Math.max(line.y1, tallestLine.y1) +
+        1;
+      return (
+        lineHeight >= tallestHeight * 0.6 &&
+        overlap >= tallestHeight * 0.5
+      );
+    })
+    .sort((left, right) => left.x - right.x);
+  if (alignedLines.length < 2) return null;
+
+  const gaps = alignedLines.slice(1).map(
+    (line, index) => line.x - alignedLines[index].x,
+  );
+  if (gaps.length === 0) return null;
+
+  const gapGroupSize = Math.max(1, 2 * scale);
+  const gapCounts = new Map<number, number>();
+  for (const gap of gaps) {
+    const rounded = Math.round(gap / gapGroupSize) * gapGroupSize;
+    gapCounts.set(rounded, (gapCounts.get(rounded) ?? 0) + 1);
+  }
+
+  let bestGap = 0;
+  let bestCount = 0;
+  for (const [gap, count] of gapCounts) {
+    if (
+      count > bestCount &&
+      gap >= candidateMinimumWidth &&
+      gap <= candidateMaximumWidth
+    ) {
+      bestGap = gap;
+      bestCount = count;
+    }
+  }
+  if (bestGap === 0 || bestCount < 2) return null;
+
+  const allCells = alignedLines
+    .slice(0, -1)
+    .map((line, index) => {
+      const rightEdge = alignedLines[index + 1].x;
+      const cellWidth = rightEdge - line.x;
+      return {
+        left: line.x,
+        center: line.x + cellWidth / 2,
+        width: cellWidth,
+        index,
+      };
+    })
+    .filter(
+      (cell) =>
+        cell.width >= candidateMinimumWidth &&
+        cell.width <= candidateMaximumWidth,
+    );
+  if (allCells.length === 0) return null;
+
+  const medianWidth = upperMedian(allCells.map((cell) => cell.width));
+  const wideGapThreshold = medianWidth * 1.35;
+
+  const evenWidths = allCells
+    .filter((cell) => cell.index % 2 === 0)
+    .map((cell) => cell.width);
+  const oddWidths = allCells
+    .filter((cell) => cell.index % 2 === 1)
+    .map((cell) => cell.width);
+  let narrowParity: 0 | 1 | null = null;
+
+  if (evenWidths.length > 0 && oddWidths.length > 0) {
+    const evenMedian = upperMedian(evenWidths);
+    const oddMedian = upperMedian(oddWidths);
+    const candidateNarrowParity: 0 | 1 =
+      evenMedian < oddMedian ? 0 : 1;
+    const wideMedian = Math.max(evenMedian, oddMedian);
+    const narrowWidths =
+      candidateNarrowParity === 0 ? evenWidths : oddWidths;
+    const wideWidths =
+      candidateNarrowParity === 0 ? oddWidths : evenWidths;
+    const alternating =
+      narrowWidths.every((cellWidth) => cellWidth <= wideMedian * 0.5) &&
+      wideWidths.every((cellWidth) => cellWidth > wideMedian * 0.5);
+
+    if (
+      upperMedian(narrowWidths) <= wideMedian * 0.5 &&
+      alternating
+    ) {
+      narrowParity = candidateNarrowParity;
+    }
+  }
+
+  const cells = allCells.filter(
+    (cell) =>
+      cell.width < wideGapThreshold &&
+      (narrowParity === null || cell.index % 2 !== narrowParity),
+  );
+  if (cells.length === 0) return null;
+
+  let minimumY = height;
+  let maximumY = 0;
+  for (const line of alignedLines) {
+    minimumY = Math.min(minimumY, line.y1);
+    maximumY = Math.max(maximumY, line.y2);
+  }
+
+  const firstCell = cells[0];
+  const lastCell = cells[cells.length - 1];
+  const cellWidths = cells.map((cell) => cell.width);
+
+  return {
+    cellWidth:
+      cellWidths.reduce((total, cellWidth) => total + cellWidth, 0) /
+      cellWidths.length,
+    cellCount: cells.length,
+    x: firstCell.left,
+    y: minimumY,
+    width: lastCell.left + lastCell.width - firstCell.left,
+    height: maximumY - minimumY,
+    firstCellX: firstCell.left,
+    cellBoundaries: cells.map((cell) => cell.left),
+    cellCenters: cells.map((cell) => cell.center),
+    cellWidths,
+  };
+}
+
+/**
+ * Scale-aware comb detection core. Coordinates in the result are relative to
+ * the supplied image data, allowing unit tests to run without a canvas.
+ */
+export function detectCombCellsV2FromImageData(
+  data: Uint8ClampedArray,
+  width: number,
+  height: number,
+  scale: number,
+): CombDetectResult | null {
+  if (
+    !Number.isFinite(scale) ||
+    scale <= 0 ||
+    width < 20 * scale ||
+    height < 6 * scale ||
+    data.length < width * height * 4
+  ) {
+    return null;
+  }
+
+  return (
+    detectCombCellsV2WithThreshold(
+      data,
+      width,
+      height,
+      scale,
+      isDark,
+    ) ??
+    detectCombCellsV2WithThreshold(
+      data,
+      width,
+      height,
+      scale,
+      isMedium,
+    )
+  );
+}
+
+function offsetCombDetectResult(
+  result: CombDetectResult,
+  offsetX: number,
+  offsetY: number,
+): CombDetectResult {
+  return {
+    ...result,
+    x: result.x + offsetX,
+    y: result.y + offsetY,
+    firstCellX: result.firstCellX + offsetX,
+    cellBoundaries: result.cellBoundaries.map(
+      (boundary) => boundary + offsetX,
+    ),
+    cellCenters: result.cellCenters.map((center) => center + offsetX),
+  };
+}
+
+export function detectCombCellsV2(
+  canvas: HTMLCanvasElement,
+  regionX: number,
+  regionY: number,
+  regionWidth: number,
+  regionHeight: number,
+  scale: number,
+): CombDetectResult | null {
+  const context = canvas.getContext("2d");
+  if (!context) return null;
+
+  const detectRegion = (
+    x: number,
+    y: number,
+    requestedWidth: number,
+    requestedHeight: number,
+  ): CombDetectResult | null => {
+    const x1 = Math.max(0, Math.floor(x));
+    const y1 = Math.max(0, Math.floor(y));
+    const x2 = Math.min(canvas.width, Math.ceil(x + requestedWidth));
+    const y2 = Math.min(canvas.height, Math.ceil(y + requestedHeight));
+    const width = x2 - x1;
+    const height = y2 - y1;
+    if (width <= 0 || height <= 0) return null;
+
+    try {
+      const imageData = context.getImageData(x1, y1, width, height);
+      const result = detectCombCellsV2FromImageData(
+        imageData.data,
+        width,
+        height,
+        scale,
+      );
+      return result ? offsetCombDetectResult(result, x1, y1) : null;
+    } catch {
+      return null;
+    }
+  };
+
+  const firstResult = detectRegion(
+    regionX,
+    regionY,
+    regionWidth,
+    regionHeight,
+  );
+  if (firstResult) return firstResult;
+
+  const horizontalExpansion = regionWidth * 0.3;
+  const verticalExpansion = regionHeight * 0.3;
+  return detectRegion(
+    regionX - horizontalExpansion,
+    regionY - verticalExpansion,
+    regionWidth + horizontalExpansion * 2,
+    regionHeight + verticalExpansion * 2,
+  );
+}
