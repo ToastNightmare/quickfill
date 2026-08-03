@@ -1579,6 +1579,91 @@ function offsetCombDetectResult(
   };
 }
 
+function trimCombDetectResultToRegion(
+  result: CombDetectResult,
+  regionX: number,
+  regionWidth: number,
+): CombDetectResult | null {
+  const regionLeft = Math.min(regionX, regionX + regionWidth);
+  const regionRight = Math.max(regionX, regionX + regionWidth);
+  const intersectsRegion = (index: number) => {
+    const cellLeft = result.cellBoundaries[index];
+    const cellRight = cellLeft + result.cellWidths[index];
+    return cellRight > regionLeft && cellLeft < regionRight;
+  };
+
+  let firstCellIndex = 0;
+  while (
+    firstCellIndex < result.cellCount &&
+    !intersectsRegion(firstCellIndex)
+  ) {
+    firstCellIndex++;
+  }
+
+  let lastCellIndex = result.cellCount - 1;
+  while (
+    lastCellIndex >= firstCellIndex &&
+    !intersectsRegion(lastCellIndex)
+  ) {
+    lastCellIndex--;
+  }
+
+  const cellCount = lastCellIndex - firstCellIndex + 1;
+  if (cellCount < 2) return null;
+  if (cellCount === result.cellCount) return result;
+
+  const cellBoundaries = result.cellBoundaries.slice(
+    firstCellIndex,
+    lastCellIndex + 1,
+  );
+  const cellCenters = result.cellCenters.slice(
+    firstCellIndex,
+    lastCellIndex + 1,
+  );
+  const cellWidths = result.cellWidths.slice(
+    firstCellIndex,
+    lastCellIndex + 1,
+  );
+  const firstCellX = cellBoundaries[0];
+  const lastCellRight =
+    cellBoundaries[cellCount - 1] + cellWidths[cellCount - 1];
+
+  return {
+    ...result,
+    cellWidth:
+      cellWidths.reduce((total, cellWidth) => total + cellWidth, 0) /
+      cellCount,
+    cellCount,
+    x: firstCellX,
+    width: lastCellRight - firstCellX,
+    firstCellX,
+    cellBoundaries,
+    cellCenters,
+    cellWidths,
+  };
+}
+
+function combDetectResultCoversRegion(
+  result: CombDetectResult,
+  regionX: number,
+  regionWidth: number,
+  scale: number,
+): boolean {
+  const regionLeft = Math.min(regionX, regionX + regionWidth);
+  const regionRight = Math.max(regionX, regionX + regionWidth);
+  const firstCellLeft = result.cellBoundaries[0];
+  const lastCellIndex = result.cellCount - 1;
+  const lastCellRight =
+    result.cellBoundaries[lastCellIndex] +
+    result.cellWidths[lastCellIndex];
+  const edgeTolerance = 6 * scale;
+
+  return (
+    firstCellLeft <= regionLeft + edgeTolerance &&
+    lastCellRight >= regionRight - edgeTolerance
+  );
+}
+
 export function detectCombCellsV2(
   canvas: HTMLCanvasElement,
   regionX: number,
@@ -1624,14 +1709,45 @@ export function detectCombCellsV2(
     regionWidth,
     regionHeight,
   );
-  if (firstResult) return firstResult;
+  if (
+    firstResult &&
+    combDetectResultCoversRegion(
+      firstResult,
+      regionX,
+      regionWidth,
+      scale,
+    )
+  ) {
+    return firstResult;
+  }
 
-  const horizontalExpansion = regionWidth * 0.3;
-  const verticalExpansion = regionHeight * 0.3;
-  return detectRegion(
-    regionX - horizontalExpansion,
-    regionY - verticalExpansion,
-    regionWidth + horizontalExpansion * 2,
-    regionHeight + verticalExpansion * 2,
+  const horizontalExpansion = Math.min(
+    Math.max(regionWidth * 0.3, 15 * scale),
+    24 * scale,
   );
+  const expandedHeight = Math.max(regionHeight * 1.6, 34 * scale);
+  const expandedResult = detectRegion(
+    regionX - horizontalExpansion,
+    regionY + (regionHeight - expandedHeight) / 2,
+    regionWidth + horizontalExpansion * 2,
+    expandedHeight,
+  );
+  const trimmedExpandedResult = expandedResult
+    ? trimCombDetectResultToRegion(
+        expandedResult,
+        regionX,
+        regionWidth,
+      )
+    : null;
+
+  if (firstResult) {
+    return (
+      trimmedExpandedResult &&
+      trimmedExpandedResult.cellCount > firstResult.cellCount
+        ? trimmedExpandedResult
+        : firstResult
+    );
+  }
+
+  return trimmedExpandedResult;
 }
