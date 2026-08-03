@@ -73,6 +73,7 @@ export default async function TemplatePage({ params }: PageProps) {
   const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "https://getquickfill.com";
   const pageUrl = `${baseUrl}/templates/${slug}`;
   const canFill = template.allowFill !== false;
+  const displayTitle = template.formCode ? `${template.title} (${template.formCode})` : template.title;
   const templateLabels = getTemplateLabels(template);
   const structuredData = [
     {
@@ -104,7 +105,7 @@ export default async function TemplatePage({ params }: PageProps) {
       "@type": "BreadcrumbList",
       itemListElement: [
         { "@type": "ListItem", position: 1, name: "Templates", item: `${baseUrl}/templates` },
-        { "@type": "ListItem", position: 2, name: template.title, item: pageUrl },
+        { "@type": "ListItem", position: 2, name: displayTitle, item: pageUrl },
       ],
     },
   ];
@@ -120,7 +121,7 @@ export default async function TemplatePage({ params }: PageProps) {
         <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-xl bg-accent/10">
           <FileText className="h-8 w-8 text-accent" />
         </div>
-        <h1 className="text-4xl font-bold tracking-tight mb-4">{template.title}</h1>
+        <h1 className="text-4xl font-bold tracking-tight mb-4">{displayTitle}</h1>
         {templateLabels.length > 0 && (
           <div className="mb-5 flex flex-wrap justify-center gap-2">
             {templateLabels.map((label) => (
@@ -140,7 +141,7 @@ export default async function TemplatePage({ params }: PageProps) {
             className="inline-flex h-12 items-center justify-center gap-2 rounded-lg bg-accent px-8 text-base font-semibold text-white hover:bg-accent-hover transition-colors"
           >
             <FileText className="h-5 w-5" />
-            Fill This Form Free
+            Fill This Form Online
           </Link>
         ) : (
           <div className="inline-flex min-h-12 items-center justify-center gap-2 rounded-lg border border-border bg-surface-alt px-8 py-3 text-base font-semibold text-text-muted">

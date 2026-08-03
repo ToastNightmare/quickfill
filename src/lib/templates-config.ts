@@ -1,18 +1,29 @@
 export type TemplateType = "officialForm" | "publicForm" | "genericWorksheet" | "infoOnly" | "flatForm";
 export type TemplateSourceKind = "governmentPublic" | "publicForm" | "genericWorksheet" | "sample" | "underReview";
 
-export interface TemplateConfig {
-  slug: string;
+export interface TemplateDirectoryItem {
   file: string;
+  slug?: string;
+  formCode?: string;
   title: string;
   description: string;
   category: string;
+  agency: string;
+  pageCount: number;
+  estimatedTime: string;
+  commonUse: string;
   templateType: TemplateType;
   sourceKind: TemplateSourceKind;
+  badge?: string;
+  popular?: boolean;
   hideFromMainGrid?: boolean;
   qualityNote?: string;
   allowFill?: boolean;
   indexable?: boolean;
+  tags: string[];
+}
+
+interface TemplateSeoContent {
   seoTitle: string;
   seoDescription: string;
   whatIsThis: string;
@@ -23,22 +34,49 @@ export interface TemplateConfig {
   faqs: { q: string; a: string }[];
 }
 
+interface TemplateLandingPage extends TemplateSeoContent {
+  slug: string;
+}
+
+interface TemplateWithoutLandingPage {
+  slug?: never;
+  seoTitle?: never;
+  seoDescription?: never;
+  whatIsThis?: never;
+  keywords?: never;
+  whoNeedsThis?: never;
+  howToComplete?: never;
+  commonMistakes?: never;
+  faqs?: never;
+}
+
+export type TemplatePageConfig = Omit<TemplateDirectoryItem, "slug"> & TemplateLandingPage;
+export type TemplateConfig = Omit<TemplateDirectoryItem, "slug"> &
+  (TemplateLandingPage | TemplateWithoutLandingPage);
+
 export const templates: TemplateConfig[] = [
   {
     slug: "tfn-declaration",
     file: "ato-tfn-declaration.pdf",
+    formCode: "NAT 3092",
     title: "Tax File Number Declaration",
     description: "Public ATO form (NAT 3092) for declaring your TFN to your employer.",
     category: "ATO",
+    agency: "Australian Taxation Office",
+    pageCount: 7,
+    estimatedTime: "5-8 min",
+    commonUse: "starting a new job or changing payroll details",
     templateType: "infoOnly",
     sourceKind: "underReview",
+    badge: "Info only",
     hideFromMainGrid: true,
     qualityNote:
       "This TFN Declaration entry is under review because the bundled PDF appears to be an information document rather than a fillable TFN declaration form.",
     allowFill: false,
     indexable: false,
-    seoTitle: "Fill TFN Declaration Online Free | QuickFill",
-    seoDescription: "Fill your TFN Declaration form (NAT 3092) online for free. Public ATO form for new employees. No signup required.",
+    tags: ["tax", "employment", "new job", "payroll", "NAT 3092", "TFN"],
+    seoTitle: "Tax File Number Declaration (NAT 3092) | QuickFill",
+    seoDescription: "Review the Tax File Number Declaration (NAT 3092) template and its completion guidance before giving the current form to your employer.",
     whatIsThis: "The Tax File Number (TFN) Declaration is an ATO form that you must complete when starting a new job. It tells your employer how much tax to withhold from your pay based on your tax circumstances.",
     keywords: ["tfn declaration", "tfn form", "ato tfn", "NAT 3092", "tax file number declaration"],
     whoNeedsThis: "You need to complete a TFN Declaration whenever you start a new job in Australia. Your employer requires this form to set up your payroll and withhold the correct amount of tax from your wages. Students, part-time workers, and full-time employees all need to submit this form to their employer.",
@@ -72,13 +110,21 @@ export const templates: TemplateConfig[] = [
   {
     slug: "super-choice",
     file: "ato-super-choice.pdf",
+    formCode: "NAT 13080",
     title: "Superannuation Standard Choice",
-    description: "Public ATO form (NAT 13080) to choose your super fund.",
+    description: "Public ATO form (NAT 13080) to choose which super fund receives your contributions.",
     category: "ATO",
+    agency: "Australian Taxation Office",
+    pageCount: 5,
+    estimatedTime: "4-7 min",
+    commonUse: "choosing or updating your super fund with an employer",
     templateType: "officialForm",
     sourceKind: "governmentPublic",
-    seoTitle: "Superannuation Choice Form Online | Fill NAT 13080 Free",
-    seoDescription: "Fill your Superannuation Standard Choice form (NAT 13080) online for free. Tell your employer which super fund to use.",
+    badge: "Official form",
+    popular: true,
+    tags: ["super", "employment", "new job", "ATO", "NAT 13080"],
+    seoTitle: "Fill Superannuation Standard Choice (NAT 13080) Online | QuickFill",
+    seoDescription: "Fill and preview the Superannuation Standard Choice form (NAT 13080) online, then unlock the finished PDF to give your employer.",
     whatIsThis: "The Superannuation Standard Choice form allows you to nominate which superannuation fund you want your employer to pay your super contributions into. This is your right under Australian law.",
     keywords: ["super choice form", "superannuation choice", "NAT 13080", "choose super fund", "super nomination"],
     whoNeedsThis: "All Australian employees aged 18 or older who want to choose their own superannuation fund need to complete this form. If you do not choose a fund, your employer will pay your super into their default nominated fund, which may have higher fees or not suit your needs. This form is essential for anyone starting a new job or wanting to consolidate their super.",
@@ -110,15 +156,78 @@ export const templates: TemplateConfig[] = [
     ]
   },
   {
-    slug: "employment-separation",
-    file: "employment-separation.pdf",
-    title: "Employment Separation Certificate",
-    description: "Public Centrelink form for when you leave a job.",
-    category: "Services Australia",
+    slug: "withholding-declaration",
+    file: "ato-withholding-declaration.pdf",
+    formCode: "NAT 3093",
+    title: "Withholding Declaration",
+    description: "Public ATO form (NAT 3093) for withholding changes, study loan debts and tax offsets.",
+    category: "ATO",
+    agency: "Australian Taxation Office",
+    pageCount: 7,
+    estimatedTime: "5-8 min",
+    commonUse: "updating tax withholding after your circumstances change",
     templateType: "officialForm",
     sourceKind: "governmentPublic",
-    seoTitle: "Fill Centrelink Employment Separation Certificate Online",
-    seoDescription: "Download and fill the Employment Separation Certificate (SU001) online. Required by Centrelink when claiming income support after leaving a job.",
+    badge: "Official form",
+    tags: ["tax", "withholding", "HELP debt", "Medicare levy", "NAT 3093"],
+    seoTitle: "Fill Withholding Declaration (NAT 3093) Online | QuickFill",
+    seoDescription: "Fill and preview the ATO Withholding Declaration (NAT 3093) online, then unlock the finished PDF to give your employer or other payer.",
+    whatIsThis: "The Withholding Declaration (NAT 3093) authorises your employer or other payer to adjust the PAYG tax withheld from your payments after you have provided a Tax File Number Declaration. Use it to update your tax residency, tax-free threshold, study and training loan obligations, or eligible tax offsets. Medicare levy changes use the separate Medicare Levy Variation Declaration identified by the ATO.",
+    keywords: [
+      "withholding declaration",
+      "NAT 3093",
+      "PAYG withholding form",
+      "HELP debt withholding",
+      "study loan withholding",
+      "Medicare levy variation",
+      "tax offset declaration"
+    ],
+    whoNeedsThis: "Employees and other payees use this form when information previously given to their current payer has changed, including tax residency, whether they claim the tax-free threshold, HELP or other study and training loan obligations, and eligible tax offsets. A new payer may also need updated declarations before working out how much tax to withhold.",
+    howToComplete: [
+      "Make sure you have already given this payer a Tax File Number Declaration (NAT 3092) quoting your TFN or claiming an exemption",
+      "Enter your personal details and select your current tax residency and tax-free threshold choices",
+      "State whether you have a HELP, VSL, FS, SSL or AASL debt and update the answer if the loan has been repaid in full",
+      "Complete the tax offset questions only for entitlements you can claim with this payer; use the separate Medicare Levy Variation Declaration for Medicare levy adjustments",
+      "Sign and date the payee declaration, give it to your payer, and let the payer complete and retain Section B"
+    ],
+    commonMistakes: [
+      "Using NAT 3093 for a Medicare levy adjustment - the ATO uses a separate Medicare Levy Variation Declaration for that change",
+      "Claiming the tax-free threshold or the same tax offset from more than one payer when the form instructions do not allow it",
+      "Sending the completed declaration to the ATO - your payer completes Section B and keeps the sensitive form"
+    ],
+    faqs: [
+      {
+        q: "When should I complete a Withholding Declaration?",
+        a: "Complete a new declaration when information you gave your current payer changes, such as your residency, tax-free threshold, study or training loan obligations, or tax offset entitlement. Follow the ATO instructions if you start receiving payments from a new payer."
+      },
+      {
+        q: "Can I use NAT 3093 to change my Medicare levy withholding?",
+        a: "No. The ATO identifies the Medicare Levy Variation Declaration (NAT 0929) as the separate form for eligible Medicare levy withholding adjustments."
+      },
+      {
+        q: "Do I send the completed form to the ATO?",
+        a: "No. Give the signed declaration to your employer or other payer. The payer completes Section B, treats the information as sensitive, and keeps the form rather than sending it to the ATO."
+      }
+    ]
+  },
+  {
+    slug: "employment-separation",
+    file: "employment-separation.pdf",
+    formCode: "SU001",
+    title: "Employment Separation Certificate",
+    description: "Public Services Australia form for when employment ends and income support may be needed.",
+    category: "Centrelink",
+    agency: "Services Australia",
+    pageCount: 4,
+    estimatedTime: "6-10 min",
+    commonUse: "confirming employment details after leaving a job",
+    templateType: "officialForm",
+    sourceKind: "governmentPublic",
+    badge: "Official form",
+    popular: true,
+    tags: ["Centrelink", "employment", "separation", "income support", "SU001"],
+    seoTitle: "Fill Employment Separation Certificate (SU001) Online | QuickFill",
+    seoDescription: "Fill and preview the Employment Separation Certificate (SU001) online for a Centrelink claim, then unlock the finished PDF.",
     whatIsThis: "An Employment Separation Certificate is required by Centrelink when you leave a job and want to claim income support. Your employer must complete this form to verify your employment details and reason for leaving.",
     keywords: ["employment separation certificate", "centrelink separation", "SU001", "separation form", "leave job centrelink"],
     whoNeedsThis: "You need an Employment Separation Certificate when you have left a job and are planning to claim income support payments from Centrelink. This includes JobSeeker Payment, Youth Allowance, and Austudy. The certificate must be completed by your employer and provides Centrelink with the information needed to assess your eligibility and any waiting periods.",
@@ -152,13 +261,20 @@ export const templates: TemplateConfig[] = [
   {
     slug: "medicare-enrolment",
     file: "medicare-enrolment.pdf",
+    formCode: "MS004",
     title: "Medicare Enrolment Form",
-    description: "Public Services Australia form (MS004) for new Medicare card applications.",
-    category: "Services Australia",
+    description: "Public Services Australia form (MS004) for Medicare card applications and enrolment changes.",
+    category: "Healthcare",
+    agency: "Services Australia",
+    pageCount: 17,
+    estimatedTime: "10-15 min",
+    commonUse: "applying for or updating Medicare enrolment",
     templateType: "officialForm",
     sourceKind: "governmentPublic",
-    seoTitle: "Medicare Enrolment Form Online | Fill MS004 Free",
-    seoDescription: "Apply for a Medicare card online with the MS004 enrolment form. For new residents and Australian citizens.",
+    badge: "Official form",
+    tags: ["Medicare", "health", "Services Australia", "MS004", "enrolment"],
+    seoTitle: "Fill Medicare Enrolment Form (MS004) Online | QuickFill",
+    seoDescription: "Fill and preview the Medicare Enrolment Form (MS004) online for a new or updated enrolment, then unlock the finished PDF.",
     whatIsThis: "The Medicare Enrolment form is used to apply for a Medicare card if you're a new Australian resident or citizen. Medicare provides access to subsidised healthcare services across Australia.",
     keywords: ["medicare enrolment", "medicare card application", "MS004", "medicare form", "apply medicare"],
     whoNeedsThis: "You need to complete a Medicare enrolment form if you are a new Australian citizen, permanent resident, or eligible temporary resident who wants access to Australia's public healthcare system. This includes people who have recently arrived in Australia, newborn babies, and those who have never been enrolled before. Enrolment gives you access to subsidised medical services and public hospital treatment.",
@@ -193,12 +309,19 @@ export const templates: TemplateConfig[] = [
     slug: "statutory-declaration",
     file: "statutory-declaration.pdf",
     title: "Statutory Declaration Form",
-    description: "Public form for making legal declarations in Australia.",
+    description: "General Australian statutory declaration form with witness section and declaration wording.",
     category: "Legal",
+    agency: "Australian public form",
+    pageCount: 2,
+    estimatedTime: "3-5 min",
+    commonUse: "making a formal written declaration",
     templateType: "publicForm",
     sourceKind: "publicForm",
-    seoTitle: "Statutory Declaration Form Online | QuickFill",
-    seoDescription: "Fill and download a statutory declaration form online for free. Australian format with witness section.",
+    badge: "Public form",
+    popular: true,
+    tags: ["legal", "declaration", "witness", "stat dec", "statutory declaration"],
+    seoTitle: "Fill Statutory Declaration Form Online | QuickFill",
+    seoDescription: "Fill and preview an Australian statutory declaration with declaration wording and a witness section, then unlock the finished PDF.",
     whatIsThis: "A statutory declaration is a written statement of fact that you declare to be true. It must be signed in the presence of an authorised witness such as a justice of the peace, lawyer, or police officer.",
     keywords: ["statutory declaration", "stat dec", "legal declaration", "witness declaration", "australian statutory declaration"],
     whoNeedsThis: "You need a statutory declaration when you must formally declare facts for legal or official purposes in Australia. Common uses include confirming identity documents, declaring marital status, confirming residency, or providing evidence for visa applications. Government agencies, courts, and organisations often require statutory declarations as formal proof of statements.",
@@ -232,18 +355,25 @@ export const templates: TemplateConfig[] = [
   {
     slug: "centrelink-su415",
     file: "centrelink-su415.pdf",
-    title: "Centrelink Income and Assets Form SU415",
-    description: "Services Australia form for declaring income and assets.",
+    formCode: "SU415",
+    title: "Centrelink Income and Assets Form",
+    description: "Services Australia form for declaring income, assets, partner details and financial changes.",
     category: "Centrelink",
+    agency: "Services Australia",
+    pageCount: 2,
+    estimatedTime: "8-12 min",
+    commonUse: "declaring income and assets to Centrelink",
     templateType: "infoOnly",
     sourceKind: "underReview",
+    badge: "Under review",
     hideFromMainGrid: true,
     qualityNote:
       "This Centrelink SU415 entry is under review because the bundled PDF appears incorrect or mislabelled and should not be treated as a valid official form.",
     allowFill: false,
     indexable: false,
-    seoTitle: "Centrelink Income and Assets Form SU415 | Fill Online Free",
-    seoDescription: "Complete the SU415 income and assets declaration form online. Required for Centrelink payment assessments and reviews.",
+    tags: ["Centrelink", "income", "assets", "Services Australia", "SU415"],
+    seoTitle: "Centrelink Income and Assets Form (SU415) | QuickFill",
+    seoDescription: "Review the Centrelink Income and Assets Form (SU415) and its guidance before using the current Services Australia form.",
     whatIsThis: "The SU415 form is used by Centrelink to assess your income and assets for payment eligibility. You'll need to provide details about your employment, other income, bank accounts, investments, and property.",
     keywords: ["SU415", "centrelink income assets", "income declaration", "assets form", "centrelink assessment"],
     whoNeedsThis: "You need to complete the SU415 income and assets form when Centrelink requests it for payment assessment, review, or renewal. This includes people claiming JobSeeker, Youth Allowance, Age Pension, Disability Support Pension, and other income support payments. The form helps Services Australia determine your payment rate and eligibility based on your financial circumstances.",
@@ -278,11 +408,17 @@ export const templates: TemplateConfig[] = [
     slug: "rental-application-nsw",
     file: "tenancy-application-nsw.pdf",
     title: "NSW Rental Application Worksheet",
-    description: "Generic New South Wales residential tenancy application worksheet.",
+    description: "Generic New South Wales rental application worksheet with applicant, employment and rental history fields.",
     category: "Real Estate",
+    agency: "Generic Australian worksheet",
+    pageCount: 3,
+    estimatedTime: "7-10 min",
+    commonUse: "applying for a rental property in New South Wales",
     templateType: "genericWorksheet",
     sourceKind: "genericWorksheet",
-    seoTitle: "NSW Rental Application Worksheet Online | QuickFill",
+    badge: "Generic worksheet",
+    tags: ["rental", "tenancy", "NSW", "worksheet", "real estate"],
+    seoTitle: "Fill NSW Rental Application Worksheet Online | QuickFill",
     seoDescription: "Complete a generic NSW rental application worksheet online. Check the agent or landlord's current instructions before submitting.",
     whatIsThis: "This is a generic rental application worksheet for New South Wales. It collects information about your identity, employment, rental history, and references to help prepare a tenancy application.",
     keywords: ["rental application nsw", "tenancy application nsw", "rental form nsw", "nsw lease application", "rent application"],
@@ -320,13 +456,19 @@ export const templates: TemplateConfig[] = [
     title: "VIC Rental Application Worksheet",
     description: "Victoria rental application worksheet under review for currency and prescribed-form accuracy.",
     category: "Real Estate",
+    agency: "Generic Australian worksheet",
+    pageCount: 3,
+    estimatedTime: "7-10 min",
+    commonUse: "applying for a rental property in Victoria",
     templateType: "genericWorksheet",
     sourceKind: "underReview",
+    badge: "Under review",
     hideFromMainGrid: true,
     qualityNote:
       "This Victorian rental application is under review because it may be outdated or may not match the current prescribed rental application requirements.",
     allowFill: false,
     indexable: false,
+    tags: ["rental", "tenancy", "VIC", "worksheet", "real estate"],
     seoTitle: "VIC Rental Application Worksheet | QuickFill",
     seoDescription: "Victoria rental application worksheet under review. Check Consumer Affairs Victoria and the receiving agent's current instructions before using.",
     whatIsThis: "This is a Victorian rental application worksheet that is currently under review. It should not be treated as the current prescribed rental application form unless you have checked the receiving organisation's instructions.",
@@ -360,15 +502,36 @@ export const templates: TemplateConfig[] = [
     ]
   },
   {
+    file: "rental-application.pdf",
+    title: "Rental Application Worksheet",
+    description: "Generic residential rental application worksheet for Australian properties and applicant screening.",
+    category: "Real Estate",
+    agency: "Generic Australian worksheet",
+    pageCount: 2,
+    estimatedTime: "6-9 min",
+    commonUse: "applying for a rental property with basic details",
+    templateType: "genericWorksheet",
+    sourceKind: "genericWorksheet",
+    badge: "Generic worksheet",
+    popular: true,
+    tags: ["rental", "tenancy", "lease", "property", "worksheet", "real estate"]
+  },
+  {
     slug: "super-hardship",
     file: "superannuation-hardship.pdf",
     title: "Superannuation Early Release - Financial Hardship",
-    description: "Apply for early release of super on financial hardship grounds.",
+    description: "Form for early release of superannuation on financial hardship or compassionate grounds.",
     category: "Superannuation",
+    agency: "Australian template",
+    pageCount: 2,
+    estimatedTime: "8-12 min",
+    commonUse: "applying for early access to super in hardship circumstances",
     templateType: "genericWorksheet",
     sourceKind: "genericWorksheet",
-    seoTitle: "Super Early Release Financial Hardship Form | Fill Online",
-    seoDescription: "Apply for early release of your superannuation due to financial hardship. Complete the application form online.",
+    badge: "Generic worksheet",
+    tags: ["super", "hardship", "financial hardship", "early release", "fund"],
+    seoTitle: "Fill Superannuation Financial Hardship Form Online | QuickFill",
+    seoDescription: "Fill and preview a superannuation financial hardship worksheet online, then unlock the finished PDF for your application.",
     whatIsThis: "This form allows you to apply for early release of your superannuation on the grounds of financial hardship. You must meet specific criteria set by the Australian Prudential Regulation Authority (APRA) and provide evidence of your financial situation.",
     keywords: ["super hardship", "early release super", "financial hardship super", "superannuation release", "compassionate grounds"],
     whoNeedsThis: "You may apply for early release of super on financial hardship grounds if you have been receiving eligible government income support payments for 26 weeks continuously and cannot meet reasonable and immediate family living expenses. This assistance is designed for Australians experiencing genuine financial hardship who have exhausted other options for financial support.",
@@ -403,17 +566,23 @@ export const templates: TemplateConfig[] = [
     slug: "tax-invoice",
     file: "australian-invoice.pdf",
     title: "Australian Tax Invoice Template",
-    description: "Professional tax invoice for Australian businesses.",
+    description: "Australian tax invoice template with ABN, GST breakdown, line items and payment details.",
     category: "Business",
+    agency: "Australian business template",
+    pageCount: 2,
+    estimatedTime: "3-6 min",
+    commonUse: "sending a professional invoice to a customer",
     templateType: "genericWorksheet",
     sourceKind: "sample",
+    badge: "Under review",
     hideFromMainGrid: true,
     qualityNote:
       "This tax invoice template is hidden while it is under review because the bundled PDF contains sample data and should be replaced before normal use.",
     allowFill: false,
     indexable: false,
-    seoTitle: "Australian Tax Invoice Template | Fill Online Free",
-    seoDescription: "Create professional Australian tax invoices online. Includes ABN, GST breakdown, and payment details. Free to use.",
+    tags: ["invoice", "tax invoice", "business", "ABN", "GST"],
+    seoTitle: "Australian Tax Invoice Template | QuickFill",
+    seoDescription: "Review this Australian tax invoice template with ABN, GST breakdown, line items and payment details before use.",
     whatIsThis: "A tax invoice is a legal document required for GST-registered businesses in Australia. It must include specific information such as your ABN, the words 'Tax Invoice', itemised goods or services, and GST amounts if applicable.",
     keywords: ["tax invoice", "australian invoice", "gst invoice", "business invoice", "invoice template australia"],
     whoNeedsThis: "You need to issue a tax invoice if you are registered for GST in Australia and have made a taxable sale of goods or services. Your customer requires a valid tax invoice to claim GST credits on their tax return. This applies to all GST-registered businesses regardless of size, from sole traders to large corporations.",
@@ -448,12 +617,19 @@ export const templates: TemplateConfig[] = [
     slug: "employee-details",
     file: "employee-details.pdf",
     title: "New Employee Details Form",
-    description: "Collect essential information from new staff members.",
+    description: "Collect TFN, bank details, super fund and emergency contact details from new staff.",
     category: "Employment",
+    agency: "Australian workplace template",
+    pageCount: 2,
+    estimatedTime: "5-8 min",
+    commonUse: "onboarding a new employee for payroll setup",
     templateType: "genericWorksheet",
     sourceKind: "genericWorksheet",
-    seoTitle: "New Employee Details Form Australia | Fill Online",
-    seoDescription: "Collect new employee details including TFN, bank account, and super fund. Essential for payroll setup in Australia.",
+    badge: "Generic worksheet",
+    popular: true,
+    tags: ["employment", "new employee", "payroll", "bank details", "super"],
+    seoTitle: "Fill New Employee Details Form Online | QuickFill",
+    seoDescription: "Fill and preview a new employee details form with TFN, bank account, super fund and emergency contact fields, then unlock the PDF.",
     whatIsThis: "This form collects essential information from new employees including their Tax File Number, bank account details, superannuation fund, and emergency contact information. It's required for setting up payroll and ensuring compliance with Australian employment laws.",
     keywords: ["employee details form", "new employee form", "staff onboarding", "employee registration", "payroll setup form"],
     whoNeedsThis: "Employers need to collect employee details from all new staff members before their first payday. This information is essential for payroll processing, superannuation contributions, tax withholding, and emergency contact purposes. The form ensures compliance with Australian workplace laws and tax requirements.",
@@ -488,12 +664,18 @@ export const templates: TemplateConfig[] = [
     slug: "ndis-service-agreement",
     file: "ndis-service-agreement.pdf",
     title: "NDIS Service Agreement",
-    description: "Compliant service agreement between NDIS participant and provider.",
+    description: "Service agreement between an NDIS participant and provider with supports, rates and signatures.",
     category: "NDIS",
+    agency: "NDIS provider template",
+    pageCount: 2,
+    estimatedTime: "8-12 min",
+    commonUse: "confirming supports between a participant and provider",
     templateType: "genericWorksheet",
     sourceKind: "genericWorksheet",
-    seoTitle: "NDIS Service Agreement Form | Fill Online Free",
-    seoDescription: "Complete NDIS service agreement between participant and provider. Includes support schedule, rates, and signatures.",
+    badge: "Generic worksheet",
+    tags: ["NDIS", "service agreement", "disability", "provider", "participant"],
+    seoTitle: "Fill NDIS Service Agreement Online | QuickFill",
+    seoDescription: "Fill and preview an NDIS service agreement with supports, rates and signatures, then unlock the finished PDF.",
     whatIsThis: "An NDIS Service Agreement is a formal agreement between an NDIS participant and their service provider. It outlines the supports and services to be provided, including schedules, costs, and responsibilities of both parties. This is a requirement under NDIS quality and safety standards.",
     keywords: ["ndis service agreement", "ndis provider agreement", "ndis support plan", "disability service agreement", "ndis contract"],
     whoNeedsThis: "NDIS participants and providers must have a service agreement before supports begin. This applies to all NDIS-funded services regardless of whether the provider is registered or unregistered. The agreement ensures both parties understand their rights and responsibilities and is required for NDIS compliance and quality standards.",
@@ -525,15 +707,35 @@ export const templates: TemplateConfig[] = [
     ]
   },
   {
+    file: "consent-form.pdf",
+    title: "General Consent Form",
+    description: "Simple consent and authority form suitable for community, business and personal use.",
+    category: "General",
+    agency: "Australian template",
+    pageCount: 2,
+    estimatedTime: "3-5 min",
+    commonUse: "recording signed consent or permission",
+    templateType: "genericWorksheet",
+    sourceKind: "genericWorksheet",
+    badge: "Generic worksheet",
+    tags: ["consent", "permission", "authority", "signature", "general"]
+  },
+  {
     slug: "medical-consent",
     file: "medical-consent.pdf",
     title: "Medical Consent Form",
-    description: "Patient consent for medical procedures and treatments.",
+    description: "Patient consent form with Medicare number, allergies, emergency contact and signatures.",
     category: "Healthcare",
+    agency: "Australian healthcare template",
+    pageCount: 2,
+    estimatedTime: "5-8 min",
+    commonUse: "recording patient consent before treatment or procedures",
     templateType: "genericWorksheet",
     sourceKind: "genericWorksheet",
-    seoTitle: "Medical Consent Form Australia | Fill Online Free",
-    seoDescription: "Complete a medical consent form online. Patient consent for procedures and treatments with Medicare details and emergency contact.",
+    badge: "Generic worksheet",
+    tags: ["medical", "health", "consent", "patient", "Medicare"],
+    seoTitle: "Fill Medical Consent Form Online | QuickFill",
+    seoDescription: "Fill and preview a medical consent form with Medicare details, allergies and an emergency contact, then unlock the finished PDF.",
     whatIsThis: "A medical consent form is used to document a patient's informed consent to medical procedures or treatments. It includes important medical information such as allergies, current medications, and emergency contact details to ensure safe and appropriate care.",
     keywords: ["medical consent form", "patient consent", "health consent", "medical procedure consent", "treatment consent australia"],
     whoNeedsThis: "Patients need to complete a medical consent form before undergoing medical procedures, treatments, or surgeries. Healthcare providers require this form to document that you understand the procedure, its risks, and have given informed consent. This applies to both minor procedures and major surgical interventions.",
@@ -563,33 +765,74 @@ export const templates: TemplateConfig[] = [
         a: "In most cases, you must sign your own consent form. If you lack capacity or are a minor, a legal guardian or authorised person may sign on your behalf."
       }
     ]
+  },
+  {
+    file: "bank-account-change.pdf",
+    title: "Bank Account Update Request",
+    description: "Update bank account details with an employer, super fund or organisation.",
+    category: "Finance",
+    agency: "Australian finance template",
+    pageCount: 2,
+    estimatedTime: "3-5 min",
+    commonUse: "changing payment details with an organisation",
+    templateType: "genericWorksheet",
+    sourceKind: "genericWorksheet",
+    badge: "Generic worksheet",
+    tags: ["bank", "payment", "finance", "account", "payroll"]
+  },
+  {
+    file: "insurance-claim.pdf",
+    title: "Insurance Claim Form",
+    description: "General insurance claim form for home, motor and personal property claims.",
+    category: "Insurance",
+    agency: "Australian insurance template",
+    pageCount: 2,
+    estimatedTime: "8-12 min",
+    commonUse: "lodging an insurance claim with supporting details",
+    templateType: "genericWorksheet",
+    sourceKind: "genericWorksheet",
+    badge: "Generic worksheet",
+    tags: ["insurance", "claim", "home", "motor", "property"]
   }
 ];
 
 /**
  * Get a template by its slug
  */
-export function getTemplateBySlug(slug: string): TemplateConfig | undefined {
-  return templates.find(t => t.slug === slug);
+export function hasTemplateLandingPage(template: TemplateConfig): template is TemplatePageConfig {
+  return typeof template.slug === "string";
 }
 
-export function isTemplateFillable(template: TemplateConfig): boolean {
+export function getTemplateBySlug(slug: string): TemplatePageConfig | undefined {
+  return templates.find(
+    (template): template is TemplatePageConfig => hasTemplateLandingPage(template) && template.slug === slug,
+  );
+}
+
+export function isTemplateFillable(template: TemplateDirectoryItem): boolean {
   return template.allowFill !== false;
 }
 
-export function isTemplateIndexable(template: TemplateConfig): boolean {
+export function isTemplateIndexable(template: TemplateDirectoryItem): boolean {
   return template.indexable !== false;
 }
 
 /**
  * Get related templates (same category, excluding current)
  */
-export function getRelatedTemplates(currentSlug: string, limit: number = 3): TemplateConfig[] {
+export function getRelatedTemplates(currentSlug: string, limit: number = 3): TemplatePageConfig[] {
   const current = getTemplateBySlug(currentSlug);
   if (!current) return [];
-  
+
   return templates
-    .filter(t => t.category === current.category && t.slug !== currentSlug && isTemplateIndexable(t) && isTemplateFillable(t))
+    .filter(
+      (template): template is TemplatePageConfig =>
+        hasTemplateLandingPage(template) &&
+        template.category === current.category &&
+        template.slug !== currentSlug &&
+        isTemplateIndexable(template) &&
+        isTemplateFillable(template),
+    )
     .slice(0, limit);
 }
 
@@ -597,12 +840,17 @@ export function getRelatedTemplates(currentSlug: string, limit: number = 3): Tem
  * Get all template slugs for static route generation
  */
 export function getTemplateSlugs(): string[] {
-  return templates.map(t => t.slug);
+  return templates.filter(hasTemplateLandingPage).map((template) => template.slug);
 }
 
 /**
  * Get indexable template slugs for sitemap generation
  */
 export function getIndexableTemplateSlugs(): string[] {
-  return templates.filter(isTemplateIndexable).map(t => t.slug);
+  return templates
+    .filter(
+      (template): template is TemplatePageConfig =>
+        hasTemplateLandingPage(template) && isTemplateIndexable(template),
+    )
+    .map((template) => template.slug);
 }

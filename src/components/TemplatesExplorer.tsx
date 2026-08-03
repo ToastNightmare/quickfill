@@ -131,7 +131,7 @@ function TemplateCard({ template }: { template: TemplateDirectoryItem }) {
       <TemplatePreview template={template} />
       <div className="flex flex-1 flex-col p-5">
         <div className="mb-3 flex items-center justify-between gap-3 text-xs font-semibold text-text-muted">
-          <span>{template.category}</span>
+          <span>{template.formCode ? `${template.category} · ${template.formCode}` : template.category}</span>
           <span>{template.pageCount} pages</span>
         </div>
 
@@ -213,6 +213,7 @@ export function TemplatesExplorer({ templates }: { templates: TemplateDirectoryI
             template.agency,
             template.commonUse,
             template.file,
+            template.formCode,
             ...template.tags,
           ].join(" "),
         );

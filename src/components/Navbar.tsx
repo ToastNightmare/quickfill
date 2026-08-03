@@ -36,6 +36,9 @@ export function Navbar() {
 
         {/* Desktop nav */}
         <div className="hidden items-center gap-6 md:flex">
+          <Link href="/templates" className="text-sm font-medium text-text-muted hover:text-text transition-colors">
+            Templates
+          </Link>
           <Link href="/support" className="text-sm font-medium text-text-muted hover:text-text transition-colors">
             Support
           </Link>
@@ -102,6 +105,9 @@ export function Navbar() {
       {menuOpen && (
         <div className="border-t border-border bg-surface px-4 pb-4 md:hidden">
           <div className="flex flex-col gap-2 pt-2">
+            <Link href="/templates" onClick={() => setMenuOpen(false)} className="rounded-lg px-3 py-3 text-sm font-medium text-text-muted hover:bg-surface-alt hover:text-text transition-colors">
+              Templates
+            </Link>
             <Link href="/support" onClick={() => setMenuOpen(false)} className="rounded-lg px-3 py-3 text-sm font-medium text-text-muted hover:bg-surface-alt hover:text-text transition-colors">
               Support
             </Link>
