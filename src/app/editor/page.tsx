@@ -2800,7 +2800,8 @@ function EditorPageContent() {
             onFieldUpdate={handleFieldUpdate}
             onFieldsSet={setFields}
             onFieldSelect={setSelectedFieldId}
-            onToolSelect={() => setActiveTool("select")}
+            // The flag-on two-tap touch path re-activates Whiteout; every other caller keeps the existing Select fallback.
+            onToolSelect={(tool) => setActiveTool(process.env.NEXT_PUBLIC_QUICKFILL_TWO_TAP_TOOLS === "v1" && tool === "whiteout" ? "whiteout" : "select")}
             onFieldDelete={handleFieldDelete}
             onFieldDuplicate={handleFieldDuplicate}
             onPageScaleSet={handlePageScaleSet}

@@ -8,6 +8,23 @@ const mobileSimpleDefaultEnabled =
   process.env.NEXT_PUBLIC_QUICKFILL_MOBILE_SIMPLE_DEFAULT === "v1";
 const combMobileEnabled =
   process.env.NEXT_PUBLIC_QUICKFILL_COMB_MOBILE === "v1";
+const twoTapDrawToolsEnabled =
+  process.env.NEXT_PUBLIC_QUICKFILL_TWO_TAP_TOOLS === "v1";
+
+type StoredEditorField = {
+  type: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  snapped?: boolean;
+  snapBounds?: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  };
+};
 
 test.beforeEach(async ({ page }) => {
   await page.route(
@@ -56,6 +73,34 @@ async function tapElement(page: Page, locator: Locator) {
   const box = await locator.boundingBox();
   expect(box).not.toBeNull();
   await page.touchscreen.tap(box!.x + box!.width / 2, box!.y + box!.height / 2);
+}
+
+function monitorPageIntegrity(page: Page) {
+  const consoleErrors: string[] = [];
+  const pageErrors: string[] = [];
+  const externalRequests: string[] = [];
+  const localOrigin = new URL(localBaseUrl).origin;
+
+  page.on("console", (message) => {
+    if (message.type() === "error") consoleErrors.push(message.text());
+  });
+  page.on("pageerror", (error) => pageErrors.push(error.message));
+  page.on("request", (request) => {
+    const url = new URL(request.url());
+    if (
+      (url.protocol === "http:" || url.protocol === "https:") &&
+      url.origin !== localOrigin
+    ) {
+      externalRequests.push(`${request.method()} ${request.url()}`);
+    }
+  });
+
+  return async () => {
+    await page.waitForTimeout(100);
+    expect(consoleErrors).toEqual([]);
+    expect(pageErrors).toEqual([]);
+    expect(externalRequests).toEqual([]);
+  };
 }
 
 async function createMobilePhotoFixture(page: Page) {
@@ -159,6 +204,54 @@ async function readCombField(page: Page) {
   });
 }
 
+async function readEditorFields(page: Page): Promise<StoredEditorField[]> {
+  return page.evaluate(() => {
+    const rawFields = localStorage.getItem("quickfill_fields");
+    if (!rawFields) return [];
+    return JSON.parse(rawFields) as StoredEditorField[];
+  });
+}
+
+async function waitForEditorFields(
+  page: Page,
+  count: number,
+): Promise<StoredEditorField[]> {
+  await expect.poll(() => readEditorFields(page)).toHaveLength(count);
+  return readEditorFields(page);
+}
+
+async function openTwoTapMobileEditor(page: Page, name: string) {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await seedRestoredEditorPdf(page, name);
+  await page.goto("/editor?advanced=1");
+  await expect(page.getByTestId("pdf-page")).toBeVisible({
+    timeout: 15_000,
+  });
+  await expect(page.getByText("Rendering PDF...")).toBeHidden({
+    timeout: 15_000,
+  });
+  await page.waitForFunction(() => document.querySelectorAll("canvas").length >= 2);
+  await page.waitForLoadState("networkidle");
+}
+
+async function pdfPageScale(page: Page) {
+  const pageBox = await page.getByTestId("pdf-page").boundingBox();
+  expect(pageBox).not.toBeNull();
+  return {
+    scale: pageBox!.width / 612,
+    box: pageBox!,
+  };
+}
+
+async function tapPdfCoordinate(page: Page, x: number, y: number) {
+  const { scale, box } = await pdfPageScale(page);
+  await page.touchscreen.tap(box.x + x * scale, box.y + y * scale);
+}
+
+function expectNear(actual: number, expected: number, tolerance = 3) {
+  expect(Math.abs(actual - expected)).toBeLessThanOrEqual(tolerance);
+}
+
 test.describe("mobile simple default routing", () => {
   test.skip(!runsAgainstLocalApp, "Requires PLAYWRIGHT_BASE_URL pointing at a local dev server.");
   test.use({
@@ -220,6 +313,191 @@ test.describe("mobile editor field interactions", () => {
 
   test.describe("field placement", () => {
     test.use({ hasTouch: true });
+
+    test.describe("two-tap draw placement", () => {
+      test.skip(
+        !twoTapDrawToolsEnabled,
+        "Requires NEXT_PUBLIC_QUICKFILL_TWO_TAP_TOOLS=v1.",
+      );
+
+      test("places an unsnapped text field from two spread taps in empty page space", async ({ page }) => {
+        await openTwoTapMobileEditor(page, "two-tap-text-empty.pdf");
+        const expectCleanPage = monitorPageIntegrity(page);
+
+        const textTool = page
+          .locator('button[title="Text field: tap or drag to place"]')
+          .last();
+        await textTool.click();
+        await tapPdfCoordinate(page, 330, 300);
+        await expect(page.getByTestId("box-first-corner-marker")).toBeVisible();
+        await expect(
+          page.getByText("Tap the opposite corner to place the text field"),
+        ).toBeVisible();
+
+        await tapPdfCoordinate(page, 500, 370);
+        const [field] = await waitForEditorFields(page, 1);
+        expect(field).toMatchObject({ type: "text", snapped: false });
+        expectNear(field.x, 330);
+        expectNear(field.y, 300);
+        expectNear(field.width, 170);
+        expectNear(field.height, 70);
+        await expect(page.getByTestId("box-first-corner-marker")).toHaveCount(0);
+        await expectCleanPage();
+      });
+
+      test("falls back to a default-size text field at the first of two close taps", async ({ page }) => {
+        await openTwoTapMobileEditor(page, "two-tap-text-close.pdf");
+        const expectCleanPage = monitorPageIntegrity(page);
+
+        await page
+          .locator('button[title="Text field: tap or drag to place"]')
+          .last()
+          .click();
+        await tapPdfCoordinate(page, 330, 430);
+        await tapPdfCoordinate(page, 330, 430);
+
+        const [field] = await waitForEditorFields(page, 1);
+        expect(field).toMatchObject({
+          type: "text",
+          width: 200,
+          height: 28,
+          snapped: false,
+        });
+        expectNear(field.x, 330);
+        expectNear(field.y, 430);
+        await expectCleanPage();
+      });
+
+      test("snaps a spread text placement when the detected box intersects the tapped rectangle", async ({ page }) => {
+        await openTwoTapMobileEditor(page, "two-tap-text-snap.pdf");
+        const expectCleanPage = monitorPageIntegrity(page);
+
+        await page.getByTitle("Snap is off").filter({ visible: true }).click();
+        await page
+          .locator('button[title="Text field: tap or drag to place"]')
+          .last()
+          .click();
+        await tapPdfCoordinate(page, 40, 106);
+        await tapPdfCoordinate(page, 300, 150);
+
+        const [field] = await waitForEditorFields(page, 1);
+        expect(field).toMatchObject({ type: "text", snapped: true });
+        expectNear(field.x, 48, 6);
+        expectNear(field.y, 114, 6);
+        expectNear(field.width, 240, 8);
+        expectNear(field.height, 28, 6);
+        expect(field.snapBounds).toBeDefined();
+        expectNear(field.snapBounds!.x, field.x);
+        expectNear(field.snapBounds!.y, field.y);
+        expectNear(field.snapBounds!.width, field.width);
+        expectNear(field.snapBounds!.height, field.height);
+        await expectCleanPage();
+      });
+
+      test("draws a whiteout rectangle and keeps the tool active for another placement", async ({ page }) => {
+        await openTwoTapMobileEditor(page, "two-tap-whiteout.pdf");
+        const expectCleanPage = monitorPageIntegrity(page);
+
+        const whiteoutTool = page
+          .locator('button[title="Whiteout: drag over text to cover it"]')
+          .last();
+        await whiteoutTool.click();
+        await tapPdfCoordinate(page, 320, 210);
+        await tapPdfCoordinate(page, 500, 280);
+
+        const [field] = await waitForEditorFields(page, 1);
+        expect(field).toMatchObject({ type: "whiteout", snapped: false });
+        expectNear(field.x, 320);
+        expectNear(field.y, 210);
+        expectNear(field.width, 180);
+        expectNear(field.height, 70);
+        await expect(
+          page.getByText("Tap the PDF to place whiteout"),
+        ).toBeVisible();
+
+        await tapPdfCoordinate(page, 340, 350);
+        await expect(page.getByTestId("box-first-corner-marker")).toBeVisible();
+        await expect(
+          page.getByText("Tap the opposite corner to place the whiteout"),
+        ).toBeVisible();
+        expect(await readEditorFields(page)).toHaveLength(1);
+        await expectCleanPage();
+      });
+
+      test("draws a signature field and opens the signature flow", async ({ page }) => {
+        await openTwoTapMobileEditor(page, "two-tap-signature.pdf");
+        const expectCleanPage = monitorPageIntegrity(page);
+
+        await page
+          .locator('button[title="Signature field: tap to place"]')
+          .last()
+          .click();
+        await tapPdfCoordinate(page, 320, 300);
+        await tapPdfCoordinate(page, 500, 390);
+
+        const [field] = await waitForEditorFields(page, 1);
+        expect(field).toMatchObject({ type: "signature", snapped: false });
+        expectNear(field.x, 320);
+        expectNear(field.y, 300);
+        expectNear(field.width, 180);
+        expectNear(field.height, 90);
+        await expect(page.getByRole("heading", { name: "Sign here" })).toBeVisible();
+        await expectCleanPage();
+      });
+
+      test("cancels a planted corner on Escape and on a tool switch", async ({ page }) => {
+        await openTwoTapMobileEditor(page, "two-tap-cancel.pdf");
+        const expectCleanPage = monitorPageIntegrity(page);
+
+        const textTool = page
+          .locator('button[title="Text field: tap or drag to place"]')
+          .last();
+        await textTool.click();
+        await tapPdfCoordinate(page, 330, 300);
+        await expect(page.getByTestId("box-first-corner-marker")).toBeVisible();
+        await page.keyboard.press("Escape");
+        await expect(page.getByTestId("box-first-corner-marker")).toHaveCount(0);
+        expect(await readEditorFields(page)).toEqual([]);
+
+        await textTool.click();
+        await tapPdfCoordinate(page, 360, 340);
+        await expect(page.getByTestId("box-first-corner-marker")).toBeVisible();
+        await page
+          .locator('button[title="Date: tap to stamp today\'s date"]')
+          .last()
+          .click();
+        await expect(page.getByTestId("box-first-corner-marker")).toHaveCount(0);
+        expect(await readEditorFields(page)).toEqual([]);
+        await expectCleanPage();
+      });
+    });
+
+    test("flag off keeps single-tap default-size text placement", async ({ page }) => {
+      test.skip(
+        twoTapDrawToolsEnabled,
+        "Requires NEXT_PUBLIC_QUICKFILL_TWO_TAP_TOOLS to be off.",
+      );
+      await openTwoTapMobileEditor(page, "single-tap-text-flag-off.pdf");
+      const expectCleanPage = monitorPageIntegrity(page);
+
+      await page
+        .locator('button[title="Text field: tap or drag to place"]')
+        .last()
+        .click();
+      await tapPdfCoordinate(page, 330, 430);
+
+      const [field] = await waitForEditorFields(page, 1);
+      expect(field).toMatchObject({
+        type: "text",
+        width: 200,
+        height: 28,
+        snapped: false,
+      });
+      expectNear(field.x, 330);
+      expectNear(field.y, 430);
+      await expect(page.getByTestId("box-first-corner-marker")).toHaveCount(0);
+      await expectCleanPage();
+    });
 
     test("text fields can be placed, edited, deleted, and placed again on mobile", async ({ page }) => {
       await page.setViewportSize({ width: 900, height: 900 });

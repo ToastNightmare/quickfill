@@ -42,6 +42,7 @@ import {
 import { MediaOverlayLayer } from "@/components/MediaOverlayLayer";
 
 type PdfActiveTool = PlacementToolType | "mask-eraser";
+type DrawnFieldTool = Exclude<PlacementToolType, "box">;
 
 let nextFieldSuggestionViewerInstanceId = 0;
 const COMB_HIDDEN_INPUT_SENTINEL = "\u200b";
@@ -455,17 +456,20 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
   const pendingBoxCornerRef = useRef<{ x: number; y: number } | null>(
     null,
   );
+  const pendingBoxCornerToolRef = useRef<PlacementToolType | null>(null);
   const [pendingBoxCorner, setPendingBoxCorner] = useState<{
     x: number;
     y: number;
   } | null>(null);
   const cancelPendingBoxCorner = useCallback(() => {
     pendingBoxCornerRef.current = null;
+    pendingBoxCornerToolRef.current = null;
     setPendingBoxCorner(null);
   }, []);
   const plantPendingBoxCorner = useCallback(
-    (corner: { x: number; y: number }) => {
+    (corner: { x: number; y: number }, tool: PlacementToolType) => {
       pendingBoxCornerRef.current = corner;
+      pendingBoxCornerToolRef.current = tool;
       setPendingBoxCorner(corner);
     },
     [],
@@ -609,6 +613,25 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
     process.env.NEXT_PUBLIC_QUICKFILL_FORM_FIDELITY === "v1";
   const twoTapBoxPlacementEnabled =
     formFidelityEnabled && isCoarsePointer && activeTool === "box";
+  const twoTapDrawToolsEnabled =
+    process.env.NEXT_PUBLIC_QUICKFILL_TWO_TAP_TOOLS === "v1" &&
+    isCoarsePointer &&
+    (activeTool === "text" ||
+      activeTool === "date" ||
+      activeTool === "signature" ||
+      activeTool === "whiteout");
+  const twoTapPlacementEnabled =
+    twoTapBoxPlacementEnabled || twoTapDrawToolsEnabled;
+  const pendingCornerHint =
+    activeTool === "text"
+      ? "Tap the opposite corner to place the text field"
+      : activeTool === "date"
+        ? "Tap the opposite corner to place the date field"
+        : activeTool === "signature"
+          ? "Tap the opposite corner to place the signature field"
+          : activeTool === "whiteout"
+            ? "Tap the opposite corner to place the whiteout"
+            : "Now tap the opposite corner";
   const gestureZoomLimit = gestureZoomMax(mobilePolishFlag);
   const createFieldId = useCallback(
     (prefix = "field") => createEditorFieldId(fields, prefix),
@@ -721,8 +744,14 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
   ]);
 
   useEffect(() => {
-    if (!twoTapBoxPlacementEnabled) cancelPendingBoxCorner();
-  }, [cancelPendingBoxCorner, twoTapBoxPlacementEnabled]);
+    if (
+      !twoTapPlacementEnabled ||
+      (pendingBoxCornerRef.current &&
+        pendingBoxCornerToolRef.current !== activeTool)
+    ) {
+      cancelPendingBoxCorner();
+    }
+  }, [activeTool, cancelPendingBoxCorner, twoTapPlacementEnabled]);
   const stagePointToPagePoint = useCallback(
     (pos: { x: number; y: number }) => {
       const effectiveScale = fitScale * zoomFactor;
@@ -1840,6 +1869,243 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
     ],
   );
 
+  const detectSnapAtStagePoint = useCallback(
+    (point: { x: number; y: number }): SnapResult | null => {
+      const renderRatio = canvasRenderRatioRef.current;
+      let foundSnap = findPrecomputedSnap(
+        precomputedBoxesRef.current,
+        point.x,
+        point.y,
+        renderRatio,
+      );
+
+      if (!foundSnap && canvasRef.current) {
+        try {
+          foundSnap = scaleSnapResult(
+            detectSnapBox(
+              canvasRef.current,
+              point.x * renderRatio,
+              point.y * renderRatio,
+            ),
+            1 / renderRatio,
+          );
+        } catch {
+          // Fall back to unsnapped placement.
+        }
+      }
+
+      return foundSnap;
+    },
+    [],
+  );
+
+  const createDrawnFieldForTool = useCallback(
+    (
+      tool: DrawnFieldTool,
+      firstCorner: { x: number; y: number },
+      oppositeCorner: { x: number; y: number },
+    ) => {
+      const x = Math.min(firstCorner.x, oppositeCorner.x);
+      const y = Math.min(firstCorner.y, oppositeCorner.y);
+      const absDx = Math.abs(oppositeCorner.x - firstCorner.x);
+      const absDy = Math.abs(oppositeCorner.y - firstCorner.y);
+      const effectiveScale = fitScale * zoomFactor;
+      const width = absDx / effectiveScale;
+      const height = absDy / effectiveScale;
+      const fieldW = Math.max(width, 20 / fitScale);
+      const fieldH = Math.max(height, 20 / fitScale);
+      let fieldX = x / effectiveScale;
+      let fieldY = y / effectiveScale;
+      const minimumGap = 3;
+      const currentPageFields = fields.filter(
+        (field) => field.page === currentPage,
+      );
+
+      for (const existing of currentPageFields) {
+        const existingRight = existing.x + existing.width;
+        const existingBottom = existing.y + existing.height;
+        const isAdjacentRight =
+          Math.abs(fieldX - existingRight) < minimumGap &&
+          Math.abs(
+            fieldY + fieldH / 2 - (existing.y + existing.height / 2),
+          ) < Math.max(fieldH, existing.height);
+        const isAdjacentLeft =
+          Math.abs(fieldX + fieldW - existing.x) < minimumGap &&
+          Math.abs(
+            fieldY + fieldH / 2 - (existing.y + existing.height / 2),
+          ) < Math.max(fieldH, existing.height);
+        const isAdjacentBottom =
+          Math.abs(fieldY - existingBottom) < minimumGap &&
+          Math.abs(
+            fieldX + fieldW / 2 - (existing.x + existing.width / 2),
+          ) < Math.max(fieldW, existing.width);
+        const isAdjacentTop =
+          Math.abs(fieldY + fieldH - existing.y) < minimumGap &&
+          Math.abs(
+            fieldX + fieldW / 2 - (existing.x + existing.width / 2),
+          ) < Math.max(fieldW, existing.width);
+
+        if (isAdjacentRight) {
+          fieldX = existingRight + minimumGap;
+        } else if (isAdjacentLeft) {
+          fieldX = existing.x - fieldW - minimumGap;
+        } else if (isAdjacentBottom) {
+          fieldY = existingBottom + minimumGap;
+        } else if (isAdjacentTop) {
+          fieldY = existing.y - fieldH - minimumGap;
+        }
+      }
+
+      const id = createFieldId();
+      const snapBounds = {
+        x: fieldX,
+        y: fieldY,
+        width: fieldW,
+        height: fieldH,
+      };
+      const base = {
+        id,
+        x: fieldX,
+        y: fieldY,
+        page: currentPage,
+        snapped: false,
+        snapBounds,
+      };
+
+      let field: EditorField;
+      switch (tool) {
+        case "text":
+          field = {
+            ...base,
+            type: "text",
+            width: fieldW,
+            height: fieldH,
+            value: "",
+            fontSize: 14,
+          };
+          break;
+        case "checkbox": {
+          const checkboxDefaults = toolDefaults.checkbox;
+          const checkboxSize = checkboxDefaults.size ?? 20;
+          field = {
+            ...base,
+            type: "checkbox",
+            width: checkboxSize,
+            height: checkboxSize,
+            checked: checkboxDefaults.stamp !== "none",
+            stamp: checkboxDefaults.stamp ?? "tick",
+            color: checkboxDefaults.color ?? "#000000",
+          };
+          break;
+        }
+        case "line":
+          field = createLineField(
+            base,
+            toolDefaults.line,
+            viewportAtScale1,
+            fieldW,
+            fieldH,
+          );
+          break;
+        case "signature":
+          field = {
+            ...base,
+            type: "signature",
+            width: fieldW,
+            height: fieldH,
+            value: "",
+            fontSize: 16,
+          };
+          break;
+        case "date":
+          field = {
+            ...base,
+            type: "date",
+            width: fieldW,
+            height: fieldH,
+            value: todayDateStamp(),
+            fontSize: 14,
+          };
+          break;
+        case "whiteout": {
+          let fillColor = whiteoutColor || "#ffffff";
+          if (!whiteoutColor) {
+            const canvas = canvasRef.current;
+            const context = canvas?.getContext("2d");
+            if (canvas && context) {
+              const renderRatio = canvasRenderRatioRef.current;
+              const canvasCenterX = Math.round(
+                (x + absDx / 2) * renderRatio,
+              );
+              const canvasCenterY = Math.round(
+                (y + absDy / 2) * renderRatio,
+              );
+              fillColor = sampleBackgroundColor(
+                context,
+                canvasCenterX,
+                canvasCenterY,
+                canvas.width,
+                canvas.height,
+              );
+              setWhiteoutColor(fillColor);
+            }
+          }
+          field = {
+            ...base,
+            type: "whiteout",
+            width: fieldW,
+            height: fieldH,
+            fillColor,
+          };
+          break;
+        }
+      }
+
+      const addedField = onFieldAdd(field);
+      if (tool !== "whiteout" && tool !== "checkbox" && tool !== "line") {
+        onToolSelect(null);
+      }
+      setCursorStyle(
+        tool === "whiteout" || tool === "line"
+          ? "crosshair"
+          : tool === "checkbox"
+            ? "cell"
+            : "default",
+      );
+      if (tool !== "whiteout" && tool !== "checkbox" && tool !== "line") {
+        onFieldSelect(addedField.id);
+      }
+
+      if (tool === "signature") {
+        onSignatureFieldPlaced?.(addedField);
+      } else if (
+        !isMobileEditor &&
+        tool !== "checkbox" &&
+        tool !== "whiteout" &&
+        tool !== "line"
+      ) {
+        setEditingFieldId(addedField.id);
+      }
+
+      return addedField;
+    },
+    [
+      createFieldId,
+      currentPage,
+      fields,
+      fitScale,
+      isMobileEditor,
+      onFieldAdd,
+      onFieldSelect,
+      onSignatureFieldPlaced,
+      onToolSelect,
+      toolDefaults,
+      viewportAtScale1,
+      whiteoutColor,
+      zoomFactor,
+    ],
+  );
+
   const handleStageMouseDown = useCallback(
     (e: Konva.KonvaEventObject<MouseEvent>) => {
       const stage = e.target.getStage();
@@ -1922,119 +2188,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
             cancelPendingBoxCorner();
             return;
           }
-          const x = Math.min(dragStart.current.x, pos.x);
-          const y = Math.min(dragStart.current.y, pos.y);
-          // Convert canvas pixels to PDF point space (divide by fitScale * zoomFactor)
-          const effectiveScale = fitScale * zoomFactor;
-          const width = absDx / effectiveScale;
-          const height = absDy / effectiveScale;
-
-          const id = createFieldId();
-          const snapped = false; // No snap detection when user draws manually
-
-          // Use drawn dimensions, but ensure minimum sizes (in PDF points)
-          const fieldW = Math.max(width, 20 / fitScale);
-          const fieldH = Math.max(height, 20 / fitScale);
-
-          // Enforce minimum 4px gap between adjacent fields to prevent visual merging
-          // Gap is in PDF point space (approximately 3 PDF points)
-          let fieldX = x / effectiveScale;
-          let fieldY = y / effectiveScale;
-          const MIN_GAP = 3;
-          
-          const pageFields = fields.filter((f) => f.page === currentPage);
-          
-          for (const existing of pageFields) {
-            const existingRight = existing.x + existing.width;
-            const existingBottom = existing.y + existing.height;
-            
-            // Check if new field would be adjacent to existing field
-            const isAdjacentRight = Math.abs(fieldX - existingRight) < MIN_GAP && Math.abs((fieldY + fieldH / 2) - (existing.y + existing.height / 2)) < Math.max(fieldH, existing.height);
-            const isAdjacentLeft = Math.abs((fieldX + fieldW) - existing.x) < MIN_GAP && Math.abs((fieldY + fieldH / 2) - (existing.y + existing.height / 2)) < Math.max(fieldH, existing.height);
-            const isAdjacentBottom = Math.abs(fieldY - existingBottom) < MIN_GAP && Math.abs((fieldX + fieldW / 2) - (existing.x + existing.width / 2)) < Math.max(fieldW, existing.width);
-            const isAdjacentTop = Math.abs((fieldY + fieldH) - existing.y) < MIN_GAP && Math.abs((fieldX + fieldW / 2) - (existing.x + existing.width / 2)) < Math.max(fieldW, existing.width);
-            
-            if (isAdjacentRight) {
-              fieldX = existingRight + MIN_GAP;
-            } else if (isAdjacentLeft) {
-              fieldX = existing.x - fieldW - MIN_GAP;
-            } else if (isAdjacentBottom) {
-              fieldY = existingBottom + MIN_GAP;
-            } else if (isAdjacentTop) {
-              fieldY = existing.y - fieldH - MIN_GAP;
-            }
-          }
-          
-          const snapBounds = { x: fieldX, y: fieldY, width: fieldW, height: fieldH };
-          const base = { id, x: fieldX, y: fieldY, page: currentPage, snapped, snapBounds };
-          
-          let field: EditorField;
-          switch (activeTool) {
-            case "text":
-              field = { ...base, type: "text", width: fieldW, height: fieldH, value: "", fontSize: 14 };
-              break;
-            case "checkbox":
-              {
-                const cbDefaults = toolDefaults.checkbox;
-                const cbSize = cbDefaults.size ?? 20;
-                field = {
-                  ...base,
-                  type: "checkbox",
-                  width: cbSize,
-                  height: cbSize,
-                  checked: cbDefaults.stamp !== "none",
-                  stamp: cbDefaults.stamp ?? "tick",
-                  color: cbDefaults.color ?? "#000000",
-                };
-              }
-              break;
-            case "line":
-              field = createLineField(base, toolDefaults.line, viewportAtScale1, fieldW, fieldH);
-              break;
-            case "signature":
-              field = { ...base, type: "signature", width: fieldW, height: fieldH, value: "", fontSize: 16 };
-              break;
-            case "date":
-              field = { ...base, type: "date", width: fieldW, height: fieldH, value: todayDateStamp(), fontSize: 14 };
-              break;
-            case "whiteout": {
-              // Use pre-sampled whiteout color if available, otherwise sample from canvas
-              let fillColor = whiteoutColor || "#ffffff";
-              if (!whiteoutColor) {
-                const canvas = canvasRef.current;
-                if (canvas) {
-                  const ctx = canvas.getContext("2d");
-                  if (ctx) {
-                    // Use raw screen coordinates for sampling (center of drawn rectangle)
-                    const renderRatio = canvasRenderRatioRef.current;
-                    const canvasCx = Math.round((x + absDx / 2) * renderRatio);
-                    const canvasCy = Math.round((y + absDy / 2) * renderRatio);
-                    fillColor = sampleBackgroundColor(ctx, canvasCx, canvasCy, canvas.width, canvas.height);
-                    // Auto-save sampled color for subsequent whiteouts
-                    setWhiteoutColor(fillColor);
-                  }
-                }
-              }
-              field = { ...base, type: "whiteout", width: fieldW, height: fieldH, fillColor };
-              break;
-            }
-          }
-
-          const addedField = onFieldAdd(field);
-          // Keep stamp-style tools active for multiple placements
-          if (activeTool !== "whiteout" && activeTool !== "checkbox" && activeTool !== "line") {
-            onToolSelect(null);
-          }
-          setCursorStyle(activeTool === "whiteout" || activeTool === "line" ? "crosshair" : activeTool === "checkbox" ? "cell" : "default");
-          if (activeTool !== "whiteout" && activeTool !== "checkbox" && activeTool !== "line") {
-            onFieldSelect(addedField.id);
-          }
-
-          if (activeTool === "signature") {
-            onSignatureFieldPlaced?.(addedField);
-          } else if (!isMobileEditor && activeTool !== "checkbox" && activeTool !== "whiteout" && activeTool !== "line") {
-            setEditingFieldId(addedField.id);
-          }
+          createDrawnFieldForTool(activeTool, dragStart.current, pos);
         } else if (absDx <= 10 || absDy <= 10) {
           // Fall back to click-to-place behavior - inline the logic here to avoid circular dependency
           const clickedOnEmpty = e.target === stage || activeTool === "checkbox";
@@ -2311,12 +2465,17 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
         setCheckboxPreview(null);
       }
     },
-    [activeTool, currentPage, zoomFactor, fitScale, onFieldAdd, onFieldSelect, onToolSelect, onSignatureFieldPlaced, snapPreview, whiteoutColor, fields, snapEnabled, createFieldId, isMobileEditor, toolDefaults, viewportAtScale1, applyMaskAlongStagePath, stopMaskDrag, cancelPendingBoxCorner, createDrawnBoxField, combMobileEnabled]
+    [activeTool, currentPage, zoomFactor, fitScale, onFieldAdd, onFieldSelect, onToolSelect, onSignatureFieldPlaced, snapPreview, whiteoutColor, fields, snapEnabled, createFieldId, isMobileEditor, toolDefaults, viewportAtScale1, applyMaskAlongStagePath, stopMaskDrag, cancelPendingBoxCorner, createDrawnBoxField, createDrawnFieldForTool, combMobileEnabled]
   );
 
   // Core field creation logic - shared by click and touch
   const createFieldAtPoint = useCallback(
-    (posX: number, posY: number, clickedOnEmpty: boolean) => {
+    (
+      posX: number,
+      posY: number,
+      clickedOnEmpty: boolean,
+      detectedSnap?: SnapResult,
+    ) => {
       if (!isPlacementTool(activeTool) || !clickedOnEmpty) return false;
 
       const id = createFieldId();
@@ -2346,7 +2505,13 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
       // Also skip snap detection if snapEnabled is false
       if (activeTool !== "checkbox" && activeTool !== "signature" && activeTool !== "line" && snapEnabled) {
         // Snap-first: always try snap detection first
-        if (snapPreview) {
+        if (detectedSnap) {
+          fieldX = detectedSnap.x / effectiveScale;
+          fieldY = detectedSnap.y / effectiveScale;
+          fieldW = detectedSnap.width / effectiveScale;
+          fieldH = detectedSnap.height / effectiveScale;
+          snapped = true;
+        } else if (snapPreview) {
           // snapPreview is now in PDF point space
           fieldX = snapPreview.x;
           fieldY = snapPreview.y;
@@ -2354,27 +2519,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
           fieldH = snapPreview.height;
           snapped = true;
         } else {
-          const preBoxes = precomputedBoxesRef.current;
-          let foundSnap = findPrecomputedSnap(
-            preBoxes,
-            posX,
-            posY,
-            canvasRenderRatioRef.current,
-          );
-
-          if (!foundSnap && canvasRef.current) {
-            try {
-              const renderRatio = canvasRenderRatioRef.current;
-              foundSnap = scaleSnapResult(
-                detectSnapBox(
-                  canvasRef.current,
-                  posX * renderRatio,
-                  posY * renderRatio,
-                ),
-                1 / renderRatio,
-              );
-            } catch { /* fall back to default */ }
-          }
+          const foundSnap = detectSnapAtStagePoint({ x: posX, y: posY });
 
           if (foundSnap) {
             // Convert canvas pixels to PDF points
@@ -2580,7 +2725,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
 
       return true;
     },
-    [activeTool, currentPage, onFieldAdd, onFieldSelect, onToolSelect, zoomFactor, fitScale, snapPreview, onSignatureFieldPlaced, snapEnabled, whiteoutColor, fields, createFieldId, isMobileEditor, toolDefaults, viewportAtScale1, combMobileEnabled]
+    [activeTool, currentPage, onFieldAdd, onFieldSelect, onToolSelect, zoomFactor, fitScale, snapPreview, onSignatureFieldPlaced, snapEnabled, whiteoutColor, fields, createFieldId, isMobileEditor, toolDefaults, viewportAtScale1, combMobileEnabled, detectSnapAtStagePoint]
   );
 
   const handleStageClick = useCallback(
@@ -2700,16 +2845,68 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
       if (touchX < 0 || touchY < 0 || touchX > rect.width || touchY > rect.height) return;
       lastTouchEndAtRef.current = Date.now();
 
-      if (twoTapBoxPlacementEnabled) {
+      if (twoTapPlacementEnabled) {
         e.preventDefault();
         const corner = { x: touchX, y: touchY };
         const firstCorner = pendingBoxCornerRef.current;
-        if (!firstCorner) {
-          plantPendingBoxCorner(corner);
+        if (
+          !firstCorner ||
+          pendingBoxCornerToolRef.current !== activeTool
+        ) {
+          cancelPendingBoxCorner();
+          plantPendingBoxCorner(corner, activeTool);
           return;
         }
         cancelPendingBoxCorner();
-        createDrawnBoxField(firstCorner, corner);
+        if (twoTapBoxPlacementEnabled) {
+          createDrawnBoxField(firstCorner, corner);
+          return;
+        }
+
+        const absDx = Math.abs(corner.x - firstCorner.x);
+        const absDy = Math.abs(corner.y - firstCorner.y);
+        if (absDx > 10 && absDy > 10 && twoTapDrawToolsEnabled) {
+          if (activeTool === "text" || activeTool === "date") {
+            const tapRect = {
+              x: Math.min(firstCorner.x, corner.x),
+              y: Math.min(firstCorner.y, corner.y),
+              width: absDx,
+              height: absDy,
+            };
+            const rectCenter = {
+              x: tapRect.x + tapRect.width / 2,
+              y: tapRect.y + tapRect.height / 2,
+            };
+            const detectedSnap = snapEnabled
+              ? detectSnapAtStagePoint(rectCenter)
+              : null;
+            const snapIntersectsTapRect =
+              detectedSnap !== null &&
+              detectedSnap.x < tapRect.x + tapRect.width &&
+              detectedSnap.x + detectedSnap.width > tapRect.x &&
+              detectedSnap.y < tapRect.y + tapRect.height &&
+              detectedSnap.y + detectedSnap.height > tapRect.y;
+
+            if (detectedSnap && snapIntersectsTapRect) {
+              createFieldAtPoint(
+                rectCenter.x,
+                rectCenter.y,
+                true,
+                detectedSnap,
+              );
+              return;
+            }
+          }
+
+          createDrawnFieldForTool(activeTool, firstCorner, corner);
+          if (activeTool === "whiteout") {
+            onToolSelect("whiteout");
+            onFieldSelect(null);
+          }
+          return;
+        }
+
+        createFieldAtPoint(firstCorner.x, firstCorner.y, true);
         return;
       }
 
@@ -2726,7 +2923,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
       e.preventDefault();
       createFieldAtPoint(touchX, touchY, true);
     },
-    [activeTool, cancelPendingBoxCorner, createDrawnBoxField, createFieldAtPoint, fieldFromStagePoint, plantPendingBoxCorner, selectFieldForInteraction, twoTapBoxPlacementEnabled]
+    [activeTool, cancelPendingBoxCorner, createDrawnBoxField, createDrawnFieldForTool, createFieldAtPoint, detectSnapAtStagePoint, fieldFromStagePoint, onFieldSelect, onToolSelect, plantPendingBoxCorner, selectFieldForInteraction, snapEnabled, twoTapBoxPlacementEnabled, twoTapDrawToolsEnabled, twoTapPlacementEnabled]
   );
 
   // --- Two-finger gestures: pinch zoom + pan (PR #94) -------------------
@@ -3026,7 +3223,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
           />
         )}
 
-        {twoTapBoxPlacementEnabled && pendingBoxCorner && (
+        {twoTapPlacementEnabled && pendingBoxCorner && (
           <>
             <div
               data-testid="box-first-corner-marker"
@@ -3063,7 +3260,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
                 zIndex: 16,
               }}
             >
-              Now tap the opposite corner
+              {pendingCornerHint}
             </div>
           </>
         )}
@@ -3111,7 +3308,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
                 activeTool={isPlacementTool(activeTool) ? activeTool : null}
                 disableInteraction={
                   activeTool === "mask-eraser" ||
-                  twoTapBoxPlacementEnabled
+                  twoTapPlacementEnabled
                 }
                 onSelect={() => {
                   selectFieldForInteraction(field);
