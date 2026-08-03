@@ -10,6 +10,8 @@ const combMobileEnabled =
   process.env.NEXT_PUBLIC_QUICKFILL_COMB_MOBILE === "v1";
 const twoTapDrawToolsEnabled =
   process.env.NEXT_PUBLIC_QUICKFILL_TWO_TAP_TOOLS === "v1";
+const snapV2Enabled =
+  process.env.NEXT_PUBLIC_QUICKFILL_SNAP_V2 === "v1";
 
 type StoredEditorField = {
   type: string;
@@ -26,6 +28,20 @@ type StoredEditorField = {
   };
 };
 
+type PdfSnapBox = {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+};
+
+const defaultPdfSnapBox: PdfSnapBox = {
+  x: 48,
+  y: 650,
+  width: 240,
+  height: 28,
+};
+
 test.beforeEach(async ({ page }) => {
   await page.route(
     "http://localhost:3000/_vercel/insights/script.js",
@@ -34,7 +50,10 @@ test.beforeEach(async ({ page }) => {
   );
 });
 
-async function createMobileEditorPdf(includeAcroFormField = false) {
+async function createMobileEditorPdf(
+  includeAcroFormField = false,
+  snapBox = defaultPdfSnapBox,
+) {
   const pdfDoc = await PDFDocument.create();
   const page = pdfDoc.addPage([612, 792]);
   const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
@@ -47,17 +66,14 @@ async function createMobileEditorPdf(includeAcroFormField = false) {
     color: rgb(0.05, 0.08, 0.15),
   });
   page.drawRectangle({
-    x: 48,
-    y: 650,
-    width: 240,
-    height: 28,
+    ...snapBox,
     borderWidth: 1,
     borderColor: rgb(0.1, 0.1, 0.1),
   });
 
   if (includeAcroFormField) {
     const fullName = pdfDoc.getForm().createTextField("fullName");
-    fullName.addToPage(page, { x: 48, y: 650, width: 240, height: 28 });
+    fullName.addToPage(page, snapBox);
   }
 
   return Buffer.from(await pdfDoc.save());
@@ -145,8 +161,12 @@ async function expectNoHorizontalOverflow(page: Page) {
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
 }
 
-async function seedRestoredEditorPdf(page: Page, name: string) {
-  const pdfBytes = Array.from(await createMobileEditorPdf());
+async function seedRestoredEditorPdf(
+  page: Page,
+  name: string,
+  snapBox = defaultPdfSnapBox,
+) {
+  const pdfBytes = Array.from(await createMobileEditorPdf(false, snapBox));
   await page.goto("/");
   await page.evaluate(
     async ({ bytes, fileName }) => {
@@ -234,6 +254,24 @@ async function openTwoTapMobileEditor(page: Page, name: string) {
   await page.waitForLoadState("networkidle");
 }
 
+async function openDesktopEditor(
+  page: Page,
+  name: string,
+  snapBox = defaultPdfSnapBox,
+) {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await seedRestoredEditorPdf(page, name, snapBox);
+  await page.goto("/editor?advanced=1");
+  await expect(page.getByTestId("pdf-page")).toBeVisible({
+    timeout: 15_000,
+  });
+  await expect(page.getByText("Rendering PDF...")).toBeHidden({
+    timeout: 15_000,
+  });
+  await page.waitForFunction(() => document.querySelectorAll("canvas").length >= 2);
+  await page.waitForLoadState("networkidle");
+}
+
 async function pdfPageScale(page: Page) {
   const pageBox = await page.getByTestId("pdf-page").boundingBox();
   expect(pageBox).not.toBeNull();
@@ -248,9 +286,91 @@ async function tapPdfCoordinate(page: Page, x: number, y: number) {
   await page.touchscreen.tap(box.x + x * scale, box.y + y * scale);
 }
 
+async function clickPdfCoordinate(page: Page, x: number, y: number) {
+  const { scale, box } = await pdfPageScale(page);
+  await page.mouse.click(box.x + x * scale, box.y + y * scale);
+}
+
 function expectNear(actual: number, expected: number, tolerance = 3) {
   expect(Math.abs(actual - expected)).toBeLessThanOrEqual(tolerance);
 }
+
+function snapToggleButtons(page: Page) {
+  return page.locator(
+    'button[title="Snap is on"], button[title="Snap is off"], button[title="Toggle snap detection for structured forms"]',
+  );
+}
+
+test.describe("text snap V2 editor placement", () => {
+  test.skip(!runsAgainstLocalApp, "Requires PLAYWRIGHT_BASE_URL pointing at a local dev server.");
+  test.use({ viewport: { width: 1440, height: 900 }, hasTouch: false });
+
+  test("flag on hides the magnet, leaves empty clicks unsnapped, and snaps a box click", async ({ page }) => {
+    test.skip(!snapV2Enabled, "Requires NEXT_PUBLIC_QUICKFILL_SNAP_V2=v1.");
+    await openDesktopEditor(page, "text-snap-v2-desktop.pdf", {
+      x: 48,
+      y: 650,
+      width: 48,
+      height: 6,
+    });
+    const expectCleanPage = monitorPageIntegrity(page);
+
+    await expect(snapToggleButtons(page)).toHaveCount(0);
+
+    const textTool = page
+      .locator('button[title="Text field: tap or drag to place"]')
+      .filter({ visible: true });
+    await textTool.click();
+    await clickPdfCoordinate(page, 360, 250);
+    let fields = await waitForEditorFields(page, 1);
+    expect(fields[0]).toMatchObject({ type: "text", snapped: false });
+    expectNear(fields[0].x, 360);
+    expectNear(fields[0].y, 250);
+
+    await textTool.click();
+    await clickPdfCoordinate(page, 72, 139);
+    fields = await waitForEditorFields(page, 2);
+    const snappedField = fields.find((field) => field.snapped === true);
+    expect(snappedField).toBeDefined();
+    expectNear(snappedField!.x, 48, 6);
+    expectNear(snappedField!.y, 136, 4);
+    expectNear(snappedField!.width, 48, 5);
+    expectNear(snappedField!.height, 6, 3);
+    await expectCleanPage();
+  });
+
+  test("flag off keeps the magnet default-off and the desktop drawn floor unchanged", async ({ page }) => {
+    test.skip(snapV2Enabled, "Requires NEXT_PUBLIC_QUICKFILL_SNAP_V2 to be off.");
+    await openDesktopEditor(page, "text-snap-v2-flag-off.pdf");
+    const expectCleanPage = monitorPageIntegrity(page);
+
+    const snapToggle = page
+      .getByTitle("Toggle snap detection for structured forms")
+      .filter({ visible: true });
+    await expect(snapToggle).toHaveCount(1);
+    await expect(snapToggle).toContainText("Snap Off");
+
+    await page
+      .locator('button[title="Text field: tap or drag to place"]')
+      .filter({ visible: true })
+      .click();
+    const { scale, box } = await pdfPageScale(page);
+    const start = {
+      x: box.x + 360 * scale,
+      y: box.y + 300 * scale,
+    };
+    await page.mouse.move(start.x, start.y);
+    await page.mouse.down();
+    await page.mouse.move(start.x + 12, start.y + 12);
+    await page.mouse.up();
+
+    const [field] = await waitForEditorFields(page, 1);
+    expect(field).toMatchObject({ type: "text", snapped: false });
+    expectNear(field.width, 20 / scale, 2);
+    expectNear(field.height, 20 / scale, 2);
+    await expectCleanPage();
+  });
+});
 
 test.describe("mobile simple default routing", () => {
   test.skip(!runsAgainstLocalApp, "Requires PLAYWRIGHT_BASE_URL pointing at a local dev server.");
@@ -324,6 +444,10 @@ test.describe("mobile editor field interactions", () => {
         await openTwoTapMobileEditor(page, "two-tap-text-empty.pdf");
         const expectCleanPage = monitorPageIntegrity(page);
 
+        if (snapV2Enabled) {
+          await expect(snapToggleButtons(page)).toHaveCount(0);
+        }
+
         const textTool = page
           .locator('button[title="Text field: tap or drag to place"]')
           .last();
@@ -342,6 +466,48 @@ test.describe("mobile editor field interactions", () => {
         expectNear(field.width, 170);
         expectNear(field.height, 70);
         await expect(page.getByTestId("box-first-corner-marker")).toHaveCount(0);
+        await expectCleanPage();
+      });
+
+      test("floors a sub-eight-point two-tap text rectangle at eight points", async ({ page }) => {
+        await openTwoTapMobileEditor(page, "two-tap-text-minimum.pdf");
+        const expectCleanPage = monitorPageIntegrity(page);
+
+        await page.setViewportSize({ width: 767, height: 844 });
+        await expect(page.getByText("Rendering PDF...")).toBeHidden({
+          timeout: 15_000,
+        });
+        await page
+          .getByTitle("Best zoom for snap detection (150%)")
+          .click();
+        await expect(page.getByText("150%", { exact: true })).toBeVisible();
+        await page.waitForTimeout(500);
+        await expect(page.getByText("Rendering PDF...")).toBeHidden({
+          timeout: 15_000,
+        });
+
+        const { scale } = await pdfPageScale(page);
+        const subEightPointDelta = 11 / scale;
+        expect(subEightPointDelta).toBeLessThan(8);
+        expect(subEightPointDelta * scale).toBeGreaterThan(10);
+
+        await page
+          .locator('button[title="Text field: tap or drag to place"]')
+          .filter({ visible: true })
+          .click();
+        await tapPdfCoordinate(page, 300, 80);
+        await expect(page.getByTestId("box-first-corner-marker")).toBeVisible();
+        expectNear((await pdfPageScale(page)).scale, scale, 0.01);
+        await tapPdfCoordinate(
+          page,
+          300 + subEightPointDelta,
+          80 + subEightPointDelta,
+        );
+
+        const [field] = await waitForEditorFields(page, 1);
+        expect(field).toMatchObject({ type: "text", snapped: false });
+        expectNear(field.width, 8, 0.5);
+        expectNear(field.height, 8, 0.5);
         await expectCleanPage();
       });
 
@@ -372,7 +538,11 @@ test.describe("mobile editor field interactions", () => {
         await openTwoTapMobileEditor(page, "two-tap-text-snap.pdf");
         const expectCleanPage = monitorPageIntegrity(page);
 
-        await page.getByTitle("Snap is off").filter({ visible: true }).click();
+        if (snapV2Enabled) {
+          await expect(snapToggleButtons(page)).toHaveCount(0);
+        } else {
+          await page.getByTitle("Snap is off").filter({ visible: true }).click();
+        }
         await page
           .locator('button[title="Text field: tap or drag to place"]')
           .last()

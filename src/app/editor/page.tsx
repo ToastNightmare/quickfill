@@ -364,7 +364,14 @@ function EditorPageContent() {
   const [savingProgress, setSavingProgress] = useState(false);
   const [showSaveProgressPrompt, setShowSaveProgressPrompt] = useState(false);
   const [localSaveStatus, setLocalSaveStatus] = useState<LocalSaveStatus>("idle");
-  const [snapEnabled, setSnapEnabled] = useState(false); // OFF by default
+  const snapV2Enabled =
+    process.env.NEXT_PUBLIC_QUICKFILL_SNAP_V2 === "v1";
+  // V2 is always on; the legacy flag-off path still defaults off and remains toggleable.
+  const [snapEnabled, setSnapEnabled] = useState(snapV2Enabled);
+  const handleSnapToggle = useCallback(() => {
+    if (snapV2Enabled) return;
+    setSnapEnabled((enabled) => !enabled);
+  }, [snapV2Enabled]);
   const [editingTextFieldId, setEditingTextFieldId] = useState<string | null>(null);
   const [showWelcomeModal, setShowWelcomeModal] = useState(false);
   const [showTour, setShowTour] = useState(false);
@@ -2773,7 +2780,7 @@ function EditorPageContent() {
             isDetecting={isDetecting}
             onAutoFill={handleAutoFillFromProfile}
             snapEnabled={snapEnabled}
-            onSnapToggle={() => setSnapEnabled(v => !v)}
+            onSnapToggle={handleSnapToggle}
             onShowHelp={handleShowHelp}
             minimapCanvas={minimapCanvas}
             viewerRef={viewerContainerRef}
@@ -2901,7 +2908,7 @@ function EditorPageContent() {
         isDetecting={isDetecting}
         onAutoFill={handleAutoFillFromProfile}
         snapEnabled={snapEnabled}
-        onSnapToggle={() => setSnapEnabled(v => !v)}
+        onSnapToggle={handleSnapToggle}
         onShowHelp={handleShowHelp}
         fields={fields}
         onStartOver={handleStartOver}

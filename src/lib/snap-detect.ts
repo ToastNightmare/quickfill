@@ -956,6 +956,1066 @@ function offsetResult(box: SnapResult, sx: number, sy: number): SnapResult {
   return { x: sx + box.x, y: sy + box.y, width: box.width, height: box.height };
 }
 
+interface SnapV2Thresholds {
+  minHorizontalLineLength: number;
+  minVerticalLineLength: number;
+  gapTolerance: number;
+  mergeTolerance: number;
+  minBoxHeight: number;
+  maxBoxHeight: number;
+  minBoxWidth: number;
+  endpointTolerance: number;
+  sideExtentTolerance: number;
+  clickTolerance: number;
+  wideClickTolerance: number;
+  verticalLineProximity: number;
+  tableClusterTolerance: number;
+  tableHorizontalCoverageTolerance: number;
+  tableVerticalCoverageTolerance: number;
+  segmentEdgeToleranceX: number;
+  segmentEdgeToleranceY: number;
+  underlineDefaultHeight: number;
+  underlineMinLength: number;
+  underlineAboveTolerance: number;
+  underlineBelowTolerance: number;
+  underlineHorizontalTolerance: number;
+}
+
+function snapV2Thresholds(scale: number): SnapV2Thresholds {
+  const scaled = (points: number, minimumPixels = 1) =>
+    Math.max(minimumPixels, points * scale);
+
+  return {
+    minHorizontalLineLength: scaled(12),
+    minVerticalLineLength: scaled(5),
+    gapTolerance: Math.max(2, Math.round(2 * scale)),
+    mergeTolerance: Math.max(2, 2 * scale),
+    minBoxHeight: scaled(6),
+    maxBoxHeight: scaled(200),
+    minBoxWidth: scaled(6),
+    endpointTolerance: scaled(14, 2),
+    sideExtentTolerance: scaled(8, 2),
+    clickTolerance: scaled(5, 2),
+    wideClickTolerance: scaled(10, 2),
+    verticalLineProximity: scaled(20, 2),
+    tableClusterTolerance: scaled(4, 2),
+    tableHorizontalCoverageTolerance: scaled(10, 2),
+    tableVerticalCoverageTolerance: scaled(5, 2),
+    segmentEdgeToleranceX: scaled(8, 2),
+    segmentEdgeToleranceY: scaled(6, 2),
+    underlineDefaultHeight: scaled(28),
+    underlineMinLength: scaled(40),
+    underlineAboveTolerance: scaled(10, 2),
+    underlineBelowTolerance: scaled(50, 2),
+    underlineHorizontalTolerance: scaled(15, 2),
+  };
+}
+
+function findHorizontalLinesV2(
+  data: Uint8ClampedArray,
+  width: number,
+  height: number,
+  minimumLineLength: number,
+  gapTolerance: number,
+  darkFn: (pixels: Uint8ClampedArray, index: number) => boolean,
+): HLine[] {
+  const lines: HLine[] = [];
+
+  for (let row = 0; row < height; row++) {
+    let runStart = -1;
+    let gapCount = 0;
+
+    for (let column = 0; column < width; column++) {
+      const index = (row * width + column) * 4;
+      if (darkFn(data, index)) {
+        if (runStart === -1) runStart = column;
+        gapCount = 0;
+        continue;
+      }
+
+      if (runStart !== -1) {
+        gapCount++;
+        if (gapCount > gapTolerance) {
+          const runEnd = column - gapCount;
+          if (runEnd - runStart + 1 >= minimumLineLength) {
+            lines.push({ y: row, x1: runStart, x2: runEnd });
+          }
+          runStart = -1;
+          gapCount = 0;
+        }
+      }
+    }
+
+    if (runStart !== -1) {
+      const runEnd = width - 1 - gapCount;
+      if (runEnd - runStart + 1 >= minimumLineLength) {
+        lines.push({ y: row, x1: runStart, x2: runEnd });
+      }
+    }
+  }
+
+  return lines;
+}
+
+function findSnapVerticalLinesV2(
+  data: Uint8ClampedArray,
+  width: number,
+  height: number,
+  minimumLineLength: number,
+  gapTolerance: number,
+  darkFn: (pixels: Uint8ClampedArray, index: number) => boolean,
+): VLine[] {
+  const lines: VLine[] = [];
+
+  for (let column = 0; column < width; column++) {
+    let runStart = -1;
+    let gapCount = 0;
+
+    for (let row = 0; row < height; row++) {
+      const index = (row * width + column) * 4;
+      if (darkFn(data, index)) {
+        if (runStart === -1) runStart = row;
+        gapCount = 0;
+        continue;
+      }
+
+      if (runStart !== -1) {
+        gapCount++;
+        if (gapCount > gapTolerance) {
+          const runEnd = row - gapCount;
+          if (runEnd - runStart + 1 >= minimumLineLength) {
+            lines.push({ x: column, y1: runStart, y2: runEnd });
+          }
+          runStart = -1;
+          gapCount = 0;
+        }
+      }
+    }
+
+    if (runStart !== -1) {
+      const runEnd = height - 1 - gapCount;
+      if (runEnd - runStart + 1 >= minimumLineLength) {
+        lines.push({ x: column, y1: runStart, y2: runEnd });
+      }
+    }
+  }
+
+  return lines;
+}
+
+function mergeSnapHLinesV2(
+  lines: HLine[],
+  mergeTolerance: number,
+  gapTolerance: number,
+): HLine[] {
+  if (lines.length === 0) return [];
+  const sorted = [...lines].sort((left, right) =>
+    left.y - right.y || left.x1 - right.x1
+  );
+  const merged: HLine[] = [{ ...sorted[0] }];
+
+  for (let index = 1; index < sorted.length; index++) {
+    const previous = merged[merged.length - 1];
+    const current = sorted[index];
+    if (
+      Math.abs(current.y - previous.y) <= mergeTolerance &&
+      current.x1 <= previous.x2 + gapTolerance + mergeTolerance
+    ) {
+      previous.x1 = Math.min(previous.x1, current.x1);
+      previous.x2 = Math.max(previous.x2, current.x2);
+      previous.y = Math.round((previous.y + current.y) / 2);
+    } else {
+      merged.push({ ...current });
+    }
+  }
+
+  return merged;
+}
+
+function mergeSnapVLinesV2(
+  lines: VLine[],
+  mergeTolerance: number,
+  gapTolerance: number,
+): VLine[] {
+  if (lines.length === 0) return [];
+  const sorted = [...lines].sort((left, right) =>
+    left.x - right.x || left.y1 - right.y1
+  );
+  const merged: VLine[] = [{ ...sorted[0] }];
+
+  for (let index = 1; index < sorted.length; index++) {
+    const previous = merged[merged.length - 1];
+    const current = sorted[index];
+    if (
+      Math.abs(current.x - previous.x) <= mergeTolerance &&
+      current.y1 <= previous.y2 + gapTolerance + mergeTolerance
+    ) {
+      previous.y1 = Math.min(previous.y1, current.y1);
+      previous.y2 = Math.max(previous.y2, current.y2);
+      previous.x = Math.round((previous.x + current.x) / 2);
+    } else {
+      merged.push({ ...current });
+    }
+  }
+
+  return merged;
+}
+
+function findFullRectanglesV2(
+  hLines: HLine[],
+  vLines: VLine[],
+  clickX: number,
+  clickY: number,
+  thresholds: SnapV2Thresholds,
+): SnapResult[] {
+  const boxes: SnapResult[] = [];
+
+  for (let topIndex = 0; topIndex < hLines.length - 1; topIndex++) {
+    const top = hLines[topIndex];
+    if (top.y > clickY + thresholds.clickTolerance) break;
+
+    for (
+      let bottomIndex = topIndex + 1;
+      bottomIndex < hLines.length;
+      bottomIndex++
+    ) {
+      const bottom = hLines[bottomIndex];
+      if (bottom.y < clickY - thresholds.clickTolerance) continue;
+
+      const boxHeight = bottom.y - top.y;
+      if (
+        boxHeight < thresholds.minBoxHeight ||
+        boxHeight > thresholds.maxBoxHeight
+      ) {
+        continue;
+      }
+
+      const overlapX1 = Math.max(top.x1, bottom.x1);
+      const overlapX2 = Math.min(top.x2, bottom.x2);
+      if (
+        overlapX2 - overlapX1 < thresholds.minHorizontalLineLength
+      ) {
+        continue;
+      }
+
+      for (let leftIndex = 0; leftIndex < vLines.length; leftIndex++) {
+        const left = vLines[leftIndex];
+        if (left.x > clickX + thresholds.clickTolerance) break;
+        if (
+          Math.abs(left.x - overlapX1) > thresholds.endpointTolerance ||
+          left.y1 > top.y + thresholds.sideExtentTolerance ||
+          left.y2 < bottom.y - thresholds.sideExtentTolerance
+        ) {
+          continue;
+        }
+
+        for (
+          let rightIndex = leftIndex + 1;
+          rightIndex < vLines.length;
+          rightIndex++
+        ) {
+          const right = vLines[rightIndex];
+          if (right.x < clickX - thresholds.clickTolerance) continue;
+          if (
+            Math.abs(right.x - overlapX2) > thresholds.endpointTolerance ||
+            right.y1 > top.y + thresholds.sideExtentTolerance ||
+            right.y2 < bottom.y - thresholds.sideExtentTolerance
+          ) {
+            continue;
+          }
+
+          const boxWidth = right.x - left.x;
+          if (boxWidth < thresholds.minBoxWidth) continue;
+          boxes.push({
+            x: left.x,
+            y: top.y,
+            width: boxWidth,
+            height: boxHeight,
+          });
+        }
+      }
+    }
+  }
+
+  return boxes;
+}
+
+function findThreeSidedBoxesV2(
+  hLines: HLine[],
+  vLines: VLine[],
+  clickX: number,
+  clickY: number,
+  thresholds: SnapV2Thresholds,
+): SnapResult[] {
+  const boxes: SnapResult[] = [];
+
+  for (let topIndex = 0; topIndex < hLines.length - 1; topIndex++) {
+    const top = hLines[topIndex];
+    if (top.y > clickY + thresholds.clickTolerance) break;
+
+    for (
+      let bottomIndex = topIndex + 1;
+      bottomIndex < hLines.length;
+      bottomIndex++
+    ) {
+      const bottom = hLines[bottomIndex];
+      if (bottom.y < clickY - thresholds.clickTolerance) continue;
+
+      const boxHeight = bottom.y - top.y;
+      if (
+        boxHeight < thresholds.minBoxHeight ||
+        boxHeight > thresholds.maxBoxHeight
+      ) {
+        continue;
+      }
+
+      const overlapX1 = Math.max(top.x1, bottom.x1);
+      const overlapX2 = Math.min(top.x2, bottom.x2);
+      if (overlapX2 - overlapX1 < thresholds.minBoxWidth) continue;
+      if (
+        clickX < overlapX1 - thresholds.wideClickTolerance ||
+        clickX > overlapX2 + thresholds.wideClickTolerance
+      ) {
+        continue;
+      }
+
+      const sideSpansBox = (line: VLine) =>
+        line.y1 <= top.y + thresholds.sideExtentTolerance &&
+        line.y2 >= bottom.y - thresholds.sideExtentTolerance;
+      const hasLeft = vLines.some(
+        (line) =>
+          Math.abs(line.x - overlapX1) <
+            thresholds.verticalLineProximity && sideSpansBox(line),
+      );
+      const hasRight = vLines.some(
+        (line) =>
+          Math.abs(line.x - overlapX2) <
+            thresholds.verticalLineProximity && sideSpansBox(line),
+      );
+
+      if (!hasLeft && !hasRight) {
+        if (
+          Math.abs(top.x1 - bottom.x1) > thresholds.clickTolerance ||
+          Math.abs(top.x2 - bottom.x2) > thresholds.clickTolerance
+        ) {
+          continue;
+        }
+      }
+
+      boxes.push({
+        x: overlapX1,
+        y: top.y,
+        width: overlapX2 - overlapX1,
+        height: boxHeight,
+      });
+    }
+  }
+
+  return boxes;
+}
+
+function clusterSnapValuesV2(
+  values: number[],
+  tolerance: number,
+  minimumMembers = 2,
+): number[] {
+  if (values.length === 0) return [];
+  const sorted = [...values].sort((left, right) => left - right);
+  const clusters: number[][] = [[sorted[0]]];
+
+  for (let index = 1; index < sorted.length; index++) {
+    const cluster = clusters[clusters.length - 1];
+    if (sorted[index] - cluster[cluster.length - 1] <= tolerance) {
+      cluster.push(sorted[index]);
+    } else {
+      clusters.push([sorted[index]]);
+    }
+  }
+
+  return clusters
+    .filter((cluster) => cluster.length >= minimumMembers)
+    .map((cluster) =>
+      Math.round(
+        cluster.reduce((total, value) => total + value, 0) /
+          cluster.length,
+      )
+    );
+}
+
+function findTableCellsV2(
+  hLines: HLine[],
+  vLines: VLine[],
+  thresholds: SnapV2Thresholds,
+): SnapResult[] {
+  const horizontalClusters = clusterSnapValuesV2(
+    hLines.map((line) => line.y),
+    thresholds.tableClusterTolerance,
+  );
+  const verticalClusters = clusterSnapValuesV2(
+    vLines.map((line) => line.x),
+    thresholds.tableClusterTolerance,
+    horizontalClusters.length >= 3 ? 1 : 2,
+  );
+  if (horizontalClusters.length < 2 || verticalClusters.length < 2) {
+    return [];
+  }
+
+  const cells: SnapResult[] = [];
+  for (
+    let horizontalIndex = 0;
+    horizontalIndex < horizontalClusters.length - 1;
+    horizontalIndex++
+  ) {
+    for (
+      let verticalIndex = 0;
+      verticalIndex < verticalClusters.length - 1;
+      verticalIndex++
+    ) {
+      const top = horizontalClusters[horizontalIndex];
+      const bottom = horizontalClusters[horizontalIndex + 1];
+      const left = verticalClusters[verticalIndex];
+      const right = verticalClusters[verticalIndex + 1];
+      const height = bottom - top;
+      const width = right - left;
+      if (
+        height < thresholds.minBoxHeight ||
+        height > thresholds.maxBoxHeight ||
+        width < thresholds.minBoxWidth
+      ) {
+        continue;
+      }
+
+      const hasTop = hLines.some(
+        (line) =>
+          Math.abs(line.y - top) <= thresholds.tableClusterTolerance &&
+          line.x1 <= left + thresholds.tableHorizontalCoverageTolerance &&
+          line.x2 >= right - thresholds.tableHorizontalCoverageTolerance,
+      );
+      const hasBottom = hLines.some(
+        (line) =>
+          Math.abs(line.y - bottom) <= thresholds.tableClusterTolerance &&
+          line.x1 <= left + thresholds.tableHorizontalCoverageTolerance &&
+          line.x2 >= right - thresholds.tableHorizontalCoverageTolerance,
+      );
+      const hasLeft = vLines.some(
+        (line) =>
+          Math.abs(line.x - left) <= thresholds.tableClusterTolerance &&
+          line.y1 <= top + thresholds.tableVerticalCoverageTolerance &&
+          line.y2 >= bottom - thresholds.tableVerticalCoverageTolerance,
+      );
+      const hasRight = vLines.some(
+        (line) =>
+          Math.abs(line.x - right) <= thresholds.tableClusterTolerance &&
+          line.y1 <= top + thresholds.tableVerticalCoverageTolerance &&
+          line.y2 >= bottom - thresholds.tableVerticalCoverageTolerance,
+      );
+
+      if ([hasTop, hasBottom, hasLeft, hasRight].filter(Boolean).length >= 3) {
+        cells.push({ x: left, y: top, width, height });
+      }
+    }
+  }
+
+  return cells;
+}
+
+function deduplicateSnapValuesV2(
+  values: number[],
+  tolerance: number,
+): number[] {
+  if (values.length === 0) return [];
+  const sorted = [...values].sort((left, right) => left - right);
+  const deduplicated = [sorted[0]];
+  for (let index = 1; index < sorted.length; index++) {
+    if (
+      sorted[index] - deduplicated[deduplicated.length - 1] > tolerance
+    ) {
+      deduplicated.push(sorted[index]);
+    }
+  }
+  return deduplicated;
+}
+
+function segmentSnapBoxesVerticallyV2(
+  boxes: SnapResult[],
+  vLines: VLine[],
+  thresholds: SnapV2Thresholds,
+): SnapResult[] {
+  const results: SnapResult[] = [];
+
+  for (const box of boxes) {
+    const dividers = deduplicateSnapValuesV2(
+      vLines
+        .filter(
+          (line) =>
+            line.x > box.x + thresholds.segmentEdgeToleranceX &&
+            line.x <
+              box.x + box.width - thresholds.segmentEdgeToleranceX &&
+            line.y1 <= box.y + box.height * 0.3 &&
+            line.y2 >= box.y + box.height * 0.7,
+        )
+        .map((line) => line.x),
+      thresholds.mergeTolerance,
+    );
+
+    if (dividers.length === 0) {
+      results.push(box);
+      continue;
+    }
+
+    const edges = [box.x, ...dividers, box.x + box.width];
+    const cells = edges.slice(0, -1).flatMap((edge, index) => {
+      const width = edges[index + 1] - edge;
+      return width >= thresholds.minBoxWidth
+        ? [{ x: edge, y: box.y, width, height: box.height }]
+        : [];
+    });
+    results.push(...(cells.length > 0 ? cells : [box]));
+  }
+
+  return results;
+}
+
+function segmentSnapBoxesHorizontallyV2(
+  boxes: SnapResult[],
+  hLines: HLine[],
+  thresholds: SnapV2Thresholds,
+): SnapResult[] {
+  const results: SnapResult[] = [];
+
+  for (const box of boxes) {
+    if (box.height < thresholds.minBoxHeight * 3) {
+      results.push(box);
+      continue;
+    }
+
+    const dividers = deduplicateSnapValuesV2(
+      hLines
+        .filter(
+          (line) =>
+            line.y > box.y + thresholds.segmentEdgeToleranceY &&
+            line.y <
+              box.y + box.height - thresholds.segmentEdgeToleranceY &&
+            line.x1 <= box.x + box.width * 0.3 &&
+            line.x2 >= box.x + box.width * 0.7,
+        )
+        .map((line) => line.y),
+      thresholds.mergeTolerance,
+    );
+
+    if (dividers.length === 0) {
+      results.push(box);
+      continue;
+    }
+
+    const edges = [box.y, ...dividers, box.y + box.height];
+    const rows = edges.slice(0, -1).flatMap((edge, index) => {
+      const height = edges[index + 1] - edge;
+      return height >= thresholds.minBoxHeight
+        ? [{ x: box.x, y: edge, width: box.width, height }]
+        : [];
+    });
+    results.push(...(rows.length > 0 ? rows : [box]));
+  }
+
+  return results;
+}
+
+function isWhiteInteriorV2(
+  data: Uint8ClampedArray,
+  width: number,
+  box: SnapResult,
+  scale: number,
+): boolean {
+  const insetX = Math.max(1, 2 * scale, box.width * 0.08);
+  const insetY = Math.max(1, 2 * scale, box.height * 0.15);
+  const x1 = Math.floor(box.x + insetX);
+  const y1 = Math.floor(box.y + insetY);
+  const x2 = Math.floor(box.x + box.width - insetX);
+  const y2 = Math.floor(box.y + box.height - insetY);
+  if (x2 <= x1 || y2 <= y1) return true;
+
+  let brightnessTotal = 0;
+  let samples = 0;
+  const stepX = Math.max(1, Math.floor((x2 - x1) / 6));
+  const stepY = Math.max(1, Math.floor((y2 - y1) / 4));
+
+  for (let y = y1; y <= y2; y += stepY) {
+    for (let x = x1; x <= x2; x += stepX) {
+      const index = (y * width + x) * 4;
+      if (index < 0 || index + 2 >= data.length) continue;
+      brightnessTotal +=
+        (data[index] + data[index + 1] + data[index + 2]) / 3;
+      samples++;
+    }
+  }
+
+  return samples === 0 || brightnessTotal / samples > 242;
+}
+
+function floodFillCellV2(
+  data: Uint8ClampedArray,
+  width: number,
+  height: number,
+  startX: number,
+  startY: number,
+  scale: number,
+  thresholds: SnapV2Thresholds,
+): SnapResult | null {
+  const brightness = (x: number, y: number) => {
+    if (x < 0 || y < 0 || x >= width || y >= height) return 0;
+    const index = (y * width + x) * 4;
+    return (data[index] + data[index + 1] + data[index + 2]) / 3;
+  };
+
+  let x = Math.max(0, Math.min(width - 1, Math.round(startX)));
+  let y = Math.max(0, Math.min(height - 1, Math.round(startY)));
+  const nudgeDistance = Math.max(1, Math.round(14 * scale));
+  if (brightness(x, y) < 210) {
+    let found = false;
+    for (let distance = 1; distance <= nudgeDistance && !found; distance++) {
+      for (const [deltaX, deltaY] of [
+        [0, distance],
+        [0, -distance],
+        [distance, 0],
+        [-distance, 0],
+        [distance, distance],
+        [-distance, -distance],
+        [distance, -distance],
+        [-distance, distance],
+      ]) {
+        if (brightness(x + deltaX, y + deltaY) > 210) {
+          x += deltaX;
+          y += deltaY;
+          found = true;
+          break;
+        }
+      }
+    }
+    if (!found) return null;
+  }
+
+  const neighbourOffset = Math.max(1, Math.round(2 * scale));
+  const interiorShift = Math.max(1, Math.round(3 * scale));
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const left = brightness(x - neighbourOffset, y);
+    const right = brightness(x + neighbourOffset, y);
+    const top = brightness(x, y - neighbourOffset);
+    const bottom = brightness(x, y + neighbourOffset);
+    if (left < 180 && right > 210) {
+      x += interiorShift;
+      continue;
+    }
+    if (right < 180 && left > 210) {
+      x -= interiorShift;
+      continue;
+    }
+    if (top < 180 && bottom > 210) {
+      y += interiorShift;
+      continue;
+    }
+    if (bottom < 180 && top > 210) {
+      y -= interiorShift;
+      continue;
+    }
+    break;
+  }
+
+  const sampleRadius = Math.max(1, Math.round(2 * scale));
+  let brightnessTotal = 0;
+  let brightnessSamples = 0;
+  for (let deltaY = -sampleRadius; deltaY <= sampleRadius; deltaY++) {
+    for (let deltaX = -sampleRadius; deltaX <= sampleRadius; deltaX++) {
+      const value = brightness(x + deltaX, y + deltaY);
+      if (value > 0) {
+        brightnessTotal += value;
+        brightnessSamples++;
+      }
+    }
+  }
+  if (
+    brightnessSamples > 0 &&
+    brightnessTotal / brightnessSamples < 234
+  ) {
+    return null;
+  }
+
+  const scanLine = (
+    fromX: number,
+    fromY: number,
+    deltaX: number,
+    deltaY: number,
+    maximumSteps: number,
+  ): { distance: number; hit: boolean } => {
+    for (let distance = 1; distance <= maximumSteps; distance++) {
+      if (
+        brightness(
+          fromX + deltaX * distance,
+          fromY + deltaY * distance,
+        ) < 175
+      ) {
+        return { distance, hit: true };
+      }
+    }
+    return { distance: maximumSteps, hit: false };
+  };
+
+  const neighbourScanOffset = Math.max(1, Math.round(3 * scale));
+  const topDistances: number[] = [];
+  const bottomDistances: number[] = [];
+  for (const xOffset of [
+    -neighbourScanOffset,
+    0,
+    neighbourScanOffset,
+  ]) {
+    const scanX = x + xOffset;
+    if (scanX < 0 || scanX >= width) continue;
+    const top = scanLine(scanX, y, 0, -1, y);
+    const bottom = scanLine(scanX, y, 0, 1, height - 1 - y);
+    if (top.hit) topDistances.push(top.distance);
+    if (bottom.hit) bottomDistances.push(bottom.distance);
+  }
+  if (topDistances.length === 0 || bottomDistances.length === 0) return null;
+
+  const topDistance = Math.min(...topDistances);
+  const bottomDistance = Math.min(...bottomDistances);
+  const rowTop = y - topDistance;
+  const rowBottom = y + bottomDistance;
+  const rowHeight = rowBottom - rowTop;
+  const yOffsets = rowHeight > Math.max(1, 4 * scale)
+    ? [0.15, 0.3, 0.5, 0.7, 0.85].map(
+        (fraction) => rowTop + Math.round(rowHeight * fraction),
+      )
+    : [y];
+  const leftDistances: number[] = [];
+  const rightDistances: number[] = [];
+  for (const scanY of yOffsets) {
+    if (scanY < 0 || scanY >= height) continue;
+    const left = scanLine(x, scanY, -1, 0, x);
+    const right = scanLine(x, scanY, 1, 0, width - 1 - x);
+    if (left.hit) leftDistances.push(left.distance);
+    if (right.hit) rightDistances.push(right.distance);
+  }
+  if (leftDistances.length === 0 || rightDistances.length === 0) return null;
+
+  const median = (values: number[]) => {
+    const sorted = [...values].sort((left, right) => left - right);
+    const middle = Math.floor(sorted.length / 2);
+    return sorted.length % 2 === 0
+      ? Math.round((sorted[middle - 1] + sorted[middle]) / 2)
+      : sorted[middle];
+  };
+  const credibleBoundary = (
+    distance: number,
+    direction: -1 | 1,
+    measurements: number[],
+  ) => {
+    const boundaryX = x + direction * distance;
+    if (boundaryX < 0 || boundaryX >= width) return distance;
+    let darkSamples = 0;
+    let samples = 0;
+    const step = Math.max(1, Math.round(rowHeight / 8));
+    for (let scanY = rowTop; scanY <= rowBottom; scanY += step) {
+      if (brightness(boundaryX, scanY) < 175) darkSamples++;
+      samples++;
+    }
+    return samples > 0 && darkSamples / samples < 0.4
+      ? Math.max(...measurements)
+      : distance;
+  };
+
+  const leftDistance = credibleBoundary(
+    median(leftDistances),
+    -1,
+    leftDistances,
+  );
+  const rightDistance = credibleBoundary(
+    median(rightDistances),
+    1,
+    rightDistances,
+  );
+  const box: SnapResult = {
+    x: x - leftDistance,
+    y: rowTop,
+    width: leftDistance + rightDistance,
+    height: rowHeight,
+  };
+  const aspectRatio = box.width / Math.max(box.height, 1);
+  if (
+    box.width < thresholds.minBoxWidth ||
+    box.height < thresholds.minBoxHeight ||
+    box.height > thresholds.maxBoxHeight ||
+    aspectRatio > 6
+  ) {
+    return null;
+  }
+
+  return box;
+}
+
+function containsSnapV2Point(
+  box: SnapResult,
+  clickX: number,
+  clickY: number,
+  tolerance: number,
+): boolean {
+  return (
+    clickX >= box.x - tolerance &&
+    clickX <= box.x + box.width + tolerance &&
+    clickY >= box.y - tolerance &&
+    clickY <= box.y + box.height + tolerance
+  );
+}
+
+function snapV2CredibilityScore(box: SnapResult, scale: number): number {
+  return fieldCredibilityScore({
+    x: box.x / scale,
+    y: box.y / scale,
+    width: box.width / scale,
+    height: box.height / scale,
+  });
+}
+
+function bestSnapV2Candidate(
+  boxes: SnapResult[],
+  data: Uint8ClampedArray,
+  width: number,
+  clickX: number,
+  clickY: number,
+  scale: number,
+  tolerance: number,
+): SnapResult | null {
+  const candidates = boxes.filter(
+    (box) =>
+      containsSnapV2Point(box, clickX, clickY, tolerance) &&
+      box.width / Math.max(box.height, 1) <= 10 &&
+      isWhiteInteriorV2(data, width, box, scale),
+  );
+  candidates.sort(
+    (left, right) =>
+      snapV2CredibilityScore(left, scale) -
+      snapV2CredibilityScore(right, scale),
+  );
+  return candidates[0] ?? null;
+}
+
+/**
+ * Scale-aware point-snap detection core. Result coordinates are relative to
+ * the supplied image data so synthetic unit tests do not need a canvas.
+ */
+export function detectSnapBoxV2FromImageData(
+  data: Uint8ClampedArray,
+  width: number,
+  height: number,
+  clickX: number,
+  clickY: number,
+  scale: number,
+): SnapResult | null {
+  if (
+    !Number.isFinite(scale) ||
+    scale <= 0 ||
+    !Number.isFinite(clickX) ||
+    !Number.isFinite(clickY) ||
+    width <= 0 ||
+    height <= 0 ||
+    clickX < 0 ||
+    clickY < 0 ||
+    clickX >= width ||
+    clickY >= height ||
+    data.length < width * height * 4
+  ) {
+    return null;
+  }
+
+  const thresholds = snapV2Thresholds(scale);
+  const floodResult = floodFillCellV2(
+    data,
+    width,
+    height,
+    clickX,
+    clickY,
+    scale,
+    thresholds,
+  );
+  if (floodResult) return floodResult;
+
+  for (const darkFn of [isDark, isMedium]) {
+    const horizontalLines = mergeSnapHLinesV2(
+      findHorizontalLinesV2(
+        data,
+        width,
+        height,
+        thresholds.minHorizontalLineLength,
+        thresholds.gapTolerance,
+        darkFn,
+      ),
+      thresholds.mergeTolerance,
+      thresholds.gapTolerance,
+    ).sort((left, right) => left.y - right.y);
+    const verticalLines = mergeSnapVLinesV2(
+      findSnapVerticalLinesV2(
+        data,
+        width,
+        height,
+        thresholds.minVerticalLineLength,
+        thresholds.gapTolerance,
+        darkFn,
+      ),
+      thresholds.mergeTolerance,
+      thresholds.gapTolerance,
+    ).sort((left, right) => left.x - right.x);
+    const segment = (boxes: SnapResult[]) =>
+      segmentSnapBoxesHorizontallyV2(
+        segmentSnapBoxesVerticallyV2(boxes, verticalLines, thresholds),
+        horizontalLines,
+        thresholds,
+      );
+
+    const fullBox = bestSnapV2Candidate(
+      segment(
+        findFullRectanglesV2(
+          horizontalLines,
+          verticalLines,
+          clickX,
+          clickY,
+          thresholds,
+        ),
+      ),
+      data,
+      width,
+      clickX,
+      clickY,
+      scale,
+      thresholds.wideClickTolerance,
+    );
+    if (fullBox) return fullBox;
+
+    const threeSidedBox = bestSnapV2Candidate(
+      segment(
+        findThreeSidedBoxesV2(
+          horizontalLines,
+          verticalLines,
+          clickX,
+          clickY,
+          thresholds,
+        ),
+      ),
+      data,
+      width,
+      clickX,
+      clickY,
+      scale,
+      thresholds.wideClickTolerance,
+    );
+    if (threeSidedBox) return threeSidedBox;
+
+    const tableCell = bestSnapV2Candidate(
+      findTableCellsV2(horizontalLines, verticalLines, thresholds),
+      data,
+      width,
+      clickX,
+      clickY,
+      scale,
+      thresholds.clickTolerance,
+    );
+    if (tableCell) return tableCell;
+
+    let bestUnderline: SnapResult | null = null;
+    let bestDistance = Infinity;
+    for (const line of horizontalLines) {
+      const lineLength = line.x2 - line.x1;
+      if (lineLength < thresholds.underlineMinLength) continue;
+      const distance = line.y - clickY;
+      if (
+        distance < -thresholds.underlineAboveTolerance ||
+        distance > thresholds.underlineBelowTolerance ||
+        clickX < line.x1 - thresholds.underlineHorizontalTolerance ||
+        clickX > line.x2 + thresholds.underlineHorizontalTolerance
+      ) {
+        continue;
+      }
+      if (Math.abs(distance) < bestDistance) {
+        bestDistance = Math.abs(distance);
+        bestUnderline = {
+          x: line.x1,
+          y: line.y - thresholds.underlineDefaultHeight,
+          width: lineLength,
+          height: thresholds.underlineDefaultHeight,
+        };
+      }
+    }
+    if (bestUnderline) return bestUnderline;
+  }
+
+  return null;
+}
+
+/**
+ * Detect a credible form box around a canvas point with scale-aware spatial
+ * thresholds. A single 50% scan-window expansion is allowed on a miss.
+ */
+export function detectSnapBoxV2(
+  canvas: HTMLCanvasElement,
+  clickX: number,
+  clickY: number,
+  scale: number,
+): SnapResult | null {
+  const context = canvas.getContext("2d");
+  if (
+    !context ||
+    !Number.isFinite(scale) ||
+    scale <= 0 ||
+    !Number.isFinite(clickX) ||
+    !Number.isFinite(clickY) ||
+    clickX < 0 ||
+    clickY < 0 ||
+    clickX >= canvas.width ||
+    clickY >= canvas.height
+  ) {
+    return null;
+  }
+
+  const baseScanSize = Math.max(1, Math.round(300 * scale));
+  for (const expansion of [1, 1.5]) {
+    const scanWidth = Math.min(
+      canvas.width,
+      Math.max(1, Math.round(baseScanSize * expansion)),
+    );
+    const scanHeight = Math.min(
+      canvas.height,
+      Math.max(1, Math.round(baseScanSize * expansion)),
+    );
+    const x = Math.max(
+      0,
+      Math.min(canvas.width - scanWidth, Math.floor(clickX - scanWidth / 2)),
+    );
+    const y = Math.max(
+      0,
+      Math.min(
+        canvas.height - scanHeight,
+        Math.floor(clickY - scanHeight / 2),
+      ),
+    );
+
+    try {
+      const imageData = context.getImageData(x, y, scanWidth, scanHeight);
+      const result = detectSnapBoxV2FromImageData(
+        imageData.data,
+        scanWidth,
+        scanHeight,
+        clickX - x,
+        clickY - y,
+        scale,
+      );
+      if (result) return offsetResult(result, x, y);
+    } catch {
+      return null;
+    }
+  }
+
+  return null;
+}
+
 /**
  * Batch-detect all form-like boxes on the entire visible canvas.
  * Returns an array of SnapResult in canvas pixel coordinates.

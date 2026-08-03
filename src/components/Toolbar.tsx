@@ -120,6 +120,8 @@ export function Toolbar({
   onMinimapRefresh,
 }: ToolbarProps) {
   const [isPro, setIsPro] = useState<boolean | null>(null);
+  const snapV2Enabled =
+    process.env.NEXT_PUBLIC_QUICKFILL_SNAP_V2 === "v1";
   const fieldCount = fields?.length ?? 0;
   const mediaEditor = useOptionalMediaEditor();
 
@@ -219,12 +221,14 @@ export function Toolbar({
               danger
             />
           )}
-          <IconButton
-            onClick={onSnapToggle}
-            title={snapEnabled ? "Snap is on" : "Snap is off"}
-            icon={Magnet}
-            active={snapEnabled}
-          />
+          {!snapV2Enabled && (
+            <IconButton
+              onClick={onSnapToggle}
+              title={snapEnabled ? "Snap is on" : "Snap is off"}
+              icon={Magnet}
+              active={snapEnabled}
+            />
+          )}
           {onSaveProgress ? (
             <IconButton
               onClick={onSaveProgress}
@@ -311,18 +315,20 @@ export function Toolbar({
         </p>
         <DesktopActionButton onClick={onUndo} disabled={!canUndo} title="Undo (Ctrl+Z)" icon={Undo2} label="Undo" shortcut="Ctrl+Z" />
         <DesktopActionButton onClick={onRedo} disabled={!canRedo} title="Redo (Ctrl+Shift+Z)" icon={Redo2} label="Redo" shortcut="Ctrl+Shift+Z" />
-        <button
-          onClick={onSnapToggle}
-          title="Toggle snap detection for structured forms"
-          className={`flex min-h-11 items-center gap-3 rounded-lg px-2 text-sm font-semibold transition-colors xl:min-h-8 ${
-            snapEnabled
-              ? "border border-accent bg-accent text-white shadow-sm"
-              : "border border-border bg-surface-alt text-text-muted hover:border-accent hover:text-accent"
-          }`}
-        >
-          <Magnet className="h-4 w-4 shrink-0" />
-          <span className="hidden sm:inline">{snapEnabled ? "Snap On" : "Snap Off"}</span>
-        </button>
+        {!snapV2Enabled && (
+          <button
+            onClick={onSnapToggle}
+            title="Toggle snap detection for structured forms"
+            className={`flex min-h-11 items-center gap-3 rounded-lg px-2 text-sm font-semibold transition-colors xl:min-h-8 ${
+              snapEnabled
+                ? "border border-accent bg-accent text-white shadow-sm"
+                : "border border-border bg-surface-alt text-text-muted hover:border-accent hover:text-accent"
+            }`}
+          >
+            <Magnet className="h-4 w-4 shrink-0" />
+            <span className="hidden sm:inline">{snapEnabled ? "Snap On" : "Snap Off"}</span>
+          </button>
+        )}
         <button
           onClick={onClear}
           title="Clear Fields"
