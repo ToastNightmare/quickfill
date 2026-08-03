@@ -6,7 +6,7 @@ import type Konva from "konva";
 import type { EditorField, PlacementToolType, SignatureField, CheckboxStamp, WhiteoutField, CombField, ToolDefaultState, LineField, LineOrientation } from "@/lib/types";
 import { todayDateStamp, DATE_STAMP_PLACEHOLDER } from "@/lib/date-stamp";
 import { clampSignatureOpacity, clampSignatureRotation } from "@/lib/signature-transform";
-import { detectSnapBox, detectAllBoxes, snapCredibilityScore, floodFillCell, detectCombCells, detectCombCellsV2 } from "@/lib/snap-detect";
+import { detectSnapBox, detectSnapBoxV2, detectAllBoxes, snapCredibilityScore, floodFillCell, detectCombCells, detectCombCellsV2 } from "@/lib/snap-detect";
 import type { SnapResult, CombDetectResult } from "@/lib/snap-detect";
 import { backspaceCombCharacter, getCombCursorIndex, insertCombCharacter, moveCombCursor } from "@/lib/comb-input";
 import { createEditorFieldId } from "@/lib/field-ids";
@@ -611,6 +611,8 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
     process.env.NEXT_PUBLIC_QUICKFILL_FIELD_FIT === "v1";
   const formFidelityEnabled =
     process.env.NEXT_PUBLIC_QUICKFILL_FORM_FIDELITY === "v1";
+  const snapV2Enabled =
+    process.env.NEXT_PUBLIC_QUICKFILL_SNAP_V2 === "v1";
   const twoTapBoxPlacementEnabled =
     formFidelityEnabled && isCoarsePointer && activeTool === "box";
   const twoTapDrawToolsEnabled =
@@ -1610,32 +1612,44 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
           canvasRenderRatioRef.current,
         );
 
-        // Fall back: try flood fill directly on canvas, then line-based scan
+        // Fall back to the flag-selected detector when pre-computed boxes miss.
         if (!snap && canvasRef.current) {
           const renderRatio = canvasRenderRatioRef.current;
           const canvasX = pos.x * renderRatio;
           const canvasY = pos.y * renderRatio;
-          const ctx = canvasRef.current.getContext("2d");
-          if (ctx) {
-            try {
-              const imgData = ctx.getImageData(0, 0, canvasRef.current.width, canvasRef.current.height);
-              const ff = floodFillCell(
-                imgData.data,
-                canvasRef.current.width,
-                canvasRef.current.height,
-                Math.round(canvasX),
-                Math.round(canvasY),
-              );
-              if (ff) {
-                snap = scaleSnapResult(ff, 1 / renderRatio);
-              }
-            } catch { /* silent */ }
-          }
-          if (!snap) {
+          if (snapV2Enabled) {
             snap = scaleSnapResult(
-              detectSnapBox(canvasRef.current, canvasX, canvasY),
+              detectSnapBoxV2(
+                canvasRef.current,
+                canvasX,
+                canvasY,
+                fitScale * zoomFactor * renderRatio,
+              ),
               1 / renderRatio,
             );
+          } else {
+            const ctx = canvasRef.current.getContext("2d");
+            if (ctx) {
+              try {
+                const imgData = ctx.getImageData(0, 0, canvasRef.current.width, canvasRef.current.height);
+                const ff = floodFillCell(
+                  imgData.data,
+                  canvasRef.current.width,
+                  canvasRef.current.height,
+                  Math.round(canvasX),
+                  Math.round(canvasY),
+                );
+                if (ff) {
+                  snap = scaleSnapResult(ff, 1 / renderRatio);
+                }
+              } catch { /* silent */ }
+            }
+            if (!snap) {
+              snap = scaleSnapResult(
+                detectSnapBox(canvasRef.current, canvasX, canvasY),
+                1 / renderRatio,
+              );
+            }
           }
         }
 
@@ -1665,7 +1679,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
         setSnapPreview(null);
       }
     },
-    [activeTool, applyMaskAlongStagePath, fitScale, snapPreview, snapEnabled, toolDefaults, updateCursor, zoomFactor]
+    [activeTool, applyMaskAlongStagePath, fitScale, snapPreview, snapEnabled, snapV2Enabled, toolDefaults, updateCursor, zoomFactor]
   );
 
   const handleStageMouseLeave = useCallback(() => {
@@ -1881,12 +1895,20 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
 
       if (!foundSnap && canvasRef.current) {
         try {
+          const effectiveScale = fitScale * zoomFactor;
           foundSnap = scaleSnapResult(
-            detectSnapBox(
-              canvasRef.current,
-              point.x * renderRatio,
-              point.y * renderRatio,
-            ),
+            snapV2Enabled
+              ? detectSnapBoxV2(
+                  canvasRef.current,
+                  point.x * renderRatio,
+                  point.y * renderRatio,
+                  effectiveScale * renderRatio,
+                )
+              : detectSnapBox(
+                  canvasRef.current,
+                  point.x * renderRatio,
+                  point.y * renderRatio,
+                ),
             1 / renderRatio,
           );
         } catch {
@@ -1896,7 +1918,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
 
       return foundSnap;
     },
-    [],
+    [fitScale, snapV2Enabled, zoomFactor],
   );
 
   const createDrawnFieldForTool = useCallback(
@@ -1904,6 +1926,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
       tool: DrawnFieldTool,
       firstCorner: { x: number; y: number },
       oppositeCorner: { x: number; y: number },
+      minPoints?: number,
     ) => {
       const x = Math.min(firstCorner.x, oppositeCorner.x);
       const y = Math.min(firstCorner.y, oppositeCorner.y);
@@ -1912,8 +1935,12 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
       const effectiveScale = fitScale * zoomFactor;
       const width = absDx / effectiveScale;
       const height = absDy / effectiveScale;
-      const fieldW = Math.max(width, 20 / fitScale);
-      const fieldH = Math.max(height, 20 / fitScale);
+      const fieldW = minPoints === undefined
+        ? Math.max(width, 20 / fitScale)
+        : Math.max(width, minPoints);
+      const fieldH = minPoints === undefined
+        ? Math.max(height, 20 / fitScale)
+        : Math.max(height, minPoints);
       let fieldX = x / effectiveScale;
       let fieldY = y / effectiveScale;
       const minimumGap = 3;
@@ -2226,27 +2253,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
                 fieldH = snapPreview.height;
                 snapped = true;
               } else {
-                const preBoxes = precomputedBoxesRef.current;
-                let foundSnap = findPrecomputedSnap(
-                  preBoxes,
-                  pos.x,
-                  pos.y,
-                  canvasRenderRatioRef.current,
-                );
-
-                if (!foundSnap && canvasRef.current) {
-                  try {
-                    const renderRatio = canvasRenderRatioRef.current;
-                    foundSnap = scaleSnapResult(
-                      detectSnapBox(
-                        canvasRef.current,
-                        pos.x * renderRatio,
-                        pos.y * renderRatio,
-                      ),
-                      1 / renderRatio,
-                    );
-                  } catch { /* fall back to default */ }
-                }
+                const foundSnap = detectSnapAtStagePoint(pos);
 
                 if (foundSnap) {
                   // Convert snap result from canvas pixels to PDF points
@@ -2465,7 +2472,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
         setCheckboxPreview(null);
       }
     },
-    [activeTool, currentPage, zoomFactor, fitScale, onFieldAdd, onFieldSelect, onToolSelect, onSignatureFieldPlaced, snapPreview, whiteoutColor, fields, snapEnabled, createFieldId, isMobileEditor, toolDefaults, viewportAtScale1, applyMaskAlongStagePath, stopMaskDrag, cancelPendingBoxCorner, createDrawnBoxField, createDrawnFieldForTool, combMobileEnabled]
+    [activeTool, currentPage, zoomFactor, fitScale, onFieldAdd, onFieldSelect, onToolSelect, onSignatureFieldPlaced, snapPreview, whiteoutColor, fields, snapEnabled, createFieldId, isMobileEditor, toolDefaults, viewportAtScale1, applyMaskAlongStagePath, stopMaskDrag, cancelPendingBoxCorner, createDrawnBoxField, createDrawnFieldForTool, combMobileEnabled, detectSnapAtStagePoint]
   );
 
   // Core field creation logic - shared by click and touch
@@ -2898,7 +2905,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
             }
           }
 
-          createDrawnFieldForTool(activeTool, firstCorner, corner);
+          createDrawnFieldForTool(activeTool, firstCorner, corner, 8);
           if (activeTool === "whiteout") {
             onToolSelect("whiteout");
             onFieldSelect(null);
