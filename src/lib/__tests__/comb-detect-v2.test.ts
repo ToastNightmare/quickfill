@@ -49,6 +49,44 @@ function drawLines(
   return pixels;
 }
 
+function createCanvas(
+  width: number,
+  height: number,
+  pixels: Uint8ClampedArray,
+) {
+  const reads: Array<[number, number, number, number]> = [];
+  const context = {
+    getImageData: (
+      x: number,
+      y: number,
+      cropWidth: number,
+      cropHeight: number,
+    ) => {
+      reads.push([x, y, cropWidth, cropHeight]);
+      const cropped = createPixels(cropWidth, cropHeight);
+      for (let cropY = 0; cropY < cropHeight; cropY++) {
+        for (let cropX = 0; cropX < cropWidth; cropX++) {
+          const sourceIndex =
+            ((y + cropY) * width + x + cropX) * 4;
+          const targetIndex = (cropY * cropWidth + cropX) * 4;
+          cropped[targetIndex] = pixels[sourceIndex];
+          cropped[targetIndex + 1] = pixels[sourceIndex + 1];
+          cropped[targetIndex + 2] = pixels[sourceIndex + 2];
+          cropped[targetIndex + 3] = pixels[sourceIndex + 3];
+        }
+      }
+      return { data: cropped };
+    },
+  };
+  const canvas = {
+    width,
+    height,
+    getContext: () => context,
+  } as unknown as HTMLCanvasElement;
+
+  return { canvas, reads };
+}
+
 describe("detectCombCellsV2FromImageData", () => {
   test("detects a comb row with internal dividers", () => {
     const pixels = drawLines(
@@ -143,7 +181,7 @@ describe("detectCombCellsV2FromImageData", () => {
 });
 
 describe("detectCombCellsV2", () => {
-  test("retries once with a region expanded by thirty percent per side", () => {
+  test("retries once with minimum-size expansion floors", () => {
     const canvasWidth = 150;
     const canvasHeight = 70;
     const pixels = drawLines(
@@ -153,37 +191,106 @@ describe("detectCombCellsV2", () => {
       20,
       34,
     );
-    const reads: Array<[number, number, number, number]> = [];
-    const context = {
-      getImageData: (x: number, y: number, width: number, height: number) => {
-        reads.push([x, y, width, height]);
-        const cropped = createPixels(width, height);
-        for (let cropY = 0; cropY < height; cropY++) {
-          for (let cropX = 0; cropX < width; cropX++) {
-            const sourceIndex =
-              ((y + cropY) * canvasWidth + x + cropX) * 4;
-            const targetIndex = (cropY * width + cropX) * 4;
-            cropped[targetIndex] = pixels[sourceIndex];
-            cropped[targetIndex + 1] = pixels[sourceIndex + 1];
-            cropped[targetIndex + 2] = pixels[sourceIndex + 2];
-            cropped[targetIndex + 3] = pixels[sourceIndex + 3];
-          }
-        }
-        return { data: cropped };
-      },
-    };
-    const canvas = {
-      width: canvasWidth,
-      height: canvasHeight,
-      getContext: () => context,
-    } as unknown as HTMLCanvasElement;
+    const { canvas, reads } = createCanvas(
+      canvasWidth,
+      canvasHeight,
+      pixels,
+    );
 
     const result = detectCombCellsV2(canvas, 70, 20, 30, 15, 1);
 
     expect(result?.cellCount).toBe(3);
     expect(reads).toEqual([
       [70, 20, 30, 15],
-      [61, 15, 48, 25],
+      [55, 10, 60, 35],
     ]);
+  });
+
+  test("detects all six cells when mid-row taps are nearly level", () => {
+    const pixels = drawLines(
+      140,
+      70,
+      [20, 34, 48, 62, 76, 90, 104],
+      25,
+      40,
+    );
+    const { canvas } = createCanvas(140, 70, pixels);
+
+    const result = detectCombCellsV2(canvas, 27, 31, 70, 4, 1);
+
+    expect(result?.cellCount).toBe(6);
+  });
+
+  test("detects all six cells from a region strictly inside the row", () => {
+    const pixels = drawLines(
+      140,
+      70,
+      [20, 34, 48, 62, 76, 90, 104],
+      25,
+      40,
+    );
+    const { canvas } = createCanvas(140, 70, pixels);
+
+    const result = detectCombCellsV2(canvas, 22, 27, 80, 12, 1);
+
+    expect(result?.cellCount).toBe(6);
+  });
+
+  test("trims a neighbouring field edge from an expanded result", () => {
+    const pixels = drawLines(
+      160,
+      70,
+      [20, 34, 48, 62, 76, 90, 104, 116],
+      25,
+      40,
+    );
+    const { canvas } = createCanvas(160, 70, pixels);
+
+    const result = detectCombCellsV2(canvas, 27, 31, 70, 4, 1);
+
+    expect(result?.cellCount).toBe(6);
+    expect(result?.cellBoundaries).toEqual([20, 34, 48, 62, 76, 90]);
+  });
+
+  test("clamps the expanded region at the canvas edge", () => {
+    const pixels = drawLines(
+      100,
+      45,
+      [0, 14, 28, 42, 56, 70, 84],
+      5,
+      20,
+    );
+    const { canvas, reads } = createCanvas(100, 45, pixels);
+
+    const result = detectCombCellsV2(canvas, 7, 10, 70, 4, 1);
+
+    expect(result?.cellCount).toBe(6);
+    expect(reads[1]?.[0]).toBe(0);
+  });
+
+  test("keeps a covering first-pass result without retrying", () => {
+    const cellBoundaries = [20, 48, 76, 104, 132, 160, 188];
+    const pixels = drawLines(
+      220,
+      90,
+      cellBoundaries,
+      25,
+      49,
+    );
+    const { canvas, reads } = createCanvas(220, 90, pixels);
+    const firstCellCenter = 34;
+    const lastCellCenter = 174;
+
+    const result = detectCombCellsV2(
+      canvas,
+      firstCellCenter - 20,
+      25,
+      lastCellCenter - firstCellCenter + 40,
+      25,
+      1,
+    );
+
+    expect(result?.cellCount).toBe(6);
+    expect(reads).toEqual([[14, 25, 180, 25]]);
   });
 });
