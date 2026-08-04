@@ -453,6 +453,13 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
   const dragCurrent = useRef<{x: number, y: number} | null>(null);
   const isDragDrawing = useRef(false);
   const [drawRect, setDrawRect] = useState<{x: number, y: number, w: number, h: number} | null>(null);
+  const desktopCornerPlantedOnMouseDownRef = useRef(false);
+  const createFieldAtPointRef = useRef<(
+    posX: number,
+    posY: number,
+    clickedOnEmpty: boolean,
+    detectedSnap?: SnapResult,
+  ) => boolean>(() => false);
   const pendingBoxCornerRef = useRef<{ x: number; y: number } | null>(
     null,
   );
@@ -624,8 +631,27 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
       activeTool === "whiteout");
   const twoTapPlacementEnabled =
     twoTapBoxPlacementEnabled || twoTapDrawToolsEnabled;
-  const pendingCornerHint =
-    activeTool === "text"
+  const twoClickDesktopEnabled =
+    process.env.NEXT_PUBLIC_QUICKFILL_TWO_CLICK_DESKTOP === "v1" &&
+    !isCoarsePointer &&
+    (activeTool === "text" ||
+      activeTool === "date" ||
+      activeTool === "whiteout" ||
+      activeTool === "signature" ||
+      activeTool === "box");
+  const twoCornerPlacementEnabled =
+    twoTapPlacementEnabled || twoClickDesktopEnabled;
+  const pendingCornerHint = twoClickDesktopEnabled
+    ? activeTool === "text"
+      ? "Click the opposite corner to place the text field"
+      : activeTool === "date"
+        ? "Click the opposite corner to place the date field"
+        : activeTool === "signature"
+          ? "Click the opposite corner to place the signature field"
+          : activeTool === "whiteout"
+            ? "Click the opposite corner to place the whiteout"
+            : "Click the opposite corner to place the box field"
+    : activeTool === "text"
       ? "Tap the opposite corner to place the text field"
       : activeTool === "date"
         ? "Tap the opposite corner to place the date field"
@@ -746,14 +772,35 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
   ]);
 
   useEffect(() => {
-    if (
-      !twoTapPlacementEnabled ||
+    const shouldCancelPendingCorner =
+      !twoCornerPlacementEnabled ||
       (pendingBoxCornerRef.current &&
-        pendingBoxCornerToolRef.current !== activeTool)
-    ) {
+        pendingBoxCornerToolRef.current !== activeTool);
+    if (shouldCancelPendingCorner) {
+      const hadPendingCorner = pendingBoxCornerRef.current !== null;
       cancelPendingBoxCorner();
+      if (hadPendingCorner) setDrawRect(null);
     }
-  }, [activeTool, cancelPendingBoxCorner, twoTapPlacementEnabled]);
+  }, [activeTool, cancelPendingBoxCorner, twoCornerPlacementEnabled]);
+  const pendingCornerViewportRef = useRef({
+    currentPage,
+    fitScale,
+    zoomFactor,
+  });
+  useEffect(() => {
+    const previous = pendingCornerViewportRef.current;
+    const viewportChanged =
+      previous.currentPage !== currentPage ||
+      previous.fitScale !== fitScale ||
+      previous.zoomFactor !== zoomFactor;
+
+    pendingCornerViewportRef.current = { currentPage, fitScale, zoomFactor };
+    if (viewportChanged) {
+      const hadPendingCorner = pendingBoxCornerRef.current !== null;
+      cancelPendingBoxCorner();
+      if (hadPendingCorner) setDrawRect(null);
+    }
+  }, [cancelPendingBoxCorner, currentPage, fitScale, zoomFactor]);
   const stagePointToPagePoint = useCallback(
     (pos: { x: number; y: number }) => {
       const effectiveScale = fitScale * zoomFactor;
@@ -1343,7 +1390,9 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
       // Escape - deactivate tool and deselect
       if (e.key === "Escape") {
         e.preventDefault();
+        const hadPendingCorner = pendingBoxCornerRef.current !== null;
         cancelPendingBoxCorner();
+        if (hadPendingCorner) setDrawRect(null);
         if (activeTool === "mask-eraser") {
           stopMaskDrag();
         }
@@ -1556,6 +1605,24 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
         return;
       }
 
+      if (twoClickDesktopEnabled) {
+        if (snapPreview) setSnapPreview(null);
+        const firstCorner = pendingBoxCornerRef.current;
+        if (
+          firstCorner &&
+          pendingBoxCornerToolRef.current === activeTool
+        ) {
+          dragCurrent.current = { x: pos.x, y: pos.y };
+          setDrawRect({
+            x: Math.min(firstCorner.x, pos.x),
+            y: Math.min(firstCorner.y, pos.y),
+            w: Math.abs(pos.x - firstCorner.x),
+            h: Math.abs(pos.y - firstCorner.y),
+          });
+        }
+        return;
+      }
+
       // Feature 1: Update drag rectangle while dragging
       if (isDragDrawing.current && dragStart.current && isPlacementTool(activeTool) && e.target === stage) {
         dragCurrent.current = { x: pos.x, y: pos.y };
@@ -1679,7 +1746,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
         setSnapPreview(null);
       }
     },
-    [activeTool, applyMaskAlongStagePath, fitScale, snapPreview, snapEnabled, snapV2Enabled, toolDefaults, updateCursor, zoomFactor]
+    [activeTool, applyMaskAlongStagePath, fitScale, snapPreview, snapEnabled, snapV2Enabled, toolDefaults, twoClickDesktopEnabled, updateCursor, zoomFactor]
   );
 
   const handleStageMouseLeave = useCallback(() => {
@@ -1688,12 +1755,15 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
     setLinePreview(null);
     setCheckboxPreview(null);
     setMaskCursor(null);
+    if (twoClickDesktopEnabled && pendingBoxCornerRef.current) {
+      setDrawRect(null);
+    }
     setCursorStyle(activeTool ? "crosshair" : "default");
     // Reset whiteout color when switching away from whiteout tool
     if (activeTool !== "whiteout") {
       setWhiteoutColor(null);
     }
-  }, [activeTool, stopMaskDrag]);
+  }, [activeTool, stopMaskDrag, twoClickDesktopEnabled]);
 
   const createDrawnBoxField = useCallback(
     (
@@ -2143,6 +2213,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
       const container = stage.container();
       const rect = container.getBoundingClientRect();
       const pos = { x: nativeEvt.clientX - rect.left, y: nativeEvt.clientY - rect.top };
+      desktopCornerPlantedOnMouseDownRef.current = false;
       mouseDownPos.current = { x: pos.x, y: pos.y };
       if (activeTool === "mask-eraser") {
         setMaskCursor(pos);
@@ -2156,8 +2227,19 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
         isDragMove.current = false;
         return;
       }
+      if (
+        twoClickDesktopEnabled &&
+        isMobileEditor &&
+        Date.now() - lastTouchEndAtRef.current < 700
+      ) {
+        return;
+      }
       // Feature 1: Record drag start if tool is active and clicking on empty canvas
       if (isPlacementTool(activeTool) && e.target === stage) {
+        if (twoClickDesktopEnabled && !pendingBoxCornerRef.current) {
+          plantPendingBoxCorner(pos, activeTool);
+          desktopCornerPlantedOnMouseDownRef.current = true;
+        }
         dragStart.current = { x: pos.x, y: pos.y };
         dragCurrent.current = { x: pos.x, y: pos.y };
         isDragDrawing.current = true;
@@ -2165,14 +2247,17 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
       }
       isDragMove.current = false;
     },
-    [activeTool, applyMaskAtStagePoint, fields, onFieldSelect]
+    [activeTool, applyMaskAtStagePoint, fields, isMobileEditor, onFieldSelect, plantPendingBoxCorner, twoClickDesktopEnabled]
   );
 
   const handleStageMouseUp = useCallback(
     (e: Konva.KonvaEventObject<MouseEvent>) => {
       const stage = e.target.getStage();
       if (!stage) return;
-      if (isMobileEditor && Date.now() - lastTouchEndAtRef.current < 700) return;
+      if (isMobileEditor && Date.now() - lastTouchEndAtRef.current < 700) {
+        desktopCornerPlantedOnMouseDownRef.current = false;
+        return;
+      }
       // Use clientX/Y with getBoundingClientRect for consistent coordinates with mouseDown
       const nativeEvt = e.evt;
       const container = stage.container();
@@ -2194,6 +2279,91 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
         stopMaskDrag();
         return;
       }
+
+      const pendingDesktopCorner = pendingBoxCornerRef.current;
+      if (
+        twoClickDesktopEnabled &&
+        pendingDesktopCorner &&
+        pendingBoxCornerToolRef.current === activeTool &&
+        isPlacementTool(activeTool) &&
+        e.target === stage
+      ) {
+        const plantedOnThisMouseDown =
+          desktopCornerPlantedOnMouseDownRef.current;
+        desktopCornerPlantedOnMouseDownRef.current = false;
+        const absDx = Math.abs(pos.x - pendingDesktopCorner.x);
+        const absDy = Math.abs(pos.y - pendingDesktopCorner.y);
+
+        isDragDrawing.current = false;
+        dragStart.current = null;
+        dragCurrent.current = null;
+
+        if (plantedOnThisMouseDown && (absDx <= 10 || absDy <= 10)) {
+          return;
+        }
+
+        cancelPendingBoxCorner();
+        setDrawRect(null);
+        setLinePreview(null);
+        setCheckboxPreview(null);
+
+        if (absDx > 10 && absDy > 10) {
+          if (activeTool === "box") {
+            createDrawnBoxField(pendingDesktopCorner, pos);
+            return;
+          }
+
+          if (activeTool === "text" || activeTool === "date") {
+            const placementRect = {
+              x: Math.min(pendingDesktopCorner.x, pos.x),
+              y: Math.min(pendingDesktopCorner.y, pos.y),
+              width: absDx,
+              height: absDy,
+            };
+            const rectCenter = {
+              x: placementRect.x + placementRect.width / 2,
+              y: placementRect.y + placementRect.height / 2,
+            };
+            const detectedSnap = snapEnabled
+              ? detectSnapAtStagePoint(rectCenter)
+              : null;
+            const snapIntersectsPlacementRect =
+              detectedSnap !== null &&
+              detectedSnap.x < placementRect.x + placementRect.width &&
+              detectedSnap.x + detectedSnap.width > placementRect.x &&
+              detectedSnap.y < placementRect.y + placementRect.height &&
+              detectedSnap.y + detectedSnap.height > placementRect.y;
+
+            if (detectedSnap && snapIntersectsPlacementRect) {
+              createFieldAtPointRef.current(
+                rectCenter.x,
+                rectCenter.y,
+                true,
+                detectedSnap,
+              );
+              return;
+            }
+          }
+
+          if (
+            activeTool === "text" ||
+            activeTool === "date" ||
+            activeTool === "signature" ||
+            activeTool === "whiteout"
+          ) {
+            createDrawnFieldForTool(activeTool, pendingDesktopCorner, pos);
+          }
+          return;
+        }
+
+        createFieldAtPointRef.current(
+          pendingDesktopCorner.x,
+          pendingDesktopCorner.y,
+          true,
+        );
+        return;
+      }
+      desktopCornerPlantedOnMouseDownRef.current = false;
 
       // Feature 1: Complete drag-to-draw if active
       if (isDragDrawing.current && dragStart.current && pos) {
@@ -2472,7 +2642,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
         setCheckboxPreview(null);
       }
     },
-    [activeTool, currentPage, zoomFactor, fitScale, onFieldAdd, onFieldSelect, onToolSelect, onSignatureFieldPlaced, snapPreview, whiteoutColor, fields, snapEnabled, createFieldId, isMobileEditor, toolDefaults, viewportAtScale1, applyMaskAlongStagePath, stopMaskDrag, cancelPendingBoxCorner, createDrawnBoxField, createDrawnFieldForTool, combMobileEnabled, detectSnapAtStagePoint]
+    [activeTool, currentPage, zoomFactor, fitScale, onFieldAdd, onFieldSelect, onToolSelect, onSignatureFieldPlaced, snapPreview, whiteoutColor, fields, snapEnabled, createFieldId, isMobileEditor, toolDefaults, viewportAtScale1, applyMaskAlongStagePath, stopMaskDrag, cancelPendingBoxCorner, createDrawnBoxField, createDrawnFieldForTool, combMobileEnabled, detectSnapAtStagePoint, twoClickDesktopEnabled]
   );
 
   // Core field creation logic - shared by click and touch
@@ -2734,6 +2904,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
     },
     [activeTool, currentPage, onFieldAdd, onFieldSelect, onToolSelect, zoomFactor, fitScale, snapPreview, onSignatureFieldPlaced, snapEnabled, whiteoutColor, fields, createFieldId, isMobileEditor, toolDefaults, viewportAtScale1, combMobileEnabled, detectSnapAtStagePoint]
   );
+  createFieldAtPointRef.current = createFieldAtPoint;
 
   const handleStageClick = useCallback(
     (e: Konva.KonvaEventObject<MouseEvent | TouchEvent>) => {
@@ -2761,6 +2932,14 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
       }
 
       const hitField = fieldFromNode(e.target, stage) ?? fieldFromStagePoint(stage, pos);
+      if (
+        twoClickDesktopEnabled &&
+        pendingBoxCornerRef.current &&
+        hitField
+      ) {
+        cancelPendingBoxCorner();
+        setDrawRect(null);
+      }
       if (hitField && hitField.type !== "whiteout") {
         selectFieldForInteraction(hitField);
         return;
@@ -2809,7 +2988,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
         }
       }
     },
-    [activeTool, createFieldAtPoint, fieldFromNode, fieldFromStagePoint, onFieldSelect, selectFieldForInteraction]
+    [activeTool, cancelPendingBoxCorner, createFieldAtPoint, fieldFromNode, fieldFromStagePoint, onFieldSelect, selectFieldForInteraction, twoClickDesktopEnabled]
   );
 
   const handleStageTap = useCallback(
@@ -3215,6 +3394,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
         {/* Feature 1: Drag-to-draw rectangle overlay */}
         {drawRect && (
           <div
+            data-testid="draw-placement-preview"
             style={{
               position: "absolute",
               left: drawRect.x,
@@ -3230,7 +3410,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
           />
         )}
 
-        {twoTapPlacementEnabled && pendingBoxCorner && (
+        {twoCornerPlacementEnabled && pendingBoxCorner && (
           <>
             <div
               data-testid="box-first-corner-marker"
