@@ -55,10 +55,25 @@ test('Template opens in editor', async ({ page }) => {
   await expect(page.getByTestId('pdf-page')).toBeVisible({ timeout: 15_000 });
 });
 
+test('Template landing pages expose form codes and honest CTA copy', async ({ page }) => {
+  await page.goto('/templates/super-choice', { waitUntil: 'domcontentloaded' });
+  await expect(
+    page.getByRole('heading', { level: 1, name: 'Superannuation Standard Choice (NAT 13080)' }),
+  ).toBeVisible();
+
+  await page.goto('/templates/withholding-declaration', { waitUntil: 'domcontentloaded' });
+  await expect(
+    page.getByRole('heading', { level: 1, name: 'Withholding Declaration (NAT 3093)' }),
+  ).toBeVisible();
+
+  const fillLink = page.getByRole('link', { name: 'Fill This Form Online' });
+  await expect(fillLink).toHaveAttribute('href', '/editor?template=ato-withholding-declaration.pdf');
+});
+
 test('Navigation links work', async ({ page }) => {
   await page.goto('/', { waitUntil: 'domcontentloaded' });
 
-  const templatesLink = page.locator('a[href="/templates"]').first();
+  const templatesLink = page.locator('nav').getByRole('link', { name: 'Templates', exact: true });
   await expect(templatesLink).toBeVisible();
   await templatesLink.click();
   await expect(page).toHaveURL('/templates');
