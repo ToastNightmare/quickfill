@@ -12,6 +12,7 @@ interface HistoryState {
 
 type HistoryAction =
   | { type: "SET"; updater: EditorField[] | ((prev: EditorField[]) => EditorField[]) }
+  | { type: "NORMALIZE"; transform: (fields: EditorField[]) => EditorField[] }
   | { type: "UNDO" }
   | { type: "REDO" }
   | { type: "RESET"; fields: EditorField[] };
@@ -29,6 +30,15 @@ function reducer(state: HistoryState, action: HistoryAction): HistoryState {
         past: newPast.length > MAX_HISTORY ? newPast.slice(newPast.length - MAX_HISTORY) : newPast,
         present: next,
         future: [],
+      };
+    }
+    case "NORMALIZE": {
+      const normalizeSnapshot = (fields: EditorField[]) =>
+        orderFieldsForLayering(action.transform(fields));
+      return {
+        past: state.past.map(normalizeSnapshot),
+        present: normalizeSnapshot(state.present),
+        future: state.future.map(normalizeSnapshot),
       };
     }
     case "UNDO": {
@@ -94,6 +104,11 @@ export function useHistory(initial: EditorField[] = []) {
     (fields: EditorField[] = []) => dispatch({ type: "RESET", fields }),
     []
   );
+  const normalize = useCallback(
+    (transform: (fields: EditorField[]) => EditorField[]) =>
+      dispatch({ type: "NORMALIZE", transform }),
+    []
+  );
 
   return {
     fields: state.present,
@@ -101,6 +116,7 @@ export function useHistory(initial: EditorField[] = []) {
     undo,
     redo,
     reset,
+    normalize,
     canUndo: state.past.length > 0,
     canRedo: state.future.length > 0,
   };
