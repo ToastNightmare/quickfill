@@ -2,8 +2,19 @@
  * @jest-environment node
  */
 
-import { PDFDocument, StandardFonts } from "pdf-lib";
-import { detectAcroFormFields } from "../pdf-utils";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import {
+  decodePDFRawStream,
+  PDFDocument,
+  PDFName,
+  PDFRawStream,
+  StandardFonts,
+} from "pdf-lib";
+import {
+  clearAcroFormTextValuesForOverlay,
+  detectAcroFormFields,
+} from "../pdf-utils";
 
 const DOWNLOAD_PRESERVE_FLAG =
   "NEXT_PUBLIC_QUICKFILL_DOWNLOAD_PRESERVE";
@@ -11,12 +22,16 @@ const MOBILE_POLISH_FLAG =
   "NEXT_PUBLIC_QUICKFILL_MOBILE_POLISH";
 const FORM_FIDELITY_FLAG =
   "NEXT_PUBLIC_QUICKFILL_FORM_FIDELITY";
+const COMB_PREEXISTING_FLAG =
+  "NEXT_PUBLIC_QUICKFILL_COMB_PREEXISTING";
 const originalDownloadPreserveFlag =
   process.env[DOWNLOAD_PRESERVE_FLAG];
 const originalMobilePolishFlag =
   process.env[MOBILE_POLISH_FLAG];
 const originalFormFidelityFlag =
   process.env[FORM_FIDELITY_FLAG];
+const originalCombPreexistingFlag =
+  process.env[COMB_PREEXISTING_FLAG];
 
 function asArrayBuffer(bytes: Uint8Array) {
   return bytes.buffer.slice(
@@ -30,6 +45,7 @@ describe("detectAcroFormFields value seeding", () => {
     process.env[DOWNLOAD_PRESERVE_FLAG] = "v1";
     delete process.env[MOBILE_POLISH_FLAG];
     delete process.env[FORM_FIDELITY_FLAG];
+    delete process.env[COMB_PREEXISTING_FLAG];
   });
 
   afterEach(() => {
@@ -50,6 +66,115 @@ describe("detectAcroFormFields value seeding", () => {
       process.env[FORM_FIDELITY_FLAG] =
         originalFormFidelityFlag;
     }
+    if (originalCombPreexistingFlag === undefined) {
+      delete process.env[COMB_PREEXISTING_FLAG];
+    } else {
+      process.env[COMB_PREEXISTING_FLAG] =
+        originalCombPreexistingFlag;
+    }
+  });
+
+  it("blanks every widget appearance by field name in a download-only copy", async () => {
+    const pdfDoc = await PDFDocument.create();
+    const page = pdfDoc.addPage([300, 300]);
+    const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+    const form = pdfDoc.getForm();
+    const combSource = form.createTextField("comb-source");
+    combSource.setText("VX");
+    combSource.addToPage(page, {
+      x: 20,
+      y: 240,
+      width: 100,
+      height: 24,
+      font,
+    });
+    combSource.addToPage(page, {
+      x: 20,
+      y: 200,
+      width: 100,
+      height: 24,
+      font,
+    });
+    const untouched = form.createTextField("untouched");
+    untouched.addToPage(page, {
+      x: 20,
+      y: 160,
+      width: 100,
+      height: 24,
+      font,
+    });
+    untouched.setText("Ω");
+    const untouchedWidget = untouched.acroField.getWidgets()[0];
+    untouchedWidget.dict.delete(PDFName.of("AP"));
+    const sourceBytes = asArrayBuffer(
+      await pdfDoc.save({ updateFieldAppearances: false }),
+    );
+    const sourceSnapshot = Buffer.from(sourceBytes);
+
+    const preparedBytes = await clearAcroFormTextValuesForOverlay(
+      sourceBytes,
+      ["comb-source", "comb-source"],
+    );
+
+    expect(Buffer.from(sourceBytes)).toEqual(sourceSnapshot);
+    const originalDocument = await PDFDocument.load(sourceBytes);
+    expect(
+      originalDocument.getForm().getTextField("comb-source").getText(),
+    ).toBe("VX");
+
+    const preparedDocument = await PDFDocument.load(preparedBytes);
+    const preparedForm = preparedDocument.getForm();
+    const preparedCombSource = preparedForm.getTextField("comb-source");
+    expect(preparedCombSource.getText() ?? "").toBe("");
+    const preparedUntouched = preparedForm.getTextField("untouched");
+    expect(preparedUntouched.getText()).toBe("Ω");
+    expect(
+      preparedUntouched.acroField.getWidgets()[0].getAppearances(),
+    ).toBeUndefined();
+
+    const widgets = preparedCombSource.acroField.getWidgets();
+    expect(widgets).toHaveLength(2);
+    for (const widget of widgets) {
+      const normalAppearance = widget.getAppearances()?.normal;
+      expect(normalAppearance).toBeInstanceOf(PDFRawStream);
+      if (!(normalAppearance instanceof PDFRawStream)) {
+        throw new Error("Expected a text-field appearance stream");
+      }
+      const appearanceText = Buffer.from(
+        decodePDFRawStream(normalAppearance).decode(),
+      ).toString("latin1");
+      expect(appearanceText).toContain("<> Tj");
+      expect(appearanceText).not.toContain("<5658> Tj");
+    }
+  });
+
+  it("reads the declared comb bit and MaxLen only for the exact comb flag", async () => {
+    const fixture = readFileSync(
+      join(__dirname, "fixtures", "comb-preexisting-declared.pdf"),
+    );
+    const sourceBytes = asArrayBuffer(fixture);
+    const fixtureDocument = await PDFDocument.load(sourceBytes);
+    const fixtureField = fixtureDocument.getForm().getTextField("declared-comb");
+
+    expect(fixtureField.isCombed()).toBe(true);
+    expect(fixtureField.getMaxLength()).toBe(6);
+
+    delete process.env[DOWNLOAD_PRESERVE_FLAG];
+    process.env[COMB_PREEXISTING_FLAG] = "v1";
+    const enabled = await detectAcroFormFields(sourceBytes);
+    expect(enabled).toHaveLength(1);
+    expect(enabled[0]).toMatchObject({
+      name: "declared-comb",
+      type: "text",
+      value: "123",
+      combed: true,
+      maxLength: 6,
+    });
+
+    process.env[COMB_PREEXISTING_FLAG] = "true";
+    const disabled = await detectAcroFormFields(sourceBytes);
+    expect(disabled[0]).not.toHaveProperty("combed");
+    expect(disabled[0]).not.toHaveProperty("maxLength");
   });
 
   it("exposes source multiline metadata only for the exact form-fidelity flag", async () => {

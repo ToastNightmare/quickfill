@@ -283,6 +283,46 @@ export function fitOverlayFontSize(
 }
 
 /**
+ * Prepare a download-only copy whose matched AcroForm text appearances are
+ * blank. The server can then flatten the source form before drawing the comb
+ * overlays without retaining the original left-aligned value underneath.
+ */
+export async function clearAcroFormTextValuesForOverlay(
+  originalPdfBytes: ArrayBuffer,
+  fieldNames: readonly string[],
+): Promise<ArrayBuffer> {
+  const uniqueFieldNames = new Set(fieldNames);
+  if (uniqueFieldNames.size === 0) return originalPdfBytes;
+
+  const pdfDoc = await PDFDocument.load(originalPdfBytes, {
+    ignoreEncryption: true,
+  });
+  const form = pdfDoc.getForm();
+  const fieldsByName = new Map(
+    form.getFields().map((field) => [field.getName(), field] as const),
+  );
+  const clearedFields: PDFTextField[] = [];
+
+  for (const fieldName of uniqueFieldNames) {
+    const field = fieldsByName.get(fieldName);
+    if (!(field instanceof PDFTextField)) continue;
+    field.setText("");
+    clearedFields.push(field);
+  }
+
+  if (clearedFields.length === 0) return originalPdfBytes;
+  const appearanceFont = form.getDefaultFont();
+  for (const field of clearedFields) {
+    field.updateAppearances(appearanceFont);
+  }
+  const bytes = await pdfDoc.save({ updateFieldAppearances: false });
+  return bytes.buffer.slice(
+    bytes.byteOffset,
+    bytes.byteOffset + bytes.byteLength,
+  ) as ArrayBuffer;
+}
+
+/**
  * Keep eraser/whiteout marks behind everything the customer adds afterwards.
  * This makes the final PDF match the editor: whiteout first, text/signature/checks on top.
  */
@@ -339,6 +379,8 @@ export async function detectAcroFormFields(pdfBytes: ArrayBuffer) {
     process.env.NEXT_PUBLIC_QUICKFILL_MOBILE_POLISH === "v1";
   const formFidelityEnabled =
     process.env.NEXT_PUBLIC_QUICKFILL_FORM_FIDELITY === "v1";
+  const combPreexistingEnabled =
+    process.env.NEXT_PUBLIC_QUICKFILL_COMB_PREEXISTING === "v1";
   const result: {
     name: string;
     type: "text" | "checkbox";
@@ -355,6 +397,8 @@ export async function detectAcroFormFields(pdfBytes: ArrayBuffer) {
     currentSelection?: string;
     multiselect?: boolean;
     multiline?: true;
+    combed?: true;
+    maxLength?: number;
   }[] = [];
 
   for (const field of fields) {
@@ -458,13 +502,52 @@ export async function detectAcroFormFields(pdfBytes: ArrayBuffer) {
       let checked = false;
       let valueSource: "text" | "choice" | "none" = "none";
       let multiline = false;
+      let combed = false;
+      let maxLength: number | undefined;
 
-      if (formFidelityEnabled && field instanceof PDFTextField) {
+      if (
+        (formFidelityEnabled || combPreexistingEnabled) &&
+        field instanceof PDFTextField
+      ) {
         try {
           multiline = form.getTextField(field.getName()).isMultiline();
         } catch {
           // Unreadable field metadata keeps the existing single-line editor.
         }
+      }
+
+      if (
+        combPreexistingEnabled &&
+        !multiline &&
+        field instanceof PDFTextField
+      ) {
+        try {
+          const textField = form.getTextField(field.getName());
+          const declaredMaxLength = textField.getMaxLength();
+          if (
+            textField.isCombed() &&
+            declaredMaxLength !== undefined &&
+            declaredMaxLength >= 2
+          ) {
+            combed = true;
+            maxLength = declaredMaxLength;
+          }
+        } catch {
+          // Unreadable comb metadata leaves the field as declared text.
+        }
+      }
+
+      if (combPreexistingEnabled && field instanceof PDFTextField) {
+        type = "text";
+        try {
+          value = form.getTextField(field.getName()).getText() ?? "";
+        } catch {
+          // An unreadable value keeps the existing empty text fallback.
+        }
+      }
+
+      if (combPreexistingEnabled && choiceKind) {
+        valueSource = "choice";
       }
 
       if (downloadPreserveEnabled) {
@@ -527,8 +610,13 @@ export async function detectAcroFormFields(pdfBytes: ArrayBuffer) {
         height: rect.height,
         page: pageIndex,
         value,
-        ...(downloadPreserveEnabled ? { checked, valueSource } : {}),
+        ...(downloadPreserveEnabled
+          ? { checked, valueSource }
+          : combPreexistingEnabled && valueSource === "choice"
+            ? { valueSource }
+            : {}),
         ...(multiline ? { multiline: true as const } : {}),
+        ...(combed ? { combed: true as const, maxLength } : {}),
       });
     }
   }

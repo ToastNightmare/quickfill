@@ -23,7 +23,17 @@ import {
 } from "@/components/FieldSuggestionReview";
 import type { PdfViewerHandle } from "@/components/PdfViewer";
 import { useHistory } from "@/lib/use-history";
-import { detectAcroFormFields } from "@/lib/pdf-utils";
+import {
+  clearAcroFormTextValuesForOverlay,
+  detectAcroFormFields,
+} from "@/lib/pdf-utils";
+import { detectCombCellsV2 } from "@/lib/snap-detect";
+import {
+  isCombPreexistingEligible,
+  upgradeDeclaredCombFields,
+  upgradeVisualCombField,
+  type CombPreexistingAcroField,
+} from "@/lib/comb-preexisting";
 import {
   loadPdfFromIndexedDB,
   saveFieldsToLocalStorage,
@@ -306,6 +316,8 @@ function LocalSaveBadge({ status }: { status: LocalSaveStatus }) {
 function EditorPageContent() {
   const fieldSuggestionReviewEnabled = isFieldSuggestionReviewEnabled();
   const addMediaEnabled = isAddMediaEnabled();
+  const combPreexistingEnabled =
+    process.env.NEXT_PUBLIC_QUICKFILL_COMB_PREEXISTING === "v1";
   const mobilePolishFlag =
     process.env.NEXT_PUBLIC_QUICKFILL_MOBILE_POLISH;
   const mobilePolishEnabled = mobilePolishFlag === "v1";
@@ -377,7 +389,16 @@ function EditorPageContent() {
   const [showTour, setShowTour] = useState(false);
   const [activeTemplate, setActiveTemplate] = useState<string | null>(null);
   const { isLoaded, isSignedIn, userId, sessionId } = useAuth();
-  const { fields, set: setFields, undo, redo, reset, canUndo, canRedo } = useHistory();
+  const {
+    fields,
+    set: setFields,
+    undo,
+    redo,
+    reset,
+    normalize,
+    canUndo,
+    canRedo,
+  } = useHistory();
   const restoredRef = useRef(false);
   const initialRestoreDoneRef = useRef(false);
   const downloadReadyFiredRef = useRef(false);
@@ -400,6 +421,12 @@ function EditorPageContent() {
   const signatureLoadSessionKeyRef = useRef<string | null>(null);
   const signatureActiveSessionKeyRef = useRef<string | null>(null);
   const signatureChangedThisSessionRef = useRef(false);
+  const combAcroFieldsRef = useRef<CombPreexistingAcroField[]>([]);
+  const combAcroFieldsReadyRef = useRef(false);
+  const combCheckedFieldIdsRef = useRef(new Set<string>());
+  const combCheckedPagesRef = useRef(new Set<number>());
+  const [combAcroFieldsRevision, setCombAcroFieldsRevision] = useState(0);
+  const [combViewerRevision, setCombViewerRevision] = useState(0);
   const searchParams = useSearchParams();
   const mobileSimpleDefaultEnabled =
     process.env.NEXT_PUBLIC_QUICKFILL_MOBILE_SIMPLE_DEFAULT === "v1";
@@ -414,6 +441,23 @@ function EditorPageContent() {
 
   const pdfViewerRef = useRef<PdfViewerHandle>(null);
   const viewerContainerRef = useRef<HTMLDivElement>(null);
+  const resetCombPreexistingDocument = useCallback(() => {
+    if (!combPreexistingEnabled) return;
+    combAcroFieldsRef.current = [];
+    combAcroFieldsReadyRef.current = false;
+    combCheckedFieldIdsRef.current.clear();
+    combCheckedPagesRef.current.clear();
+    setCombAcroFieldsRevision((revision) => revision + 1);
+  }, [combPreexistingEnabled]);
+  const recordCombPreexistingAcroFields = useCallback(
+    (acroFields: readonly CombPreexistingAcroField[]) => {
+      if (!combPreexistingEnabled) return;
+      combAcroFieldsRef.current = [...acroFields];
+      combAcroFieldsReadyRef.current = true;
+      setCombAcroFieldsRevision((revision) => revision + 1);
+    },
+    [combPreexistingEnabled],
+  );
   const getMediaPageBounds = useCallback((pageIndex: number) => {
     const dimensions = pdfViewerRef.current?.getViewportDims() ?? null;
     return dimensions?.pageIndex === pageIndex
@@ -806,6 +850,19 @@ function EditorPageContent() {
       const savedFields = repairDuplicateEditorFieldIds(loadFieldsFromLocalStorage());
       const savedPage = loadPageFromLocalStorage();
       const savedName = loadFileNameFromLocalStorage();
+      let restoredAcroFields: Awaited<ReturnType<typeof detectAcroFormFields>> | null = null;
+      if (combPreexistingEnabled) {
+        try {
+          restoredAcroFields = await detectAcroFormFields(savedPdf);
+        } catch {
+          restoredAcroFields = [];
+        }
+        if (activeViewerDocumentRevisionRef.current !== restoredViewerDocumentRevision) return;
+        recordCombPreexistingAcroFields(restoredAcroFields);
+      }
+      const restoredFields = restoredAcroFields
+        ? upgradeDeclaredCombFields(savedFields, restoredAcroFields)
+        : savedFields;
       const startedFromPhoto = window.sessionStorage.getItem("qf-photo-capture-source") === "1";
       window.sessionStorage.removeItem("qf-photo-capture-source");
       const documentRevision = fieldSuggestionReviewEnabled
@@ -821,9 +878,9 @@ function EditorPageContent() {
       setPdfBytes(savedPdf);
       setFileName(savedName);
       setCurrentPage(suggestionIntent ? 0 : savedPage);
-      if (savedFields.length > 0) {
-        reset(savedFields);
-        saveFieldsToLocalStorage(savedFields);
+      if (restoredFields.length > 0) {
+        reset(restoredFields);
+        saveFieldsToLocalStorage(restoredFields);
       }
       markLocalSave("restored");
       setShowRestoredBanner(true);
@@ -870,7 +927,8 @@ function EditorPageContent() {
 
       // Detect AcroForm for progress tracking
       try {
-        const acroFields = await detectAcroFormFields(savedPdf);
+        const acroFields =
+          restoredAcroFields ?? (await detectAcroFormFields(savedPdf));
         if (activeViewerDocumentRevisionRef.current !== restoredViewerDocumentRevision) return;
         if (acroFields.length > 0) setHasAcroForm(true);
       } catch {
@@ -887,6 +945,8 @@ function EditorPageContent() {
     deactivateViewerDocumentRevision,
     advancedMobile,
     mobileSimpleDefaultEnabled,
+    combPreexistingEnabled,
+    recordCombPreexistingAcroFields,
   ]);
 
   useEffect(() => {
@@ -1065,6 +1125,140 @@ function EditorPageContent() {
     }
   }, [currentPage, pdfBytes, markLocalSave]);
 
+  useEffect(() => {
+    if (
+      !combPreexistingEnabled ||
+      !pdfBytes ||
+      !combAcroFieldsReadyRef.current ||
+      combCheckedPagesRef.current.has(currentPage)
+    ) {
+      return;
+    }
+
+    const pageAcroFields = combAcroFieldsRef.current.filter(
+      (field) => field.page === currentPage,
+    );
+    if (pageAcroFields.length === 0) {
+      combCheckedPagesRef.current.add(currentPage);
+      return;
+    }
+
+    let cancelled = false;
+    let attempts = 0;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+
+    const pollCanvas = () => {
+      if (cancelled) return;
+      const viewer = pdfViewerRef.current;
+      const canvas = viewer?.getCanvas() ?? null;
+      const viewport = viewer?.getViewportDims() ?? null;
+      let hasRenderedContent = false;
+
+      if (
+        canvas &&
+        canvas.width > 0 &&
+        canvas.height > 0 &&
+        viewport?.pageIndex === currentPage &&
+        viewport.width > 0
+      ) {
+        try {
+          const context = canvas.getContext("2d");
+          const sample = context?.getImageData(
+            Math.floor(canvas.width / 2),
+            Math.floor(canvas.height / 2),
+            1,
+            1,
+          );
+          hasRenderedContent = Boolean(sample && sample.data[3] > 0);
+        } catch {
+          // Retry until the current page has rendered readable canvas content.
+        }
+      }
+
+      if (!canvas || !viewport || !hasRenderedContent) {
+        if (attempts++ < 20) timer = setTimeout(pollCanvas, 150);
+        return;
+      }
+
+      const detectionScale = canvas.width / viewport.width;
+      const upgrades = new Map<
+        string,
+        {
+          acroField: CombPreexistingAcroField;
+          detection: NonNullable<ReturnType<typeof detectCombCellsV2>>;
+        }
+      >();
+
+      for (const acroField of pageAcroFields) {
+        if (combCheckedFieldIdsRef.current.has(acroField.name)) continue;
+        const field = fields.find(
+          (candidate) =>
+            candidate.id === acroField.name && candidate.page === currentPage,
+        );
+        combCheckedFieldIdsRef.current.add(acroField.name);
+        if (
+          !field ||
+          field.type === "comb" ||
+          acroField.combed === true ||
+          !isCombPreexistingEligible(field, acroField)
+        ) {
+          continue;
+        }
+
+        const detection = detectCombCellsV2(
+          canvas,
+          field.x * detectionScale,
+          field.y * detectionScale,
+          field.width * detectionScale,
+          field.height * detectionScale,
+          detectionScale,
+        );
+        if (!detection) continue;
+        if (
+          upgradeVisualCombField(
+            field,
+            acroField,
+            detection,
+            detectionScale,
+          ) === field
+        ) {
+          continue;
+        }
+        upgrades.set(field.id, { acroField, detection });
+      }
+
+      combCheckedPagesRef.current.add(currentPage);
+      if (upgrades.size === 0) return;
+      normalize((snapshots) =>
+        snapshots.map((field) => {
+          const upgrade = upgrades.get(field.id);
+          return upgrade
+            ? upgradeVisualCombField(
+                field,
+                upgrade.acroField,
+                upgrade.detection,
+                detectionScale,
+              )
+            : field;
+        }),
+      );
+      setCombViewerRevision((revision) => revision + 1);
+    };
+
+    timer = setTimeout(pollCanvas, 300);
+    return () => {
+      cancelled = true;
+      if (timer !== null) clearTimeout(timer);
+    };
+  }, [
+    combPreexistingEnabled,
+    pdfBytes,
+    currentPage,
+    combAcroFieldsRevision,
+    fields,
+    normalize,
+  ]);
+
   // Persist zoom on change
   useEffect(() => {
     if (!pdfBytes) return;
@@ -1197,6 +1391,7 @@ function EditorPageContent() {
     ) => {
       setIsLoading(true);
       const requestedViewerDocumentRevision = activateNextViewerDocumentRevision();
+      resetCombPreexistingDocument();
       const isCurrentDocumentLoad = () => (
         activeViewerDocumentRevisionRef.current === requestedViewerDocumentRevision
       );
@@ -1272,12 +1467,13 @@ function EditorPageContent() {
           try {
             const acroFields = await detectAcroFormFields(bytes);
             if (!isCurrentDocumentLoad()) return;
+            recordCombPreexistingAcroFields(acroFields);
             if (acroFields.length > 0) {
               detectedAcroFieldCount = acroFields.length;
               setHasAcroForm(true);
               const preserveDownloadContent =
                 process.env.NEXT_PUBLIC_QUICKFILL_DOWNLOAD_PRESERVE === "v1";
-              const editorFields: EditorField[] = acroFields.map((af) => {
+              const hydratedFields: EditorField[] = acroFields.map((af) => {
                 if (af.type === "checkbox") {
                   return {
                     id: af.name,
@@ -1308,6 +1504,9 @@ function EditorPageContent() {
                   ...(af.multiline ? { multiline: true as const } : {}),
                 };
               });
+              const editorFields = combPreexistingEnabled
+                ? upgradeDeclaredCombFields(hydratedFields, acroFields)
+                : hydratedFields;
               reset(repairDuplicateEditorFieldIds(editorFields));
             } else {
               setHasAcroForm(false);
@@ -1377,6 +1576,9 @@ function EditorPageContent() {
       persistPdfForMediaSession,
       activateNextViewerDocumentRevision,
       deactivateViewerDocumentRevision,
+      combPreexistingEnabled,
+      resetCombPreexistingDocument,
+      recordCombPreexistingAcroFields,
     ]
   );
 
@@ -2105,9 +2307,28 @@ function EditorPageContent() {
         return;
       }
 
+      const acroFieldNames = new Set(
+        combAcroFieldsRef.current.map((field) => field.name),
+      );
+      const upgradedCombFieldIds = combPreexistingEnabled
+        ? fields
+            .filter(
+              (field) =>
+                field.type === "comb" && acroFieldNames.has(field.id),
+            )
+            .map((field) => field.id)
+        : [];
+      const downloadPdfBytes =
+        upgradedCombFieldIds.length > 0
+          ? await clearAcroFormTextValuesForOverlay(
+              pdfBytes,
+              upgradedCombFieldIds,
+            )
+          : pdfBytes;
+
       // Build FormData and send to server-side fill API
       const fd = new FormData();
-      fd.append("pdf", new Blob([pdfBytes], { type: "application/pdf" }), "input.pdf");
+      fd.append("pdf", new Blob([downloadPdfBytes], { type: "application/pdf" }), "input.pdf");
       fd.append("fields", JSON.stringify(fields));
       fd.append("pageScales", JSON.stringify(Array.from(pageScales.entries())));
       
@@ -2213,7 +2434,7 @@ function EditorPageContent() {
     } finally {
       setIsDownloading(false);
     }
-  }, [pdfBytes, fields, pageScales, hasAcroForm, fileName, totalPages, showToast, openDownloadPreviewGate]);
+  }, [pdfBytes, fields, pageScales, hasAcroForm, fileName, totalPages, showToast, openDownloadPreviewGate, combPreexistingEnabled]);
 
   // Stripe cancel from the download gate returns to /editor?download=cancelled.
   // The user's document restores from IndexedDB as normal; reopen the gate so
@@ -2797,6 +3018,11 @@ function EditorPageContent() {
 
         <div ref={viewerContainerRef} className="flex-1 h-full overflow-auto relative min-w-0">
           <PdfViewer
+            key={
+              combPreexistingEnabled
+                ? `${viewerDocumentRevision ?? 0}:${combViewerRevision}`
+                : undefined
+            }
             ref={pdfViewerRef}
             pdfBytes={pdfBytes}
             currentPage={currentPage}
