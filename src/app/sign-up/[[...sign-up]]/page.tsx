@@ -1,14 +1,23 @@
 import { SignUp } from "@clerk/nextjs";
 import Image from "next/image";
 import Link from "next/link";
+import {
+  pricingV2AuthSummary,
+  pricingV2Enabled,
+  type PricingV2Billing,
+} from "@/lib/pricing-v2";
 
-function isCheckoutContext(redirectUrl: string | undefined): boolean {
-  if (!redirectUrl) return false;
+function checkoutBilling(redirectUrl: string | undefined): PricingV2Billing | null {
+  if (!redirectUrl) return null;
   try {
     const decoded = decodeURIComponent(redirectUrl);
-    return decoded.includes("/checkout") || decoded.includes("download_preview_gate");
+    if (!decoded.includes("/checkout") && !decoded.includes("download_preview_gate")) return null;
+
+    const billing = new URL(decoded, "https://getquickfill.com").searchParams.get("billing");
+    if (billing === "monthly" || billing === "sale") return billing;
+    return "annual";
   } catch {
-    return false;
+    return null;
   }
 }
 
@@ -18,7 +27,11 @@ export default async function SignUpPage({
   searchParams: Promise<{ redirect_url?: string }>;
 }) {
   const params = await searchParams;
-  const isCheckout = isCheckoutContext(params.redirect_url);
+  const billing = checkoutBilling(params.redirect_url);
+  const isCheckout = billing !== null;
+  const checkoutPriceCopy = billing && pricingV2Enabled(process.env.NEXT_PUBLIC_QUICKFILL_PRICING_V2)
+    ? pricingV2AuthSummary(billing)
+    : "Next: A$2 for 7 days, then A$25/month. Cancel anytime.";
 
   return (
     <div className="flex min-h-[calc(100vh-4rem)] items-center justify-center overflow-hidden bg-navy px-4 py-10 sm:py-12">
@@ -36,7 +49,7 @@ export default async function SignUpPage({
                 Your document is saved. Create an account, then continue to secure checkout.
               </p>
               <p className="mt-1 text-xs text-gray-400">
-                Next: A$2 for 7 days, then A$25/month. Cancel anytime.
+                {checkoutPriceCopy}
               </p>
             </>
           ) : (

@@ -111,6 +111,8 @@ export function tierFromPriceId(priceId?: string | null): QuickFillTier | null {
   if (priceId === process.env.STRIPE_PRO_MONTHLY_PRICE_ID) return "pro";
   if (priceId === process.env.STRIPE_PRO_PRICE_ID) return "pro";
   if (priceId === process.env.STRIPE_PRO_ANNUAL_PRICE_ID) return "pro";
+  if (priceId === process.env.STRIPE_PRO_ANNUAL_V2_PRICE_ID) return "pro";
+  if (priceId === process.env.STRIPE_PRO_ANNUAL_SALE_PRICE_ID) return "pro";
   if (priceId === process.env.STRIPE_BUSINESS_PRICE_ID) return "business";
   if (priceId === process.env.STRIPE_BUSINESS_ANNUAL_PRICE_ID) return "business";
   return null;
