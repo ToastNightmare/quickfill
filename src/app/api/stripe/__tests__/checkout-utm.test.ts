@@ -94,11 +94,30 @@ function makeRequest(body: Record<string, unknown>) {
   });
 }
 
+function clearPricingV2Env() {
+  delete process.env.NEXT_PUBLIC_QUICKFILL_PRICING_V2;
+  delete process.env.NEXT_PUBLIC_QUICKFILL_SALE_ENDS;
+  delete process.env.STRIPE_PRO_ANNUAL_V2_PRICE_ID;
+  delete process.env.STRIPE_PRO_ANNUAL_SALE_PRICE_ID;
+}
+
+function enablePricingV2(saleEnds = "2999-01-01T00:00:00.000Z") {
+  process.env.NEXT_PUBLIC_QUICKFILL_PRICING_V2 = "v1";
+  process.env.NEXT_PUBLIC_QUICKFILL_SALE_ENDS = saleEnds;
+  process.env.STRIPE_PRO_ANNUAL_V2_PRICE_ID = "price_pro_annual_v2";
+  process.env.STRIPE_PRO_ANNUAL_SALE_PRICE_ID = "price_pro_annual_sale";
+}
+
+afterEach(() => {
+  clearPricingV2Env();
+});
+
 describe("Stripe checkout UTM attribution", () => {
   let stripe: StripeMock;
 
   beforeEach(() => {
     jest.clearAllMocks();
+    clearPricingV2Env();
 
     process.env.STRIPE_PRO_MONTHLY_PRICE_ID = "price_pro_monthly";
     process.env.STRIPE_PRO_MONTHLY_INTRO_PRICE_ID = "price_pro_monthly_intro";
@@ -337,6 +356,7 @@ describe("Stripe checkout Pro offer", () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    clearPricingV2Env();
 
     process.env.STRIPE_PRO_MONTHLY_PRICE_ID = "price_pro_monthly";
     process.env.STRIPE_PRO_MONTHLY_INTRO_PRICE_ID = "price_pro_monthly_intro";
@@ -407,6 +427,149 @@ describe("Stripe checkout Pro offer", () => {
     expect(callArgs.line_items).toEqual([{ price: "price_pro_annual", quantity: 1 }]);
     expect(callArgs.subscription_data.trial_period_days).toBeUndefined();
     expect(callArgs.discounts).toBeUndefined();
+  });
+
+  it("Pricing V2 annual moves the A$2 intro and 7 day trial to the new annual price", async () => {
+    enablePricingV2();
+
+    const response = await POST(makeRequest({ plan: "pro", annual: true, billing: "annual" }));
+    expect(response.status).toBe(200);
+
+    const callArgs = (stripe.checkout.sessions.create as jest.Mock).mock.calls[0][0];
+    expect(callArgs.line_items).toEqual([
+      { price: "price_pro_monthly_intro", quantity: 1 },
+      { price: "price_pro_annual_v2", quantity: 1 },
+    ]);
+    expect(callArgs.subscription_data).toEqual(expect.objectContaining({
+      trial_period_days: 7,
+      metadata: expect.objectContaining({ billing: "annual" }),
+    }));
+    expect(callArgs.discounts).toBeUndefined();
+    expect(callArgs.allow_promotion_codes).toBeUndefined();
+  });
+
+  it("Pricing V2 monthly uses one monthly price with no intro or trial", async () => {
+    enablePricingV2();
+
+    const response = await POST(makeRequest({ plan: "pro", annual: false, billing: "monthly" }));
+    expect(response.status).toBe(200);
+
+    const callArgs = (stripe.checkout.sessions.create as jest.Mock).mock.calls[0][0];
+    expect(callArgs.line_items).toEqual([{ price: "price_pro_monthly", quantity: 1 }]);
+    expect(callArgs.subscription_data).toEqual(expect.objectContaining({
+      metadata: expect.objectContaining({ billing: "monthly" }),
+    }));
+    expect(callArgs.subscription_data.trial_period_days).toBeUndefined();
+    expect(callArgs.discounts).toBeUndefined();
+    expect(callArgs.allow_promotion_codes).toBeUndefined();
+  });
+
+  it("Pricing V2 sale uses the locked annual sale price only while its window is open", async () => {
+    enablePricingV2();
+
+    const response = await POST(makeRequest({ plan: "pro", billing: "sale" }));
+    expect(response.status).toBe(200);
+
+    const callArgs = (stripe.checkout.sessions.create as jest.Mock).mock.calls[0][0];
+    expect(callArgs.line_items).toEqual([{ price: "price_pro_annual_sale", quantity: 1 }]);
+    expect(callArgs.subscription_data).toEqual(expect.objectContaining({
+      metadata: expect.objectContaining({ billing: "sale" }),
+    }));
+    expect(callArgs.subscription_data.trial_period_days).toBeUndefined();
+    expect(callArgs.discounts).toBeUndefined();
+    expect(callArgs.allow_promotion_codes).toBeUndefined();
+  });
+
+  it.each([
+    ["absent", undefined],
+    ["invalid", "not-a-date"],
+    ["past", "2000-01-01T00:00:00.000Z"],
+  ])("Pricing V2 rejects a sale with an %s sale window", async (_label, saleEnds) => {
+    enablePricingV2();
+    if (saleEnds === undefined) {
+      delete process.env.NEXT_PUBLIC_QUICKFILL_SALE_ENDS;
+    } else {
+      process.env.NEXT_PUBLIC_QUICKFILL_SALE_ENDS = saleEnds;
+    }
+
+    const response = await POST(makeRequest({ plan: "pro", billing: "sale" }));
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error: "This sale offer is no longer available.",
+      code: "checkout_sale_unavailable",
+    });
+    expect(stripe.checkout.sessions.create).not.toHaveBeenCalled();
+    expect(mockAlertAdmins).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["STRIPE_PRO_MONTHLY_INTRO_PRICE_ID", "STRIPE_PRO_MONTHLY_INTRO_PRICE_ID"],
+    ["STRIPE_PRO_ANNUAL_V2_PRICE_ID", "STRIPE_PRO_ANNUAL_V2_PRICE_ID"],
+  ])("Pricing V2 annual fails closed and alerts when %s is missing", async (envName, missingEnv) => {
+    enablePricingV2();
+    delete process.env[envName];
+
+    const response = await POST(makeRequest({ plan: "pro", annual: true, billing: "annual" }));
+    expect(response.status).toBe(500);
+    await expect(response.json()).resolves.toEqual({
+      error: "pro annual billing is not configured yet.",
+      code: "checkout_price_missing",
+    });
+    expect(stripe.checkout.sessions.create).not.toHaveBeenCalled();
+    expect(mockAlertAdmins).toHaveBeenCalledWith(expect.objectContaining({
+      title: "Stripe checkout price is not configured",
+      fields: expect.objectContaining({ billing: "annual", missingEnv }),
+    }));
+  });
+
+  it("Pricing V2 sale fails closed and alerts when its Stripe price is missing", async () => {
+    enablePricingV2();
+    delete process.env.STRIPE_PRO_ANNUAL_SALE_PRICE_ID;
+
+    const response = await POST(makeRequest({ plan: "pro", billing: "sale" }));
+    expect(response.status).toBe(500);
+    await expect(response.json()).resolves.toEqual({
+      error: "pro sale billing is not configured yet.",
+      code: "checkout_price_missing",
+    });
+    expect(stripe.checkout.sessions.create).not.toHaveBeenCalled();
+    expect(mockAlertAdmins).toHaveBeenCalledWith(expect.objectContaining({
+      fields: expect.objectContaining({
+        billing: "sale",
+        missingEnv: "STRIPE_PRO_ANNUAL_SALE_PRICE_ID",
+      }),
+    }));
+  });
+
+  it("flag-off ignores billing=sale and keeps the existing monthly trial flow", async () => {
+    const response = await POST(makeRequest({ plan: "pro", annual: false, billing: "sale" }));
+    expect(response.status).toBe(200);
+
+    const callArgs = (stripe.checkout.sessions.create as jest.Mock).mock.calls[0][0];
+    expect(callArgs.line_items).toEqual([
+      { price: "price_pro_monthly_intro", quantity: 1 },
+      { price: "price_pro_monthly", quantity: 1 },
+    ]);
+    expect(callArgs.subscription_data).toEqual(expect.objectContaining({
+      trial_period_days: 7,
+      metadata: expect.objectContaining({ billing: "monthly" }),
+    }));
+  });
+
+  it("Pricing V2 leaves the Business annual offer unchanged", async () => {
+    enablePricingV2();
+
+    const response = await POST(makeRequest({
+      plan: "business",
+      annual: true,
+      billing: "sale",
+    }));
+    expect(response.status).toBe(200);
+
+    const callArgs = (stripe.checkout.sessions.create as jest.Mock).mock.calls[0][0];
+    expect(callArgs.line_items).toEqual([{ price: "price_business_annual", quantity: 1 }]);
+    expect(callArgs.metadata.billing).toBe("annual");
+    expect(callArgs.allow_promotion_codes).toBe(true);
   });
 
   it("Business -> uses allow_promotion_codes and no discount", async () => {

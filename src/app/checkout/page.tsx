@@ -4,13 +4,20 @@ import { useAuth } from "@clerk/nextjs";
 import { Loader2, ShieldCheck } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { pricingV2Enabled, type PricingV2Billing } from "@/lib/pricing-v2";
 import { captureAndStoreUtm, getStoredUtm } from "@/lib/utm";
 
 function checkoutParams() {
   const params = new URLSearchParams(window.location.search);
-  const billing = params.get("billing") === "monthly" ? "monthly" : "annual";
+  const requestedBilling = params.get("billing");
+  const usePricingV2 = pricingV2Enabled(process.env.NEXT_PUBLIC_QUICKFILL_PRICING_V2);
+  const billing: PricingV2Billing = usePricingV2 && requestedBilling === "sale"
+    ? "sale"
+    : requestedBilling === "monthly"
+      ? "monthly"
+      : "annual";
   const source = params.get("source") ?? "checkout";
-  return { billing, source };
+  return { billing, source, usePricingV2 };
 }
 
 export default function CheckoutPage() {
@@ -22,7 +29,7 @@ export default function CheckoutPage() {
     if (!isLoaded) return;
 
     captureAndStoreUtm();
-    const { billing, source } = checkoutParams();
+    const { billing, source, usePricingV2 } = checkoutParams();
     const checkoutPath = `/checkout?plan=pro&billing=${billing}&source=${encodeURIComponent(source)}`;
 
     if (!isSignedIn) {
@@ -43,6 +50,7 @@ export default function CheckoutPage() {
           body: JSON.stringify({
             plan: "pro",
             annual: billing === "annual",
+            ...(usePricingV2 ? { billing } : {}),
             source,
             ...getStoredUtm(),
           }),

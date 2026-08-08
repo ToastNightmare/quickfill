@@ -9,6 +9,11 @@ import { trackServerEvent } from "@/lib/server-analytics";
 import { alertAdmins } from "@/lib/admin-alerts";
 import { getStoredSubscriptionSnapshot, type StoredSubscriptionSnapshot } from "@/lib/billing-store";
 import { log } from "@/lib/log";
+import {
+  pricingV2Enabled,
+  saleWindowOpen,
+  type PricingV2Billing,
+} from "@/lib/pricing-v2";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -40,12 +45,23 @@ function envValue(name: string) {
   return process.env[name]?.trim() || undefined;
 }
 
-function proMonthlyCheckoutOffer(): {
+type CheckoutOffer = {
   lineItems: Stripe.Checkout.SessionCreateParams.LineItem[];
   promotionConfig: Pick<Stripe.Checkout.SessionCreateParams, "allow_promotion_codes" | "discounts">;
   subscriptionConfig: Omit<Stripe.Checkout.SessionCreateParams.SubscriptionData, "metadata">;
   missingEnv?: string;
-} {
+};
+
+function missingCheckoutOffer(missingEnv: string): CheckoutOffer {
+  return {
+    lineItems: [],
+    promotionConfig: {},
+    subscriptionConfig: {},
+    missingEnv,
+  };
+}
+
+function proMonthlyCheckoutOffer(): CheckoutOffer {
   const introPriceId = envValue("STRIPE_PRO_MONTHLY_INTRO_PRICE_ID");
 
   if (introPriceId) {
@@ -107,6 +123,41 @@ function checkoutOfferForPlan(plan: "pro" | "business", annual: boolean) {
     promotionConfig: { allow_promotion_codes: true },
     subscriptionConfig: {},
   };
+}
+
+function proPricingV2CheckoutOffer(billing: PricingV2Billing): CheckoutOffer {
+  if (billing === "annual") {
+    const introPriceId = envValue("STRIPE_PRO_MONTHLY_INTRO_PRICE_ID");
+    if (!introPriceId) return missingCheckoutOffer("STRIPE_PRO_MONTHLY_INTRO_PRICE_ID");
+
+    const annualPriceId = envValue("STRIPE_PRO_ANNUAL_V2_PRICE_ID");
+    if (!annualPriceId) return missingCheckoutOffer("STRIPE_PRO_ANNUAL_V2_PRICE_ID");
+
+    return {
+      lineItems: [
+        { price: introPriceId, quantity: 1 },
+        { price: annualPriceId, quantity: 1 },
+      ],
+      promotionConfig: {},
+      subscriptionConfig: { trial_period_days: 7 },
+    };
+  }
+
+  const priceEnv = billing === "sale"
+    ? "STRIPE_PRO_ANNUAL_SALE_PRICE_ID"
+    : "STRIPE_PRO_MONTHLY_PRICE_ID";
+  const priceId = envValue(priceEnv);
+  if (!priceId) return missingCheckoutOffer(priceEnv);
+
+  return {
+    lineItems: [{ price: priceId, quantity: 1 }],
+    promotionConfig: {},
+    subscriptionConfig: {},
+  };
+}
+
+function isPricingV2Billing(value: unknown): value is PricingV2Billing {
+  return value === "annual" || value === "monthly" || value === "sale";
 }
 
 function shouldUseBillingPortal(snapshot: StoredSubscriptionSnapshot | null) {
@@ -334,6 +385,7 @@ export async function POST(req: NextRequest) {
   const { email, firstName } = await checkoutUserProfile(userId);
   const origin = appOrigin(req);
 
+  const usePricingV2 = pricingV2Enabled(process.env.NEXT_PUBLIC_QUICKFILL_PRICING_V2);
   let plan: "pro" | "business" = "pro";
   let annual = false;
   const utmKeys = ["utm_source", "utm_medium", "utm_campaign", "utm_content", "utm_term"] as const;
@@ -362,7 +414,24 @@ export async function POST(req: NextRequest) {
     typeof bodyJson.source === "string" && bodyJson.source.length > 0
       ? bodyJson.source.slice(0, 100)
       : "checkout";
-  const billing = annual ? "annual" : "monthly";
+  const legacyBilling: PricingV2Billing = annual ? "annual" : "monthly";
+  const billing = usePricingV2 && plan === "pro" && isPricingV2Billing(bodyJson.billing)
+    ? bodyJson.billing
+    : legacyBilling;
+
+  if (
+    usePricingV2 &&
+    plan === "pro" &&
+    billing === "sale" &&
+    !saleWindowOpen(new Date(), process.env.NEXT_PUBLIC_QUICKFILL_SALE_ENDS)
+  ) {
+    log.warn("stripe_checkout_sale_unavailable", { plan, billing });
+    return checkoutErrorResponse(
+      "This sale offer is no longer available.",
+      400,
+      "checkout_sale_unavailable",
+    );
+  }
 
   try {
     const metadata = { userId, plan, billing, firstName, ...utmMetadata };
@@ -394,7 +463,9 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const checkoutOffer = checkoutOfferForPlan(plan, annual);
+    const checkoutOffer = usePricingV2 && plan === "pro"
+      ? proPricingV2CheckoutOffer(billing)
+      : checkoutOfferForPlan(plan, annual);
     if (checkoutOffer.missingEnv) {
       log.error("stripe_checkout_missing_price", { plan, billing, missingEnv: checkoutOffer.missingEnv });
       await safeAlertAdmins({

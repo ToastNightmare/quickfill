@@ -74,10 +74,14 @@ describe("billing entitlements", () => {
     process.env.STRIPE_PRO_MONTHLY_PRICE_ID = "price_pro_monthly";
     process.env.STRIPE_PRO_PRICE_ID = "price_pro_monthly_rollback";
     process.env.STRIPE_PRO_ANNUAL_PRICE_ID = "price_pro_annual";
+    process.env.STRIPE_PRO_ANNUAL_V2_PRICE_ID = "price_pro_annual_v2";
+    process.env.STRIPE_PRO_ANNUAL_SALE_PRICE_ID = "price_pro_annual_sale";
 
     expect(tierFromPriceId("price_pro_monthly")).toBe("pro");
     expect(tierFromPriceId("price_pro_monthly_rollback")).toBe("pro");
     expect(tierFromPriceId("price_pro_annual")).toBe("pro");
+    expect(tierFromPriceId("price_pro_annual_v2")).toBe("pro");
+    expect(tierFromPriceId("price_pro_annual_sale")).toBe("pro");
   });
 
   it("returns free for stale database subscriptions without falling back to old Redis Pro cache", async () => {
